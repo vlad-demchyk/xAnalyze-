@@ -307,8 +307,19 @@ class MainWindow(QMainWindow):
         self.generate_list_btn.clicked.connect(self._on_generate_list_clicked)
         self.auto_replace_btn = QPushButton()
         self.auto_replace_btn.clicked.connect(self._on_auto_replace_clicked)
+        # Writing an audit correction back into the file, and taking it back.
+        # Both live next to each other on purpose: an action that edits
+        # someone's source is only comfortable to press when the way out is
+        # visible at the same moment.
+        self.fix_on_disk_btn = QPushButton()
+        self.fix_on_disk_btn.clicked.connect(self._on_fix_on_disk_clicked)
+        self.undo_fix_btn = QPushButton()
+        self.undo_fix_btn.clicked.connect(self._on_undo_fix_clicked)
+        self.export_report_btn = QPushButton()
+        self.export_report_btn.clicked.connect(self._on_export_report_clicked)
         bulk_layout.setSpacing(self.palette_tokens.space_sm)
-        for b in (self.fix_unicode_btn, self.generate_list_btn, self.auto_replace_btn):
+        for b in (self.fix_unicode_btn, self.generate_list_btn, self.auto_replace_btn,
+                  self.fix_on_disk_btn, self.undo_fix_btn, self.export_report_btn):
             bulk_layout.addWidget(b)
         col2_layout.addWidget(self.bulk_actions_row)
         # Kept as an alias so the repo-only visibility logic reads clearly.
@@ -399,6 +410,12 @@ class MainWindow(QMainWindow):
         self.fix_unicode_btn.setToolTip(t("fix_unicode_tooltip", lang))
         self.generate_list_btn.setText(t("generate_list_button", lang))
         self.auto_replace_btn.setText(t("auto_replace_button", lang))
+        self.fix_on_disk_btn.setText(t("fix_on_disk_button", lang))
+        self.fix_on_disk_btn.setToolTip(t("fix_on_disk_tooltip", lang))
+        self.undo_fix_btn.setText(t("undo_fix_button", lang))
+        self.undo_fix_btn.setToolTip(t("undo_fix_tooltip", lang))
+        self.export_report_btn.setText(t("export_report_button", lang))
+        self.export_report_btn.setToolTip(t("export_report_tooltip", lang))
         self.status_bar.showMessage(t("status_idle", lang))
         self._reset_detail_panel()
 
@@ -513,9 +530,13 @@ class MainWindow(QMainWindow):
         self.detector_label.setVisible(not is_audit)
         self.detector_combo.setVisible(not is_audit)
         self.browser_check.setVisible(is_audit)
-        # The bulk actions all rewrite prose. An audit finds defects in
-        # markup, and none of the three has anything to act on.
-        self.bulk_actions_row.setVisible(not is_audit)
+        # The row is shared, but the two halves never appear together: three
+        # buttons rewrite prose, three act on an audit, and offering both at
+        # once would mean six buttons of which half do nothing.
+        self.fix_unicode_btn.setVisible(not is_audit)
+        self.fix_on_disk_btn.setVisible(is_audit)
+        self.undo_fix_btn.setVisible(is_audit)
+        self.export_report_btn.setVisible(is_audit)
         # The row itself is always shown — the unicode fix works in both
         # modes — but the two file-writing buttons only apply to a repo.
         self.generate_list_btn.setVisible(is_repo)
@@ -530,6 +551,21 @@ class MainWindow(QMainWindow):
         self.generate_list_btn.setEnabled(has_flags)
         self.auto_replace_btn.setEnabled(has_flags)
         self.fix_unicode_btn.setEnabled(bool(self._unicode_spans()))
+        self._update_audit_buttons_enabled()
+
+    def _update_audit_buttons_enabled(self) -> None:
+        """A button that writes to disk is only offered when it has something
+        to write, and only for a file it can actually open."""
+        from audit import fixer
+
+        documents = self.audit_result.documents if self.audit_result else []
+        local = [d for d in documents
+                 if not d.source.startswith(("http://", "https://"))]
+        writable = bool(local and any(
+            issue.fix_snippet for d in local for issue in d.issues))
+        self.fix_on_disk_btn.setEnabled(writable)
+        self.undo_fix_btn.setEnabled(bool(fixer.backups_for(documents)))
+        self.export_report_btn.setEnabled(bool(documents))
 
     def _active_unicode_categories(self):
         if not self.settings.unicode_check_enabled:
@@ -704,6 +740,10 @@ class MainWindow(QMainWindow):
             address = _browser_url(first.source)
             self.current_preview_url = address
             self.site_view.setUrl(QUrl(address))
+        # Recomputed here, not only when the mode changes: whether there is
+        # anything to write, and whether there is anything to take back, are
+        # both facts about the result that just arrived.
+        self._update_audit_buttons_enabled()
         # The same sentence the CLI prints, from the same function: two
         # wordings of one summary is two things to keep true.
         self.status_bar.showMessage(
@@ -750,6 +790,143 @@ class MainWindow(QMainWindow):
                     list(document.issues) + list(page_audit.issues))
         finally:
             runner.close()
+
+
+    # ------------------------------------------------- writing an audit back
+
+    def _on_fix_on_disk_clicked(self) -> None:
+        """Write the corrections the audit already knows, into the files.
+
+        Two tiers, and the difference is stated before anything is written:
+        corrections that follow from the markup go in unattended, while ones
+        that encode a judgement - is this image decorative, what does this
+        page promise - are only written when a model has been asked to supply
+        the words, and are named as the model's afterwards.
+        """
+        from audit import fix_ai, fixer
+
+        if self.audit_result is None:
+            return
+        ready, pending, skipped = fixer.plan_fixes(self.audit_result.documents)
+
+        page_text = self._audited_text()
+        filled, pending = fix_ai.fill_locally(pending, page_text)
+        ready += filled
+
+        use_ai = False
+        if pending:
+            answer = QMessageBox.question(
+                self, t("fix_on_disk_button", self.lang),
+                t("fix_confirm_body", self.lang,
+                  ready=len(ready), pending=len(pending)),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                | QMessageBox.StandardButton.Cancel,
+            )
+            if answer == QMessageBox.StandardButton.Cancel:
+                return
+            use_ai = answer == QMessageBox.StandardButton.Yes
+        elif not ready:
+            QMessageBox.information(self, t("fix_on_disk_button", self.lang),
+                                    t("fix_nothing_ready", self.lang))
+            return
+
+        written_by_model = []
+        if use_ai:
+            import rewriter
+
+            try:
+                provider = rewriter.build_provider(self.settings)
+                filled, pending = fix_ai.describe(pending, page_text, provider,
+                                                  self.lang)
+                ready += filled
+                written_by_model = [p.rule_id for p in filled]
+            except rewriter.LLMUnavailable as exc:
+                QMessageBox.warning(self, t("fix_on_disk_button", self.lang), str(exc))
+
+        outcome = fixer.apply_fixes(ready)
+        outcome.skipped.extend(skipped)
+        for plan in pending:
+            outcome.skipped.append(
+                fixer.SkippedFix(plan.rule_id, plan.path, plan.line, plan.needs_input))
+
+        self._report_fix_outcome(outcome, written_by_model)
+        self._reaudit_after_fix()
+
+    def _on_undo_fix_clicked(self) -> None:
+        from audit import fixer
+
+        paths = fixer.backups_for(self.audit_result.documents if self.audit_result else [])
+        if not paths:
+            return
+        restored, problems = fixer.restore(paths)
+        message = t("undo_done", self.lang, files=len(restored))
+        if problems:
+            message += "\n\n" + "\n".join(problems)
+        QMessageBox.information(self, t("undo_fix_button", self.lang), message)
+        self._reaudit_after_fix()
+
+    def _on_export_report_clicked(self) -> None:
+        """Save a briefing another tool - or a coding agent - can act on."""
+        if self.audit_result is None:
+            return
+        path, _filter = QFileDialog.getSaveFileName(
+            self, t("export_report_button", self.lang), "audit-report.md",
+            "Markdown (*.md);;JSON (*.json)")
+        if not path:
+            return
+        import cli
+
+        class _Args:
+            report = path
+        try:
+            cli._write_report(self.audit_result, _Args(), self.lang, None)
+        except OSError as exc:
+            QMessageBox.warning(self, t("export_report_button", self.lang), str(exc))
+            return
+        QMessageBox.information(self, t("export_report_button", self.lang),
+                                t("export_report_done", self.lang, path=path))
+
+    def _report_fix_outcome(self, outcome, written_by_model) -> None:
+        lines = [t("fix_done", self.lang, applied=len(outcome.applied),
+                   files=len(outcome.files_changed))]
+        if written_by_model:
+            lines.append(t("fix_done_by_model", self.lang,
+                           rules=", ".join(sorted(set(written_by_model)))))
+        if outcome.skipped:
+            lines.append("")
+            lines.append(t("fix_left_alone", self.lang, count=len(outcome.skipped)))
+            for item in outcome.skipped[:6]:
+                lines.append(f"  {item.rule_id}: {item.reason}")
+        for error in outcome.errors:
+            lines.append(error)
+        QMessageBox.information(self, t("fix_on_disk_button", self.lang),
+                                "\n".join(lines))
+
+    def _audited_text(self) -> str:
+        """The words of the audited files, for anything that has to read them."""
+        import re
+
+        parts = []
+        for document in (self.audit_result.documents if self.audit_result else []):
+            if document.source.startswith(("http://", "https://")):
+                continue
+            try:
+                with open(document.source, encoding="utf-8", errors="replace") as handle:
+                    parts.append(re.sub(r"<[^>]+>", " ", handle.read()))
+            except OSError:
+                continue
+        return " ".join(parts)
+
+    def _reaudit_after_fix(self) -> None:
+        """Re-read the files so the list matches what is now on disk.
+
+        Leaving the old findings on screen after writing to the file would
+        show work as outstanding that has just been done, which is the one
+        thing a fix button must not do.
+        """
+        if self.audit_result is None:
+            return
+        self._start_audit()
 
     def _populate_audit_list(self) -> None:
         self.flagged_list.clear()

@@ -384,6 +384,25 @@ def cmd_audit(args) -> int:
             document.issues = [i for i in document.issues if i.category in wanted]
 
     lang = args.language or "en"
+
+    fix_outcome = None
+    if getattr(args, "fix", False):
+        fix_outcome = _apply_fixes(result, args, lang)
+        if fix_outcome.files_changed and result.mode in ("file", "repo"):
+            # Re-read what is now on disk. Printing the numbers from before
+            # the corrections were written would tell the user - or the agent
+            # parsing `--json` - that work is outstanding when it is done.
+            result = _reaudit(args, target, result)
+            for document in result.documents:
+                document.issues = suppression.filter_issues(
+                    document.issues, suppressions)
+            if wanted != set(CATEGORIES):
+                for document in result.documents:
+                    document.issues = [i for i in document.issues
+                                       if i.category in wanted]
+    if getattr(args, "report", None):
+        _write_report(result, args, lang, fix_outcome)
+
     if args.json:
         print(json.dumps({
             "root": result.root,
@@ -431,6 +450,370 @@ def cmd_audit(args) -> int:
     if args.check and (counts.get("critical") or counts.get("serious")):
         return EXIT_FINDINGS
     return EXIT_OK
+
+
+def _reaudit(args, target: str, previous):
+    """Run the same audit again over the same files, after correcting them."""
+    import audit
+
+    if previous.mode == "file":
+        return audit.analyze_page_file(target)
+    from repo_scanner import ScanConfig, scan_repo
+
+    ignore = _parse_ignore_text(DEFAULT_IGNORE_PATTERNS) if args.use_default_excludes else []
+    ignore += list(args.exclude or [])
+    files = scan_repo(target, ScanConfig(ignore_patterns=ignore,
+                                         max_files=args.max_files))
+    return audit.analyze_files(files, target)
+
+
+def _apply_fixes(result, args, lang: str):
+    """Write back what the audit already knows how to correct.
+
+    Returns a small record of what happened, so `--report` and the JSON output
+    can say it rather than the user having to diff their own files.
+
+    The order is deliberate. Corrections that need no decision go in first and
+    alone; the ones that encode a judgement are only written when `--ai` was
+    asked for, and even then a value the model declined to invent is left
+    undone rather than filled with something plausible.
+    """
+    from audit import fix_ai, fixer
+
+    ready, pending, skipped = fixer.plan_fixes(result.documents)
+
+    if pending:
+        # The page's own language is in the page. Reading it beats asking a
+        # model, and beats the rule's default, which is a guess.
+        page_text = _document_text(result)
+        filled, pending = fix_ai.fill_locally(pending, page_text)
+        ready += filled
+
+    ai_written = []
+    if pending and getattr(args, "ai", False):
+        name, provider = _provider_for(args)
+        print(f"# writing the remaining corrections with {name}", file=sys.stderr)
+        filled, pending = fix_ai.describe(pending, _document_text(result),
+                                          provider, lang)
+        ready += filled
+        ai_written = [p.rule_id for p in filled]
+
+    outcome = fixer.apply_fixes(ready)
+    outcome.skipped.extend(skipped)
+    for plan in pending:
+        outcome.skipped.append(fixer.SkippedFix(
+            plan.rule_id, plan.path, plan.line, plan.needs_input))
+
+    print(f"# fixed {len(outcome.applied)} in {len(outcome.files_changed)} file(s); "
+          f"{len(outcome.skipped)} left alone", file=sys.stderr)
+    if outcome.backups:
+        print(f"# backups: {', '.join(outcome.backups)} "
+              f"(restore with `cli.py undo`)", file=sys.stderr)
+    for error in outcome.errors:
+        print(f"# {error}", file=sys.stderr)
+    outcome.ai_written = ai_written
+    return outcome
+
+
+def _document_text(result) -> str:
+    """The page's own words, for anything that has to read it."""
+    import re as _re
+    parts = []
+    for document in result.documents:
+        path = document.source
+        if path.startswith(("http://", "https://")):
+            continue
+        try:
+            with open(path, encoding="utf-8", errors="replace") as handle:
+                markup = handle.read()
+        except OSError:
+            continue
+        parts.append(_re.sub(r"<[^>]+>", " ", markup))
+    return " ".join(parts)
+
+
+def cmd_undo(args) -> int:
+    """Put files back the way they were before the corrections went in."""
+    from audit import fixer
+
+    paths = []
+    for target in args.paths:
+        path = Path(target)
+        if path.is_dir():
+            paths += [str(p)[:-4] for p in path.rglob("*.bak")]
+        elif str(path).endswith(".bak"):
+            paths.append(str(path)[:-4])
+        else:
+            paths.append(str(path))
+
+    if not paths:
+        print("nothing to undo: no .bak copies found", file=sys.stderr)
+        return EXIT_OK
+
+    restored, problems = fixer.restore(paths)
+    for path in restored:
+        print(f"restored {path}")
+    for problem in problems:
+        print(problem, file=sys.stderr)
+    return EXIT_ERROR if problems and not restored else EXIT_OK
+
+
+#: Where a run's numbers are remembered between runs, beside the report. Small
+#: on purpose: counts and dates, never findings, so it stays readable and
+#: cannot become a second source of truth about the code.
+HISTORY_SUFFIX = ".history.json"
+
+
+def _write_report(result, args, lang: str, fix_outcome=None) -> None:
+    """Write a briefing another tool - or an agent - can act on directly.
+
+    The plain `--json` output is a list of findings, which is the right shape
+    for a pipeline and the wrong shape for an agent about to edit the code. An
+    agent needs to know where the work is concentrated, which files to open,
+    what has already been done to them, and whether the situation is getting
+    better or worse. So this is a different document, not a flag on the same
+    one.
+
+    Markdown by default because that is what a coding agent reads best; `.json`
+    if the suffix asks for it, for anything that would rather parse than read.
+    """
+    from audit.explanations import render
+
+    path = Path(args.report)
+    history = _read_history(path)
+    counts = result.counts()
+    entry = {
+        "at": _now(),
+        "root": result.root,
+        "mode": result.mode,
+        "counts": counts,
+        "documents": len(result.documents),
+        "fixed": len(fix_outcome.applied) if fix_outcome else 0,
+    }
+
+    payload = {
+        "generated": entry["at"],
+        "root": result.root,
+        "mode": result.mode,
+        "summary": {
+            "counts": counts,
+            "total": sum(counts.values()),
+            "documents": len(result.documents),
+            "documents_with_findings": len(result.documents_with_issues()),
+            "rules_triggered": len(result.by_rule()),
+        },
+        "history": history + [entry],
+        "changed_this_run": _fix_summary(fix_outcome),
+        "files": _file_map(result, render, lang),
+        "by_rule": [
+            {"rule": rule, "count": len(issues),
+             "severity": issues[0].severity,
+             "category": issues[0].category,
+             "title": render(issues[0], lang).title,
+             "fix": render(issues[0], lang).fix,
+             "where": [f"{i.source}:{i.line}" if i.line else i.source
+                       for i in issues[:20]]}
+            for rule, issues in result.by_rule().items()
+        ],
+    }
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.suffix.lower() == ".json":
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2),
+                        encoding="utf-8")
+    else:
+        path.write_text(_report_markdown(payload, lang), encoding="utf-8")
+    _write_history(path, history + [entry])
+    print(f"# report: {path}", file=sys.stderr)
+
+
+def _fix_summary(fix_outcome) -> dict:
+    if fix_outcome is None:
+        return {"applied": 0, "files": [], "left_alone": [], "backups": []}
+    return {
+        "applied": len(fix_outcome.applied),
+        "files": list(fix_outcome.files_changed),
+        "backups": list(fix_outcome.backups),
+        "written_by_model": list(getattr(fix_outcome, "ai_written", [])),
+        "left_alone": [
+            {"rule": s.rule_id, "where": f"{s.source}:{s.line}" if s.line else s.source,
+             "reason": s.reason}
+            for s in fix_outcome.skipped
+        ],
+        "errors": list(fix_outcome.errors),
+    }
+
+
+def _file_map(result, render, lang: str) -> list:
+    """Every audited file, what is wrong in it, and where exactly."""
+    files = []
+    for document in result.documents:
+        entry = {"source": document.source,
+                 "error": document.error or "",
+                 "elements_checked": document.elements_checked,
+                 "findings": []}
+        for issue in document.issues:
+            explanation = render(issue, lang)
+            entry["findings"].append({
+                "rule": issue.rule_id,
+                "severity": issue.severity,
+                "category": issue.category,
+                "line": issue.line,
+                "selector": issue.selector,
+                "engine": issue.engine,
+                "title": explanation.title,
+                "found": explanation.found,
+                "why": explanation.why,
+                "fix": explanation.fix,
+                "ready_fix": issue.fix_snippet or "",
+                "snippet": issue.snippet,
+                "confirmed_by": (issue.details or {}).get("also_found_by", []),
+            })
+        files.append(entry)
+    return files
+
+
+def _report_markdown(payload: dict, lang: str) -> str:
+    """The same facts, laid out for something that reads rather than parses."""
+    summary = payload["summary"]
+    counts = summary["counts"]
+    out = [
+        f"# Audit of {payload['root']}",
+        "",
+        f"Generated {payload['generated']} · mode `{payload['mode']}` · "
+        f"{summary['documents']} document(s) examined.",
+        "",
+        "## Where the work is",
+        "",
+        f"| critical | serious | moderate | minor | total |",
+        "|---|---|---|---|---|",
+        f"| {counts.get('critical', 0)} | {counts.get('serious', 0)} | "
+        f"{counts.get('moderate', 0)} | {counts.get('minor', 0)} | "
+        f"{summary['total']} |",
+        "",
+    ]
+
+    history = payload.get("history") or []
+    if len(history) > 1:
+        previous = history[-2]
+        before, now = sum(previous["counts"].values()), summary["total"]
+        direction = "down" if now < before else ("up" if now > before else "unchanged")
+        out += [
+            "## Since the last run",
+            "",
+            f"Previous run {previous['at']}: {before} finding(s). "
+            f"Now {now} - {direction}.",
+            "",
+        ]
+
+    changed = payload.get("changed_this_run") or {}
+    if changed.get("applied"):
+        out += [
+            "## Already corrected in this run",
+            "",
+            f"{changed['applied']} correction(s) written to "
+            f"{len(changed['files'])} file(s). Backups: "
+            f"{', '.join(changed['backups']) or 'none'} - `cli.py undo <path>` "
+            f"puts every file back.",
+            "",
+        ]
+        if changed.get("written_by_model"):
+            out += [
+                f"Written by a model, so worth reading before trusting: "
+                f"{', '.join(sorted(set(changed['written_by_model'])))}.",
+                "",
+            ]
+
+    left = [s for s in changed.get("left_alone", [])]
+    if left:
+        # Without line numbers on purpose. These were recorded before the
+        # corrections were written, so their positions have since moved; the
+        # file map below is the one that matches the file on disk now, and
+        # two sets of line numbers that disagree is worse than one set.
+        out += ["## Deliberately not corrected", "",
+                "These need a decision rather than an edit. Current positions "
+                "are in the file map below.", ""]
+        seen = set()
+        for item in left[:40]:
+            key = (item["rule"], item["reason"])
+            if key in seen:
+                continue
+            seen.add(key)
+            source = item["where"].rsplit(":", 1)[0] if ":" in item["where"] else item["where"]
+            same = sum(1 for other in left if (other["rule"], other["reason"]) == key)
+            count = f" ({same}\u00d7)" if same > 1 else ""
+            out.append(f"- `{item['rule']}`{count} in {source} - {item['reason']}")
+        out.append("")
+
+    out += ["## By rule, most affected first", "",
+            "| rule | severity | count | what to do |", "|---|---|---|---|"]
+    for rule in payload["by_rule"]:
+        fix = " ".join(rule["fix"].split())[:150]
+        out.append(f"| `{rule['rule']}` | {rule['severity']} | {rule['count']} | {fix} |")
+    out.append("")
+
+    out += ["## File map", ""]
+    for entry in payload["files"]:
+        if entry["error"]:
+            out += [f"### {entry['source']}", "", f"Not checked: {entry['error']}", ""]
+            continue
+        if not entry["findings"]:
+            continue
+        out += [f"### {entry['source']}", "",
+                f"{len(entry['findings'])} finding(s), "
+                f"{entry['elements_checked']} element(s) examined.", ""]
+        for finding in entry["findings"]:
+            where = f"line {finding['line']}" if finding["line"] else finding["selector"] or "-"
+            out.append(f"- **[{finding['severity']}] {finding['title']}** ({where})")
+            out.append(f"  - found: {finding['found']}")
+            out.append(f"  - why: {' '.join(finding['why'].split())}")
+            out.append(f"  - fix: {' '.join(finding['fix'].split())}")
+            if finding["ready_fix"]:
+                out.append(f"  - ready replacement: `{finding['ready_fix']}`")
+            if finding["snippet"]:
+                out.append(f"  - element: `{finding['snippet'][:160]}`")
+        out.append("")
+
+    out += [
+        "## How to act on this",
+        "",
+        "Corrections marked *ready replacement* are exact: the element they "
+        "name can be swapped for the markup given. Everything else is a "
+        "decision - describing an image, writing a description - and the "
+        "wording matters more than the markup.",
+        "",
+        "`python cli.py audit <target> --fix` applies the exact ones and keeps "
+        "a `.bak` of every file it touches. `--fix --ai` also writes the ones "
+        "that need words. `python cli.py undo <path>` reverses either.",
+        "",
+    ]
+    return "\n".join(out)
+
+
+def _read_history(report_path: Path) -> list:
+    history_path = Path(str(report_path) + HISTORY_SUFFIX)
+    try:
+        data = json.loads(history_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    return data if isinstance(data, list) else []
+
+
+def _write_history(report_path: Path, history: list) -> None:
+    history_path = Path(str(report_path) + HISTORY_SUFFIX)
+    try:
+        # Bounded: the useful comparison is with recent runs, and an unbounded
+        # file beside a report eventually becomes the biggest thing in the repo.
+        history_path.write_text(
+            json.dumps(history[-20:], ensure_ascii=False, indent=2),
+            encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _now() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
 
 def _run_browser_pass(result, suppressions) -> None:
@@ -847,6 +1230,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_audit.add_argument("--provider", default=None,
                          choices=["anthropic", "xformat", "claude-code"],
                          help="override the provider used by --ai")
+    p_audit.add_argument("--fix", action="store_true",
+                         help="write the corrections the audit already knows "
+                              "back into the files, keeping a .bak copy of "
+                              "each. Only the ones that need no decision; run "
+                              "with --ai to have the rest written too")
+    p_audit.add_argument("--report", default=None, metavar="PATH",
+                         help="write a briefing an agent can act on: statistics, "
+                              "a file map, every finding with its fix, what "
+                              "changed since last time. .md or .json by suffix")
     p_audit.add_argument("--browser", action="store_true",
                          help="also load each page in a real browser: runs "
                               "axe-core, HTML_CodeSniffer, the keyboard/focus "
@@ -857,6 +1249,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     # `ai` groups everything that spends money or needs an account, so the
     # commands that never do (scan, fix, audit) stay usable with no setup.
+    p_undo = sub.add_parser(
+        "undo",
+        help="put files back the way they were before --fix wrote to them")
+    p_undo.add_argument("paths", nargs="+",
+                        help="files or folders that were corrected")
+    p_undo.set_defaults(func=cmd_undo)
+
     p_ai = sub.add_parser("ai", help="account and AI-backed operations")
     ai_sub = p_ai.add_subparsers(dest="ai_command", required=True)
 

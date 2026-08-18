@@ -251,12 +251,75 @@ Suppressions are shared with the text scan — one `.xanalyze-ignore` governs th
 whole tool. Selectors and disabled rules are handed to the engines rather than
 filtered out of their output, so an excluded region costs nothing to analyse.
 
+### Writing the corrections back
+
+Seventeen rules do not merely report a problem, they know the corrected
+markup. Those corrections can go straight into the file:
+
+```bash
+python cli.py audit ./page.html --fix          # write what needs no decision
+python cli.py audit ./page.html --fix --ai     # let a model write the rest too
+python cli.py undo ./page.html                 # put every file back
+```
+
+A `.bak` copy is written before the first change and **never overwritten
+afterwards**, so `undo` returns the file to how it was before the tool first
+touched it — not to the state between two runs.
+
+Corrections come in two tiers, and the split is the point:
+
+| | examples | written unattended |
+|---|---|---|
+| follows from the markup | missing doctype, missing charset, a heading that skipped a level, `target="_blank"` without `rel="noopener"`, `http://` that should be `https://` | yes |
+| encodes a decision | `alt=""` (which *claims* the image is decorative), the page's description, a canonical URL, alternative text | no — needs a person or `--ai` |
+
+The second tier is held back deliberately. Writing `alt=""` onto a photograph
+declares it decorative, hides its meaning from every screen reader, and stops
+the next audit reporting it — a green result over an unsolved problem, which
+is worse than the red one it replaced.
+
+`--ai` fills those in through whichever provider is configured (inside a Claude
+Code session, that is Claude Code itself, so it costs nothing extra). The model
+is instructed to answer `SKIP` when the page does not actually say what the
+answer is, and a skipped item is left undone rather than invented. Anything the
+model wrote is named as the model's in the report.
+
+One thing is read locally rather than asked of anyone: the page's language,
+which is in the page's own words. `<html lang>` therefore gets the language the
+page is actually written in, not the rule's default.
+
+### Handing the result to a coding agent
+
+```bash
+python cli.py audit ./src --report audit.md
+python cli.py audit ./src --report audit.json     # same facts, parsed
+```
+
+`--json` gives a flat list of findings, which is the right shape for a pipeline
+and the wrong shape for an agent about to edit code. `--report` writes a
+different document:
+
+* **statistics** — counts by severity, how many documents, how many rules fired;
+* **history** — what the numbers were last time, and whether they went up or down (kept in a small `.history.json` beside the report);
+* **what this run already changed**, which files, which backups exist, and which values a model wrote;
+* **what was deliberately left alone, and why** — so the agent does not "fix" a decision that was held back on purpose;
+* **a file map** — every file, every finding, line number, the element, why it matters and the exact replacement markup where one exists.
+
+That is enough for an agent to open the right files and make the right edits
+without re-running anything.
+
 ### In the window
 
 **Source** in the toolbar picks between *Web page*, *Repository*, *Site audit*
 and *A single HTML file*. The last two show a **In a browser** switch; the
 findings list is the same three-column layout, and clicking a finding shows the
 rendered page beside the explanation.
+
+Under the list, the audit modes offer three buttons: **Fix in the file** (with
+the same two tiers as `--fix`, and a prompt asking whether a model should write
+the ones that need words), **Undo**, which is only enabled once a backup
+exists, and **Report for an agent**, which saves the same briefing `--report`
+writes.
 
 ## app.xformat.net integration
 

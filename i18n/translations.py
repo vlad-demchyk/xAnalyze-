@@ -176,6 +176,95 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Repository (codice)",
         "en": "Repository (code)",
     },
+    "fix_on_disk_button": {
+        "uk": "Виправити у файлі", "it": "Correggi nel file",
+        "en": "Fix in the file",
+    },
+    "fix_on_disk_tooltip": {
+        "uk": "Записати виправлення просто у файли. Перед першою зміною "
+              "зберігається копія .bak, тож повернутися можна завжди.",
+        "it": "Scrive le correzioni direttamente nei file. Prima della prima "
+              "modifica viene salvata una copia .bak, quindi si può sempre "
+              "tornare indietro.",
+        "en": "Write the corrections straight into the files. A .bak copy is "
+              "saved before the first change, so going back is always "
+              "possible.",
+    },
+    "undo_fix_button": {
+        "uk": "Відкотити", "it": "Annulla", "en": "Undo",
+    },
+    "undo_fix_tooltip": {
+        "uk": "Повернути файли до стану перед першим виправленням.",
+        "it": "Riporta i file allo stato precedente alla prima correzione.",
+        "en": "Put the files back the way they were before the first "
+              "correction.",
+    },
+    "export_report_button": {
+        "uk": "Звіт для агента", "it": "Report per l'agente",
+        "en": "Report for an agent",
+    },
+    "export_report_tooltip": {
+        "uk": "Зберегти файл, який можна віддати Claude Code або іншому "
+              "агенту: статистика, карта файлів, кожна знахідка з готовим "
+              "виправленням і що змінилося з минулого разу.",
+        "it": "Salva un file da passare a Claude Code o a un altro agente: "
+              "statistiche, mappa dei file, ogni rilievo con la correzione "
+              "pronta e che cosa è cambiato dall'ultima volta.",
+        "en": "Save a file you can hand to Claude Code or another agent: "
+              "statistics, a file map, every finding with its ready "
+              "correction, and what changed since last time.",
+    },
+    "fix_confirm_body": {
+        "uk": "Готових до запису виправлень: {ready}.\n\n"
+              "Ще {pending} потребують рішення або справжнього тексту - "
+              "наприклад, що зображено на картинці або що обіцяє сторінка. "
+              "Записати їх може модель.\n\n"
+              "«Так» - модель напише і їх. «Ні» - записати лише готові.\n"
+              "У будь-якому разі копія .bak зберігається перед першою зміною.",
+        "it": "Correzioni pronte da scrivere: {ready}.\n\n"
+              "Altre {pending} richiedono una decisione o un testo reale: per "
+              "esempio che cosa mostra un'immagine o che cosa promette la "
+              "pagina. Può scriverle un modello.\n\n"
+              "«Sì» - le scrive anche il modello. «No» - solo quelle "
+              "pronte.\nIn entrambi i casi viene salvata una copia .bak "
+              "prima della prima modifica.",
+        "en": "Corrections ready to write: {ready}.\n\n"
+              "Another {pending} need a decision or real text - what an image "
+              "shows, what the page promises. A model can write those.\n\n"
+              "Yes - let the model write them too. No - write only the ready "
+              "ones.\nEither way a .bak copy is saved before the first "
+              "change.",
+    },
+    "fix_nothing_ready": {
+        "uk": "Серед знахідок немає таких, які можна записати автоматично.",
+        "it": "Tra i rilievi non ce n'è nessuno scrivibile automaticamente.",
+        "en": "None of the findings can be written automatically.",
+    },
+    "fix_done": {
+        "uk": "Записано виправлень: {applied} у {files} файл(ах).",
+        "it": "Correzioni scritte: {applied} in {files} file.",
+        "en": "Wrote {applied} correction(s) in {files} file(s).",
+    },
+    "fix_done_by_model": {
+        "uk": "Написано моделлю, тож варто прочитати: {rules}.",
+        "it": "Scritte da un modello, quindi da rileggere: {rules}.",
+        "en": "Written by a model, so worth reading: {rules}.",
+    },
+    "fix_left_alone": {
+        "uk": "Не змінено: {count}. Причини:",
+        "it": "Non modificati: {count}. Motivi:",
+        "en": "Left alone: {count}. Why:",
+    },
+    "undo_done": {
+        "uk": "Повернуто файлів: {files}.",
+        "it": "File ripristinati: {files}.",
+        "en": "Restored {files} file(s).",
+    },
+    "export_report_done": {
+        "uk": "Звіт збережено: {path}",
+        "it": "Report salvato: {path}",
+        "en": "Report saved: {path}",
+    },
     "mode_file": {
         "uk": "Один HTML-файл",
         "it": "Un singolo file HTML",
