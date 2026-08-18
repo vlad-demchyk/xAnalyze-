@@ -194,8 +194,11 @@ class BrowserAuditRunner:
         settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
         # The point of this pass is to see what a visitor sees, which includes
         # what JavaScript writes; but nothing here should be able to open a
-        # window or read local files.
-        settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, False)
+        # window, and a page off the network must never reach the local disk.
+        # `allow_local_files` is the one exception, and only for a file the
+        # user picked themselves - see `BrowserAuditOptions`.
+        settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls,
+                              bool(self.options.allow_local_files))
         settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptCanOpenWindows, False)
         self._page = page
         return page

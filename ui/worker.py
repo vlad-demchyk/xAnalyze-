@@ -216,13 +216,15 @@ class AuditWorker(QThread):
     failed = Signal(str)
 
     def __init__(self, target: str, depth: int, max_pages: int = 30,
-                 is_repo: bool = False, ignore_patterns=None,
-                 max_files: int = 5000, settings=None, parent=None):
+                 is_repo: bool = False, is_page_file: bool = False,
+                 ignore_patterns=None, max_files: int = 5000,
+                 settings=None, parent=None):
         super().__init__(parent)
         self.target = target
         self.depth = depth
         self.max_pages = max_pages
         self.is_repo = is_repo
+        self.is_page_file = is_page_file
         self.ignore_patterns = list(ignore_patterns or [])
         self.max_files = max_files
         self.settings = settings
@@ -235,7 +237,13 @@ class AuditWorker(QThread):
         try:
             import audit
 
-            if self.is_repo:
+            if self.is_page_file:
+                # One file, read as a whole page. No crawl and no scan: the
+                # user pointed at the document itself.
+                self.auditing.emit(self.target)
+                result = audit.analyze_page_file(self.target)
+                ignore_root = None
+            elif self.is_repo:
                 files = scan_repo(self.target,
                                   ScanConfig(ignore_patterns=self.ignore_patterns,
                                              max_files=self.max_files))

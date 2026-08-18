@@ -176,6 +176,26 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Repository (codice)",
         "en": "Repository (code)",
     },
+    "mode_file": {
+        "uk": "Один HTML-файл",
+        "it": "Un singolo file HTML",
+        "en": "A single HTML file",
+    },
+    "file_path_placeholder": {
+        "uk": "Шлях до сторінки, запакованої в один файл",
+        "it": "Percorso della pagina raccolta in un unico file",
+        "en": "Path to a page packed into one file",
+    },
+    "no_file_path": {
+        "uk": "Виберіть HTML-файл для аналізу.",
+        "it": "Scegli un file HTML da analizzare.",
+        "en": "Choose an HTML file to analyse.",
+    },
+    "all_files": {
+        "uk": "Усі файли",
+        "it": "Tutti i file",
+        "en": "All files",
+    },
     "mode_audit": {
         "uk": "Аудит сайту",
         "it": "Audit del sito",

@@ -78,6 +78,12 @@ class BrowserAuditOptions:
     #: that renders the page to finish. Deliberately generous: auditing a
     #: half-rendered SPA produces confident nonsense.
     settle_ms: int = 1200
+    #: Let a `file://` page read its neighbours on disk. Off for anything
+    #: fetched over the network, where it would be a way for a remote page to
+    #: read the local drive; switched on only when the user themselves pointed
+    #: the tool at a file, and then only because an exported page whose images
+    #: sit beside it would otherwise be audited half-loaded.
+    allow_local_files: bool = False
 
 
 def engines_available() -> dict:
@@ -372,9 +378,14 @@ def deduplicate(issues: list) -> list:
                 by_element.setdefault((issue.source, family, element), issue)
             continue
 
-        confirmations = set(existing.details.get("also_found_by", []))
-        confirmations.add(issue.engine)
-        existing.details["also_found_by"] = sorted(confirmations)
+        # Only a *different* engine is corroboration. One engine reporting the
+        # same element twice (HTML_CodeSniffer does this under one criterion)
+        # still collapses to one row, but writing "also found by htmlcs" on an
+        # htmlcs finding would read as nonsense to whoever has to act on it.
+        if issue.engine != existing.engine:
+            confirmations = set(existing.details.get("also_found_by", []))
+            confirmations.add(issue.engine)
+            existing.details["also_found_by"] = sorted(confirmations)
         # Keep the more severe reading of the same problem.
         if SEVERITY_ORDER.index(issue.severity) < SEVERITY_ORDER.index(existing.severity):
             existing.severity = issue.severity

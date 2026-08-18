@@ -14,6 +14,7 @@ the app because there is only one crawler.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from bs4 import BeautifulSoup
 
@@ -39,7 +40,7 @@ class DocumentReport:
 class AccessibilityResult:
     """A whole run: every document, and the roll-up the report needs."""
     root: str
-    mode: str = "web"          # "web" | "repo"
+    mode: str = "web"          # "web" | "repo" | "file"
     documents: list = field(default_factory=list)
     rules_run: list = field(default_factory=list)
 
@@ -179,6 +180,35 @@ def analyze_pages(pages, root: str, rules=None, ai_review=None) -> Accessibility
             continue
         result.documents.append(
             analyze_document(page.raw_html, page.url, rules, ai_review=ai_review))
+    return result
+
+
+def analyze_page_file(path: str, rules=None, ai_review=None) -> AccessibilityResult:
+    """One self-contained HTML file, treated as a page rather than as source.
+
+    A page exported or built into a single file - inlined CSS, inlined
+    scripts, data-URI images - is a finished document, not a template. Repo
+    mode is the wrong reading of it: that mode exists for markup fragments
+    inside a project and deliberately skips whatever has no elements, while
+    this file is the whole page and its `<head>` is worth auditing exactly as
+    a served one would be.
+
+    It also unlocks the browser pass, which repo mode cannot have. A file with
+    everything inlined renders faithfully from `file://`, so axe, the state
+    pass and the load measurements all mean what they mean on a real page.
+    """
+    rules = rules if rules is not None else RuleRegistry.all_rules()
+    result = AccessibilityResult(root=path, mode="file",
+                                 rules_run=[r.id for r in rules])
+    try:
+        markup = Path(path).read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        result.documents.append(DocumentReport(source=path, error=str(exc)))
+        return result
+    # Line numbers on: the user has the file open, so "line 42" is directly
+    # actionable in a way a CSS selector into a one-file build is not.
+    result.documents.append(
+        analyze_document(markup, path, rules, line_numbers=True, ai_review=ai_review))
     return result
 
 

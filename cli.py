@@ -339,7 +339,13 @@ def cmd_audit(args) -> int:
         reviewer = AIAccessibilityReview(provider=provider)
 
     target = args.target
-    if target.startswith(("http://", "https://")) or args.url:
+    if _is_page_file(target) and not args.url:
+        # A page built into one file is a finished document, so it is audited
+        # as a page: `<head>` included, line numbers on, and - with --browser -
+        # rendered from `file://`, which is faithful precisely because
+        # everything it needs is inlined.
+        result = audit.analyze_page_file(target, ai_review=reviewer)
+    elif target.startswith(("http://", "https://")) or args.url:
         from crawler import CrawlConfig, crawl
 
         # Same crawler as the text scan: depth-limited, and refusing to leave
@@ -430,16 +436,17 @@ def cmd_audit(args) -> int:
 def _run_browser_pass(result, suppressions) -> None:
     """Load each audited page in a real browser and fold the findings in.
 
-    URL mode only: a browser has nothing to load for a file on disk that was
-    never served, and half-auditing a template would report problems the
-    built page does not have.
+    Runs for a crawled site and for a single self-contained HTML file. Not for
+    repo mode: a browser has nothing to load for a `.jsx` fragment that was
+    never a page, and half-auditing a template would report problems the built
+    page does not have.
 
     The suppression list is handed to the engines rather than applied to
     their output, so an excluded region is never analysed in the first place
     — for axe that is the difference between "ignore these results" and "do
     not spend seconds computing them".
     """
-    if result.mode != "web":
+    if result.mode not in ("web", "file"):
         return
     from audit import browser as browser_mod
     from audit import driver
@@ -449,20 +456,24 @@ def _run_browser_pass(result, suppressions) -> None:
         print(f"# browser pass skipped: {reason}", file=sys.stderr)
         return
 
-    targets = [d for d in result.documents
-               if not d.error and d.source.startswith(("http://", "https://"))]
+    targets = [d for d in result.documents if not d.error]
     if not targets:
         return
 
     options = browser_mod.BrowserAuditOptions(
         exclude=list(suppressions.selectors),
         disabled_rules=list(suppressions.rules),
+        allow_local_files=result.mode == "file",
     )
     print(f"# browser pass over {len(targets)} page(s)", file=sys.stderr)
-    audits = driver.audit_urls([d.source for d in targets], options)
+    # The document is still keyed by its own source (a path, in file mode), so
+    # the findings land back on the row the user recognises rather than on a
+    # `file://` URL they never typed.
+    urls = [_browser_url(d.source) for d in targets]
+    audits = driver.audit_urls(urls, options)
     by_url = {a.url: a for a in audits}
-    for document in targets:
-        page_audit = by_url.get(document.source)
+    for document, url in zip(targets, urls):
+        page_audit = by_url.get(url)
         if page_audit is None:
             continue
         if page_audit.error:
@@ -475,6 +486,29 @@ def _run_browser_pass(result, suppressions) -> None:
         # a run with --browser must not double every such row.
         document.issues = browser_mod.deduplicate(
             list(document.issues) + list(page_audit.issues))
+
+
+#: Extensions that make a file a page rather than a piece of a project.
+PAGE_FILE_SUFFIXES = (".html", ".htm", ".xhtml")
+
+
+def _is_page_file(target: str) -> bool:
+    """Is this one HTML file rather than a folder or a URL?"""
+    from pathlib import Path
+    path = Path(target)
+    return path.is_file() and path.suffix.lower() in PAGE_FILE_SUFFIXES
+
+
+def _browser_url(source: str) -> str:
+    """The address the browser should open for a document.
+
+    A crawled page already is a URL. A file has to become one, and it has to
+    be absolute: `file://page.html` is not a path the browser can resolve.
+    """
+    if source.startswith(("http://", "https://", "file://")):
+        return source
+    from pathlib import Path
+    return Path(source).resolve().as_uri()
 
 
 def _wrap(text: str, width: int = 96, indent: str = "      ") -> str:
@@ -784,7 +818,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_audit = sub.add_parser(
         "audit", aliases=["a11y"],
         help="audit a URL or a folder: accessibility, SEO, performance, best practices")
-    p_audit.add_argument("target", help="URL to crawl, or directory to scan")
+    p_audit.add_argument(
+        "target",
+        help="URL to crawl, a directory to scan, or one .html file to audit "
+             "as a page (for a site built into a single self-contained file)")
     p_audit.add_argument("--url", action="store_true",
                          help="treat the target as a URL even without a scheme")
     p_audit.add_argument("--depth", type=int, default=0,
@@ -813,8 +850,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_audit.add_argument("--browser", action="store_true",
                          help="also load each page in a real browser: runs "
                               "axe-core, HTML_CodeSniffer, the keyboard/focus "
-                              "state pass and load measurements (URL targets "
-                              "only; slower)")
+                              "state pass and load measurements. Works for a "
+                              "URL and for a single .html file; not for a "
+                              "project folder. Slower")
     p_audit.set_defaults(func=cmd_audit)
 
     # `ai` groups everything that spends money or needs an account, so the

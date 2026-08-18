@@ -13,5 +13,5 @@ from .base import (  # noqa: F401
 )
 from .engine import (  # noqa: F401
     AccessibilityResult, DocumentReport, analyze_document, analyze_files,
-    analyze_pages,
+    analyze_page_file, analyze_pages,
 )

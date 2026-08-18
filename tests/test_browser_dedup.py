@@ -106,3 +106,17 @@ class DeduplicateTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SameEngineCorroborationTests(unittest.TestCase):
+    """One engine reporting the same element twice is a duplicate row, not a
+    second opinion. Seen live: HTML_CodeSniffer emits two messages under one
+    criterion for the same heading."""
+
+    def test_a_repeat_from_one_engine_is_collapsed_without_claiming_support(self):
+        kept = browser.deduplicate([
+            issue("htmlcs:1_3_1_A", "htmlcs", "<h2>Good evening</h2>"),
+            issue("htmlcs:1_3_1_A", "htmlcs", "<h2>Good evening</h2>"),
+        ])
+        self.assertEqual(len(kept), 1)
+        self.assertNotIn("also_found_by", kept[0].details)

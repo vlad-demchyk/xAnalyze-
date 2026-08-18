@@ -46,6 +46,11 @@ MODE_REPO = "repo"
 #: shares the toolbar's URL and depth fields because it asks about the same
 #: site, and nothing else.
 MODE_AUDIT = "audit"
+#: Auditing one HTML file that is a whole page - a site built or exported into
+#: a single self-contained file. Not repo mode: that reads fragments inside a
+#: project, while this is a finished document, so it gets a `<head>` audit,
+#: line numbers, and a real browser render from `file://`.
+MODE_FILE = "file"
 
 #: Severity is the audit's name for the axis the finding delegate paints as
 #: confidence. Mapped here rather than teaching the delegate a second
@@ -56,6 +61,18 @@ _SEVERITY_CONFIDENCE = {
     "moderate": Confidence.MEDIUM,
     "minor": Confidence.LOW,
 }
+
+
+def _browser_url(source: str) -> str:
+    """The address to open for a document.
+
+    A crawled page already is a URL; a file has to become an absolute one,
+    because `file://page.html` is not something a browser can resolve.
+    """
+    if source.startswith(("http://", "https://", "file://")):
+        return source
+    from pathlib import Path
+    return Path(source).resolve().as_uri()
 
 
 class MainWindow(QMainWindow):
@@ -164,9 +181,21 @@ class MainWindow(QMainWindow):
             repo_layout.addWidget(w)
         repo_layout.setStretch(0, 3)
 
+        # --- single-file controls ---
+        file_controls = QWidget()
+        file_layout = QHBoxLayout(file_controls)
+        file_layout.setContentsMargins(0, 0, 0, 0)
+        self.file_path_edit = QLineEdit()
+        self.file_browse_btn = QPushButton()
+        self.file_browse_btn.clicked.connect(self._on_browse_file_clicked)
+        file_layout.addWidget(self.file_path_edit)
+        file_layout.addWidget(self.file_browse_btn)
+        file_layout.setStretch(0, 3)
+
         self.source_controls_stack = QStackedWidget()
         self.source_controls_stack.addWidget(web_controls)   # index 0
         self.source_controls_stack.addWidget(repo_controls)  # index 1
+        self.source_controls_stack.addWidget(file_controls)  # index 2
 
         self.detector_label = QLabel()
         self.detector_combo = QComboBox()
@@ -319,6 +348,7 @@ class MainWindow(QMainWindow):
         self.mode_combo.addItem(t("mode_web", lang), userData=MODE_WEB)
         self.mode_combo.addItem(t("mode_repo", lang), userData=MODE_REPO)
         self.mode_combo.addItem(t("mode_audit", lang), userData=MODE_AUDIT)
+        self.mode_combo.addItem(t("mode_file", lang), userData=MODE_FILE)
         idx = self.mode_combo.findData(current_mode_data or self.mode)
         self.mode_combo.setCurrentIndex(max(idx, 0))
         self.mode_combo.blockSignals(False)
@@ -351,6 +381,8 @@ class MainWindow(QMainWindow):
         self.scope_combo.setToolTip(t(f"scope_{self._repo_scope()}_full", lang))
 
         self.detector_label.setText(t("detector_label", lang))
+        self.file_path_edit.setPlaceholderText(t("file_path_placeholder", lang))
+        self.file_browse_btn.setText(t("browse_button", lang))
         self.browser_check.setText(t("browser_pass_label", lang))
         self.browser_check.setToolTip(t("browser_pass_tooltip", lang))
         self.analyze_btn.setText(t("analyze_button", lang))
@@ -455,10 +487,16 @@ class MainWindow(QMainWindow):
 
     def _apply_mode_visibility(self) -> None:
         is_repo = self.mode == MODE_REPO
-        is_audit = self.mode == MODE_AUDIT
-        # Auditing takes a URL and a depth, exactly like the web scan, so it
-        # reuses those fields rather than growing a second pair beside them.
-        self.source_controls_stack.setCurrentIndex(1 if is_repo else 0)
+        is_file = self.mode == MODE_FILE
+        # Both audit modes hide the same controls; only the source differs.
+        is_audit = self.mode in (MODE_AUDIT, MODE_FILE)
+        # Auditing a site takes a URL and a depth, exactly like the web scan,
+        # so it reuses those fields rather than growing a second pair beside
+        # them. Auditing one file needs a path and nothing else.
+        self.source_controls_stack.setCurrentIndex(
+            2 if is_file else (1 if is_repo else 0))
+        # A single file is previewed as a rendered page, not as source: it is
+        # a page, and its markup is what the third column already shows.
         self.col1_stack.setCurrentIndex(1 if is_repo else 0)
         # No detector takes part in an audit — the rules are the tool's own
         # and there is nothing to choose — so the control that would imply
@@ -503,7 +541,7 @@ class MainWindow(QMainWindow):
                 if (s.details or {}).get("source") == "characters"]
 
     def _on_analyze_clicked(self) -> None:
-        if self.mode == MODE_AUDIT:
+        if self.mode in (MODE_AUDIT, MODE_FILE):
             self._start_audit()
         elif self.mode == MODE_WEB:
             self._start_web_analysis()
@@ -600,22 +638,37 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------------ audit
 
+    def _on_browse_file_clicked(self) -> None:
+        path, _filter = QFileDialog.getOpenFileName(
+            self, t("mode_file", self.lang), "",
+            "HTML (*.html *.htm *.xhtml);;" + t("all_files", self.lang) + " (*)")
+        if path:
+            self.file_path_edit.setText(path)
+
     def _start_audit(self) -> None:
-        """Audit the site in the URL field: accessibility, SEO, performance,
-        best practices."""
-        url = self.url_edit.text().strip()
-        if not url:
-            QMessageBox.warning(self, "", t("url_label_full", self.lang))
-            return
-        if not url.startswith(("http://", "https://")):
-            url = "https://" + url
+        """Audit the chosen source: accessibility, SEO, performance, best
+        practices. The source is a site in one mode and one packed HTML file
+        in the other; everything downstream is identical."""
+        if self.mode == MODE_FILE:
+            target = self.file_path_edit.text().strip()
+            if not target:
+                QMessageBox.warning(self, "", t("no_file_path", self.lang))
+                return
+        else:
+            target = self.url_edit.text().strip()
+            if not target:
+                QMessageBox.warning(self, "", t("url_label_full", self.lang))
+                return
+            if not target.startswith(("http://", "https://")):
+                target = "https://" + target
 
         self.audit_result = None
         self._reset_scan_ui()
         self.worker = AuditWorker(
-            target=url,
+            target=target,
             depth=self.depth_spin.value(),
             max_pages=self.settings.max_pages,
+            is_page_file=self.mode == MODE_FILE,
             settings=self.settings,
         )
         self.worker.crawling.connect(self._on_crawling)
@@ -656,8 +709,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, t("browser_pass_label", self.lang), reason)
             return
 
-        targets = [d for d in self.audit_result.documents
-                   if not d.error and d.source.startswith(("http://", "https://"))]
+        targets = [d for d in self.audit_result.documents if not d.error]
         if not targets:
             return
 
@@ -665,13 +717,16 @@ class MainWindow(QMainWindow):
         options = browser_mod.BrowserAuditOptions(
             exclude=list(suppressions.selectors),
             disabled_rules=list(suppressions.rules),
+            # Only a file the user picked themselves may read its neighbours
+            # on disk; a page off the network never may.
+            allow_local_files=self.mode == MODE_FILE,
         )
         runner = driver.BrowserAuditRunner(options)
         try:
             for document in targets:
                 self.status_bar.showMessage(
                     t("status_browser_pass", self.lang, url=document.source))
-                page_audit = runner.audit(document.source)
+                page_audit = runner.audit(_browser_url(document.source))
                 if page_audit.error:
                     continue
                 document.issues = browser_mod.deduplicate(
@@ -741,10 +796,10 @@ class MainWindow(QMainWindow):
 
     def _on_audit_item_clicked(self, issue) -> None:
         """Show the page the finding is on, and the explanation beside it."""
-        if issue.source.startswith(("http://", "https://")):
-            if self.current_preview_url != issue.source:
-                self.current_preview_url = issue.source
-                self.site_view.setUrl(QUrl(issue.source))
+        address = _browser_url(issue.source)
+        if self.current_preview_url != address:
+            self.current_preview_url = address
+            self.site_view.setUrl(QUrl(address))
         if self.wide_mode:
             self._clear_layout(self.detail_layout)
             self.detail_layout.addWidget(self._build_audit_detail_widget(issue))
