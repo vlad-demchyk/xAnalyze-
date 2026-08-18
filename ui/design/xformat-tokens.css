@@ -1,0 +1,317 @@
+/* ═══════════════════════════════════════
+   Design Tokens - XFormat
+   Luxury mono redesign (2026-07-03): warm gray canvas, monolithic white
+   cards on soft shadows, graphite primary + refreshed indigo accent,
+   monochrome sections, Geist type.
+   ═══════════════════════════════════════ */
+
+:root {
+  /* ── Brand ── */
+  --brand-indigo: #4c43e8;
+  --brand-indigo-dark: #8583f2;
+  --success: #17a06d;
+  --error: #e5484d;
+
+  /* ── Primary (true black/white monolith) - buttons, emphasis fills ── */
+  --primary: #000000;
+  --primary-hover: #262626;
+  --on-primary: #ffffff;
+  /* Text/icon color on accent (indigo) fills */
+  --on-accent: #ffffff;
+
+  /* ── Icon chips (rounded-square, monochrome) ── */
+  --chip-bg: #141416;
+  --chip-fg: #ffffff;
+  --chip-radius: 0.75rem;
+
+  /* ── Warning (the only surviving hue besides success/error) ── */
+  --amber: #f59e0b;
+  --amber-d: #d97706;
+
+  /* ── Surface & Text ── */
+  --page-bg: #f4f3f0;
+  /* Translucent header fill once scrolled (shell-header--scrolled) - stays
+     correct across the dark-theme --page-bg override below since color-mix
+     re-resolves var(--page-bg) at use time, not at definition time. */
+  --nav-bg-scrolled: color-mix(in srgb, var(--page-bg) 90%, transparent);
+  --bg: #ffffff;
+  --bg-card: #ffffff;
+  --bg-pg-link: #ffffff;
+  --bg-muted: #f6f5f2;
+  --bg-hover: #eceae6;
+  --bg-brand-muted: rgba(76, 67, 232, 0.06);
+  --surface: #ffffff;
+  --text: #141416;
+  --text-muted: #6f6d68;
+  --border: #e9e7e2;
+  /* Stronger, clearly-visible border for interactive controls (ghost buttons,
+     tabs, badges) that must read as distinct from muted input/textarea fills -
+     --border alone is too close to --bg-muted to separate the two. */
+  --border-strong: #d9d6d0;
+  --brand-accent: var(--brand-indigo);
+
+  --bd-glass-mat: blur(14px) saturate(140%);
+  /* Decorative ambient background accents (AmbientAurora, SmartAiOrbit) - a
+     dedicated theme-aware trio, NOT the same as --brand-accent. Developer
+     feedback across several iterations: vivid indigo read as harsh/muddy and
+     "dirty" against the warm --page-bg canvas; settled on tones derived from
+     --page-bg itself (same sandy family as the canvas, just darker) so it
+     reads as shading on the page, not a foreign colored blob. */
+  --ambient-1: color-mix(in srgb, var(--page-bg) 45%, var(--brand-accent) 55%);
+  --ambient-2: color-mix(in srgb, var(--page-bg) 55%, var(--brand-accent) 45%);
+  --ambient-3: color-mix(in srgb, var(--page-bg) 35%, var(--brand-accent) 65%);
+
+  /* Document page (paper) - intentionally constant across themes (white sheet) */
+  --doc-page-bg: #ffffff;
+  --doc-page-text: #1a1a1a;
+  --doc-page-placeholder: #9aa0a6;
+
+  /* CV document palette - the ink of the printed CV, mirrored from
+     features/cv/cvHtmlTemplate.ts (CV_DOCUMENT_CSS), which is the authority
+     for what the exported PDF/HTML looks like. The on-screen preview shows a
+     sheet of paper, so these are FIXED: a printed CV does not change colour
+     because the app was switched to dark mode. Named after the template part
+     each one paints: --side-* is the dark left column, the rest is the white
+     main column. Keep in sync with CV_DOCUMENT_CSS; never override per theme. */
+  --cv-doc-bg: #ffffff;
+  --cv-doc-text: #172033;
+  --cv-doc-heading: #25324a;
+  --cv-doc-rule: #cfd6e2;
+  --cv-doc-meta: #5d6677;
+  --cv-doc-side-bg: #25324a;
+  --cv-doc-side-text: #f7f9fc;
+  --cv-doc-side-muted: #b9c8e4;
+
+  /* Technical process readout ("show process" agent trace) - intentionally
+     fixed dark across themes, reads as a log/terminal rather than a themed card. */
+  --terminal-bg: #1a1a1e;
+  --terminal-border: #2f2f35;
+  --terminal-text: #b8b8bd;
+
+  /* ── Glass (glassmorphism: translucent frosted surfaces) ── */
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-bg-soft: rgba(255, 255, 255, 0.45);
+  --glass-border: rgba(255, 255, 255, 0.6);
+  --glass-hover: rgba(76, 67, 232, 0.08);
+  --glass-bubble-user: rgba(76, 67, 232, 0.14);
+  --glass-bubble-bot: rgba(255, 255, 255, 0.5);
+  --glass-shadow: 0 16px 48px rgba(20, 20, 22, 0.16);
+  --glass-blur: blur(20px) saturate(160%);
+  --glass-blur-soft: blur(10px) saturate(140%);
+
+  /* ── Shadows ── */
+  --shadow: 0 4px 24px rgba(20, 20, 22, 0.08);
+  --shadow-heavy: 0 8px 40px rgba(0, 0, 0, 0.3);
+  /* Soft, low-contrast elevation - the default card elevation (borderless) */
+  --shadow-soft:
+    0 1px 2px rgba(20, 20, 22, 0.04), 0 8px 24px rgba(20, 20, 22, 0.06);
+  /* Airier ambient elevation for hover lift */
+  --shadow-glow:
+    0 2px 6px rgba(20, 20, 22, 0.05), 0 16px 40px rgba(20, 20, 22, 0.09);
+  /* Flat, no-op shadow (composes safely in a comma-list with --highlight-top). */
+  --glow-brand: 0 0 #0000;
+  /* Crisp top light edge on monolithic surfaces */
+  --highlight-top: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+
+  /* ── Gradients (flattened - monolithic surfaces) ── */
+  --grad-surface: linear-gradient(180deg, #ffffff 0%, #ffffff 100%);
+  --grad-surface-hover: linear-gradient(180deg, #fbfaf8 0%, #fbfaf8 100%);
+  /* Flat brand fill (single color) */
+  --grad-brand: var(--brand-accent);
+  --grad-brand-hover: color-mix(in srgb, var(--brand-accent) 85%, black);
+
+  /* ── Typography ── */
+  /* Native Apple artwork on Apple platforms, bundled Twemoji elsewhere. */
+  --font: "Geist", "Apple Color Emoji", "Twemoji", "Segoe UI Emoji", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "Geist Mono", "SF Mono", "Cascadia Code", "Fira Code", monospace;
+  --font-serif: "Georgia", "Times New Roman", serif;
+  --font-size-xs: 0.68rem;
+  --font-size-sm: 0.78rem;
+  --font-size-md: 0.85rem;
+  --font-size-base: 0.9rem;
+  --font-size-chat: 1.025rem;
+  --font-size-lg: 1.05rem;
+  --font-size-xl: 1.3rem;
+
+  /* ── Spacing (rem-based; 1rem = 16px at default root font-size) ── */
+  --space-xs: 0.25rem; /* 4px */
+  --space-sm: 0.5rem; /* 8px */
+  --space-md: 0.75rem; /* 12px */
+  --space-lg: 1rem; /* 16px */
+  --space-xl: 1.25rem; /* 20px */
+  --space-2xl: 1.5rem; /* 24px */
+  --space-5xl: 4rem; /* 64px */
+  --space-3xl: 2rem; /* 32px */
+
+  /* ── Content widths ── */
+  --content-width-workspace: 72rem;
+  --content-width-reading: 48rem;
+  --content-width-panel: 42rem;
+
+  /* ── Radii (rem-based) ── */
+  --radius: 0.875rem; /* 14px */
+  --radius-sm: 0.375rem; /* 6px */
+  --radius-md: 0.5rem; /* 8px */
+  --radius-lg: 0.625rem; /* 10px */
+  --radius-xl: 1.25rem; /* 20px - rows / inputs */
+  --radius-2xl: 1.5rem; /* 24px - monolithic cards */
+  --radius-full: 999px;
+  --border-width: 0.0625rem;
+  --border-width-strong: 0.125rem;
+
+  /* ── Animations ── */
+  --anim-fast: 0.12s;
+  --anim-normal: 0.15s;
+  --anim-slow: 0.2s;
+  --anim-slower: 0.35s;
+  --anim-slowest: 0.5s;
+  --anim-ease: ease;
+  --anim-ease-out: ease-out;
+  /* Slide-in drawers / panels - soft deceleration (easeOutCubic) */
+  --anim-drawer: 0.3s;
+  --ease-drawer: cubic-bezier(0.33, 1, 0.68, 1);
+
+  /* ── Z-index layers ── */
+  --z-base: 1;
+  --z-sticky: 15;
+  --z-dropdown: 200;
+  --z-overlay: 1000;
+  --z-panel: 8999;
+  --z-toolbar: 9999;
+  --z-modal: 10000;
+
+  /* ── Breakpoints (documentation only, not usable in media queries) ── */
+  /* mobile: 600px | tablet: 768px | desktop: 900px | wide: 1200px */
+
+  /* ── Scrollbar (overlay: thumb only, no visible track) ── */
+  --sb-thumb: #d8d6d0a3;
+  --sb-thumb-hover: #bbb9b38c;
+  --sb-size: 6px;
+  --sb-radius: 999px;
+
+  /* ── Fixed neutrals (do NOT flip with theme - value-preserving) ── */
+  --white: #fff;
+  --black: #000;
+  --gray-light: #ccc;
+  --gray: #999;
+  --gray-dark: #888;
+  --gray-bg: #f0f0f0;
+  --gray-warm: #e8e8e0;
+  --gray-border: #e5e7eb;
+
+  /* ── Status colors (fixed) ── */
+  --red: #ef4444;
+  --red-strong: #dc2626;
+  --red-alt: #e74c3c;
+  --red-bg: #fef2f2;
+  --green: #2a9d4b;
+  --green-bright: #22c55e;
+  --green-strong: #16a34a;
+  --green-bg: #f0fdf4;
+  --indigo-light: #8583f2;
+
+  /* ── Scrims (black with alpha - overlays, shadows) ── */
+  --scrim-05: rgba(0, 0, 0, 0.05);
+  --scrim-08: rgba(0, 0, 0, 0.08);
+  --scrim-10: rgba(0, 0, 0, 0.1);
+  --scrim-12: rgba(0, 0, 0, 0.12);
+  --scrim-15: rgba(0, 0, 0, 0.15);
+  --scrim-18: rgba(0, 0, 0, 0.18);
+  --scrim-20: rgba(0, 0, 0, 0.2);
+  --scrim-25: rgba(0, 0, 0, 0.25);
+  --scrim-30: rgba(0, 0, 0, 0.3);
+  --scrim-40: rgba(0, 0, 0, 0.4);
+  --scrim-45: rgba(0, 0, 0, 0.45);
+  --scrim-50: rgba(0, 0, 0, 0.5);
+  --scrim-60: rgba(0, 0, 0, 0.6);
+  --scrim-65: rgba(0, 0, 0, 0.65);
+  --scrim-85: rgba(0, 0, 0, 0.85);
+
+  /* ── Tinted alpha (brand / one-off overlays - fixed) ── */
+  --white-a06: rgba(255, 255, 255, 0.06);
+  --indigo-a05: rgba(76, 67, 232, 0.05);
+  --indigo-a10: rgba(76, 67, 232, 0.1);
+  --indigo-a15: rgba(76, 67, 232, 0.15);
+  --scrim-indigo: rgba(34, 36, 158, 0.7);
+  --scrim-charcoal: rgba(30, 30, 30, 0.5);
+  --scrim-purple: rgba(103, 13, 145, 0.712);
+
+  /* DevSwitcher - fixed dark pill, same in both themes (dev-only overlay
+     that must stay legible regardless of the page underneath it). */
+  --dev-switcher-bg: rgba(20, 20, 22, 0.92);
+  --dev-switcher-shadow: rgba(0, 0, 0, 0.35);
+  --dev-switcher-text: #d4d4d8;
+  --dev-switcher-active-text: #141416;
+  --dev-switcher-active-bg: #f4f3f0;
+}
+
+[data-theme="dark"] {
+  --brand-accent: var(--brand-indigo-dark);
+  --page-bg: #0e0e10;
+  /* Same "derived from --page-bg, same family" principle as light theme -
+     there it goes darker, here (canvas is already near-black) it goes
+     lighter/warmer instead so it stays visible without turning vivid. */
+  --ambient-1: color-mix(in srgb, var(--page-bg) 45%, var(--brand-accent) 55%);
+  --ambient-2: color-mix(
+    in srgb,
+    var(--primary-hover) 55%,
+    var(--brand-accent) 60%
+  );
+  --ambient-3: color-mix(
+    in srgb,
+    var(--brand-accent) 75%,
+    var(--brand-accent) 50%
+  );
+  --bg: #131316;
+  --bg-card: #1a1a1e;
+  --bg-pg-link: #3a3a3f;
+  --bg-muted: #212125;
+  --bg-hover: #28282c;
+  --bg-brand-muted: rgba(133, 131, 242, 0.08);
+  --surface: #383853;
+  --text: #ececeb;
+  --text-muted: #9b9a96;
+  --border: #2c2c30;
+  --border-strong: #3d3d42;
+
+  /* Primary inverts to true white in dark theme */
+  --primary: #ffffff;
+  --primary-hover: #e6e6e6;
+  --on-primary: #000000;
+  /* Dark accent (#8583f2) is light - dark text reads better on it */
+  --on-accent: #141416;
+
+  /* Chips: elevated graphite (not full-light - avoids glare on card grids) */
+  --chip-bg: #2a2a2e;
+  --chip-fg: #ececeb;
+
+  /* Glass (frosted surfaces) - neutral dark, no blue tint */
+  --glass-bg: rgba(23, 23, 26, 0.65);
+  --glass-bg-soft: rgba(40, 40, 44, 0.45);
+  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-hover: rgba(200, 200, 200, 0.07);
+  --glass-bubble-user: rgba(133, 131, 242, 0.2);
+  --glass-bubble-bot: rgba(255, 255, 255, 0.06);
+  --glass-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+  /* Document page (paper) - intentionally constant across themes (white sheet) */
+  --doc-page-bg: #ffffff;
+  --doc-page-text: #1a1a1a;
+  --doc-page-placeholder: #9aa0a6;
+  /* Stronger shadows on near-black background */
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+  --shadow-heavy: 0 8px 40px rgba(0, 0, 0, 0.55);
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.25), 0 8px 24px rgba(0, 0, 0, 0.3);
+  --shadow-glow: 0 2px 6px rgba(0, 0, 0, 0.3), 0 16px 40px rgba(0, 0, 0, 0.4);
+  --glow-brand: 0 0 #0000;
+  --highlight-top: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+
+  /* Gradients (flattened - monolithic dark surfaces) */
+  --grad-surface: linear-gradient(180deg, #1a1a1e 0%, #1a1a1e 100%);
+  --grad-surface-hover: linear-gradient(180deg, #212125 0%, #212125 100%);
+  --grad-brand: var(--brand-accent);
+  --grad-brand-hover: color-mix(in srgb, var(--brand-accent) 85%, white);
+
+  /* Scrollbar dark (neutral) */
+  --sb-thumb: #3c3c40;
+  --sb-thumb-hover: #555559;
+}

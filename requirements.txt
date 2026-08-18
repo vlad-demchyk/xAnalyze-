@@ -1,0 +1,8 @@
+PySide6>=6.6
+requests>=2.31
+beautifulsoup4>=4.12
+anthropic>=0.40
+pathspec>=0.12
+# Optional but recommended: stores xformat.net tokens and your Anthropic key
+# in the OS keychain instead of a local file. See llm/credentials.py.
+keyring>=25.0

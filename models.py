@@ -1,0 +1,182 @@
+"""Shared data structures used across the crawler, detectors and UI."""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from enum import Enum
+
+
+class Confidence(str, Enum):
+    """Discrete confidence buckets used for highlighting."""
+    LOW = "low"          # weak / inconclusive signal
+    MEDIUM = "medium"    # moderate signal
+    HIGH = "high"        # strong signal
+
+
+@dataclass
+class TextBlock:
+    """A single extracted chunk of visible text from a page.
+
+    `dom_path` is a best-effort CSS-like path so a block can be traced back
+    to where it came from on the page (used for the bottom list and for a
+    future "write back to source" feature).
+    """
+    block_id: str
+    page_url: str
+    dom_path: str
+    text: str
+    language_hint: str | None = None  # 'uk' | 'it' | 'en' | None if unknown
+
+
+@dataclass
+class TextSpan:
+    """A detection result for a slice of a TextBlock's text.
+
+    start/end are character offsets into TextBlock.text (Python slice
+    semantics: text[start:end]).
+    """
+    block_id: str
+    start: int
+    end: int
+    score: float               # 0.0 (human-like) .. 1.0 (AI-like), detector-specific
+    confidence: Confidence
+    detector_name: str
+    explanation: str = ""
+    # Set by detectors that know the exact correction (the non-keyboard
+    # character pass). Carrying it here matters: the fix depends on
+    # surrounding context — which alphabet the rest of the word uses — so
+    # recomputing it later from the span text alone would silently produce
+    # a no-op for homoglyphs.
+    replacement: str | None = None
+    # Structured record of *why* this span was flagged: which signals fired
+    # and at what strength, which cliché phrases matched, which character
+    # category was hit. Kept as data rather than as prose because the
+    # explanation shown to the user is rendered in the UI language, which
+    # can change after a scan — a pre-formatted sentence would then be
+    # stuck in the language that was selected when the scan ran.
+    # See `explanations.render()` for the keys each detector sets.
+    details: dict = field(default_factory=dict)
+
+
+@dataclass
+class PageDiagnostics:
+    """What the crawler actually received, and what happened to it.
+
+    This exists because "0 flagged passages" is ambiguous in the worst way:
+    it looks identical whether the page is clean, whether the page renders
+    its text in the browser and arrived as an empty shell, whether the
+    server answered with a bot-check, or whether every paragraph on it was
+    just under the minimum length. Recording the counts and the markers at
+    fetch time is the only place the difference is still visible — by the
+    time the UI has a span list, the evidence is gone.
+
+    `reasons` holds machine-readable codes (see `crawler.EMPTY_*`), which
+    the UI renders as sentences in the user's language.
+    """
+    status_code: int | None = None
+    content_type: str = ""
+    final_url: str = ""          # after redirects; differs -> worth showing
+    html_bytes: int = 0
+    text_ratio: float = 0.0      # visible text vs markup; ~0 on an app shell
+    candidates_found: int = 0    # elements that could have held copy
+    blocks_kept: int = 0
+    dropped_too_short: int = 0
+    dropped_duplicate: int = 0
+    js_framework: str = ""       # "react" / "next" / "vue" / ... when detected
+    has_noscript_notice: bool = False
+    reasons: list[str] = field(default_factory=list)
+
+
+@dataclass
+class PageResult:
+    url: str
+    depth: int
+    blocks: list[TextBlock] = field(default_factory=list)
+    error: str | None = None
+    raw_html: str | None = None  # kept so the UI can render a graphical preview
+    diagnostics: PageDiagnostics = field(default_factory=PageDiagnostics)
+
+
+@dataclass
+class AnalysisResult:
+    root_url: str
+    pages: list[PageResult] = field(default_factory=list)
+    spans: list[TextSpan] = field(default_factory=list)
+
+    def blocks(self) -> list[TextBlock]:
+        out: list[TextBlock] = []
+        for p in self.pages:
+            out.extend(p.blocks)
+        return out
+
+    def spans_for_block(self, block_id: str) -> list[TextSpan]:
+        return [s for s in self.spans if s.block_id == block_id]
+
+
+def score_to_confidence(score: float) -> Confidence:
+    if score >= 0.66:
+        return Confidence.HIGH
+    if score >= 0.33:
+        return Confidence.MEDIUM
+    return Confidence.LOW
+
+
+# --------------------------------------------------------------------------
+# Repository / local-folder scan mode.
+#
+# CodeBlock deliberately exposes the same `block_id` / `text` / `language_hint`
+# attributes as TextBlock, so every existing Detector implementation (which
+# only ever reads those) works against it unmodified — the abstract factory
+# doesn't need to know whether a block came from a live web page or a file
+# on disk. What's different is `file_path`/`start`/`end`/`line_number`,
+# which exist so a flagged passage can be written straight back into the
+# source file it came from.
+# --------------------------------------------------------------------------
+
+#: What kind of text a CodeBlock holds. Kept on the block because the three
+#: read very differently and must not be judged, or rewritten, alike:
+#:
+#:   markup    — text between tags: <h1>Welcome back</h1>. Ships to the user.
+#:   injected  — a string literal that becomes visible copy without ever
+#:               sitting between tags: a placeholder="" attribute, a
+#:               `.textContent =` assignment, a t("...") translation call.
+#:               Ships to the user too, which is exactly why it belongs in
+#:               the same scan as markup.
+#:   technical — comments and docstrings. Never reaches the user, so it is
+#:               off by default; but it is where an assistant's writing shows
+#:               up most, which is why it can be scanned deliberately.
+KIND_MARKUP = "markup"
+KIND_INJECTED = "injected"
+KIND_TECHNICAL = "technical"
+
+
+@dataclass
+class CodeBlock:
+    block_id: str
+    file_path: str
+    start: int              # char offset into the file's raw text
+    end: int                # file_content[start:end] == text, always
+    text: str
+    line_number: int
+    language_hint: str | None = None
+    kind: str = KIND_MARKUP
+
+
+@dataclass
+class FileResult:
+    path: str
+    blocks: list[CodeBlock] = field(default_factory=list)
+    error: str | None = None
+    raw_text: str | None = None
+
+
+@dataclass
+class RepoAnalysisResult:
+    root_dir: str
+    files: list[FileResult] = field(default_factory=list)
+    spans: list[TextSpan] = field(default_factory=list)
+
+    def blocks(self) -> list[CodeBlock]:
+        out: list[CodeBlock] = []
+        for f in self.files:
+            out.extend(f.blocks)
+        return out

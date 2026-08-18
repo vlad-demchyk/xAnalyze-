@@ -1,0 +1,280 @@
+"""Performance rules that a static pass can honestly make.
+
+The split matters here more than anywhere else in this package. Real
+performance is a measurement — how long the page took, on what connection,
+on what hardware — and no amount of reading markup produces a number. What
+markup *does* answer is the question underneath most slow pages: **what did
+the browser have to do before it could show anything?**
+
+So these rules report *causes*, never times, and never a score. A page with
+six render-blocking scripts in the head is slow for a reason that is visible
+in the HTML; whether it takes 1.2s or 6s depends on the network, and the
+browser pass (`audit/browser.py`) is what supplies that.
+
+Anything claiming to be a measurement is marked `NEEDS_BROWSER`, so a
+report never presents an inference as a reading.
+"""
+from __future__ import annotations
+
+import re
+
+from ..base import (
+    MINOR, MODERATE, NEEDS_BROWSER, PERFORMANCE, SERIOUS, Issue, Rule,
+    RuleRegistry, snippet_of,
+)
+
+#: Above this many blocking requests in <head>, first paint is visibly delayed
+#: on anything but a fast connection.
+BLOCKING_BUDGET = 3
+#: Inline blocks past this size are parsed on the main thread before paint.
+INLINE_STYLE_BUDGET = 20_000
+INLINE_SCRIPT_BUDGET = 20_000
+
+_SIZE_RE = re.compile(r"\d")
+
+
+class PerformanceRule(Rule):
+    category = PERFORMANCE
+
+
+class RenderBlockingResources(PerformanceRule):
+    id = "perf-render-blocking"
+    severity = SERIOUS
+
+    def check(self, document, context) -> list:
+        head = document.find("head")
+        if head is None:
+            return []
+
+        blocking = []
+        for tag in head.find_all("script"):
+            if tag.get("src") and not (tag.has_attr("async") or tag.has_attr("defer")
+                                       or (tag.get("type") or "") == "module"):
+                blocking.append(tag)
+        for tag in head.find_all("link"):
+            rel = [r.lower() for r in (tag.get("rel") or [])]
+            if "stylesheet" not in rel:
+                continue
+            media = (tag.get("media") or "all").lower()
+            if media in ("all", "screen", ""):
+                blocking.append(tag)
+
+        if len(blocking) <= BLOCKING_BUDGET:
+            return []
+        # Reported once for the page, not once per tag: the problem is the
+        # total, and eight separate rows would bury it.
+        selector, line = context.locate(blocking[0])
+        return [Issue(
+            rule_id=self.id, severity=self.severity, category=self.category,
+            selector=selector, line=line, snippet=snippet_of(blocking[0]),
+            source=context.source,
+            details={"count": len(blocking), "budget": BLOCKING_BUDGET},
+        )]
+
+
+class SynchronousThirdPartyScripts(PerformanceRule):
+    id = "perf-third-party-sync"
+    severity = SERIOUS
+
+    def check(self, document, context) -> list:
+        issues = []
+        page_host = _host_of(context.source)
+        for tag in document.find_all("script", src=True):
+            if tag.has_attr("async") or tag.has_attr("defer"):
+                continue
+            src = tag.get("src") or ""
+            host = _host_of(src)
+            if not host or (page_host and host == page_host):
+                continue
+            # A third-party script loaded synchronously hands a stranger the
+            # power to stop the page rendering — if their server is slow, the
+            # site is slow, and nothing on it is under this team's control.
+            selector, line = context.locate(tag)
+            issues.append(Issue(
+                rule_id=self.id, severity=self.severity, category=self.category,
+                selector=selector, line=line, snippet=snippet_of(tag),
+                source=context.source, details={"host": host, "src": src[:120]},
+                fix_snippet=_with_defer(tag),
+            ))
+        return issues
+
+
+class OversizedInlineBlocks(PerformanceRule):
+    id = "perf-large-inline"
+    severity = MODERATE
+
+    def check(self, document, context) -> list:
+        issues = []
+        for tag in document.find_all(("style", "script")):
+            if tag.name == "script" and tag.get("src"):
+                continue
+            body = tag.string or ""
+            budget = INLINE_STYLE_BUDGET if tag.name == "style" else INLINE_SCRIPT_BUDGET
+            if len(body) <= budget:
+                continue
+            selector, line = context.locate(tag)
+            issues.append(Issue(
+                rule_id=self.id, severity=self.severity, category=self.category,
+                selector=selector, line=line, snippet=f"<{tag.name}>…</{tag.name}>",
+                source=context.source,
+                details={"element": tag.name, "bytes": len(body), "budget": budget},
+            ))
+        return issues
+
+
+class ImagesWithoutLazyLoading(PerformanceRule):
+    id = "perf-image-loading"
+    severity = MINOR
+
+    #: The first few images are usually above the fold, where lazy loading
+    #: makes things *worse* — it delays the largest paint. Only images past
+    #: this position are worth deferring.
+    ABOVE_THE_FOLD = 3
+
+    def check(self, document, context) -> list:
+        images = document.find_all("img")
+        if len(images) <= self.ABOVE_THE_FOLD:
+            return []
+        issues = []
+        for tag in images[self.ABOVE_THE_FOLD:]:
+            if (tag.get("loading") or "").lower() == "lazy":
+                continue
+            selector, line = context.locate(tag)
+            issues.append(Issue(
+                rule_id=self.id, severity=self.severity, category=self.category,
+                selector=selector, line=line, snippet=snippet_of(tag),
+                source=context.source, details={"src": (tag.get("src") or "")[:120]},
+                fix_snippet=_with_attribute(tag, "loading", "lazy"),
+            ))
+        return issues
+
+
+class FontsWithoutDisplaySwap(PerformanceRule):
+    id = "perf-font-display"
+    severity = MODERATE
+    confidence = NEEDS_BROWSER
+
+    def check(self, document, context) -> list:
+        issues = []
+        for tag in document.find_all("link", href=True):
+            rel = [r.lower() for r in (tag.get("rel") or [])]
+            href = tag.get("href") or ""
+            if "stylesheet" not in rel or "font" not in href.lower():
+                continue
+            if "display=" in href.lower():
+                continue
+            # Without a display strategy the browser hides the text until the
+            # font arrives. On a slow connection the page is blank of words
+            # while being technically "loaded".
+            selector, line = context.locate(tag)
+            issues.append(Issue(
+                rule_id=self.id, severity=self.severity, category=self.category,
+                selector=selector, line=line, snippet=snippet_of(tag),
+                source=context.source, confidence=self.confidence,
+                details={"href": href[:120]},
+            ))
+        for tag in document.find_all("style"):
+            body = tag.string or ""
+            if "@font-face" in body and "font-display" not in body:
+                selector, line = context.locate(tag)
+                issues.append(Issue(
+                    rule_id=self.id, severity=self.severity, category=self.category,
+                    selector=selector, line=line, snippet="<style>@font-face…</style>",
+                    source=context.source, confidence=self.confidence,
+                    details={"href": "inline @font-face"},
+                ))
+        return issues
+
+
+class MissingResourceHints(PerformanceRule):
+    id = "perf-preconnect"
+    severity = MINOR
+
+    def check(self, document, context) -> list:
+        head = document.find("head")
+        if head is None:
+            return []
+        page_host = _host_of(context.source)
+        hinted = set()
+        for tag in head.find_all("link"):
+            rel = [r.lower() for r in (tag.get("rel") or [])]
+            if "preconnect" in rel or "dns-prefetch" in rel:
+                hinted.add(_host_of(tag.get("href") or ""))
+
+        origins = set()
+        for tag in head.find_all(("script", "link")):
+            url = tag.get("src") or tag.get("href") or ""
+            host = _host_of(url)
+            if host and host != page_host:
+                origins.add(host)
+
+        missing = sorted(origins - hinted)
+        if not missing:
+            return []
+        return [Issue(
+            rule_id=self.id, severity=self.severity, category=self.category,
+            source=context.source, snippet="<head>…</head>",
+            details={"hosts": missing[:6], "count": len(missing)},
+            fix_snippet=f'<link rel="preconnect" href="https://{missing[0]}">',
+        )]
+
+
+class DeprecatedSizeAttributes(PerformanceRule):
+    """Layout stability: an image with no reserved space pushes the page
+    around when it finally loads."""
+    id = "perf-layout-shift"
+    severity = MODERATE
+    confidence = NEEDS_BROWSER
+
+    def check(self, document, context) -> list:
+        issues = []
+        for tag in document.find_all(("img", "iframe", "video")):
+            style = (tag.get("style") or "").lower()
+            has_size = (_SIZE_RE.search(tag.get("width") or "")
+                        and _SIZE_RE.search(tag.get("height") or ""))
+            if has_size or "aspect-ratio" in style:
+                continue
+            if tag.name == "img" and (tag.get("loading") or "").lower() != "lazy":
+                continue  # eager above-the-fold images are covered by SEO's rule
+            selector, line = context.locate(tag)
+            issues.append(Issue(
+                rule_id=self.id, severity=self.severity, category=self.category,
+                selector=selector, line=line, snippet=snippet_of(tag),
+                source=context.source, confidence=self.confidence,
+                details={"element": tag.name},
+            ))
+        return issues
+
+
+# ------------------------------------------------------------------ helpers
+
+def _host_of(url: str) -> str:
+    match = re.match(r"^(?:https?:)?//([^/?#]+)", (url or "").strip())
+    return match.group(1).lower() if match else ""
+
+
+def _with_attribute(tag, name: str, value: str) -> str:
+    attributes = dict(tag.attrs)
+    attributes[name] = value
+    parts = []
+    for key, val in attributes.items():
+        if isinstance(val, list):
+            val = " ".join(val)
+        parts.append(f'{key}="{val}"')
+    return f"<{tag.name} " + " ".join(parts) + ">"
+
+
+def _with_defer(tag) -> str:
+    parts = []
+    for key, val in tag.attrs.items():
+        if isinstance(val, list):
+            val = " ".join(val)
+        parts.append(f'{key}="{val}"')
+    return f"<{tag.name} " + " ".join(parts) + " defer>"
+
+
+for _rule in (RenderBlockingResources, SynchronousThirdPartyScripts,
+              OversizedInlineBlocks, ImagesWithoutLazyLoading,
+              FontsWithoutDisplaySwap, MissingResourceHints,
+              DeprecatedSizeAttributes):
+    RuleRegistry.register(_rule)
