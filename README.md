@@ -184,6 +184,80 @@ apply them.
 `fix` only applies the deterministic character corrections. Style findings
 are reported so you (or the agent) can decide, never rewritten silently.
 
+## Auditing: accessibility, SEO, performance, best practices
+
+A second, separate analysis. The text scan asks whether a *person* would
+believe a human wrote this; the audit asks whether the *document* is broken.
+39 rules of our own across four categories, plus — on request — axe-core and
+HTML_CodeSniffer running in a real browser.
+
+Every finding is explained in full, in Ukrainian, Italian or English: what was
+found, why it matters *to the person using the page*, and how to fix it.
+
+### Three kinds of target
+
+```bash
+python cli.py audit https://example.com --depth 1   # a site, crawled same-domain
+python cli.py audit ./src                           # a project folder
+python cli.py audit ./page.html                     # one self-contained HTML file
+```
+
+The third is for a page **built or exported into a single file** — everything
+inlined, no assets beside it. It is deliberately not read as part of a project:
+folder mode looks for markup fragments and skips anything with no elements, so
+the `<head>` of a packed page — canonical, description, Open Graph, charset —
+would never be examined at all. As a page, it gets those rules, plus line
+numbers, because you have the file open.
+
+### Adding a real browser
+
+```bash
+python cli.py audit https://example.com --browser
+python cli.py audit ./page.html --browser
+```
+
+`--browser` loads each page in the Chromium that already ships with the app and
+runs four passes over it: **axe-core** and **HTML_CodeSniffer** (the two
+industry engines — together they find noticeably more than either alone), a
+**state pass** that focuses every control and looks for invisible focus rings,
+keyboard traps and hover-only menus, and **load measurements** read from the
+Performance API.
+
+This is the only way to see what JavaScript actually rendered, and the only way
+to judge contrast after the cascade. It costs a few seconds per page. Findings
+that two engines agree on are collapsed into one row that names its
+corroboration, rather than shown twice.
+
+For a URL the page is fetched normally. For a local file it is opened from
+`file://`, and only then is the page allowed to read files beside it on disk —
+a page off the network never is.
+
+Not available for a project folder: a browser has nothing to load for a `.jsx`
+fragment that was never a page.
+
+### Narrowing and gating
+
+```bash
+python cli.py audit ./page.html --category accessibility seo
+python cli.py audit ./page.html --language it        # explanations in Italian
+python cli.py audit https://example.com --json       # machine-readable
+python cli.py audit ./src --check                    # exit 1 on critical or serious
+```
+
+`--category` is a *view* over one pass, not a different run, so a narrowed
+audit and a full one always agree on what they both report.
+
+Suppressions are shared with the text scan — one `.xanalyze-ignore` governs the
+whole tool. Selectors and disabled rules are handed to the engines rather than
+filtered out of their output, so an excluded region costs nothing to analyse.
+
+### In the window
+
+**Source** in the toolbar picks between *Web page*, *Repository*, *Site audit*
+and *A single HTML file*. The last two show a **In a browser** switch; the
+findings list is the same three-column layout, and clicking a finding shows the
+rendered page beside the explanation.
+
 ## app.xformat.net integration
 
 Sign in once under **Settings → Rewriting**. The password is used to
@@ -342,17 +416,30 @@ the rest of the app doesn't need to change.
 
 ## Packaging as a real desktop app
 
-This runs today with `python main.py`. To ship a double-clickable app:
-
 ```bash
 pip install pyinstaller
-pyinstaller --name "AI Content Scanner" --windowed main.py
+python -m PyInstaller packaging/XAnalyze.spec --noconfirm
+hdiutil create -volname XAnalyze -srcfolder dist/XAnalyze.app \
+  -ov -format UDZO dist/XAnalyze-0.1.0-arm64.dmg
 ```
 
-(You mentioned Tauri as an alternative — that would mean rewriting the UI
-in HTML/JS with Python only as a backend service, which is a bigger
-rewrite. PySide6 + PyInstaller gets you a native desktop app on
-Windows/macOS/Linux from the same Python codebase you already have.)
+That produces `dist/XAnalyze.app` (~490 MB, most of it Chromium) and a
+~200 MB compressed disk image.
+
+The spec does one thing beyond collecting files, and it matters: PyInstaller
+flattens `QtWebEngineCore.framework` and leaves `QtWebEngineProcess` where the
+framework's own symlink does not point, so the frozen app loses **both** the
+page preview and the entire browser audit pass — while `python main.py` from
+the checkout keeps working perfectly, which is exactly how a broken build gets
+called verified. The spec repairs the layout and then refuses to finish if the
+helper is not where Qt will look for it.
+
+The build is ad-hoc signed, not notarised. macOS will therefore quarantine it
+on first open; right-click → **Open**, or:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/XAnalyze.app
+```
 
 ## Project layout
 
