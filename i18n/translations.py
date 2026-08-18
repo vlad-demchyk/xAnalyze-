@@ -1697,6 +1697,257 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Sostituisci con {replacement}. Se il tag serviva solo a impaginare il testo, rimuovilo e sposta l'aspetto nel CSS; se aveva un significato, usa l'elemento semantico che lo esprime.",
         "en": "Replace it with {replacement}. If the tag was only styling text, drop it and move the look into CSS; if it meant something, use the semantic element that carries that meaning.",
     },
+    # --- пояснення для двигунів, чий текст не наш -------------------------
+    "a11y_engine_found": {
+        "uk": "Знайшов {engine}, правило {rule}. Текст нижче - його власний, "
+              "англійською.",
+        "it": "Trovato da {engine}, regola {rule}. Il testo qui sotto è suo, "
+              "in inglese.",
+        "en": "Found by {engine}, rule {rule}.",
+    },
+    "a11y_engine_incomplete": {
+        "uk": "{engine} не зміг вирішити сам і позначив це як таке, що "
+              "потребує ручної перевірки. Це не обовʼязково помилка.",
+        "it": "{engine} non ha potuto decidere e lo ha segnato come da "
+              "verificare a mano. Non è necessariamente un errore.",
+        "en": "{engine} could not decide and marked this as needing a manual "
+              "check. It is not necessarily a defect.",
+    },
+
+    # --- становий прохід: наші правила, наші пояснення ---------------------
+    "a11y_state:keyboard_trap_title": {
+        "uk": "Клавіатурна пастка", "it": "Trappola per la tastiera",
+        "en": "Keyboard trap",
+    },
+    "a11y_state:keyboard_trap_found": {
+        "uk": "Елемент перехоплює Tab і не пропускає фокус далі.",
+        "it": "L'elemento intercetta Tab e non lascia proseguire il focus.",
+        "en": "The element swallows Tab and does not let focus move on.",
+    },
+    "a11y_state:keyboard_trap_why": {
+        "uk": "Людина, яка користується лише клавіатурою, застрягає тут "
+              "назавжди: вийти можна хіба що закривши вкладку. Це найважча з "
+              "можливих перешкод, бо вона зупиняє не одну дію, а весь сеанс.",
+        "it": "Chi usa solo la tastiera resta bloccato qui per sempre: si esce "
+              "solo chiudendo la scheda. È l'ostacolo più grave possibile, "
+              "perché non blocca una singola azione ma l'intera sessione.",
+        "en": "Someone using only a keyboard is stuck here for good; the way "
+              "out is closing the tab. This is the worst obstacle there is, "
+              "because it stops not one action but the whole session.",
+    },
+    "a11y_state:keyboard_trap_fix": {
+        "uk": "Не скасовуйте подію Tab. Якщо фокус тримається навмисно (модальне "
+              "вікно), додайте вихід по Escape і повертайте фокус туди, звідки "
+              "вікно відкрили.",
+        "it": "Non annullare l'evento Tab. Se il focus è trattenuto di "
+              "proposito (una finestra modale), aggiungi l'uscita con Escape e "
+              "riporta il focus da dove la finestra è stata aperta.",
+        "en": "Do not cancel the Tab event. If focus is held on purpose (a "
+              "modal), add an Escape exit and return focus to whatever opened "
+              "it.",
+    },
+    "a11y_state:focus_not_visible_title": {
+        "uk": "Фокус не видно", "it": "Il focus non si vede",
+        "en": "The focus ring is invisible",
+    },
+    "a11y_state:focus_not_visible_found": {
+        "uk": "Елемент отримав фокус, але жодна його властивість не змінилась: "
+              "ані обведення, ані тінь, ані колір рамки.",
+        "it": "L'elemento ha ricevuto il focus ma nessuna sua proprietà è "
+              "cambiata: né contorno, né ombra, né colore del bordo.",
+        "en": "The element took focus but nothing about it changed: no "
+              "outline, no shadow, no border colour.",
+    },
+    "a11y_state:focus_not_visible_why": {
+        "uk": "Людина, яка ходить сторінкою з клавіатури, не бачить, де вона "
+              "зараз. Сторінка формально працює, але користуватися нею "
+              "доводиться навпомацки. Це найчастіша клавіатурна проблема, і "
+              "статична перевірка її не бачить: `outline: none` майже завжди "
+              "живе в таблиці стилів, а не в розмітці.",
+        "it": "Chi naviga da tastiera non vede dove si trova. La pagina "
+              "funziona formalmente, ma la si usa a tentoni. È il problema di "
+              "tastiera più comune e un controllo statico non lo vede: "
+              "`outline: none` sta quasi sempre nel foglio di stile, non nel "
+              "markup.",
+        "en": "Someone moving through the page by keyboard cannot see where "
+              "they are. The page technically works, but has to be used by "
+              "feel. This is the most common keyboard problem, and a static "
+              "check cannot see it: `outline: none` almost always lives in a "
+              "stylesheet, not in the markup.",
+    },
+    "a11y_state:focus_not_visible_fix": {
+        "uk": "Приберіть `outline: none` або дайте заміну: `:focus-visible` з "
+              "видимим обведенням чи тінню, контрастною до тла.",
+        "it": "Rimuovi `outline: none` oppure dai un sostituto: "
+              "`:focus-visible` con un contorno o un'ombra visibile, in "
+              "contrasto con lo sfondo.",
+        "en": "Remove `outline: none` or replace it: a `:focus-visible` rule "
+              "with a visible outline or shadow that contrasts with the "
+              "background.",
+    },
+    "a11y_state:focus_order_mismatch_title": {
+        "uk": "Порядок фокуса не збігається з порядком читання",
+        "it": "L'ordine del focus non segue l'ordine di lettura",
+        "en": "Focus order does not follow reading order",
+    },
+    "a11y_state:focus_order_mismatch_found": {
+        "uk": "Фокус кілька разів стрибає вгору сторінкою замість того, щоб "
+              "рухатись донизу.",
+        "it": "Il focus salta più volte verso l'alto invece di scendere.",
+        "en": "Focus jumps back up the page several times instead of moving "
+              "down it.",
+    },
+    "a11y_state:focus_order_mismatch_why": {
+        "uk": "Той, хто не бачить сторінки цілком, будує її мапу з порядку "
+              "обходу. Коли порядок стрибає, мапа виходить неправильною, і "
+              "людина губиться там, де зряча людина просто дивиться нижче.",
+        "it": "Chi non vede l'intera pagina se ne costruisce la mappa "
+              "dall'ordine di attraversamento. Se l'ordine salta, la mappa "
+              "esce sbagliata e la persona si perde dove una vedente "
+              "guarderebbe semplicemente più in basso.",
+        "en": "Someone who cannot see the whole page builds their map of it "
+              "from the order they move through it. When the order jumps, the "
+              "map comes out wrong, and they get lost where a sighted person "
+              "would simply look further down.",
+    },
+    "a11y_state:focus_order_mismatch_fix": {
+        "uk": "Приведіть порядок у розмітці до порядку на екрані. Не "
+              "виправляйте це через `tabindex` із додатними значеннями: так "
+              "проблема лише переміщується.",
+        "it": "Allinea l'ordine nel markup a quello sullo schermo. Non "
+              "correggerlo con `tabindex` positivi: così il problema si "
+              "sposta soltanto.",
+        "en": "Bring the order in the markup in line with the order on "
+              "screen. Do not patch it with positive `tabindex` values: that "
+              "only moves the problem.",
+    },
+    "a11y_state:hover_only_content_title": {
+        "uk": "Вміст зʼявляється лише під мишею",
+        "it": "Contenuto visibile solo al passaggio del mouse",
+        "en": "Content that only appears on hover",
+    },
+    "a11y_state:hover_only_content_found": {
+        "uk": "Прихований блок відкривається наведенням, але не має "
+              "рівноцінного відкриття з клавіатури.",
+        "it": "Un blocco nascosto si apre al passaggio del mouse ma non ha "
+              "un equivalente da tastiera.",
+        "en": "A hidden block opens on hover but has no keyboard equivalent.",
+    },
+    "a11y_state:hover_only_content_why": {
+        "uk": "Без миші цього вмісту не існує зовсім. Якщо там пункти меню, "
+              "частина сайту стає недосяжною - і не лише для клавіатури, а й "
+              "для сенсорного екрана, де наведення немає.",
+        "it": "Senza mouse quel contenuto non esiste affatto. Se contiene voci "
+              "di menu, una parte del sito diventa irraggiungibile: non solo "
+              "da tastiera, ma anche su touch, dove il passaggio del mouse non "
+              "esiste.",
+        "en": "Without a mouse that content does not exist at all. If it holds "
+              "menu items, part of the site becomes unreachable - not only "
+              "from a keyboard but on touch, where there is no hover.",
+    },
+    "a11y_state:hover_only_content_fix": {
+        "uk": "Відкривайте те саме на `:focus-within` або кнопкою з "
+              "`aria-expanded`, яку можна натиснути з клавіатури.",
+        "it": "Apri lo stesso contenuto con `:focus-within` o con un pulsante "
+              "con `aria-expanded` azionabile da tastiera.",
+        "en": "Open the same content on `:focus-within`, or from a button "
+              "with `aria-expanded` that a keyboard can operate.",
+    },
+    "a11y_state:no_skip_link_title": {
+        "uk": "Немає посилання «перейти до вмісту»",
+        "it": "Manca il link «vai al contenuto»",
+        "en": "No skip link",
+    },
+    "a11y_state:no_skip_link_found": {
+        "uk": "У шапці й навігації {navLinks} посилань, а способу оминути їх "
+              "немає.",
+        "it": "Nell'intestazione e nella navigazione ci sono {navLinks} link e "
+              "non c'è modo di saltarli.",
+        "en": "The header and navigation hold {navLinks} links, and there is "
+              "no way past them.",
+    },
+    "a11y_state:no_skip_link_why": {
+        "uk": "Кожен візит із клавіатури починається з проходу через усе меню "
+              "наново. На кожній сторінці. Це не помилка, а щоденний податок "
+              "на користування сайтом.",
+        "it": "Ogni visita da tastiera comincia riattraversando tutto il menu. "
+              "Su ogni pagina. Non è un errore, è una tassa quotidiana "
+              "sull'uso del sito.",
+        "en": "Every keyboard visit starts by tabbing through the whole menu "
+              "again. On every page. It is not an error so much as a daily tax "
+              "on using the site.",
+    },
+    "a11y_state:no_skip_link_fix": {
+        "uk": "Додайте першим у `<body>` посилання на якір основного вмісту. "
+              "Воно може бути прихованим, поки не отримає фокус.",
+        "it": "Aggiungi come primo elemento di `<body>` un link all'ancora del "
+              "contenuto principale. Può restare nascosto finché non riceve il "
+              "focus.",
+        "en": "Add a link to the main content anchor as the first thing in "
+              "`<body>`. It can stay hidden until it takes focus.",
+    },
+    "a11y_state:focus_outside_viewport_title": {
+        "uk": "Фокус іде за межі видимої області",
+        "it": "Il focus finisce fuori dall'area visibile",
+        "en": "Focus lands outside the visible area",
+    },
+    "a11y_state:focus_outside_viewport_found": {
+        "uk": "Елемент отримує фокус, перебуваючи поза екраном.",
+        "it": "L'elemento riceve il focus mentre si trova fuori schermo.",
+        "en": "The element takes focus while it is off screen.",
+    },
+    "a11y_state:focus_outside_viewport_why": {
+        "uk": "Фокус зникає з очей: людина натискає Tab і не бачить нічого "
+              "нового, хоча наступне натискання вже стосується елемента, якого "
+              "вона не бачила. Так зазвичай поводяться закриті меню, які "
+              "прибрали зсувом, а не з дерева фокуса.",
+        "it": "Il focus sparisce dalla vista: si preme Tab e non cambia nulla "
+              "di visibile, mentre la pressione successiva agisce già su un "
+              "elemento mai visto. È il comportamento tipico dei menu chiusi "
+              "spostati fuori schermo invece che tolti dall'ordine di focus.",
+        "en": "Focus disappears from sight: the user presses Tab, sees nothing "
+              "change, and their next keystroke already acts on an element "
+              "they never saw. This is what closed menus do when they are "
+              "moved off screen instead of taken out of the focus order.",
+    },
+    "a11y_state:focus_outside_viewport_fix": {
+        "uk": "Прибирайте приховане з порядку фокуса: `display: none`, "
+              "`visibility: hidden` або `inert` замість зсуву за край екрана.",
+        "it": "Togli ciò che è nascosto dall'ordine di focus: `display: none`, "
+              "`visibility: hidden` o `inert` invece di spostarlo oltre il "
+              "bordo.",
+        "en": "Take hidden things out of the focus order: `display: none`, "
+              "`visibility: hidden` or `inert` rather than moving them past "
+              "the edge.",
+    },
+    "a11y_state:state_pass_title": {
+        "uk": "Перевірка станів не завершилась",
+        "it": "Il controllo degli stati non è terminato",
+        "en": "The state pass did not finish",
+    },
+    "a11y_state:state_pass_found": {
+        "uk": "Прохід по станах сторінки впав: {engine_error}",
+        "it": "Il passaggio sugli stati della pagina è fallito: {engine_error}",
+        "en": "The pass over the page's states failed: {engine_error}",
+    },
+    "a11y_state:state_pass_why": {
+        "uk": "Перевірки фокуса, клавіатурних пасток і вмісту під мишею для "
+              "цієї сторінки не виконано, тож їхня відсутність у списку нічого "
+              "не означає.",
+        "it": "I controlli su focus, trappole per la tastiera e contenuto al "
+              "passaggio del mouse non sono stati eseguiti per questa pagina: "
+              "la loro assenza dall'elenco non significa nulla.",
+        "en": "The focus, keyboard-trap and hover checks did not run for this "
+              "page, so their absence from the list means nothing.",
+    },
+    "a11y_state:state_pass_fix": {
+        "uk": "Спробуйте ще раз; якщо повторюється - сторінка, ймовірно, "
+              "перевизначає щось, на що спирається перевірка.",
+        "it": "Riprova; se si ripete, la pagina probabilmente ridefinisce "
+              "qualcosa su cui il controllo si appoggia.",
+        "en": "Try again; if it repeats, the page is probably overriding "
+              "something the check relies on.",
+    },
     "a11y_needs_browser": {
         "uk": "Часткова перевірка: без запуску браузера видно лише те, що є в самій розмітці. Решту треба звірити на живій сторінці.",
         "it": "Verifica parziale: senza eseguire un browser si vede solo ciò che è nel markup. Il resto va controllato sulla pagina reale.",

@@ -24,11 +24,14 @@ runtime by scanning entry points, which a frozen app has none of, so the macOS
 backend has to be imported by name or the app silently falls back to a
 plain-text credential file.
 """
+import shutil
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_submodules
 
 ROOT = Path(SPECPATH).resolve().parent
+#: Where PyInstaller writes the build. Needed by the post-build repair below.
+DIST = ROOT / "dist"
 
 datas = [
     (str(ROOT / "ui" / "design" / "xformat-tokens.css"), "ui/design"),
@@ -112,3 +115,75 @@ app = BUNDLE(
         "LSMinimumSystemVersion": "12.0",
     },
 )
+
+
+# --------------------------------------------------------------- post-build
+
+def repair_webengine_framework(framework_root: Path) -> bool:
+    """Put `QtWebEngineProcess` back where Qt looks for it.
+
+    PyInstaller flattens `QtWebEngineCore.framework` and drops the helper and
+    the Chromium resources into a stray `Versions/Resources/` instead of
+    `Versions/A/`. The framework's own `Helpers -> Versions/Current/Helpers`
+    symlink is then dangling, and Qt reports:
+
+        The following paths were searched for Qt WebEngine Process ...
+        but could not find it.
+
+    The consequence is not cosmetic. Without the helper process, every
+    `QWebEngineView` stays blank, so the frozen app loses both the site
+    preview and the entire browser audit pass - while a `python main.py` run
+    from the checkout works perfectly, which is exactly how this survived a
+    previous build being called verified.
+
+    Fixed here rather than in a wrapper script so that building the spec is
+    enough on its own.
+    """
+    stray = framework_root / "Versions" / "Resources"
+    if not stray.is_dir():
+        return False
+
+    version = framework_root / "Versions" / "A"
+    helpers = stray / "Helpers"
+    if helpers.is_dir():
+        target = version / "Helpers"
+        if target.exists():
+            shutil.rmtree(target)
+        shutil.move(str(helpers), str(target))
+
+    resources = stray / "Resources"
+    if resources.is_dir():
+        destination = version / "Resources"
+        destination.mkdir(parents=True, exist_ok=True)
+        for item in resources.iterdir():
+            moved = destination / item.name
+            # Info.plist is written by PyInstaller into A/Resources already;
+            # Qt's own copy is the authoritative one for the framework.
+            if moved.exists():
+                if moved.is_dir():
+                    shutil.rmtree(moved)
+                else:
+                    moved.unlink()
+            shutil.move(str(item), str(moved))
+
+    shutil.rmtree(stray, ignore_errors=True)
+    return True
+
+
+FRAMEWORK = "PySide6/Qt/lib/QtWebEngineCore.framework"
+for root in (DIST / "XAnalyze" / "_internal" / FRAMEWORK,
+             DIST / "XAnalyze.app" / "Contents" / "Frameworks" / FRAMEWORK):
+    if repair_webengine_framework(root):
+        print(f"XAnalyze: repaired QtWebEngine framework in {root}")
+
+# A build whose browser cannot start is not a build worth shipping, so this is
+# checked rather than assumed.
+helper = (DIST / "XAnalyze.app" / "Contents" / "Frameworks" / FRAMEWORK
+          / "Helpers" / "QtWebEngineProcess.app" / "Contents" / "MacOS"
+          / "QtWebEngineProcess")
+if not helper.exists():
+    raise SystemExit(
+        "XAnalyze: QtWebEngineProcess is missing from the bundle - the site "
+        "preview and the browser audit pass would both be dead. Expected it "
+        f"at {helper}"
+    )

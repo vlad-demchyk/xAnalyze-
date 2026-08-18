@@ -52,6 +52,14 @@ def render(issue, lang: str = "uk") -> IssueExplanation:
             found=details["rule_error"], why="", fix="",
         )
 
+    # A third-party engine already wrote the explanation, in its own words.
+    # Rendering it beats inventing a translation key that will never exist:
+    # axe and HTML_CodeSniffer between them ship hundreds of rules, and a
+    # missing key shows the user `a11y_axe:region_title` instead of a
+    # sentence. See `_from_engine` for why the wording is attributed.
+    if ":" in issue.rule_id and details.get("engine") in _ENGINE_NAMES:
+        return _from_engine(issue, details, lang)
+
     stem = issue.rule_id.replace("-", "_")
     # Values are pre-formatted so a template only has to interpolate: the
     # keys differ per rule, and a missing one must not raise inside the UI.
@@ -61,16 +69,87 @@ def render(issue, lang: str = "uk") -> IssueExplanation:
     # more when it names the actual budget, the actual limit and the actual
     # replacement element than when it repeats the rule in the abstract.
     explanation = IssueExplanation(
-        title=t(f"a11y_{stem}_title", lang, **fields),
-        found=t(f"a11y_{stem}_found", lang, **fields),
-        why=t(f"a11y_{stem}_why", lang, **fields),
-        fix=t(f"a11y_{stem}_fix", lang, **fields),
+        title=_fill(f"a11y_{stem}_title", lang, fields),
+        found=_fill(f"a11y_{stem}_found", lang, fields),
+        why=_fill(f"a11y_{stem}_why", lang, fields),
+        fix=_fill(f"a11y_{stem}_fix", lang, fields),
         fix_snippet=issue.fix_snippet,
         wcag=_wcag_for(issue.rule_id),
     )
     if issue.confidence == NEEDS_BROWSER:
         explanation.caveat = t("a11y_needs_browser", lang)
     return explanation
+
+
+#: Engines whose findings carry their own prose. Ours do not appear here:
+#: `state:` rules are this tool's own and have real translations.
+_ENGINE_NAMES = {"axe-core", "HTML_CodeSniffer"}
+
+
+def _from_engine(issue, details: dict, lang: str) -> IssueExplanation:
+    """Render a finding in the words of the engine that made it.
+
+    The wording stays English even when the interface is not, and that is
+    said out loud rather than hidden: pretending an untranslated sentence is
+    ours would be worse than naming its author. Everything around it - the
+    severity, the element, the field labels - is still in the user's language,
+    so the row reads consistently even where one sentence does not.
+    """
+    engine = details.get("engine", "")
+    title = (details.get("help") or details.get("why")
+             or details.get("code") or issue.rule_id)
+    # axe's `failureSummary` is multi-line and starts with "Fix any of the
+    # following:", which is advice, not a description - so it is shown as the
+    # fix rather than as the reason.
+    summary = (details.get("why") or "").strip()
+    description = (details.get("description") or "").strip()
+
+    explanation = IssueExplanation(
+        title=_one_line(title),
+        found=t("a11y_engine_found", lang, engine=engine,
+                rule=details.get("rule") or details.get("code") or issue.rule_id),
+        why=description or "",
+        fix=summary,
+        fix_snippet=issue.fix_snippet,
+        wcag=(),
+    )
+    if details.get("url"):
+        explanation.fix = (explanation.fix + "\n" + details["url"]).strip()
+    if issue.confidence == NEEDS_BROWSER:
+        explanation.caveat = t("a11y_engine_incomplete", lang, engine=engine)
+    return explanation
+
+
+def _one_line(text: str, limit: int = 120) -> str:
+    """One line for a list row: engine text is sometimes a paragraph."""
+    flat = " ".join(str(text).split())
+    return flat if len(flat) <= limit else flat[:limit - 1] + "…"
+
+
+class _Blank(dict):
+    """A placeholder with no value renders as nothing at all."""
+
+    def __missing__(self, key):  # noqa: D105 - the docstring above says it
+        return ""
+
+
+def _fill(key: str, lang: str, fields: dict) -> str:
+    """Interpolate a rule's template with whatever that rule actually found.
+
+    Formatted here rather than through `t(**fields)` because the placeholders
+    differ per rule and are not knowable from this side: a rule that mentions
+    `{replacement}` while this finding has no replacement must render a
+    slightly thinner sentence, not raise `KeyError` in the middle of drawing
+    the list. Which is precisely what it did until a coverage test walked
+    every registered rule.
+    """
+    template = t(key, lang)
+    try:
+        return template.format_map(_Blank(fields))
+    except (IndexError, ValueError):
+        # A malformed template (stray brace) is the translator's bug, and the
+        # honest thing is to show the text as written rather than nothing.
+        return template
 
 
 def _template_fields(details: dict) -> dict:

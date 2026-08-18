@@ -76,7 +76,11 @@ class FindingDelegate(QStyledItemDelegate):
         base = super().sizeHint(option, index)
         if row is None:
             return base
-        return QSize(base.width(), max(base.height(), 34))
+        # Width 0, not the text's width: `paint` already elides, so asking for
+        # the full width only makes the list grow a horizontal scrollbar that
+        # no one can usefully scroll. It showed up the moment findings started
+        # arriving with long English sentences from axe.
+        return QSize(0, max(base.height(), 34))
 
     def paint(self, painter: QPainter, option, index) -> None:  # noqa: N802 - Qt override
         row = index.data(ROW_ROLE)

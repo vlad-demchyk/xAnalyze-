@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QSize, Qt, QUrl
+from PySide6.QtGui import QColor
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QHBoxLayout,
@@ -254,6 +255,10 @@ class MainWindow(QMainWindow):
         self.col1_stack = QStackedWidget()
         self.site_view = QWebEngineView()
         self.site_view.loadFinished.connect(self._on_preview_loaded)
+        # Chromium paints white until the page has something to draw, which in
+        # a dark theme reads as a broken pane for the second or two a real site
+        # takes to arrive.
+        self.site_view.page().setBackgroundColor(QColor(self.palette_tokens.page_bg))
         self.col1_stack.addWidget(self.site_view)  # index 0: web
 
         self.code_view = QPlainTextEdit()
@@ -397,6 +402,9 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage(t("status_idle", lang))
         self._reset_detail_panel()
 
+    def _repaint_preview_background(self) -> None:
+        self.site_view.page().setBackgroundColor(QColor(self.palette_tokens.page_bg))
+
     def apply_palette(self, palette) -> None:
         """Adopt a new design-system palette at runtime.
 
@@ -407,6 +415,7 @@ class MainWindow(QMainWindow):
         """
         self.palette_tokens = palette
         self.finding_delegate.set_palette(palette)
+        self._repaint_preview_background()
         mono = self.code_view.font()
         mono.setFamily(palette.font_mono)
         self.code_view.setFont(mono)
@@ -687,6 +696,14 @@ class MainWindow(QMainWindow):
         if self.browser_check.isChecked():
             self._run_browser_pass()
         self._populate_audit_list()
+        # Show the audited page straight away rather than waiting for a click.
+        # An empty white pane next to a full list of findings reads as
+        # something having gone wrong, which is the opposite of what happened.
+        first = next((d for d in result.documents if not d.error), None)
+        if first is not None:
+            address = _browser_url(first.source)
+            self.current_preview_url = address
+            self.site_view.setUrl(QUrl(address))
         # The same sentence the CLI prints, from the same function: two
         # wordings of one summary is two things to keep true.
         self.status_bar.showMessage(
