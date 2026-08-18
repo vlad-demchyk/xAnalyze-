@@ -205,6 +205,95 @@ def muted(text: str = "") -> QLabel:
     return label
 
 
+def panel(title: str = "", trailing=None) -> tuple:
+    """A zone of the window: a surface, a titled head, and a body to fill.
+
+    Returns `(panel, body_layout, title_label)`. The head is a strip with its
+    own fill and a hairline under it rather than a bold label floating above
+    whitespace: the window has four zones that mean different things, and the
+    eye should find the boundary between them without reading anything.
+    """
+    from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
+
+    container = QWidget()
+    container.setProperty("class", theme.CLASS_PANEL)
+    # Without this a plain QWidget ignores the background and border from the
+    # style sheet entirely - it paints its parent's fill and nothing else.
+    # Every zone in the window depends on it, and its absence is invisible in
+    # code and obvious on screen.
+    container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+    outer = QVBoxLayout(container)
+    outer.setContentsMargins(0, 0, 0, 0)
+    outer.setSpacing(0)
+
+    head = QWidget()
+    head.setProperty("class", theme.CLASS_PANEL_HEAD)
+    head.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+    head_layout = QHBoxLayout(head)
+    head_layout.setContentsMargins(14, 9, 14, 9)
+    head_layout.setSpacing(8)
+    label = QLabel(title)
+    label.setProperty("class", theme.CLASS_HEADING)
+    head_layout.addWidget(label)
+    head_layout.addStretch(1)
+    if trailing is not None:
+        head_layout.addWidget(trailing)
+    outer.addWidget(head)
+
+    body = QWidget()
+    body_layout = QVBoxLayout(body)
+    body_layout.setContentsMargins(0, 0, 0, 0)
+    body_layout.setSpacing(0)
+    outer.addWidget(body, stretch=1)
+    return container, body_layout, label
+
+
+def divider():
+    """A hairline between two things inside one zone."""
+    from PySide6.QtWidgets import QFrame
+
+    line = QFrame()
+    line.setProperty("class", theme.CLASS_DIVIDER)
+    line.setFrameShape(QFrame.Shape.NoFrame)
+    line.setFixedHeight(1)
+    return line
+
+
+def chip(text: str = "") -> QLabel:
+    """A quiet pill: a rule id, an engine name, a position in a file."""
+    label = QLabel(text)
+    label.setProperty("class", theme.CLASS_CHIP)
+    return label
+
+
+def field(label_text: str, body_text: str) -> QWidget:
+    """One labelled block of an explanation.
+
+    Four of these make the detail panel, and they are boxed rather than run
+    together as paragraphs because they answer four different questions. A
+    reader looking for "how do I fix this" should find it without reading the
+    three above it.
+    """
+    from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+    container = QWidget()
+    container.setProperty("class", theme.CLASS_FIELD)
+    container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+    layout = QVBoxLayout(container)
+    layout.setContentsMargins(12, 10, 12, 12)
+    layout.setSpacing(4)
+
+    caption = QLabel(label_text.upper())
+    caption.setProperty("class", theme.CLASS_FIELD_LABEL)
+    layout.addWidget(caption)
+
+    body = QLabel(body_text)
+    body.setWordWrap(True)
+    body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+    layout.addWidget(body)
+    return container
+
+
 def restyle(widget: QWidget) -> None:
     """Re-evaluate the style sheet for a widget whose `class` property was
     set after it was first shown. Qt only re-reads property selectors when

@@ -321,6 +321,17 @@ the ones that need words), **Undo**, which is only enabled once a backup
 exists, and **Report for an agent**, which saves the same briefing `--report`
 writes.
 
+The third column is the finding itself: its severity, where it is and which
+rule found it as chips; then four labelled blocks — what was found, why it
+matters, how to fix it, and when it would be a false positive; then the element
+as it stands in the file and the ready replacement beside it. At the bottom,
+**Fix this one** writes that single correction. For a finding the tool will not
+decide on its own, the button says so first and offers to let a model write the
+value instead of doing it silently.
+
+One `Undo` covers both writers — the character fixes and the audit corrections
+— because there is one backup rule (`backups.py`) and therefore one way back.
+
 ## app.xformat.net integration
 
 Sign in once under **Settings → Rewriting**. The password is used to

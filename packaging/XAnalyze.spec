@@ -38,6 +38,7 @@ datas = [
     (str(ROOT / "audit" / "vendor" / "axe.min.js"), "audit/vendor"),
     (str(ROOT / "audit" / "vendor" / "HTMLCS.js"), "audit/vendor"),
     (str(ROOT / "audit" / "vendor" / "axe-LICENSE.txt"), "audit/vendor"),
+    (str(ROOT / "ui" / "design" / "assets"), "ui/design/assets"),
 ]
 
 hiddenimports = [
@@ -100,7 +101,7 @@ collected = COLLECT(
 app = BUNDLE(
     collected,
     name="XAnalyze.app",
-    icon=None,
+    icon=str(ROOT / "packaging" / "XAnalyze.icns"),
     bundle_identifier="net.xformat.xanalyze",
     info_plist={
         "CFBundleName": "XAnalyze",

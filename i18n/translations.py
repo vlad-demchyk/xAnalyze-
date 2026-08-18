@@ -265,6 +265,55 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Report salvato: {path}",
         "en": "Report saved: {path}",
     },
+    "app_tagline": {
+        "uk": "текст, символи і аудит сторінки",
+        "it": "testo, caratteri e audit della pagina",
+        "en": "text, characters and page audit",
+    },
+    "detail_panel_title": {
+        "uk": "Знахідка", "it": "Rilievo", "en": "Finding",
+    },
+    "detail_line": {"uk": "рядок", "it": "riga", "en": "line"},
+    "detail_element": {
+        "uk": "Елемент у файлі", "it": "Elemento nel file",
+        "en": "The element in the file",
+    },
+    "detail_replacement": {
+        "uk": "Готова заміна", "it": "Sostituzione pronta",
+        "en": "Ready replacement",
+    },
+    "detail_fix_this": {
+        "uk": "Виправити це", "it": "Correggi questo", "en": "Fix this one",
+    },
+    "detail_fix_this_tooltip": {
+        "uk": "Записати цю заміну у файл. Копія .bak зберігається перед "
+              "першою зміною, тож «Відкотити» поверне все як було.",
+        "it": "Scrive questa sostituzione nel file. Prima della prima modifica "
+              "viene salvata una copia .bak, quindi «Annulla» riporta tutto "
+              "com'era.",
+        "en": "Write this replacement into the file. A .bak copy is saved "
+              "before the first change, so Undo puts everything back.",
+    },
+    "detail_needs_decision": {
+        "uk": "Це рішення, а не механічна заміна - інструмент не питатиме "
+              "мовчки.",
+        "it": "Questa è una decisione, non una sostituzione meccanica: lo "
+              "strumento non la farà in silenzio.",
+        "en": "This is a decision, not a mechanical swap - the tool will not "
+              "make it silently.",
+    },
+    "detail_decide_body": {
+        "uk": "Цю заміну не можна записати без рішення:\n\n{reason}\n\n"
+              "Дозволити моделі написати значення? Копія .bak зберігається "
+              "перед зміною, тож відкотити можна завжди.",
+        "it": "Questa sostituzione non può essere scritta senza una "
+              "decisione:\n\n{reason}\n\nVuoi che sia un modello a "
+              "scrivere il valore? Una copia .bak viene salvata prima della "
+              "modifica, quindi si può sempre tornare indietro.",
+        "en": "This replacement cannot be written without a decision:\n\n"
+              "{reason}\n\nLet a model write the value? A .bak copy is "
+              "saved before the change, so it can always be undone.",
+    },
     "mode_file": {
         "uk": "Один HTML-файл",
         "it": "Un singolo file HTML",

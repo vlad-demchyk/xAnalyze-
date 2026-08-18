@@ -534,15 +534,16 @@ def _document_text(result) -> str:
 
 def cmd_undo(args) -> int:
     """Put files back the way they were before the corrections went in."""
-    from audit import fixer
+    import backups
 
     paths = []
     for target in args.paths:
         path = Path(target)
         if path.is_dir():
-            paths += [str(p)[:-4] for p in path.rglob("*.bak")]
-        elif str(path).endswith(".bak"):
-            paths.append(str(path)[:-4])
+            paths += [str(p)[:-len(backups.SUFFIX)]
+                      for p in path.rglob("*" + backups.SUFFIX)]
+        elif str(path).endswith(backups.SUFFIX):
+            paths.append(str(path)[:-len(backups.SUFFIX)])
         else:
             paths.append(str(path))
 
@@ -550,7 +551,10 @@ def cmd_undo(args) -> int:
         print("nothing to undo: no .bak copies found", file=sys.stderr)
         return EXIT_OK
 
-    restored, problems = fixer.restore(paths)
+    # Undo covers both writers - the character fixes from `fix` and the
+    # corrections from `audit --fix` - because there is one backup rule and
+    # therefore one way back.
+    restored, problems = backups.restore(paths)
     for path in restored:
         print(f"restored {path}")
     for problem in problems:

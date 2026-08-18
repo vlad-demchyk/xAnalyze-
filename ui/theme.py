@@ -36,6 +36,30 @@ CLASS_BADGE_HIGH = "badge-high"
 CLASS_BADGE_MEDIUM = "badge-medium"
 CLASS_BADGE_LOW = "badge-low"
 CLASS_EMPTY = "empty"
+#: A zone of the window with its own surface: the toolbar, a column, a panel
+#: inside the detail column. The design the web app uses is one of monolithic
+#: cards on a warm canvas, and a Qt window that paints everything on one flat
+#: sheet reads as a different product entirely.
+CLASS_PANEL = "panel"
+#: The header strip of a panel: its name, and whatever belongs on the same
+#: line. Separated by a hairline rather than by whitespace so the eye finds
+#: the boundary of each zone without the layout having to grow.
+CLASS_PANEL_HEAD = "panel-head"
+#: A small labelled block inside a panel - "what was found", "why it matters".
+CLASS_FIELD = "field"
+CLASS_FIELD_LABEL = "field-label"
+#: A quiet pill: the rule id, the engine that found it, the file position.
+CLASS_CHIP = "chip"
+#: The accent-filled variant, for the one action a panel exists to offer.
+CLASS_ACCENT = "accent"
+#: A button that reads as a link: secondary, never the thing to press first.
+CLASS_QUIET = "quiet"
+#: A hairline. A QFrame with this class draws the divider between zones.
+CLASS_DIVIDER = "divider"
+#: Monospaced markup shown as evidence, not as something to edit.
+CLASS_CODE = "code"
+#: The window's own header: the mark, the product name, the mode.
+CLASS_BRAND = "brand"
 
 
 def qss_color(value: str) -> str:
@@ -217,12 +241,118 @@ QPushButton[class="{CLASS_PRIMARY}"]:disabled {{
     color: {c(p.text_muted)};
 }}
 
+/* ------------------------------------------------------------------ zones */
+
+/* Every zone is a surface on the canvas rather than a region of one flat
+   sheet. This is the single largest difference between a Qt window that looks
+   like a Qt window and one that looks like the rest of the product. */
+QWidget[class="{CLASS_PANEL}"] {{
+    background-color: {c(p.bg_card)};
+    border: 1px solid {c(p.border)};
+    border-radius: {p.radius}px;
+}}
+
+QWidget[class="{CLASS_PANEL_HEAD}"] {{
+    background-color: {c(p.bg_muted)};
+    border: none;
+    border-bottom: 1px solid {c(p.border)};
+    border-top-left-radius: {p.radius}px;
+    border-top-right-radius: {p.radius}px;
+}}
+
+QFrame[class="{CLASS_DIVIDER}"] {{
+    background-color: {c(p.border)};
+    border: none;
+    max-height: 1px;
+    min-height: 1px;
+}}
+
+QWidget[class="{CLASS_FIELD}"] {{
+    background-color: {c(p.bg_muted)};
+    border: 1px solid {c(p.border)};
+    border-radius: {p.radius_md}px;
+}}
+
+QLabel[class="{CLASS_FIELD_LABEL}"] {{
+    color: {c(p.text_muted)};
+    font-size: {p.font_size_sm}px;
+    font-weight: 600;
+    /* Small caps by spacing rather than by font: the label is a signpost, and
+       at this size letter-spacing separates it from the sentence under it
+       more reliably than weight alone. */
+    letter-spacing: 1px;
+}}
+
+QLabel[class="{CLASS_CHIP}"] {{
+    background-color: {c(p.bg_muted)};
+    border: 1px solid {c(p.border_strong)};
+    border-radius: {p.radius_sm}px;
+    padding: 2px {p.space_sm}px;
+    color: {c(p.text_muted)};
+    font-size: {p.font_size_sm}px;
+}}
+
+QPlainTextEdit[class="{CLASS_CODE}"], QTextEdit[class="{CLASS_CODE}"] {{
+    background-color: {c(p.bg_muted)};
+    border: 1px solid {c(p.border)};
+    border-radius: {p.radius_md}px;
+    font-family: "{p.font_mono}";
+    font-size: {p.font_size_sm}px;
+    color: {c(p.text)};
+}}
+
+QWidget[class="{CLASS_BRAND}"] {{
+    background: transparent;
+}}
+
+QPushButton[class="{CLASS_ACCENT}"] {{
+    background-color: {c(p.accent)};
+    color: {c(p.on_accent)};
+    border: 1px solid {c(p.accent)};
+    font-weight: 600;
+}}
+
+QPushButton[class="{CLASS_ACCENT}"]:hover {{
+    background-color: {c(p.accent_hover)};
+    border-color: {c(p.accent_hover)};
+}}
+
+QPushButton[class="{CLASS_ACCENT}"]:disabled {{
+    background-color: {c(p.bg_muted)};
+    border-color: {c(p.border)};
+    color: {c(p.text_muted)};
+}}
+
+QPushButton[class="{CLASS_QUIET}"] {{
+    background: transparent;
+    border: 1px solid transparent;
+    color: {c(p.text_muted)};
+    padding: {p.space_sm // 2}px {p.space_sm}px;
+    font-weight: 500;
+}}
+
+QPushButton[class="{CLASS_QUIET}"]:hover {{
+    background-color: {c(p.bg_hover)};
+    color: {c(p.text)};
+}}
+
+QScrollArea, QScrollArea > QWidget > QWidget {{
+    background: transparent;
+    border: none;
+}}
+
+QSplitter::handle {{
+    background: transparent;
+}}
+
 /* ------------------------------------------------------------------ lists */
 
 QListWidget {{
     background-color: {c(p.bg_card)};
-    border: 1px solid {c(p.border)};
-    border-radius: {p.radius}px;
+    /* No border: the list lives inside a panel that already has one, and two
+       concentric rounded rectangles a pixel apart look like a mistake. */
+    border: none;
+    border-radius: 0;
     padding: {p.space_sm // 2}px;
     outline: none;
 }}

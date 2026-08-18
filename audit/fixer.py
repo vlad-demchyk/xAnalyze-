@@ -27,9 +27,10 @@ how it was before the tool ever touched it, not to the state between two runs.
 """
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass, field
+
+import backups
 
 #: Anchors that mean "put this inside me" rather than "replace me". A finding
 #: about the whole document has to hang off something, and these three are
@@ -308,12 +309,9 @@ def apply_fixes(plans: list, backup: bool = True, write=None) -> FixResult:
             continue
 
         if backup:
-            backup_path = path + ".bak"
             try:
-                # Only the first backup is kept: a second run must not
-                # overwrite the copy of the file as the user last had it.
-                if not os.path.exists(backup_path):
-                    write(backup_path, text)
+                backup_path = backups.take(path, text)
+                if backup_path:
                     result.backups.append(backup_path)
             except OSError as exc:
                 result.errors.append(
@@ -351,39 +349,16 @@ def apply_fixes(plans: list, backup: bool = True, write=None) -> FixResult:
 
 
 def restore(paths, remove_backup: bool = True) -> tuple:
-    """Put files back the way they were before the first correction.
-
-    Returns `(restored, problems)`. Deliberately not a stack of undo steps:
-    the promise is "back to how it was", which one copy per file can keep and
-    a stack of partial states cannot.
-    """
-    restored, problems = [], []
-    for path in paths:
-        backup_path = path + ".bak"
-        if not os.path.exists(backup_path):
-            problems.append(f"{path}: no backup was kept, nothing to go back to")
-            continue
-        try:
-            _write(path, _read(backup_path))
-            restored.append(path)
-            if remove_backup:
-                os.unlink(backup_path)
-        except OSError as exc:
-            problems.append(f"{path}: {exc}")
-    return restored, problems
+    """Put files back the way they were before the first correction."""
+    return backups.restore(paths, remove_backup)
 
 
 def backups_for(documents) -> list:
     """Which of these documents have a backup waiting to be restored."""
-    seen, out = set(), []
-    for document in documents:
-        path = document.source
-        if path in seen or path.startswith(("http://", "https://")):
-            continue
-        seen.add(path)
-        if os.path.exists(path + ".bak"):
-            out.append(path)
-    return out
+    return backups.existing_for([
+        d.source for d in documents
+        if not d.source.startswith(("http://", "https://"))
+    ])
 
 
 # ------------------------------------------------------------------- parsing

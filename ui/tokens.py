@@ -185,6 +185,23 @@ def px(value: str | None, fallback: int) -> int:
     return int(round(number * 16)) if unit in ("rem", "em") else int(round(number))
 
 
+def _darken(value: str, amount: float) -> str:
+    """A hex colour, `amount` of the way towards black.
+
+    Used for one thing only - the hover state of an accent fill - because a
+    hover that is a *different* colour rather than the same one pressed a
+    little reads as a different control.
+    """
+    text = (value or "").strip()
+    if not text.startswith("#") or len(text) not in (4, 7):
+        return text
+    if len(text) == 4:
+        text = "#" + "".join(ch * 2 for ch in text[1:])
+    channels = [int(text[index:index + 2], 16) for index in (1, 3, 5)]
+    scaled = [max(0, min(255, round(channel * (1 - amount)))) for channel in channels]
+    return "#" + "".join(f"{channel:02x}" for channel in scaled)
+
+
 def first_font_family(value: str | None, fallback: str) -> str:
     """The first family in a CSS font stack, unquoted. Qt resolves its own
     fallbacks, so passing the whole stack through would just give Qt a
@@ -219,6 +236,11 @@ class Palette:
     accent: str = "#4c43e8"
     on_accent: str = "#ffffff"
     accent_muted: str = "rgba(76, 67, 232, 0.06)"
+    #: The accent one step darker, for the hover state of an accent-filled
+    #: button. Derived rather than declared: the token file has no such
+    #: variable, and inventing a second brand colour to sit beside the first
+    #: is how palettes drift apart.
+    accent_hover: str = "#3f37c9"
     success: str = "#17a06d"
     error: str = "#e5484d"
     amber: str = "#f59e0b"
@@ -270,6 +292,7 @@ class Palette:
             accent=color("--brand-accent", defaults.accent),
             on_accent=color("--on-accent", defaults.on_accent),
             accent_muted=color("--bg-brand-muted", defaults.accent_muted),
+            accent_hover=_darken(color("--brand-accent", defaults.accent), 0.12),
             success=color("--success", defaults.success),
             error=color("--error", defaults.error),
             amber=color("--amber", defaults.amber),

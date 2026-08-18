@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import QSize, Qt, QUrl
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QIcon
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QHBoxLayout,
-    QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMessageBox,
+    QFrame, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
+    QMessageBox,
     QPlainTextEdit, QPushButton, QSpinBox, QSplitter, QStackedWidget,
     QStatusBar, QTextEdit, QVBoxLayout, QWidget,
 )
@@ -27,8 +30,8 @@ from ui import theme
 from ui.code_preview import highlight_range
 from ui.site_preview import build_highlight_js
 from ui.widgets import (
-    ROW_ROLE, EmptyState, FindingDelegate, RowData, diagnostics_message,
-    heading, muted, restyle,
+    ROW_ROLE, EmptyState, FindingDelegate, RowData, chip, diagnostics_message,
+    divider, field, heading, muted, panel, restyle,
 )
 from ui.worker import (
     AnalysisWorker, AuditWorker, RepoAnalysisWorker, RewriteAllWorker,
@@ -38,6 +41,11 @@ from ui.worker import (
 # Below this window width, the detail panel collapses from a persistent
 # third column into an inline panel that expands under the clicked list row.
 WIDE_BREAKPOINT = 1000
+
+#: Shipped design assets: the mark, in both themes, and the application icon.
+#: Kept in the repository rather than reached for in the xFormat checkout, so
+#: the app is the same whether it runs from source or from a bundle.
+ASSETS = Path(__file__).resolve().parent / "design" / "assets"
 
 MODE_WEB = "web"
 MODE_REPO = "repo"
@@ -52,6 +60,15 @@ MODE_AUDIT = "audit"
 #: project, while this is a finished document, so it gets a `<head>` audit,
 #: line numbers, and a real browser render from `file://`.
 MODE_FILE = "file"
+
+#: Severity mapped to the badge class the style sheet already paints for
+#: confidence. One vocabulary of colour for the window, not two.
+_SEVERITY_BADGE = {
+    "critical": theme.CLASS_BADGE_HIGH,
+    "serious": theme.CLASS_BADGE_HIGH,
+    "moderate": theme.CLASS_BADGE_MEDIUM,
+    "minor": theme.CLASS_BADGE_LOW,
+}
 
 #: Severity is the audit's name for the axis the finding delegate paints as
 #: confidence. Mapped here rather than teaching the delegate a second
@@ -113,11 +130,54 @@ class MainWindow(QMainWindow):
         self.repo_ignore_patterns: list[str] = _parse_ignore_text(DEFAULT_IGNORE_PATTERNS)
 
         self.resize(1300, 800)
+        icon = ASSETS / "app-icon.png"
+        if icon.is_file():
+            self.setWindowIcon(QIcon(str(icon)))
         self._build_ui()
         self._retranslate_ui()
         self._update_layout_mode(force=True)
 
     # ------------------------------------------------------------------ UI
+
+
+    def _build_brand_header(self) -> QWidget:
+        """The mark, the name, and the one line that says what the app does."""
+        from PySide6.QtSvgWidgets import QSvgWidget
+
+        bar = QWidget()
+        bar.setProperty("class", theme.CLASS_BRAND)
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(4, 0, 4, 0)
+        layout.setSpacing(self.palette_tokens.space_sm)
+
+        mark = ASSETS / ("logo-dark.svg" if theme.resolve_mode(self.settings.theme) == "dark"
+                         else "logo-light.svg")
+        if mark.is_file():
+            self.brand_mark = QSvgWidget(str(mark))
+            self.brand_mark.setFixedSize(QSize(22, 22))
+            layout.addWidget(self.brand_mark)
+        else:
+            self.brand_mark = None
+
+        self.brand_name = QLabel("XAnalyze")
+        self.brand_name.setProperty("class", theme.CLASS_HEADING)
+        layout.addWidget(self.brand_name)
+
+        self.brand_tagline = muted()
+        layout.addWidget(self.brand_tagline)
+        layout.addStretch(1)
+        return bar
+
+    def _repaint_brand(self) -> None:
+        """Swap the mark when the theme changes: the light logo on a dark
+        canvas is invisible, which is the whole reason two files exist."""
+        if getattr(self, "brand_mark", None) is None:
+            return
+        mark = ASSETS / ("logo-dark.svg"
+                         if theme.resolve_mode(self.settings.theme) == "dark"
+                         else "logo-light.svg")
+        if mark.is_file():
+            self.brand_mark.load(str(mark))
 
     def _build_ui(self) -> None:
         central = QWidget()
@@ -127,11 +187,18 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(gap, gap, gap, gap)
         root.setSpacing(gap)
 
+        # A header strip with the mark and the product name. Not decoration:
+        # this is one application in a family, and the thing that says so at a
+        # glance is the mark, in the same indigo, in the same place as the web
+        # app puts it.
+        root.addWidget(self._build_brand_header())
+
         # The controls live on their own surface rather than floating on the
         # page canvas — the same "monolithic card on a warm canvas" the web
         # app uses to separate chrome from content.
         self.toolbar = QWidget()
         self.toolbar.setProperty("class", theme.CLASS_TOOLBAR)
+        self.toolbar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         controls = QHBoxLayout(self.toolbar)
         controls.setContentsMargins(gap, gap, gap, gap)
         controls.setSpacing(self.palette_tokens.space_sm)
@@ -139,7 +206,7 @@ class MainWindow(QMainWindow):
         self.mode_label = QLabel()
         self.mode_combo = QComboBox()
         self.mode_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-        self.mode_combo.setMinimumContentsLength(10)
+        self.mode_combo.setMinimumContentsLength(14)
         self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
 
         # --- web-mode controls ---
@@ -215,6 +282,9 @@ class MainWindow(QMainWindow):
         # fast, and the static pass already reports most of what is wrong.
         self.browser_check = QCheckBox()
         self.browser_check.setChecked(False)
+        # A checkbox reports the width of its indicator, not of its label, so
+        # without this it is the first control the layout squeezes to nothing.
+        self.browser_check.setMinimumWidth(120)
 
         self.analyze_btn = QPushButton()
         self.analyze_btn.setDefault(True)
@@ -230,7 +300,9 @@ class MainWindow(QMainWindow):
         # is what stops this row from growing unusable.
         controls.addWidget(self.mode_label)
         controls.addWidget(self.mode_combo)
-        controls.addWidget(self.source_controls_stack, stretch=3)
+        # Stretch 2, not 3: the path field will happily eat the row, and the
+        # first thing to go is the label of the browser switch beside it.
+        controls.addWidget(self.source_controls_stack, stretch=2)
         for w in (self.detector_label, self.detector_combo, self.browser_check,
                   self.analyze_btn, self.cancel_btn, self.settings_btn):
             controls.addWidget(w)
@@ -241,16 +313,21 @@ class MainWindow(QMainWindow):
 
         # --- three-column body -------------------------------------------------
         self.columns_splitter = QSplitter(Qt.Orientation.Horizontal)
+        # A gap between the zones, not a seam: panels that touch read as one
+        # wide panel with lines drawn in it, which is exactly the flat-sheet
+        # look the surfaces exist to avoid.
+        self.columns_splitter.setHandleWidth(gap)
+        self.columns_splitter.setChildrenCollapsible(False)
         root.addWidget(self.columns_splitter, stretch=1)
 
         # Column 1: graphical copy of the site OR the raw source file being
         # analyzed, depending on mode.
-        col1 = QWidget()
-        col1_layout = QVBoxLayout(col1)
-        col1_layout.setContentsMargins(0, 0, 0, 0)
-        col1_layout.setSpacing(self.palette_tokens.space_sm)
-        self.col1_header = heading()
-        col1_layout.addWidget(self.col1_header)
+        # Each column is a zone with its own surface and its own titled head,
+        # the way the web app separates one part of a page from another. A Qt
+        # window that paints three regions of one flat sheet reads as a
+        # different product, however correct its colours are.
+        col1, col1_layout, self.col1_header = panel()
+        col1_layout.setContentsMargins(10, 10, 10, 10)
 
         self.col1_stack = QStackedWidget()
         self.site_view = QWebEngineView()
@@ -274,12 +351,8 @@ class MainWindow(QMainWindow):
         self.columns_splitter.addWidget(col1)
 
         # Column 2: the list of flagged passages (+ repo-mode bulk actions).
-        col2 = QWidget()
-        col2_layout = QVBoxLayout(col2)
-        col2_layout.setContentsMargins(0, 0, 0, 0)
-        col2_layout.setSpacing(self.palette_tokens.space_sm)
-        self.flagged_header = heading()
-        col2_layout.addWidget(self.flagged_header)
+        col2, col2_layout, self.flagged_header = panel()
+        col2_layout.setContentsMargins(1, 0, 1, 1)
 
         self.flagged_list = QListWidget()
         self.flagged_list.setMouseTracking(True)  # so the delegate sees hover
@@ -300,7 +373,7 @@ class MainWindow(QMainWindow):
         # in both modes; the two LLM-backed buttons are repo-only.
         self.bulk_actions_row = QWidget()
         bulk_layout = QHBoxLayout(self.bulk_actions_row)
-        bulk_layout.setContentsMargins(0, 0, 0, 0)
+        bulk_layout.setContentsMargins(12, 10, 12, 12)
         self.fix_unicode_btn = QPushButton()
         self.fix_unicode_btn.clicked.connect(self._on_fix_unicode_clicked)
         self.generate_list_btn = QPushButton()
@@ -321,6 +394,7 @@ class MainWindow(QMainWindow):
         for b in (self.fix_unicode_btn, self.generate_list_btn, self.auto_replace_btn,
                   self.fix_on_disk_btn, self.undo_fix_btn, self.export_report_btn):
             bulk_layout.addWidget(b)
+        col2_layout.addWidget(divider())
         col2_layout.addWidget(self.bulk_actions_row)
         # Kept as an alias so the repo-only visibility logic reads clearly.
         self.repo_actions_row = self.bulk_actions_row
@@ -331,7 +405,7 @@ class MainWindow(QMainWindow):
         self.col3 = QWidget()
         self.detail_layout = QVBoxLayout(self.col3)
         self.detail_layout.setContentsMargins(0, 0, 0, 0)
-        self.detail_layout.setSpacing(self.palette_tokens.space_sm)
+        self.detail_layout.setSpacing(0)
         self.columns_splitter.addWidget(self.col3)
 
         self.columns_splitter.setSizes([450, 380, 380])
@@ -358,6 +432,7 @@ class MainWindow(QMainWindow):
         lang = self.lang
         self.setWindowTitle(t("app_title", lang))
         self.mode_label.setText(t("mode_label", lang))
+        self.brand_tagline.setText(t("app_tagline", lang))
         current_mode_data = self.mode_combo.currentData() if self.mode_combo.count() else None
         self.mode_combo.blockSignals(True)
         self.mode_combo.clear()
@@ -433,6 +508,7 @@ class MainWindow(QMainWindow):
         self.palette_tokens = palette
         self.finding_delegate.set_palette(palette)
         self._repaint_preview_background()
+        self._repaint_brand()
         mono = self.code_view.font()
         mono.setFamily(palette.font_mono)
         self.code_view.setFont(mono)
@@ -1001,69 +1077,185 @@ class MainWindow(QMainWindow):
             self._collapse_inline_detail()
 
     def _build_audit_detail_widget(self, issue) -> QWidget:
-        """Why this is a problem and what to do about it.
+        """One finding, laid out as the four questions it answers.
 
-        Four separate fields rather than one paragraph, because they answer
-        four questions and a reader needs different ones at different times:
-        what was found, why it matters, how to fix it, and — when the check
-        cannot be certain — what would make it a false positive.
+        What was found, why it matters, how to fix it, and - when the check
+        cannot be certain - what would make it a false positive. Four boxed
+        blocks rather than four paragraphs: someone who already believes the
+        finding wants only the third one, and should not have to read the
+        first two to reach it.
+
+        Under them, where the rule knows the corrected markup, the correction
+        itself and a button that writes exactly that one element. The button
+        is here rather than only in the toolbar because this is the moment
+        the user has decided about *this* finding, and making them then find
+        it again in a batch is how a fix list stops being used.
         """
+        from PySide6.QtWidgets import QScrollArea
+
         explanation = audit_explanations.render(issue, self.lang)
-        panel = QWidget()
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(0, 0, 0, 0)
+        container, body, _title = panel(t("detail_panel_title", self.lang))
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        inner = QWidget()
+        layout = QVBoxLayout(inner)
+        layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(self.palette_tokens.space_sm)
 
-        title = heading()
-        title.setText(explanation.title)
+        title = heading(explanation.title)
         title.setWordWrap(True)
         layout.addWidget(title)
 
-        location = muted()
-        where = issue.selector or issue.source
-        if issue.line:
-            where = f"{issue.source}:{issue.line}"
-        location.setText(f"[{t('severity_' + issue.severity, self.lang)}] {where}")
-        location.setWordWrap(True)
-        layout.addWidget(location)
+        # The identity of the finding, as chips: severity, where it is, and
+        # who found it. A row of small facts reads faster than a sentence
+        # that has to be parsed to get at the same three things.
+        chips = QHBoxLayout()
+        chips.setSpacing(6)
+        severity_chip = QLabel(t(f"severity_{issue.severity}", self.lang))
+        severity_chip.setProperty("class", _SEVERITY_BADGE[issue.severity])
+        chips.addWidget(severity_chip)
+        where = f"{t('detail_line', self.lang)} {issue.line}" if issue.line else (
+            issue.selector[-48:] or Path(issue.source).name)
+        chips.addWidget(chip(where))
+        chips.addWidget(chip(issue.rule_id))
+        if issue.engine and issue.engine != "static":
+            chips.addWidget(chip(issue.engine))
+        chips.addStretch(1)
+        layout.addLayout(chips)
 
-        for label_key, body in (("audit_found", explanation.found),
-                                ("audit_why", explanation.why),
-                                ("audit_fix", explanation.fix),
-                                ("audit_caveat", explanation.caveat)):
-            if not body:
-                continue
-            field_label = muted()
-            field_label.setText(t(label_key, self.lang))
-            layout.addWidget(field_label)
-            field_body = QLabel(body)
-            field_body.setWordWrap(True)
-            field_body.setTextInteractionFlags(
-                Qt.TextInteractionFlag.TextSelectableByMouse)
-            layout.addWidget(field_body)
+        layout.addWidget(divider())
+
+        for label_key, text_body in (("audit_found", explanation.found),
+                                     ("audit_why", explanation.why),
+                                     ("audit_fix", explanation.fix),
+                                     ("audit_caveat", explanation.caveat)):
+            if text_body:
+                layout.addWidget(field(t(label_key, self.lang), text_body))
 
         if issue.snippet:
-            snippet = QPlainTextEdit(issue.snippet)
-            snippet.setReadOnly(True)
-            mono = snippet.font()
-            mono.setFamily(self.palette_tokens.font_mono)
-            snippet.setFont(mono)
-            snippet.setMaximumHeight(120)
-            layout.addWidget(snippet)
+            layout.addWidget(self._evidence(t("detail_element", self.lang),
+                                            issue.snippet))
+        if issue.fix_snippet:
+            layout.addWidget(self._evidence(t("detail_replacement", self.lang),
+                                            issue.fix_snippet))
 
-        # Who else found it. Only shown when more than one engine did: a
-        # finding two independent engines agree on is not one to argue with,
-        # and that is worth saying where the user is deciding whether to act.
         confirmations = (issue.details or {}).get("also_found_by")
         if confirmations:
-            corroboration = muted()
-            corroboration.setText(t("audit_also_found_by", self.lang,
-                                    engines=", ".join(confirmations)))
-            corroboration.setWordWrap(True)
-            layout.addWidget(corroboration)
+            layout.addWidget(muted(t("audit_also_found_by", self.lang,
+                                     engines=", ".join(confirmations))))
 
         layout.addStretch(1)
-        return panel
+        scroll.setWidget(inner)
+        body.addWidget(scroll, stretch=1)
+
+        actions = self._detail_actions(issue)
+        if actions is not None:
+            body.addWidget(divider())
+            body.addWidget(actions)
+        return container
+
+    def _evidence(self, label_text: str, markup: str) -> QWidget:
+        """Markup shown as evidence: readable, selectable, not editable."""
+        holder = QWidget()
+        holder.setProperty("class", theme.CLASS_FIELD)
+        holder.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        layout = QVBoxLayout(holder)
+        layout.setContentsMargins(12, 10, 12, 12)
+        layout.setSpacing(4)
+        caption = QLabel(label_text.upper())
+        caption.setProperty("class", theme.CLASS_FIELD_LABEL)
+        layout.addWidget(caption)
+        view = QPlainTextEdit(markup)
+        view.setProperty("class", theme.CLASS_CODE)
+        view.setReadOnly(True)
+        view.setMaximumHeight(84)
+        layout.addWidget(view)
+        return holder
+
+    def _detail_actions(self, issue):
+        """The row of things that can be done about this one finding.
+
+        Absent entirely when there is nothing to do: a disabled button with a
+        tooltip explaining why it is disabled is a worse answer than the
+        sentence that replaces it here.
+        """
+        from audit import fixer
+
+        if not issue.fix_snippet or issue.source.startswith(("http://", "https://")):
+            return None
+
+        row = QWidget()
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(14, 10, 14, 12)
+        layout.setSpacing(self.palette_tokens.space_sm)
+
+        held_back = fixer.DECISION_RULES.get(issue.rule_id, "")
+        if held_back:
+            note = muted(t("detail_needs_decision", self.lang))
+            note.setWordWrap(True)
+            layout.addWidget(note, stretch=1)
+        else:
+            layout.addStretch(1)
+
+        button = QPushButton(t("detail_fix_this", self.lang))
+        button.setProperty("class", theme.CLASS_ACCENT)
+        button.setToolTip(t("detail_fix_this_tooltip", self.lang))
+        button.clicked.connect(lambda: self._fix_single_issue(issue))
+        layout.addWidget(button)
+        return row
+
+    def _fix_single_issue(self, issue) -> None:
+        """Write one correction, for the finding in front of the user."""
+        from audit import fix_ai, fixer
+        from audit.engine import DocumentReport
+
+        document = DocumentReport(source=issue.source)
+        document.issues = [issue]
+        ready, pending, skipped = fixer.plan_fixes([document])
+
+        if pending:
+            filled, pending = fix_ai.fill_locally(pending, self._audited_text())
+            ready += filled
+
+        if pending:
+            plan = pending[0]
+            answer = QMessageBox.question(
+                self, t("detail_fix_this", self.lang),
+                t("detail_decide_body", self.lang, reason=plan.needs_input),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+            import rewriter
+
+            try:
+                provider = rewriter.build_provider(self.settings)
+            except Exception as exc:  # noqa: BLE001
+                QMessageBox.warning(self, t("detail_fix_this", self.lang), str(exc))
+                return
+            filled, pending = fix_ai.describe(pending, self._audited_text(),
+                                              provider, self.lang)
+            ready += filled
+
+        if not ready:
+            reason = (skipped[0].reason if skipped
+                      else (pending[0].needs_input if pending else ""))
+            QMessageBox.information(self, t("detail_fix_this", self.lang),
+                                    reason or t("fix_nothing_ready", self.lang))
+            return
+
+        outcome = fixer.apply_fixes(ready)
+        if outcome.errors:
+            QMessageBox.warning(self, t("detail_fix_this", self.lang),
+                                "\n".join(outcome.errors))
+            return
+        self.status_bar.showMessage(
+            t("fix_done", self.lang, applied=len(outcome.applied),
+              files=len(outcome.files_changed)))
+        self._reaudit_after_fix()
+
 
     def _repo_scope(self) -> str:
         return self.scope_combo.currentData() or self.settings.repo_scope or SCOPE_CONTENT

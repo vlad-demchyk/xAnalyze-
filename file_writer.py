@@ -25,6 +25,8 @@ silently delete the other sentences from the user's source file.
 from __future__ import annotations
 
 import os
+
+import backups
 from dataclasses import dataclass, field
 
 from models import CodeBlock, TextSpan
@@ -105,11 +107,11 @@ def apply_replacements(plans: list[ReplacementPlan]) -> ApplyResult:
         if not applied_here:
             continue
 
-        backup_path = file_path + ".bak"
         try:
-            if not os.path.exists(backup_path):
-                with open(backup_path, "w", encoding="utf-8") as fh:
-                    fh.write(original_content)
+            # One implementation of "keep the first copy", shared with the
+            # audit's own writer. Two safety nets with the same rule in them
+            # is how one of them eventually stops matching the other.
+            backups.take(file_path, original_content)
         except OSError as exc:
             result.errors.append(f"{file_path}: could not write backup ({exc}), skipping this file")
             continue
