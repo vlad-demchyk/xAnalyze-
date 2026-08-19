@@ -12,9 +12,10 @@ try:
     from PySide6.QtWidgets import QApplication
     from ui.main_window import MainWindow
     from analysis_modes import (
-        CHECK_ACCESSIBILITY, CHECK_AI_PATTERNS, READER_BROWSER, READER_CODE,
-        SOURCE_FILE, SOURCE_REPO, SOURCE_SITE,
+        CHECK_ACCESSIBILITY, CHECK_AI_PATTERNS, METHOD_AI, METHOD_LOCAL,
+        READER_BROWSER, READER_CODE, SOURCE_FILE, SOURCE_REPO, SOURCE_SITE,
     )
+    from i18n.translations import t
 except Exception as exc:  # noqa: BLE001 - no Qt here is a skip, not a failure
     QApplication = None
     _reason = str(exc)
@@ -115,6 +116,52 @@ class Choices(unittest.TestCase):
         self._select_raw(self.window.mode_combo, SOURCE_FILE)
         self.window.file_path_edit.setText("/tmp/page.html")
         self.assertEqual(self.window.current_request().target, "/tmp/page.html")
+
+
+@unittest.skipIf(QApplication is None, "PySide6 not available")
+class AccountControl(unittest.TestCase):
+    """The header states who pays, and signing in changes who does."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def _window(self, signed_in_detail=None):
+        window = MainWindow()
+        # Patched, not asked: the real answer is a network round trip, and the
+        # question here is what the window does with each answer.
+        status = None
+        if signed_in_detail is not None:
+            status = type("Status", (), {"signed_in": True,
+                                         "detail": signed_in_detail})()
+        window._account_cache = status
+        window._refresh_account_control()
+        return window
+
+    def test_signed_out_offers_signing_in(self):
+        window = self._window()
+        self.assertEqual(window.account_btn.text(), t("settings_sign_in", window.lang))
+        self.assertEqual(window.account_label.text(), "")
+
+    def test_signed_in_shows_the_account_and_offers_signing_out(self):
+        window = self._window("someone@example.com · pro")
+        self.assertEqual(window.account_btn.text(), t("settings_sign_out", window.lang))
+        self.assertEqual(window.account_label.text(), "someone@example.com · pro")
+
+    def test_the_status_is_not_asked_twice(self):
+        window = self._window()
+        calls = []
+        window._xformat_provider = lambda: calls.append(1)
+        window._account_status()
+        window._account_status()
+        self.assertEqual(calls, [], "a cached answer must not be re-asked")
+
+    def test_signing_in_selects_the_ai_method_alongside_the_local_one(self):
+        window = self._window("someone@example.com · pro")
+        window._ai_available = lambda: True
+        window._select_ai_method()
+        self.assertEqual(set(window.current_request().methods),
+                         {METHOD_LOCAL, METHOD_AI})
 
 
 if __name__ == "__main__":

@@ -86,6 +86,21 @@ _SEVERITY_CONFIDENCE = {
 }
 
 
+def _ask_account_later(window) -> None:
+    """Ask about the account once the window is on screen.
+
+    Deferred rather than skipped: the header should end up telling the truth,
+    it just must not make startup wait for a round trip to do so.
+    """
+    from PySide6.QtCore import QTimer
+
+    QTimer.singleShot(0, lambda: window._refresh_account_control(refresh=True))
+
+
+#: "This has not been asked yet", distinct from "the answer is no".
+_UNASKED = object()
+
+
 def _browser_url(source: str) -> str:
     """The address to open for a document.
 
@@ -111,6 +126,10 @@ class MainWindow(QMainWindow):
         #: The source being examined. What used to be `self.mode` is now
         #: derived from this and from the chosen checks, so downstream code
         #: that asks "which kind of run is this" still gets an answer.
+        #: Cached answer to "is an xFormat account connected". `_UNASKED`
+        #: rather than None because "not asked yet" and "signed out" are
+        #: different states and only one of them is worth a round trip.
+        self._account_cache = _UNASKED
         self.source = SOURCE_SITE
         #: The last request that actually ran, kept so a changed question can
         #: be answered from the pages already fetched. See
@@ -158,6 +177,7 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self._retranslate_ui()
         self._update_layout_mode(force=True)
+        _ask_account_later(self)
 
     # ------------------------------------------------------------------ UI
 
@@ -188,7 +208,118 @@ class MainWindow(QMainWindow):
         self.brand_tagline = muted()
         layout.addWidget(self.brand_tagline)
         layout.addStretch(1)
+
+        # Account state belongs where it can be seen. It used to live inside
+        # the settings dialog, which meant the one fact that decides whether
+        # the AI assessment is available at all was three clicks away and
+        # invisible from the window that offers it.
+        self.account_label = muted()
+        layout.addWidget(self.account_label)
+        self.account_btn = QPushButton()
+        self.account_btn.clicked.connect(self._on_account_clicked)
+        layout.addWidget(self.account_btn)
+        # Drawn from what is known, which at build time is nothing. The real
+        # answer is asked once the window exists; see `_ask_account_later`.
+        self._refresh_account_control(ask=False)
         return bar
+
+    # ------------------------------------------------------------- account
+
+    def _xformat_provider(self):
+        from llm.base import LLMProviderFactory
+
+        return LLMProviderFactory.create(
+            "xformat",
+            base_url=self.settings.xformat_base_url,
+            endpoints=self.settings.xformat_endpoints or {},
+        )
+
+    def _account_status(self, refresh: bool = False, ask: bool = True):
+        """The xFormat account's state, or None when it cannot be asked.
+
+        Asked of the subscription specifically, not of whichever provider is
+        configured: this control is about the account, and a machine with a
+        personal key but no account is signed out as far as it is concerned.
+
+        Cached, because every answer is a network round trip and the question
+        is asked on every retranslate. Refreshed only where the answer can
+        actually have changed - signing in, signing out, opening settings.
+        """
+        if refresh:
+            self._account_cache = _UNASKED
+        if self._account_cache is not _UNASKED:
+            return self._account_cache
+        if not ask:
+            # Building the window must not wait on the network. The control is
+            # drawn as signed out and corrected a moment later, which is honest:
+            # nothing is known yet.
+            return None
+
+        from llm.base import LLMAuthError, LLMUnavailable
+
+        try:
+            status = self._xformat_provider().auth_status()
+        except (LLMAuthError, LLMUnavailable, Exception):  # noqa: BLE001
+            status = None
+        self._account_cache = status if status and status.signed_in else None
+        return self._account_cache
+
+    def _refresh_account_control(self, refresh: bool = False,
+                                 ask: bool = True) -> None:
+        status = self._account_status(refresh=refresh, ask=ask)
+        if status is not None:
+            self.account_label.setText(status.detail)
+            self.account_btn.setText(t("settings_sign_out", self.lang))
+        else:
+            self.account_label.setText("")
+            self.account_btn.setText(t("settings_sign_in", self.lang))
+
+    def _on_account_clicked(self) -> None:
+        if self._account_status(refresh=True) is not None:
+            self._sign_out()
+            return
+        self._sign_in()
+
+    def _sign_in(self) -> None:
+        from ui.sign_in_dialog import SignInDialog
+
+        dialog = SignInDialog(self._xformat_provider(), self.lang, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted or dialog.status is None:
+            return
+        # Signing in *is* the choice of who pays: an account that was just
+        # connected and then ignored in favour of a personal key would make the
+        # sign-in pointless. The CLI's rule is the opposite and stays that way -
+        # inside a Claude Code session its own signed-in account pays.
+        self.settings.llm_provider = "xformat"
+        self.settings.save()
+        self._select_ai_method()
+        self._refresh_account_control(refresh=True)
+        self.status_bar.showMessage(
+            t("sign_in_switched", self.lang, detail=dialog.status.detail))
+
+    def _sign_out(self) -> None:
+        try:
+            self._xformat_provider().sign_out()
+        except Exception as exc:  # noqa: BLE001 - the tokens are gone either way
+            self.status_bar.showMessage(str(exc))
+        self._refresh_account_control(refresh=True)
+        # The method combo drops its AI entries when nothing can pay for them,
+        # and a request that asked for AI normalises back to the offline engine.
+        self._retranslate_choices()
+        self.status_bar.showMessage(t("signed_out_message", self.lang))
+
+    def _select_ai_method(self) -> None:
+        """Offer the AI method and pick it, now that there is an account.
+
+        Both rather than AI alone: the offline engine costs nothing and finds
+        the exact character defects a model does not, so dropping it in
+        exchange would be a downgrade disguised as an upgrade.
+        """
+        self._retranslate_choices()
+        index = self.method_combo.findData(
+            self.choice_key((METHOD_LOCAL, METHOD_AI)))
+        if index >= 0:
+            self.method_combo.setCurrentIndex(index)
 
     def _repaint_brand(self) -> None:
         """Swap the mark when the theme changes: the light logo on a dark
@@ -483,6 +614,7 @@ class MainWindow(QMainWindow):
         self.mode_combo.setCurrentIndex(max(idx, 0))
         self.mode_combo.blockSignals(False)
         self._retranslate_choices()
+        self._refresh_account_control(ask=False)
 
         self.url_label.setText(t("url_label", lang))
         self.url_label.setToolTip(t("url_label_full", lang))
@@ -918,6 +1050,17 @@ class MainWindow(QMainWindow):
         for note in request.notes:
             self.status_bar.showMessage(self._note_message(note))
         self._last_request = request
+        # A browser reading is done here, before either pass starts, for two
+        # reasons: QtWebEngine is usable only from the thread that owns the
+        # application (see `_run_browser_pass`), and a run that asks both
+        # questions must not render the same site twice. Both passes then take
+        # the pages through the same cache the question switch uses.
+        if (request.wants_browser and request.source == SOURCE_SITE
+                and self._reusable_pages() is None):
+            pages = self._render_crawl(request.target)
+            if pages is None:
+                return
+            self._remember_extraction(request, pages=pages)
         # Both questions in one run: the audit goes first because it is the
         # one that fetches, and the copy pass then reads what it brought back.
         self._pending_copy_pass = (request.wants_accessibility
@@ -1004,6 +1147,7 @@ class MainWindow(QMainWindow):
         if reused is not None:
             self.status_bar.showMessage(t("status_reusing_pages", self.lang,
                                          count=len(reused)))
+
         self.worker = AnalysisWorker(
             pages=reused,
             root_url=url,
@@ -1088,6 +1232,7 @@ class MainWindow(QMainWindow):
         self.audit_result = None
         self._reset_scan_ui()
         self.worker = AuditWorker(
+            pages=self._reusable_pages() if self.source == SOURCE_SITE else None,
             target=target,
             depth=self.depth_spin.value(),
             max_pages=self.settings.max_pages,
@@ -1133,6 +1278,39 @@ class MainWindow(QMainWindow):
             # back first.
             self._pending_copy_pass = False
             self._start_copy_pass()
+
+    def _render_crawl(self, url: str):
+        """Crawl with a browser in the loop, on this thread.
+
+        Returns the pages, or None when the user should be told rather than
+        given a silently worse reading. The point of doing this at all: a page
+        whose copy is written by JavaScript has nothing to read in the response,
+        and until now the tool could only say so.
+        """
+        from audit import driver
+        from crawler import RENDER_AUTO, CrawlConfig, crawl
+
+        usable, reason = driver.available()
+        if not usable:
+            QMessageBox.information(self, t("reader_browser", self.lang), reason)
+            return None
+
+        config = CrawlConfig(max_depth=self.depth_spin.value(),
+                             max_pages=self.settings.max_pages,
+                             render_mode=RENDER_AUTO)
+
+        def progress(page_url: str, _depth: int) -> None:
+            self.status_bar.showMessage(
+                t("status_browser_pass", self.lang, url=page_url))
+
+        try:
+            with driver.html_renderer() as render:
+                return crawl(url, config, progress_cb=progress, render=render)
+        except Exception as exc:  # noqa: BLE001 - a failed browser is worth a
+            # sentence, not a traceback: the run can still be repeated without
+            # one, and the user is the one who chose to use it.
+            QMessageBox.warning(self, t("reader_browser", self.lang), str(exc))
+            return None
 
     def _run_browser_pass(self) -> None:
         """Re-audit each page in a real browser, on this thread.

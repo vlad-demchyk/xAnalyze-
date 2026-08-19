@@ -184,6 +184,33 @@ _STRINGS: dict[str, dict[str, str]] = {
     "source_file": {
         "uk": "Файл HTML", "it": "File HTML", "en": "HTML file",
     },
+    "sign_in_title": {
+        "uk": "Акаунт xFormat",
+        "it": "Account xFormat",
+        "en": "xFormat account",
+    },
+    "sign_in_hint": {
+        "uk": "Вхід дає AI-оцінку за підпискою, без особистого ключа. "
+              "Пароль не зберігається - лишаються тільки видані токени.",
+        "it": "L'accesso abilita la valutazione AI con l'abbonamento, senza "
+              "una chiave personale. La password non viene salvata: restano "
+              "solo i token emessi.",
+        "en": "Signing in enables the AI assessment on the subscription, with "
+              "no personal key. The password is not stored - only the issued "
+              "tokens are.",
+    },
+    "sign_in_switched": {
+        "uk": "Увійшли: {detail}. AI-оцінка тепер іде за підпискою.",
+        "it": "Accesso effettuato: {detail}. La valutazione AI usa "
+              "l'abbonamento.",
+        "en": "Signed in: {detail}. The AI assessment now runs on the "
+              "subscription.",
+    },
+    "signed_out_message": {
+        "uk": "Вийшли з акаунта. AI-оцінка доступна лише з особистим ключем.",
+        "it": "Disconnesso. La valutazione AI richiede una chiave personale.",
+        "en": "Signed out. The AI assessment needs a personal key now.",
+    },
     "status_reusing_pages": {
         "uk": "Сторінки вже завантажені ({count}), обхід не потрібен",
         "it": "Pagine già scaricate ({count}), nessuna nuova scansione",

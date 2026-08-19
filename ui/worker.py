@@ -246,8 +246,12 @@ class AuditWorker(QThread):
     def __init__(self, target: str, depth: int, max_pages: int = 30,
                  is_repo: bool = False, is_page_file: bool = False,
                  ignore_patterns=None, max_files: int = 5000,
-                 settings=None, parent=None):
+                 settings=None, pages: list | None = None, parent=None):
         super().__init__(parent)
+        #: Pages already fetched - by an earlier run, or by the browser on the
+        #: main thread. Given them, this worker does not crawl: a run that asks
+        #: both questions about one site must fetch it once.
+        self.pages = pages
         self.target = target
         self.depth = depth
         self.max_pages = max_pages
@@ -284,9 +288,13 @@ class AuditWorker(QThread):
                 def progress_cb(url: str, depth: int) -> None:
                     self.crawling.emit(url, depth)
 
-                pages = crawl(self.target,
-                              CrawlConfig(max_depth=self.depth, max_pages=self.max_pages),
-                              progress_cb=progress_cb)
+                if self.pages is not None:
+                    pages = self.pages
+                else:
+                    pages = crawl(self.target,
+                                  CrawlConfig(max_depth=self.depth,
+                                              max_pages=self.max_pages),
+                                  progress_cb=progress_cb)
                 if self._cancelled:
                     return
                 self.auditing.emit(self.target)
