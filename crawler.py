@@ -97,12 +97,29 @@ _BLOCKED_STATUSES = {401, 403, 405, 429}
 _TAG_RE = re.compile(r"<[^>]+>")
 
 
+#: When to hand a page to a browser instead of reading the fetch.
+#:
+#: `never` is the historical behaviour and the fast one. `always` renders every
+#: page. `auto` is the useful default: fetch first, and render only the pages
+#: whose fetch came back as an application shell - which is exactly the case
+#: the diagnostics already detect and could previously only report.
+RENDER_NEVER = "never"
+RENDER_AUTO = "auto"
+RENDER_ALWAYS = "always"
+
+#: Recorded on a page whose text and links came from a browser, not the fetch.
+#: Kept as a reason rather than a silent substitution: "this page had to be
+#: rendered to be read" is a fact about the site worth showing.
+RENDERED = "rendered"
+
+
 @dataclass
 class CrawlConfig:
     max_depth: int = 1
     max_pages: int = 30
     timeout: float = 10.0
     same_domain_only: bool = True
+    render_mode: str = RENDER_NEVER
 
 
 def _normalize(url: str) -> str:
@@ -113,6 +130,19 @@ def _normalize(url: str) -> str:
 
 def _same_domain(a: str, b: str) -> bool:
     return urlparse(a).netloc == urlparse(b).netloc
+
+
+def _should_render(mode: str, diagnostics) -> bool:
+    """Is this page worth handing to a browser?"""
+    if mode == RENDER_ALWAYS:
+        return True
+    if mode != RENDER_AUTO:
+        return False
+    # Exactly the cases where reading the fetch produced nothing to read. A
+    # page that came back with its copy in it is not rendered again: it would
+    # cost seconds per page to confirm what is already known.
+    return (EMPTY_JS_RENDERED in diagnostics.reasons
+            or not diagnostics.blocks_kept)
 
 
 CANDIDATE_TAGS = [
@@ -305,11 +335,18 @@ def _diagnose(diag: PageDiagnostics, url: str, html: str, blocks: list) -> None:
         diag.reasons.append(EMPTY_TOO_SHORT)
 
 
-def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None) -> list[PageResult]:
+def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
+          render=None) -> list[PageResult]:
     """Breadth-first crawl starting at root_url up to config.max_depth hops.
 
     progress_cb, if given, is called as progress_cb(url, depth) right before
     each page is fetched, so a UI can show live progress.
+
+    render, if given, is called as render(url) and returns the DOM a browser
+    built, or "" when it could not. It is injected rather than imported so the
+    crawler keeps no opinion about which browser, and stays importable without
+    Qt: the walk is the crawler's job, and rendering is one way of reading a
+    page. `config.render_mode` decides when it is called at all.
     """
     config = config or CrawlConfig()
     root_url = _normalize(root_url)
@@ -355,6 +392,26 @@ def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None) ->
 
         blocks = _extract_text_blocks(html, url, diagnostics)
         _diagnose(diagnostics, url, html, blocks)
+
+        # The page was read as it arrived. If that reading is empty because the
+        # copy is written by JavaScript, the browser is the only reader that can
+        # answer - and the fetch already said so.
+        if render is not None and _should_render(config.render_mode, diagnostics):
+            rendered = ""
+            try:
+                rendered = render(url) or ""
+            except Exception as exc:  # noqa: BLE001 - a failed render is a
+                # diagnosis, not a crashed crawl: the fetched reading stands.
+                diagnostics.render_error = str(exc)
+            if rendered:
+                html = rendered
+                diagnostics.html_bytes = len(rendered)
+                # Re-diagnosed from scratch: the reasons recorded a moment ago
+                # described the shell, and every one of them may now be false.
+                diagnostics.reasons = [RENDERED]
+                blocks = _extract_text_blocks(html, url, diagnostics)
+                _diagnose(diagnostics, url, html, blocks)
+
         results.append(
             PageResult(url=url, depth=depth, blocks=blocks, raw_html=html,
                        diagnostics=diagnostics)

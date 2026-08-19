@@ -353,7 +353,9 @@ def cmd_audit(args) -> int:
         # crawler, not two.
         if not target.startswith(("http://", "https://")):
             target = "https://" + target
-        pages = crawl(target, CrawlConfig(max_depth=args.depth, max_pages=args.max_pages))
+        config = CrawlConfig(max_depth=args.depth, max_pages=args.max_pages,
+                             render_mode=_render_mode(args))
+        pages = _crawl_maybe_rendering(target, config)
         result = audit.analyze_pages(pages, target, ai_review=reviewer)
     else:
         from repo_scanner import ScanConfig, scan_repo
@@ -886,6 +888,40 @@ def _is_page_file(target: str) -> bool:
     return path.is_file() and path.suffix.lower() in PAGE_FILE_SUFFIXES
 
 
+def _render_mode(args) -> str:
+    """When to hand a page to a browser during the crawl.
+
+    Defaults to following `--browser`: someone who asked for a browser pass has
+    already accepted the cost of one, and a client-rendered site is precisely
+    where the fetch finds nothing to audit. `--render` overrides that either
+    way, because "audit what the server sends" is also a legitimate question.
+    """
+    from crawler import RENDER_AUTO, RENDER_NEVER
+
+    explicit = getattr(args, "render", None)
+    if explicit:
+        return explicit
+    return RENDER_AUTO if getattr(args, "browser", False) else RENDER_NEVER
+
+
+def _crawl_maybe_rendering(target: str, config):
+    """Crawl, starting a browser only if the configuration can use one."""
+    from crawler import RENDER_NEVER, crawl
+
+    if config.render_mode == RENDER_NEVER:
+        return crawl(target, config)
+
+    from audit import driver
+
+    usable, reason = driver.available()
+    if not usable:
+        print(f"# rendering unavailable ({reason}); reading what the server sends",
+              file=sys.stderr)
+        return crawl(target, config)
+    with driver.html_renderer() as render:
+        return crawl(target, config, render=render)
+
+
 def _browser_url(source: str) -> str:
     """The address the browser should open for a document.
 
@@ -1215,6 +1251,13 @@ def build_parser() -> argparse.ArgumentParser:
                          help="link depth to crawl; same-domain only (default 0: one page)")
     p_audit.add_argument("--max-pages", type=int, default=30)
     p_audit.add_argument("--max-files", type=int, default=5000)
+    p_audit.add_argument("--render", choices=("never", "auto", "always"),
+                         default=None,
+                         help="hand pages to a real browser during the crawl, "
+                              "so a client-rendered site is read rather than "
+                              "diagnosed: auto renders only the pages whose "
+                              "fetch came back an empty shell. Defaults to "
+                              "auto with --browser, never without it")
     p_audit.add_argument("--exclude", nargs="*", default=None)
     p_audit.add_argument("--no-default-excludes", dest="use_default_excludes",
                          action="store_false", default=True)

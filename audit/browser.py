@@ -84,6 +84,27 @@ class BrowserAuditOptions:
     #: the tool at a file, and then only because an exported page whose images
     #: sit beside it would otherwise be audited half-loaded.
     allow_local_files: bool = False
+    #: Also bring back the DOM as the browser built it. This is what lets a
+    #: client-rendered page be *read* rather than only audited: the copy and
+    #: the links of an application shell exist only after hydration, and a
+    #: plain fetch of it returns neither.
+    capture_html: bool = False
+
+
+#: The rendered document, source of both text and links for a page whose
+#: server returns an empty shell.
+#:
+#: The doctype is put back by hand: `documentElement.outerHTML` starts at
+#: `<html>` and leaves it out, so a rendered page read without this looks like
+#: a page with no doctype at all - and one of the rules says so, three pages in
+#: a row, about a site whose doctype is right there in the response.
+HTML_SCRIPT = (
+    '(function () {'
+    '  var type = document.doctype;'
+    '  var prefix = type ? "<!DOCTYPE " + type.name + ">" : "";'
+    '  return prefix + document.documentElement.outerHTML;'
+    '})()'
+)
 
 
 def engines_available() -> dict:

@@ -71,6 +71,10 @@ class PageAudit:
     error: str = ""
     #: Per-script failures that did not stop the rest of the pass.
     engine_errors: dict = field(default_factory=dict)
+    #: The DOM as the browser built it, when `capture_html` asked for it. Empty
+    #: otherwise - and empty is not the same as "the page had no content",
+    #: which is why it is not None.
+    html: str = ""
 
 
 def ensure_headless_application():
@@ -262,6 +266,7 @@ class BrowserAuditRunner:
             ("htmlcs", self.options.run_htmlcs and browser.engines_available()["htmlcs"]),
             ("measurements", self.options.run_measurements),
             ("states", self.options.run_states),
+            ("html", self.options.capture_html),
         ) if enabled]
 
         def on_script_done(name: str, value):
@@ -283,6 +288,7 @@ class BrowserAuditRunner:
                 "htmlcs": browser.htmlcs_script,
                 "measurements": lambda: browser.MEASUREMENT_SCRIPT,
                 "states": states.state_script,
+                "html": lambda: browser.HTML_SCRIPT,
             }
             # Sequentially, not in parallel: axe and the state pass both walk
             # the whole DOM, and the state pass moves focus around. Running
@@ -332,12 +338,61 @@ class BrowserAuditRunner:
             result.measurements = _parse(payloads["measurements"])
         if "states" in payloads:
             issues += states.issues_from_states(payloads["states"], url)
+        if "html" in payloads:
+            # A string, not JSON: the other scripts return structures, this one
+            # returns the document, and putting it through the same parser
+            # would only be a way to lose it.
+            result.html = payloads["html"] if isinstance(payloads["html"], str) else ""
 
         # One finding per problem, whoever found it: the same missing `alt`
         # reported by our rule, by axe and by HTML_CodeSniffer is one row that
         # names its corroboration, not three rows.
         result.issues = browser.deduplicate(issues)
         return result
+
+
+class html_renderer:
+    """A `render(url) -> html` callable backed by one browser, as a context.
+
+    A context manager because the browser is expensive to start and must be
+    shut down deliberately: one profile for the whole crawl rather than one per
+    page, and the profile released before the process exits (Qt warns, loudly
+    and correctly, about a profile still in use).
+
+    Must be used from the thread that owns the Qt application - QtWebEngine
+    has no other mode - so a caller on a worker thread renders before or after
+    its own work, not inside it.
+    """
+
+    def __init__(self, settle_ms: int = 1200, allow_local_files: bool = False):
+        self.options = browser.BrowserAuditOptions(
+            run_axe=False, run_htmlcs=False, run_measurements=False,
+            run_states=False, capture_html=True, settle_ms=settle_ms,
+            allow_local_files=allow_local_files,
+        )
+        self.runner = None
+
+    def __enter__(self):
+        ensure_headless_application()
+        self.runner = BrowserAuditRunner(self.options)
+        return self
+
+    def __exit__(self, *_exc):
+        if self.runner is not None:
+            self.runner.close()
+            self.runner = None
+        return False
+
+    def __call__(self, url: str) -> str:
+        if self.runner is None:
+            raise RuntimeError("html_renderer used outside its context")
+        result = self.runner.audit(url)
+        if result.error:
+            # Raised rather than returned empty: the crawler records the reason
+            # against the page, and "" would be indistinguishable from a page
+            # that rendered to nothing.
+            raise RuntimeError(result.error)
+        return result.html
 
 
 def audit_urls(urls, options: browser.BrowserAuditOptions | None = None) -> list:

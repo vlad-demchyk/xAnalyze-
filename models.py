@@ -82,6 +82,10 @@ class PageDiagnostics:
     dropped_too_short: int = 0
     dropped_duplicate: int = 0
     js_framework: str = ""       # "react" / "next" / "vue" / ... when detected
+    #: Why the browser could not render this page, when one was asked to. The
+    #: fetched reading still stands, so this is a note on the result rather
+    #: than an error that replaces it.
+    render_error: str = ""
     has_noscript_notice: bool = False
     reasons: list[str] = field(default_factory=list)
 
