@@ -108,8 +108,14 @@ def _line_lookup(raw_text: str):
     return line_of
 
 
+#: Suffixes whose contents are a finished document rather than a fragment of
+#: one. Everything else in a repository is source that merely contains markup.
+PAGE_SUFFIXES = {".html", ".htm", ".xhtml"}
+
+
 def analyze_document(markup: str, source: str, rules=None,
-                     line_numbers: bool = False, ai_review=None) -> DocumentReport:
+                     line_numbers: bool = False, ai_review=None,
+                     document_kind: str = "page") -> DocumentReport:
     """Run every rule over one document.
 
     `ai_review` is an optional `AIAccessibilityReview`. It runs on the same
@@ -124,9 +130,16 @@ def analyze_document(markup: str, source: str, rules=None,
         return DocumentReport(source=source, error=str(exc))
 
     context = RuleContext(source=source)
+    context.document_kind = document_kind
     context.dom_path = _dom_path
     if line_numbers:
         context.line_of = _line_lookup(markup)
+
+    if document_kind != "page":
+        # A component file is a piece of a page. Asking it for a doctype, a
+        # title or exactly one h1 reports the absence of things that belong to
+        # the page it will be part of.
+        rules = [rule for rule in rules if not getattr(rule, "page_level", False)]
 
     report = DocumentReport(source=source)
     report.elements_checked = len(document.find_all(True))
@@ -227,8 +240,11 @@ def analyze_files(file_results, root: str, rules=None, ai_review=None) -> Access
             continue
         if "<" not in file_result.raw_text:
             continue
+        kind = ("page" if Path(file_result.path).suffix.lower() in PAGE_SUFFIXES
+                else "fragment")
         report = analyze_document(file_result.raw_text, file_result.path, rules,
-                                  line_numbers=True, ai_review=ai_review)
+                                  line_numbers=True, ai_review=ai_review,
+                                  document_kind=kind)
         if report.issues or report.error:
             result.documents.append(report)
     return result

@@ -39,6 +39,7 @@ class PerformanceRule(Rule):
 
 class RenderBlockingResources(PerformanceRule):
     id = "perf-render-blocking"
+    page_level = True
     severity = SERIOUS
 
     def check(self, document, context) -> list:
@@ -74,6 +75,7 @@ class RenderBlockingResources(PerformanceRule):
 
 class SynchronousThirdPartyScripts(PerformanceRule):
     id = "perf-third-party-sync"
+    page_level = True
     severity = SERIOUS
 
     def check(self, document, context) -> list:
@@ -151,6 +153,7 @@ class ImagesWithoutLazyLoading(PerformanceRule):
 
 class FontsWithoutDisplaySwap(PerformanceRule):
     id = "perf-font-display"
+    page_level = True
     severity = MODERATE
     confidence = NEEDS_BROWSER
 
@@ -188,6 +191,7 @@ class FontsWithoutDisplaySwap(PerformanceRule):
 
 class MissingResourceHints(PerformanceRule):
     id = "perf-preconnect"
+    page_level = True
     severity = MINOR
 
     def check(self, document, context) -> list:

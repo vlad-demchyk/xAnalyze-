@@ -21,7 +21,7 @@ import re
 
 from ..base import (
     ACCESSIBILITY, CRITICAL, EXACT, MINOR, MODERATE, NEEDS_BROWSER, SERIOUS,
-    Issue, Rule, RuleRegistry, snippet_of,
+    Issue, Rule, RuleRegistry, is_binding, snippet_of,
 )
 
 # Elements that are focusable and actionable, i.e. need an accessible name.
@@ -168,7 +168,11 @@ def _has_label(tag, document) -> bool:
     if not control_id:
         return False
     for label in document.find_all("label"):
-        if label.get("for") == control_id and _text_of(label):
+        # `htmlFor` is React's spelling of the same attribute, and an HTML
+        # parser lowercases it. Reading only `for` made every labelled JSX
+        # field look unlabelled.
+        target = label.get("for") or label.get("htmlfor")
+        if target == control_id and _text_of(label):
             return True
     return False
 
@@ -201,6 +205,7 @@ class VagueLinkText(AccessibilityRule):
 
 class DocumentLanguage(AccessibilityRule):
     id = "html-lang"
+    page_level = True
     severity = SERIOUS
     wcag = ("3.1.1",)
 
@@ -221,6 +226,7 @@ class DocumentLanguage(AccessibilityRule):
 
 class DocumentTitle(AccessibilityRule):
     id = "document-title"
+    page_level = True
     severity = SERIOUS
     wcag = ("2.4.2",)
 
@@ -264,6 +270,7 @@ class HeadingOrder(AccessibilityRule):
 
 class MissingH1(AccessibilityRule):
     id = "page-has-h1"
+    page_level = True
     severity = MODERATE
     wcag = ("1.3.1",)
 
@@ -460,6 +467,7 @@ class TableStructure(AccessibilityRule):
 
 class ViewportZoomBlocked(AccessibilityRule):
     id = "viewport-zoom"
+    page_level = True
     severity = SERIOUS
     wcag = ("1.4.4",)
 

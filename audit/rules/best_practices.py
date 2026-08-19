@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 
 from ..base import (
-    BEST_PRACTICES, MINOR, MODERATE, SERIOUS, Issue, Rule, RuleRegistry,
+    BEST_PRACTICES, MINOR, MODERATE, SERIOUS, Issue, is_binding, Rule, RuleRegistry,
     snippet_of,
 )
 
@@ -80,6 +80,7 @@ class TargetBlankWithoutNoopener(BestPracticeRule):
 
 class MissingCharset(BestPracticeRule):
     id = "bp-charset"
+    page_level = True
     severity = MODERATE
 
     def check(self, document, context) -> list:
@@ -103,6 +104,7 @@ class MissingCharset(BestPracticeRule):
 
 class DocumentTypeMissing(BestPracticeRule):
     id = "bp-doctype"
+    page_level = True
     severity = MODERATE
 
     def check(self, document, context) -> list:
@@ -137,6 +139,13 @@ class InlineEventHandlers(BestPracticeRule):
                 if id(tag) in seen:
                     continue
                 seen.add(id(tag))
+                # `onClick={close}` in a component file is a framework
+                # binding, not an inline handler: it compiles to an event
+                # listener and never reaches the served HTML, so it costs the
+                # CSP nothing. Judging it as inline made React source read as
+                # thousands of security findings.
+                if is_binding(tag.get(handler)):
+                    continue
                 # Inline handlers are what force a Content-Security-Policy to
                 # allow 'unsafe-inline', which is the single change that turns
                 # a CSP from a defence into a formality.

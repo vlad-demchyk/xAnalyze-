@@ -38,6 +38,7 @@ class SeoRule(Rule):
 
 class TitleLength(SeoRule):
     id = "seo-title-length"
+    page_level = True
     severity = MODERATE
 
     def check(self, document, context) -> list:
@@ -60,6 +61,7 @@ class TitleLength(SeoRule):
 
 class MetaDescription(SeoRule):
     id = "seo-meta-description"
+    page_level = True
     severity = MODERATE
 
     def check(self, document, context) -> list:
@@ -92,6 +94,7 @@ class MetaDescription(SeoRule):
 
 class CanonicalLink(SeoRule):
     id = "seo-canonical"
+    page_level = True
     severity = MODERATE
 
     def check(self, document, context) -> list:
@@ -120,6 +123,7 @@ class CanonicalLink(SeoRule):
 
 class RobotsNoindex(SeoRule):
     id = "seo-noindex"
+    page_level = True
     severity = SERIOUS
 
     def check(self, document, context) -> list:
@@ -143,6 +147,7 @@ class RobotsNoindex(SeoRule):
 
 class OpenGraph(SeoRule):
     id = "seo-open-graph"
+    page_level = True
     severity = MINOR
 
     _REQUIRED = ("og:title", "og:description", "og:image")
@@ -167,6 +172,7 @@ class OpenGraph(SeoRule):
 
 class StructuredData(SeoRule):
     id = "seo-structured-data"
+    page_level = True
     severity = MINOR
 
     def check(self, document, context) -> list:

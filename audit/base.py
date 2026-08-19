@@ -118,6 +118,12 @@ class Rule(ABC):
     #: to": a static check almost never covers a criterion in full, and
     #: claiming otherwise is how tools end up promising compliance.
     wcag: tuple = ()
+    #: True when the check only means something for a whole document: a
+    #: doctype, a title, exactly one h1. A component file holds a fragment of
+    #: a page, so running these over it reports the absence of things that
+    #: were never supposed to be there — which is how a repo report fills up
+    #: with findings nobody can act on.
+    page_level: bool = False
 
     @abstractmethod
     def check(self, document, context) -> list:
@@ -162,6 +168,10 @@ class RuleRegistry:
 class RuleContext:
     """What a rule needs to know about where it is running."""
     source: str = ""
+    #: "page" for a served page or a self-contained file, "fragment" for a
+    #: source file that merely contains markup. Page-level rules are skipped
+    #: on a fragment; see `Rule.page_level`.
+    document_kind: str = "page"
     #: Maps a bs4 tag to a CSS-ish path. Injected rather than imported so the
     #: web and repo paths can supply their own (a repo file also wants a line
     #: number, which a live page has no notion of).
@@ -172,6 +182,31 @@ class RuleContext:
         selector = self.dom_path(tag) if self.dom_path else ""
         line = self.line_of(tag) if self.line_of else None
         return selector, line
+
+
+def is_binding(value) -> str:
+    """Is this attribute value an unevaluated template expression?
+
+    `onClick={handleClose}` in JSX, `:href="url"` in Vue, `{#if}` in Svelte:
+    an HTML parser reads these as ordinary attribute values, so a rule sees
+    the literal text `{handleClose}` where the browser will see a function
+    reference — or, for an aria-label, a string the parser cannot know.
+    Judging the placeholder as if it were the final value is what turns every
+    React handler into an "inline event handler" finding.
+
+    Returns the kind of binding for the report, or "" when the value is a
+    plain literal.
+    """
+    text = (value if isinstance(value, str) else " ".join(value or [])).strip()
+    if not text:
+        return ""
+    if text.startswith("{{") and text.endswith("}}"):
+        return "mustache"       # Vue, Angular, Handlebars
+    if text.startswith("{"):
+        return "expression"     # JSX, Svelte
+    if text.startswith(("<%", "${")):
+        return "template"       # ERB/EJS, template literal
+    return ""
 
 
 def snippet_of(tag, limit: int = 160) -> str:
