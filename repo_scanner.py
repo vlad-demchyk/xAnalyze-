@@ -157,8 +157,14 @@ _CODE_COMMENT_RE = re.compile(
 # strings and braced expressions are consumed as units.
 _TAG_GAP_RE = re.compile(
     r"""(?<![\w)\]])<(?P<closing>/?)(?P<name>[A-Za-z][\w.:-]*)"""
-    r"""(?:"[^"]*"|'[^']*'|\{[^{}]*\}|[^<>"'])*?/?>"""
-    r"""(?P<gap>[^<>]{1,2000}?)(?=<)""",
+    # The attribute region. Each alternative starts with a character the others
+    # exclude, so at every position exactly one of them can apply. Written that
+    # way on purpose: an alternation whose branches can all match the same
+    # character has to try every combination before it can fail, and on a file
+    # with an unclosed `<` that is exponential - one 4 KB component hung the
+    # whole scan.
+    r"""(?:[^<>"'{]|"[^"]*"|'[^']*'|\{[^{}]*\})*/?>"""
+    r"""(?P<gap>[^<>]{1,2000})(?=<)""",
     re.DOTALL,
 )
 

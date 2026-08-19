@@ -48,7 +48,7 @@ EXIT_ERROR = 2
 
 # --------------------------------------------------------------- collection
 
-def _collect_files(paths: list[str], args) -> list:
+def _collect_files(paths: list[str], args, missing_out=None) -> list:
     """Turn the given paths into FileResults. A directory is walked with the
     exclusion rules; a file named directly is always scanned."""
     ignore = _parse_ignore_text(DEFAULT_IGNORE_PATTERNS) if args.use_default_excludes else []
@@ -59,6 +59,10 @@ def _collect_files(paths: list[str], args) -> list:
     scope = getattr(args, "scope", "content")
 
     results = []
+    #: Paths that do not exist, collected so the caller can fail rather than
+    #: report a clean scan of nothing. A mistyped path is a pipeline pass
+    #: otherwise, which is the worst kind of wrong answer.
+    missing: list = []
     for raw in paths:
         p = Path(raw)
         if p.is_dir():
@@ -72,6 +76,9 @@ def _collect_files(paths: list[str], args) -> list:
             results.append(scan_file(str(p), scope))
         else:
             print(f"path not found: {raw}", file=sys.stderr)
+            missing.append(raw)
+    if missing_out is not None:
+        missing_out.extend(missing)
     return results
 
 
@@ -229,12 +236,19 @@ def _print_human(findings) -> None:
 # ---------------------------------------------------------------- commands
 
 def cmd_scan(args) -> int:
-    files = _collect_files(args.paths, args)
+    missing: list = []
+    files = _collect_files(args.paths, args, missing_out=missing)
     findings, _ = _analyze(files, args)
     if args.json:
         _print_json(findings)
     else:
         _print_human(findings)
+    if missing:
+        # Said again at the end: the warning above scrolls past a long report,
+        # and "nothing found" plus exit 0 is indistinguishable from success.
+        print(f"# {len(missing)} path(s) did not exist; nothing was read from them",
+              file=sys.stderr)
+        return EXIT_ERROR
     if args.check and findings:
         return EXIT_FINDINGS
     return EXIT_OK
@@ -339,6 +353,15 @@ def cmd_audit(args) -> int:
         reviewer = AIAccessibilityReview(provider=provider)
 
     target = args.target
+    # A target that is neither a URL nor a path that exists is a typo, and the
+    # only honest answer is to say so. Auditing it used to print "0 findings"
+    # and exit 0 - which in a pipeline is a pass, so a mistyped path read as a
+    # clean bill of health.
+    if not (target.startswith(("http://", "https://")) or args.url):
+        if not Path(target).exists():
+            print(f"path not found: {target}", file=sys.stderr)
+            return EXIT_ERROR
+
     if _is_page_file(target) and not args.url:
         # A page built into one file is a finished document, so it is audited
         # as a page: `<head>` included, line numbers on, and - with --browser -
