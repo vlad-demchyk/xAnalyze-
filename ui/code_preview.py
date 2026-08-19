@@ -10,6 +10,21 @@ from PySide6.QtGui import QColor, QTextCharFormat, QTextCursor
 HIGHLIGHT_COLOR = QColor(255, 68, 68, 70)
 
 
+def highlight_line(text_edit, line: int) -> None:
+    """Highlight one whole line, 1-based, and scroll it into view.
+
+    An audit finding in a source file is located by line, not by character
+    range: the rules read a parsed document and report where the element was,
+    which is the number an editor also understands.
+    """
+    document = text_edit.document()
+    block = document.findBlockByLineNumber(max(line - 1, 0))
+    if not block.isValid():
+        return
+    highlight_range(text_edit, block.position(),
+                    block.position() + block.length() - 1)
+
+
 def highlight_range(text_edit, start: int, end: int) -> None:
     # Clear any previous highlight first.
     clear_cursor = QTextCursor(text_edit.document())

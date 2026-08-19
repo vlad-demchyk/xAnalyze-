@@ -165,6 +165,9 @@ class MainWindow(QMainWindow):
         self.current_preview_url: str | None = None       # web mode
         self.current_preview_path: str | None = None      # repo mode
         self._pending_highlight_dom_path: str | None = None
+        #: The element's own opening tag, used when the selector no longer
+        #: matches because the page's own scripts moved things around.
+        self._pending_highlight_tag: str = ""
         self._expanded_item: QListWidgetItem | None = None
         self._last_selected_key: tuple | None = None
         self.wide_mode: bool | None = None  # forces first resizeEvent to initialize layout
@@ -1572,20 +1575,56 @@ class MainWindow(QMainWindow):
             t("empty_audit_unreadable_title", self.lang), "\n".join(lines).strip())
 
     def _on_audit_item_clicked(self, issue) -> None:
-        """Show the page the finding is on, and the explanation beside it."""
-        address = _browser_url(issue.source)
-        if self.current_preview_url != address:
-            self.current_preview_url = address
-            self.site_view.setUrl(QUrl(address))
+        """Show the finding in its document, and the explanation beside it.
+
+        "Show" means the element, not the page: a list of findings next to a
+        page scrolled to the top leaves the reader to hunt for the thing the
+        row is about. Which preview does the showing depends on what the
+        document is - a page gets outlined in the browser, a source file gets
+        its line highlighted.
+        """
+        if self.source == SOURCE_REPO:
+            self._show_audit_issue_in_code(issue)
+        else:
+            self._show_audit_issue_in_page(issue)
         if self.wide_mode:
             self._clear_layout(self.detail_layout)
             self.detail_layout.addWidget(self._build_audit_detail_widget(issue))
         else:
             # In a narrow window there is no third column, so the explanation
             # expands under the row that was clicked - the same behaviour the
-            # text scan has always had. Without this branch an audit finding
-            # in a narrow window answered a click with nothing at all.
+            # text scan has always had.
             self._toggle_audit_detail(self.flagged_list.currentItem(), issue)
+
+    def _show_audit_issue_in_page(self, issue) -> None:
+        address = _browser_url(issue.source)
+        # Held until the page reports itself loaded: highlighting a document
+        # that is still arriving finds nothing and leaves no trace of trying.
+        self._pending_highlight_dom_path = issue.selector or ""
+        self._pending_highlight_tag = issue.snippet or ""
+        if self.current_preview_url != address:
+            self.current_preview_url = address
+            self.site_view.setUrl(QUrl(address))
+        else:
+            self._run_pending_highlight()
+
+    def _show_audit_issue_in_code(self, issue) -> None:
+        """A repository finding lives on a line of a file, so show that line."""
+        from pathlib import Path
+
+        from ui.code_preview import highlight_line
+
+        if not issue.line:
+            return
+        try:
+            text = Path(issue.source).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return
+        if self.current_preview_path != issue.source:
+            self.current_preview_path = issue.source
+            self.code_view.setPlainText(text)
+        self.col1_stack.setCurrentIndex(1)
+        highlight_line(self.code_view, issue.line)
 
     def _toggle_audit_detail(self, item, issue) -> None:
         """Expand the finding under its row, or collapse it if already open."""
@@ -2062,6 +2101,7 @@ class MainWindow(QMainWindow):
         if page is None or not page.raw_html:
             return
         self._pending_highlight_dom_path = block.dom_path
+        self._pending_highlight_tag = ""
         if self.current_preview_url != block.page_url:
             self.current_preview_url = block.page_url
             self.site_view.setHtml(page.raw_html, QUrl(block.page_url))
@@ -2073,7 +2113,9 @@ class MainWindow(QMainWindow):
 
     def _run_pending_highlight(self) -> None:
         if self._pending_highlight_dom_path:
-            self.site_view.page().runJavaScript(build_highlight_js(self._pending_highlight_dom_path))
+            self.site_view.page().runJavaScript(build_highlight_js(
+                self._pending_highlight_dom_path,
+                getattr(self, "_pending_highlight_tag", "")))
 
     def _load_code_preview_and_highlight(self, block: CodeBlock) -> None:
         if not self.result:
