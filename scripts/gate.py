@@ -7,6 +7,9 @@ Three kinds of check, because they fail in three different ways:
   smoke       the CLI, end to end, on a throwaway copy of real files. Catches
               the wiring the unit tests mock away - a flag that no longer
               reaches the function, a writer that leaves no backup.
+  quality     the calibration corpus: does the detector still tell model-written
+              text from human-written text. A detector that runs and separates
+              nothing passes every other check here.
   budget      a real repository, scanned under a wall-clock limit. Catches the
               failure that has no assertion: not a wrong answer but no answer,
               which is what a pathological input produces and what a test suite
@@ -137,6 +140,40 @@ def run_smoke(result: Result) -> None:
         shutil.rmtree(work, ignore_errors=True)
 
 
+def run_quality(result: Result) -> None:
+    """Precision and recall against text whose author is known."""
+    print("quality")
+    from scripts.calibrate import load, score_rows, split
+
+    rows = load("labelled.jsonl")
+    if not rows:
+        result.check("calibration corpus present", False, "corpus/labelled.jsonl is empty")
+        return
+    scored = score_rows(rows)
+    flagged_human = [r for r in scored
+                     if r["label"] == "human" and r["score"] >= 0.33]
+    result.check(f"no false alarms on {sum(1 for r in scored if r['label']=='human')} human entries",
+                 not flagged_human,
+                 f"flagged: {[r['text'][:40] for r in flagged_human]}")
+
+    _train, test = split(scored)
+    models = [r for r in test if r["label"] == "model"]
+    found = [r for r in models if r["score"] >= 0.33]
+    recall = len(found) / len(models) if models else 0
+    result.check(f"held-out recall {recall*100:.0f}%", recall >= 0.5,
+                 "below the 50% floor")
+
+    for language in ("en", "uk"):
+        subset = [r for r in scored
+                  if r["label"] == "model" and r["language"] == language]
+        if not subset:
+            continue
+        hit = sum(1 for r in subset if r["score"] >= 0.33) / len(subset)
+        result.check(f"{language} recall {hit*100:.0f}%", hit >= 0.5,
+                     "one language far behind the other is a broken detector, "
+                     "not a weaker one")
+
+
 def run_budget(result: Result, repo: Path) -> None:
     """A real repository, under a wall clock.
 
@@ -176,6 +213,7 @@ def main() -> int:
                         help="a real repository to scan under the time budget")
     parser.add_argument("--skip-tests", action="store_true")
     parser.add_argument("--skip-smoke", action="store_true")
+    parser.add_argument("--skip-quality", action="store_true")
     args = parser.parse_args()
 
     result = Result()
@@ -183,6 +221,8 @@ def main() -> int:
         run_tests(result)
     if not args.skip_smoke:
         run_smoke(result)
+    if not args.skip_quality:
+        run_quality(result)
     if args.repo is not None:
         run_budget(result, args.repo.expanduser())
 

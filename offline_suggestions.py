@@ -30,9 +30,59 @@ from __future__ import annotations
 
 import re
 
-# phrase (as written in CLICHE_PHRASES) -> replacement; "" means delete it.
+# phrase (as written in CLICHE_PHRASES) -> replacement.
+#   ""    delete it: the sentence says the same thing without it.
+#   None  no mechanical replacement exists. The phrase is a claim or a piece of
+#         positioning, and replacing it needs to know what is true of this
+#         product - which a substitution table does not.
 PHRASE_SUGGESTIONS: dict = {
     "en": {
+        # product and interface copy. Most of these have no mechanical
+        # replacement: they are positioning, and what replaces them depends
+        # on what is actually true of the product.
+        'comprehensive solution': None,
+        'all your needs': None,
+        'all-in-one solution': None,
+        'empowering teams': None,
+        'empowering you to': "so you can",
+        'empowers you to': "lets you",
+        'seamlessly integrate': "work with",
+        'seamlessly integrates': "works with",
+        'seamless integration': None,
+        'intuitive interface': None,
+        'user-friendly interface': None,
+        'in just a few clicks': None,
+        'in a matter of minutes': None,
+        'get started in minutes': None,
+        'at the core of everything': None,
+        'everything you need in one place': None,
+        'join thousands of': None,
+        'trusted by thousands': None,
+        'satisfied users': "users",
+        'say goodbye to': None,
+        'designed with you in mind': None,
+        'built from the ground up': None,
+        'the way it should be': None,
+        'so you can focus on what matters': None,
+        'focus on what truly matters': "focus on",
+        'we believe that': "",
+        'our mission is simple': None,
+        'never looked back': None,
+        'whatever you throw at it': None,
+        'it just works': None,
+        'and much more': None,
+        'powerful yet simple': None,
+        'simple yet powerful': None,
+        'fast-paced digital': None,
+        'digital landscape': None,
+        'ever-changing landscape': None,
+        'unlock the full potential': None,
+        'full potential of your': None,
+        'streamline your workflow': None,
+        'streamline your workflows': None,
+        'bridges the gap between': None,
+        'not just about': None,
+        'modern professional': None,
         # padding / hedging openers — the sentence says the same thing without them
         "it's important to note": "", "it is important to note": "",
         "it is worth mentioning": "", "it should be noted that": "",
@@ -96,6 +146,41 @@ PHRASE_SUGGESTIONS: dict = {
         "meticulous": "careful", "vibrant": "lively",
     },
     "uk": {
+        # product and interface copy. Most of these have no mechanical
+        # replacement: they are positioning, and what replaces them depends
+        # on what is actually true of the product.
+        'комплексне рішення': None,
+        'для всіх ваших': None,
+        'все в одному': None,
+        'даючи змогу': "щоб",
+        'дозволяючи вам': "щоб ви могли",
+        'безшовно інтегру': None,
+        'інтуїтивний інтерфейс': None,
+        'зручний інтерфейс': None,
+        'у кілька кліків': None,
+        'за кілька хвилин': None,
+        'почати роботу за': None,
+        'основою всього, що ми': None,
+        'все, що вам потрібно': None,
+        'приєднуйтесь до тисяч': None,
+        'задоволених користувачів': "користувачів",
+        'забудьте про': None,
+        'створено з думкою про': None,
+        'ми переконані, що': "",
+        'наша мета проста': None,
+        'і багато іншого': None,
+        'просте й водночас': None,
+        'динамічному цифровому': None,
+        'цифровому середовищі': None,
+        'розкрийте повний потенціал': None,
+        'повний потенціал': None,
+        'оптимізувати робочі процеси': None,
+        'оптимізували роботу': None,
+        'не просто про': None,
+        'сучасного професіонала': None,
+        'передовому ai': None,
+        'передові технології': None,
+        'потужні технології': None,
         "у сучасному світі": "", "не є винятком": "", "варто зазначити": "",
         "важливо підкреслити": "", "зануримося": "",
         "розкрити потенціал": "використати сповна",
@@ -124,6 +209,30 @@ PHRASE_SUGGESTIONS: dict = {
         "сучасність": "сьогодення",
     },
     "it": {
+        # product and interface copy. Most of these have no mechanical
+        # replacement: they are positioning, and what replaces them depends
+        # on what is actually true of the product.
+        'soluzione completa': None,
+        'tutto in uno': None,
+        'per tutte le tue': None,
+        'si integra perfettamente': "funziona con",
+        'interfaccia intuitiva': None,
+        'in pochi clic': None,
+        'in pochi minuti': None,
+        'inizia in pochi minuti': None,
+        'alla base di tutto': None,
+        'unisciti a migliaia': None,
+        'utenti soddisfatti': "utenti",
+        'dimenticati di': None,
+        'progettato pensando a': None,
+        'crediamo che': "",
+        'la nostra missione': None,
+        'e molto altro': None,
+        'potente ma semplice': None,
+        'panorama digitale': None,
+        'sblocca il pieno potenziale': None,
+        'ottimizza il tuo flusso di lavoro': None,
+        'non si tratta solo di': None,
         "nel mondo di oggi": "", "non fa eccezione": "",
         "è importante sottolineare": "", "vale la pena notare": "",
         "in conclusione": "", "riassumendo": "", "inoltre,": "",
@@ -177,9 +286,16 @@ def _compile(phrase: str) -> re.Pattern:
     return re.compile(left + re.escape(phrase) + right, re.IGNORECASE)
 
 
+#: Only the entries that actually have wording to substitute. `None` means the
+#: phrase was considered and has no mechanical replacement: "comprehensive
+#: solution" is not a word that can be swapped for a better one, it is a claim
+#: that has to be rewritten into whatever the product actually does, and only a
+#: person or a model knows that. Recorded as a decision rather than an omission,
+#: so `missing_suggestions()` still catches a phrase nobody has thought about.
 _COMPILED: dict = {
     lang: [(phrase, _compile(phrase), replacement)
-           for phrase, replacement in table.items()]
+           for phrase, replacement in table.items()
+           if replacement is not None]
     for lang, table in PHRASE_SUGGESTIONS.items()
 }
 

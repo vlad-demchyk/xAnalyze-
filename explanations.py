@@ -103,8 +103,11 @@ def _style_explanation(span, details: dict, block_text: str, lang: str) -> Expla
         ("repetition", "why_repetition"),
         ("dashes", "why_dashes"),
     ):
-        value = signals.get(key, 0)
-        if value >= SIGNAL_FLOOR:
+        value = signals.get(key)
+        # None means the passage was too short for this signal to be measured.
+        # Reported as nothing rather than as a low value: "uniformity 0.00"
+        # claims a measurement that was never taken.
+        if value is not None and value >= SIGNAL_FLOOR:
             reasons.append(t(translation_key, lang, value=f"{value:.2f}"))
 
     if not reasons:

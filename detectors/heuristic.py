@@ -73,6 +73,29 @@ CLICHE_PHRASES: dict[str, list[str]] = {
         # structural clichés ("No X. No Y. Just Z." is a regex in
         # STRUCTURAL_PATTERNS — a literal here could never match real text)
         "is the new", "in the world of",
+        # product and interface copy. A separate register from the article
+        # prose the rest of this list was built for, and the one this tool is
+        # actually pointed at: landing pages, onboarding, empty states. The
+        # entries are phrases rather than words on purpose - a phrase this
+        # specific is a register, while the adjective inside it is just an
+        # adjective.
+        "comprehensive solution", "all your needs", "all-in-one solution",
+        "empowering teams", "empowering you to", "empowers you to",
+        "seamlessly integrate", "seamlessly integrates", "seamless integration",
+        "intuitive interface", "user-friendly interface", "in just a few clicks",
+        "in a matter of minutes", "get started in minutes",
+        "at the core of everything", "everything you need in one place",
+        "join thousands of", "trusted by thousands", "satisfied users",
+        "say goodbye to", "designed with you in mind", "built from the ground up",
+        "the way it should be",
+        "so you can focus on what matters", "focus on what truly matters",
+        "we believe that", "our mission is simple", "never looked back",
+        "whatever you throw at it", "it just works", "and much more",
+        "powerful yet simple", "simple yet powerful",
+        "fast-paced digital", "digital landscape", "ever-changing landscape",
+        "unlock the full potential", "full potential of your",
+        "streamline your workflow", "streamline your workflows",
+        "bridges the gap between", "not just about", "modern professional",
         # single overused words
         "delve", "underscore", "pivotal", "realm", "harness", "illuminate",
         "facilitate", "refine", "bolster", "differentiate", "streamline",
@@ -98,6 +121,21 @@ CLICHE_PHRASES: dict[str, list[str]] = {
         "розумний вибір", "оптимальне рішення", "потреби сучасної аудиторії",
         "інноваційні рішення", "максимальна ефективність",
         "більшість користувачів", "ось деякі з них", "особливо корисно",
+        # продуктова й інтерфейсна копія - той регістр, на який цей інструмент
+        # і спрямований. Фрази, а не слова: фраза такої точності є регістром,
+        # тоді як прикметник у ній є просто прикметником.
+        "комплексне рішення", "для всіх ваших", "все в одному",
+        "даючи змогу", "дозволяючи вам", "безшовно інтегру",
+        "інтуїтивний інтерфейс", "зручний інтерфейс", "у кілька кліків",
+        "за кілька хвилин", "почати роботу за", "основою всього, що ми",
+        "все, що вам потрібно", "приєднуйтесь до тисяч", "задоволених користувачів",
+        "забудьте про", "створено з думкою про", "ми переконані, що",
+        "наша мета проста", "і багато іншого", "просте й водночас",
+        "динамічному цифровому", "цифровому середовищі",
+        "розкрийте повний потенціал", "повний потенціал",
+        "оптимізувати робочі процеси", "оптимізували роботу",
+        "не просто про", "сучасного професіонала", "передовому ai",
+        "передові технології", "потужні технології",
         # окремі слова-маркери
         "розмаїття", "оптимальний", "функціональність", "феномен",
         "невід'ємно", "інноваційність", "ландшафт", "аспект",
@@ -113,6 +151,15 @@ CLICHE_PHRASES: dict[str, list[str]] = {
         "all'avanguardia", "punto di svolta", "immergiamoci",
         "che si tratti di", "in un mondo sempre più", "tuttavia,",
         "nonostante ciò,", "probabilmente,",
+        # copy di prodotto e di interfaccia
+        "soluzione completa", "tutto in uno", "per tutte le tue",
+        "si integra perfettamente", "interfaccia intuitiva",
+        "in pochi clic", "in pochi minuti", "inizia in pochi minuti",
+        "alla base di tutto", "unisciti a migliaia", "utenti soddisfatti",
+        "dimenticati di", "progettato pensando a", "crediamo che",
+        "la nostra missione", "e molto altro", "potente ma semplice",
+        "panorama digitale", "sblocca il pieno potenziale",
+        "ottimizza il tuo flusso di lavoro", "non si tratta solo di",
         # singole parole/aggettivi ricorrenti
         "dinamico", "efficiente", "innovativo", "stimolante", "efficienza",
         "agevolare", "massimizzare", "ottimizzazione", "integrazione",
@@ -129,6 +176,10 @@ STRUCTURAL_PATTERNS: dict[str, list[re.Pattern]] = {
         re.compile(r"\bit'?s not (about|just)\b.{0,40}\bit'?s (about|also)\b", re.IGNORECASE),
         re.compile(r"\bno\s+\w+\.\s*no\s+\w+\.\s*just\b", re.IGNORECASE),
         re.compile(r"\bwhether you'?re\b.{0,30}\bor\b", re.IGNORECASE),
+        # "take your X to the next level" - a construction, not a phrase, so it
+        # belongs here. It spent a moment in the phrase list, where every entry
+        # is matched literally, and could therefore never match anything.
+        re.compile(r"\btake your\b.{0,25}\bto the next level\b", re.IGNORECASE),
     ],
     "uk": [
         re.compile(r"\bне просто\b.{0,40}\bа\b", re.IGNORECASE),
@@ -147,6 +198,52 @@ STRUCTURAL_PATTERNS: dict[str, list[re.Pattern]] = {
 from lang_detect import guess_language  # noqa: E402
 
 
+def combine_score(uniformity, repetition, dashes, structural: bool,
+                  cliches: list) -> float:
+    """One score from the evidence, in one place.
+
+    Exported because the suppression pass has to answer "what would this have
+    scored if that signal had never fired", and answering it with a second copy
+    of the formula is how the two drifted apart: the copy was still treating an
+    unmeasured signal as a zero, and a phrase as worth the same as a word.
+
+    A `None` signal was not measurable on this passage, so it is left out of the
+    average and the remaining weights are renormalised - not counted as zero,
+    which would be a claim, and not as 0.3, which was a constant masquerading as
+    a measurement.
+    """
+    measured = [(0.40, uniformity), (0.35, repetition), (0.25, dashes)]
+    available = [(w, v) for w, v in measured if v is not None]
+    if available:
+        total = sum(w for w, _ in available)
+        base = sum(w * v for w, v in available) / total
+    else:
+        base = 0.0
+
+    # Evidence combines with diminishing returns rather than by addition with a
+    # ceiling. Two reasons, and the second is the one that matters:
+    #
+    # A sum needs a cap or it leaves the scale, and a cap makes the score stop
+    # responding. Above it, adding evidence changed nothing - and, worse,
+    # *removing* evidence changed nothing either, so a user who suppressed a
+    # phrase watched the score sit exactly where it was and reasonably concluded
+    # the setting did nothing.
+    #
+    # This form is monotone everywhere: every piece of evidence raises the score
+    # by a share of what is left to certainty, so the tenth is worth less than
+    # the first, and taking any one away always lowers the result.
+    strong = [c for c in cliches if " " in c]
+    weak = [c for c in cliches if " " not in c]
+    weights = [0.30] * len(strong) + [0.10] * len(weak)
+    if structural:
+        weights.append(0.25)
+
+    remaining = 1.0 - max(0.0, min(1.0, base))
+    for weight in weights:
+        remaining *= (1.0 - weight)
+    return max(0.0, min(1.0, 1.0 - remaining))
+
+
 def _sentences(text: str) -> list[str]:
     return [s.strip() for s in _SENTENCE_SPLIT_RE.split(text) if s.strip()]
 
@@ -155,16 +252,24 @@ def _words(text: str) -> list[str]:
     return _WORD_RE.findall(text.lower())
 
 
-def _burstiness_score(sentences: list[str]) -> float:
+def _burstiness_score(sentences: list[str]):
     """Human writing tends to vary sentence length a lot (bursty); a lot of
     generated prose is comparatively uniform. Returns 0..1, higher = more
-    uniform = more AI-like."""
+    uniform = more AI-like, or None when there is not enough text to say.
+
+    None rather than a neutral 0.3, which is what this returned before. The
+    difference is not cosmetic: a constant with a weight of 0.4 in the average
+    became a floor under every score, and on the short passages this tool
+    mostly sees - a button label, one line of a locale file - it was the entire
+    score. Model-written and human-written text both came out at 0.12 to 0.22,
+    which is not a weak signal, it is no signal wearing one's clothes.
+    """
     lengths = [len(_words(s)) for s in sentences if _words(s)]
     if len(lengths) < 3:
-        return 0.3  # not enough data, stay neutral-low
+        return None
     mean = statistics.mean(lengths)
     if mean == 0:
-        return 0.3
+        return None
     stdev = statistics.pstdev(lengths)
     cv = stdev / mean  # coefficient of variation
     # cv ~0 -> very uniform -> AI-like (score near 1); cv >= 0.6 -> bursty -> human-like
@@ -172,23 +277,29 @@ def _burstiness_score(sentences: list[str]) -> float:
     return score
 
 
-def _lexical_diversity_score(words: list[str]) -> float:
+def _lexical_diversity_score(words: list[str]):
     """Low type-token ratio over a long-ish passage can indicate repetitive,
-    formulaic phrasing. Returns 0..1, higher = less diverse = more AI-like."""
+    formulaic phrasing. Returns 0..1, higher = less diverse = more AI-like, or
+    None below the length where a ratio means anything.
+
+    Twenty words is already generous for this: on a short passage nearly every
+    word is its own type, so the ratio measures the length and not the writing.
+    """
     if len(words) < 20:
-        return 0.3
+        return None
     ttr = len(set(words)) / len(words)
     # Typical human TTR for this length ~0.55-0.75; below ~0.45 flagged.
     score = max(0.0, min(1.0, (0.6 - ttr) / 0.35))
     return score
 
 
-def _em_dash_score(text: str, word_count: int) -> float:
+def _em_dash_score(text: str, word_count: int):
     """Em/en-dash used as a stand-in for commas/parentheses, at a density
     well above typical human usage, is a commonly cited AI tell. Returns
-    0..1, higher = more dash-heavy = more AI-like."""
+    0..1, higher = more dash-heavy = more AI-like, or None when the passage is
+    too short for a density to mean anything."""
     if word_count < 15:
-        return 0.0
+        return None
     hits = len(_EM_DASH_RE.findall(text))
     per_100_words = hits / word_count * 100
     # ~0.3 dashes/100 words is normal human usage; >2/100 words is heavy.
@@ -266,9 +377,6 @@ class HeuristicDetector(Detector):
         # block, so they set a floor for every sentence in it. A structural
         # construction is not — it sits at one place in the text, and is
         # charged to the sentence it starts in.
-        base_score = 0.4 * burst + 0.35 * diversity + 0.25 * em_dash
-        base_score = max(0.0, min(1.0, base_score))
-
         spans: list[TextSpan] = []
         cursor = 0
         for sentence in sentences:
@@ -279,15 +387,16 @@ class HeuristicDetector(Detector):
             cursor = end
 
             structural = [m for offset, m in structural_matches if start <= offset < end]
-            structural_boost = 0.25 if structural else 0.0
-
             hits = _cliche_hits(sentence, language)
-            cliche_boost = min(0.4, 0.15 * len(hits))
-            score = max(0.0, min(1.0, base_score + structural_boost + cliche_boost))
+            score = combine_score(uniformity=burst, repetition=diversity,
+                                  dashes=em_dash, structural=bool(structural),
+                                  cliches=hits)
 
             explanation_bits = [
-                f"style-uniformity={burst:.2f}", f"low-diversity={diversity:.2f}",
-                f"dash-density={em_dash:.2f}",
+                f"{name}={value:.2f}" if value is not None else f"{name}=not measured"
+                for name, value in (("style-uniformity", burst),
+                                    ("low-diversity", diversity),
+                                    ("dash-density", em_dash))
             ]
             if structural:
                 explanation_bits.append("structural: " + ", ".join(structural))
@@ -300,10 +409,13 @@ class HeuristicDetector(Detector):
             # language-independent line for --json output and logs.
             details = {
                 "source": "style",
+                # None where the passage was too short to measure. Kept as a
+                # key with no value rather than dropped, so a reader of the
+                # JSON can tell "measured and low" from "not measured".
                 "signals": {
-                    "uniformity": round(burst, 2),
-                    "repetition": round(diversity, 2),
-                    "dashes": round(em_dash, 2),
+                    "uniformity": None if burst is None else round(burst, 2),
+                    "repetition": None if diversity is None else round(diversity, 2),
+                    "dashes": None if em_dash is None else round(em_dash, 2),
                 },
                 "structural": list(structural),
                 "cliches": list(hits),

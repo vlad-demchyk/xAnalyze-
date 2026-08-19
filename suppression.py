@@ -309,14 +309,19 @@ def _apply_style_suppressions(span, suppressions: Suppressions):
     if not removed:
         return span
 
-    # Same weights as the detector, so a suppressed finding scores exactly
-    # as it would have if the suppressed signal had never fired.
-    score = (0.4 * signals.get("uniformity", 0.0)
-             + 0.35 * signals.get("repetition", 0.0)
-             + 0.25 * signals.get("dashes", 0.0)
-             + (0.25 if structural else 0.0)
-             + min(0.4, 0.15 * len(cliches)))
-    score = max(0.0, min(1.0, score))
+    # Scored by the detector's own function rather than by a copy of its
+    # formula. The copy had already drifted once: it still averaged in a
+    # missing signal as zero after the detector had learned to leave one out,
+    # and it still weighed a phrase the same as a single word.
+    from detectors.heuristic import combine_score
+
+    score = combine_score(
+        uniformity=signals.get("uniformity"),
+        repetition=signals.get("repetition"),
+        dashes=signals.get("dashes"),
+        structural=bool(structural),
+        cliches=cliches,
+    )
 
     if not cliches and not structural and score < 0.33:
         return None
