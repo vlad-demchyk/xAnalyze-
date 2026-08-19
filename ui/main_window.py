@@ -20,6 +20,11 @@ import unicode_rules
 from audit import explanations as audit_explanations
 from detectors.factory import DetectorFactory
 from file_writer import apply_replacements, build_plans
+from analysis_modes import (
+    CHECKS, CHECK_ACCESSIBILITY, CHECK_AI_PATTERNS, METHOD_AI, METHOD_LOCAL,
+    METHODS, READER_BROWSER, READER_CODE, SOURCE_FILE, SOURCE_REPO,
+    SOURCE_SITE, AnalysisRequest, available_readers, supports_browser,
+)
 from i18n.translations import t
 from models import AnalysisResult, CodeBlock, Confidence, RepoAnalysisResult, TextBlock, TextSpan
 from repo_scanner import (
@@ -103,7 +108,14 @@ class MainWindow(QMainWindow):
         # the window is still usable when constructed directly (tests, or a
         # future second window).
         self.palette_tokens = palette or theme.current_palette(self.settings.theme)
-        self.mode = MODE_WEB
+        #: The source being examined. What used to be `self.mode` is now
+        #: derived from this and from the chosen checks, so downstream code
+        #: that asks "which kind of run is this" still gets an answer.
+        self.source = SOURCE_SITE
+        #: The last request that actually ran, kept so a changed question can
+        #: be answered from the pages already fetched. See
+        #: `AnalysisRequest.reuses_extraction`.
+        self._last_request = None
 
         self.worker = None  # AnalysisWorker | RepoAnalysisWorker | None
         self._rewrite_worker: RewriteAllWorker | None = None
@@ -280,11 +292,23 @@ class MainWindow(QMainWindow):
         # the only way to see what JavaScript rendered, so it is the user's
         # call rather than a default. Off by default: a first audit should be
         # fast, and the static pass already reports most of what is wrong.
-        self.browser_check = QCheckBox()
-        self.browser_check.setChecked(False)
-        # A checkbox reports the width of its indicator, not of its label, so
-        # without this it is the first control the layout squeezes to nothing.
-        self.browser_check.setMinimumWidth(120)
+        # --- the three choices that used to be one -------------------------
+        #
+        # Reading, question and judge are independent of each other and of the
+        # source. Kept as three combos rather than one list of combinations:
+        # the combinations multiply (3 x 3 x 3), and the point of separating
+        # them is that the user changes one without restating the other two.
+        self.reader_label = QLabel()
+        self.reader_combo = QComboBox()
+        self.checks_label = QLabel()
+        self.checks_combo = QComboBox()
+        self.method_label = QLabel()
+        self.method_combo = QComboBox()
+        for combo in (self.reader_combo, self.checks_combo, self.method_combo):
+            combo.setSizeAdjustPolicy(
+                QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+            combo.setMinimumContentsLength(12)
+            combo.currentIndexChanged.connect(self._on_choice_changed)
 
         self.analyze_btn = QPushButton()
         self.analyze_btn.setDefault(True)
@@ -303,7 +327,10 @@ class MainWindow(QMainWindow):
         # Stretch 2, not 3: the path field will happily eat the row, and the
         # first thing to go is the label of the browser switch beside it.
         controls.addWidget(self.source_controls_stack, stretch=2)
-        for w in (self.detector_label, self.detector_combo, self.browser_check,
+        for w in (self.reader_label, self.reader_combo,
+                  self.checks_label, self.checks_combo,
+                  self.method_label, self.method_combo,
+                  self.detector_label, self.detector_combo,
                   self.analyze_btn, self.cancel_btn, self.settings_btn):
             controls.addWidget(w)
         # Analyze is the one action the toolbar exists for, so it is the only
@@ -436,13 +463,16 @@ class MainWindow(QMainWindow):
         current_mode_data = self.mode_combo.currentData() if self.mode_combo.count() else None
         self.mode_combo.blockSignals(True)
         self.mode_combo.clear()
-        self.mode_combo.addItem(t("mode_web", lang), userData=MODE_WEB)
-        self.mode_combo.addItem(t("mode_repo", lang), userData=MODE_REPO)
-        self.mode_combo.addItem(t("mode_audit", lang), userData=MODE_AUDIT)
-        self.mode_combo.addItem(t("mode_file", lang), userData=MODE_FILE)
-        idx = self.mode_combo.findData(current_mode_data or self.mode)
+        # One entry per source, not per source-and-question pair: "site audit"
+        # and "web page" were the same site asked two questions, and offering
+        # them as separate sources meant choosing the source twice.
+        self.mode_combo.addItem(t("source_site", lang), userData=SOURCE_SITE)
+        self.mode_combo.addItem(t("source_repo", lang), userData=SOURCE_REPO)
+        self.mode_combo.addItem(t("source_file", lang), userData=SOURCE_FILE)
+        idx = self.mode_combo.findData(current_mode_data or self.source)
         self.mode_combo.setCurrentIndex(max(idx, 0))
         self.mode_combo.blockSignals(False)
+        self._retranslate_choices()
 
         self.url_label.setText(t("url_label", lang))
         self.url_label.setToolTip(t("url_label_full", lang))
@@ -474,8 +504,12 @@ class MainWindow(QMainWindow):
         self.detector_label.setText(t("detector_label", lang))
         self.file_path_edit.setPlaceholderText(t("file_path_placeholder", lang))
         self.file_browse_btn.setText(t("browse_button", lang))
-        self.browser_check.setText(t("browser_pass_label", lang))
-        self.browser_check.setToolTip(t("browser_pass_tooltip", lang))
+        self.reader_label.setText(t("reader_label", lang))
+        self.reader_label.setToolTip(t("reader_label_full", lang))
+        self.checks_label.setText(t("checks_label", lang))
+        self.checks_label.setToolTip(t("checks_label_full", lang))
+        self.method_label.setText(t("method_label", lang))
+        self.method_label.setToolTip(t("method_label_full", lang))
         self.analyze_btn.setText(t("analyze_button", lang))
         self.cancel_btn.setText(t("cancel_button", lang))
         self.settings_btn.setText(t("settings_button", lang))
@@ -576,8 +610,110 @@ class MainWindow(QMainWindow):
 
     # --------------------------------------------------------------- events
 
+    @property
+    def mode(self) -> str:
+        """The kind of run, derived rather than chosen.
+
+        Everything downstream - which preview to show, which buttons write to
+        disk, how a clicked row is dispatched - was written against these four
+        names, and they are still the right names for it. What changed is that
+        the user no longer picks one: the source and the question together say
+        which it is.
+        """
+        if self.source == SOURCE_REPO:
+            return MODE_REPO
+        if self.source == SOURCE_FILE:
+            return MODE_FILE
+        return MODE_AUDIT if self._chosen_checks() == (CHECK_ACCESSIBILITY,) else MODE_WEB
+
+    def _text_row_kind(self) -> str:
+        """How a copy finding's row is tagged, independently of the mode.
+
+        A run over a site that asks both questions is `MODE_AUDIT` by the rule
+        above, but its copy findings are still copy findings and must not be
+        dispatched as audit issues.
+        """
+        return MODE_REPO if self.source == SOURCE_REPO else MODE_WEB
+
+    @staticmethod
+    def choice_key(values) -> str:
+        """The combo's stored value for a set of choices.
+
+        A string, not the tuple itself: Qt carries item data through QVariant,
+        which turns a tuple into a list, and `findData` then never matches what
+        was stored - so restoring the previous choice silently fell back to the
+        first item every time the source changed.
+        """
+        return "+".join(values)
+
+    @staticmethod
+    def _decode_choice(data, fallback) -> tuple:
+        if not data:
+            return fallback
+        if isinstance(data, str):
+            return tuple(part for part in data.split("+") if part)
+        return tuple(data)
+
+    def _chosen_checks(self) -> tuple:
+        return self._decode_choice(self.checks_combo.currentData(), CHECKS)
+
+    def _chosen_readers(self) -> tuple:
+        return self._decode_choice(self.reader_combo.currentData(), (READER_CODE,))
+
+    def _chosen_methods(self) -> tuple:
+        return self._decode_choice(self.method_combo.currentData(), (METHOD_LOCAL,))
+
+    def _ai_available(self) -> bool:
+        """Is there anything to pay for an AI pass with?
+
+        Asked of the account state rather than of the provider combo: a key in
+        settings, a signed-in xFormat subscription and a Claude Code session
+        are three different answers to one question, and the window should not
+        offer the pass when all three are absent.
+        """
+        try:
+            import rewriter
+            from llm.base import LLMUnavailable
+
+            provider = rewriter.build_provider(self.settings, allow_auto=True)
+            try:
+                return bool(provider.auth_status().signed_in)
+            except LLMUnavailable:
+                return False
+        except Exception:  # noqa: BLE001 - absence is an answer, not an error
+            return False
+
+    def current_request(self) -> AnalysisRequest:
+        """What the four controls currently describe, made runnable."""
+        return AnalysisRequest(
+            source=self.source,
+            target=self._current_target(),
+            readers=self._chosen_readers(),
+            checks=self._chosen_checks(),
+            methods=self._chosen_methods(),
+            ai_available=self._ai_available(),
+        ).normalised()
+
+    def _current_target(self) -> str:
+        if self.source == SOURCE_REPO:
+            return self.repo_path_edit.text().strip()
+        if self.source == SOURCE_FILE:
+            return self.file_path_edit.text().strip()
+        return self.url_edit.text().strip()
+
+    def _on_choice_changed(self, _idx: int = 0) -> None:
+        """A changed question does not invalidate the fetched pages.
+
+        This is the whole reason the axes were separated: switching from
+        accessibility to copy, or from the offline engine to a model, used to
+        mean crawling the site again. Only the source and the target clear the
+        result now.
+        """
+        self._apply_mode_visibility()
+
     def _on_mode_changed(self, _idx: int) -> None:
-        self.mode = self.mode_combo.currentData() or MODE_WEB
+        self.source = self.mode_combo.currentData() or SOURCE_SITE
+        self._retranslate_choices()
         self._apply_mode_visibility()
         # Switching source invalidates whatever was scanned before.
         self.result = None
@@ -587,11 +723,67 @@ class MainWindow(QMainWindow):
         self._reset_detail_panel()
         self.status_bar.showMessage(t("status_idle", self.lang))
 
+    def _retranslate_choices(self) -> None:
+        """Fill the three choice combos for the source in force.
+
+        Rebuilt on every source change rather than filled once and disabled,
+        because what is *possible* changes with the source: a repository has
+        no rendered form, so offering "in a browser" greyed out would be a
+        control that exists only to be refused.
+        """
+        lang = self.lang
+        readers = available_readers(self.source)
+        options = [(t("reader_code", lang), self.choice_key((READER_CODE,)))]
+        if READER_BROWSER in readers:
+            options.append((t("reader_browser", lang), self.choice_key((READER_BROWSER,))))
+            options.append((t("reader_both", lang), self.choice_key((READER_CODE, READER_BROWSER))))
+        self._fill_combo(self.reader_combo, options)
+        self.reader_combo.setEnabled(len(options) > 1)
+        self.reader_combo.setToolTip(
+            t("reader_label_full", lang) if len(options) > 1
+            else t("reader_browser_unavailable", lang))
+
+        # Both by default: one pass over the fetched pages answers both
+        # questions, and a first run that silently examined only half of what
+        # the tool checks is how a report gets trusted for the wrong reason.
+        self._fill_combo(self.checks_combo, [
+            (t("checks_both", lang), self.choice_key((CHECK_ACCESSIBILITY, CHECK_AI_PATTERNS))),
+            (t("check_accessibility", lang), self.choice_key((CHECK_ACCESSIBILITY,))),
+            (t("check_ai_patterns", lang), self.choice_key((CHECK_AI_PATTERNS,))),
+        ])
+
+        ai_ready = self._ai_available()
+        method_options = [(t("method_local", lang), self.choice_key((METHOD_LOCAL,)))]
+        if ai_ready:
+            method_options.append((t("method_ai", lang), self.choice_key((METHOD_AI,))))
+            method_options.append((t("method_both", lang), self.choice_key((METHOD_LOCAL, METHOD_AI))))
+        self._fill_combo(self.method_combo, method_options)
+        self.method_combo.setEnabled(ai_ready)
+        self.method_combo.setToolTip(
+            t("method_label_full", lang) if ai_ready
+            else t("method_ai_unavailable", lang))
+
+    @staticmethod
+    def _fill_combo(combo, options) -> None:
+        """Refill a combo, keeping the current choice if it is still offered."""
+        previous = combo.currentData()
+        combo.blockSignals(True)
+        combo.clear()
+        for label, value in options:
+            combo.addItem(label, userData=value)
+        index = combo.findData(previous) if previous is not None else -1
+        combo.setCurrentIndex(max(index, 0))
+        combo.blockSignals(False)
+
     def _apply_mode_visibility(self) -> None:
-        is_repo = self.mode == MODE_REPO
-        is_file = self.mode == MODE_FILE
-        # Both audit modes hide the same controls; only the source differs.
-        is_audit = self.mode in (MODE_AUDIT, MODE_FILE)
+        is_repo = self.source == SOURCE_REPO
+        is_file = self.source == SOURCE_FILE
+        checks = self._chosen_checks()
+        # What the run will actually look for, which is now a separate
+        # question from where it looks.
+        wants_copy = CHECK_AI_PATTERNS in checks
+        wants_audit = CHECK_ACCESSIBILITY in checks
+        is_audit = wants_audit
         # Auditing a site takes a URL and a depth, exactly like the web scan,
         # so it reuses those fields rather than growing a second pair beside
         # them. Auditing one file needs a path and nothing else.
@@ -600,23 +792,23 @@ class MainWindow(QMainWindow):
         # A single file is previewed as a rendered page, not as source: it is
         # a page, and its markup is what the third column already shows.
         self.col1_stack.setCurrentIndex(1 if is_repo else 0)
-        # No detector takes part in an audit — the rules are the tool's own
-        # and there is nothing to choose — so the control that would imply
-        # otherwise is hidden rather than left there doing nothing.
-        self.detector_label.setVisible(not is_audit)
-        self.detector_combo.setVisible(not is_audit)
-        self.browser_check.setVisible(is_audit)
+        # The detector belongs to the copy pass, so it follows the question
+        # rather than the source. It used to be hidden whenever an audit was
+        # selected, which meant that asking both questions at once left no way
+        # to say which engine judged the copy.
+        self.detector_label.setVisible(wants_copy)
+        self.detector_combo.setVisible(wants_copy)
         # The row is shared, but the two halves never appear together: three
         # buttons rewrite prose, three act on an audit, and offering both at
         # once would mean six buttons of which half do nothing.
-        self.fix_unicode_btn.setVisible(not is_audit)
-        self.fix_on_disk_btn.setVisible(is_audit)
-        self.undo_fix_btn.setVisible(is_audit)
-        self.export_report_btn.setVisible(is_audit)
+        self.fix_unicode_btn.setVisible(wants_copy)
+        self.fix_on_disk_btn.setVisible(wants_audit)
+        self.undo_fix_btn.setVisible(wants_audit)
+        self.export_report_btn.setVisible(wants_audit)
         # The row itself is always shown — the unicode fix works in both
         # modes — but the two file-writing buttons only apply to a repo.
-        self.generate_list_btn.setVisible(is_repo)
-        self.auto_replace_btn.setVisible(is_repo)
+        self.generate_list_btn.setVisible(is_repo and wants_copy)
+        self.auto_replace_btn.setVisible(is_repo and wants_copy)
         self._update_repo_buttons_enabled()
 
     def _update_repo_buttons_enabled(self) -> None:
@@ -662,12 +854,53 @@ class MainWindow(QMainWindow):
                 if (s.details or {}).get("source") == "characters"]
 
     def _on_analyze_clicked(self) -> None:
-        if self.mode in (MODE_AUDIT, MODE_FILE):
+        request = self.current_request()
+        if not request.target:
+            QMessageBox.warning(self, "", self._missing_target_message())
+            return
+        # An adjusted request is stated, not silently substituted: the user
+        # asked for something this source cannot do, and the honest answer is
+        # what ran instead.
+        for note in request.notes:
+            self.status_bar.showMessage(self._note_message(note))
+        self._last_request = request
+        # Both questions in one run: the audit goes first because it is the
+        # one that fetches, and the copy pass then reads what it brought back.
+        self._pending_copy_pass = (request.wants_accessibility
+                                   and request.wants_ai_patterns)
+        if request.wants_accessibility:
             self._start_audit()
-        elif self.mode == MODE_WEB:
-            self._start_web_analysis()
         else:
+            self._start_copy_pass()
+
+    def _missing_target_message(self) -> str:
+        if self.source == SOURCE_REPO:
+            return t("no_repo_path", self.lang)
+        if self.source == SOURCE_FILE:
+            return t("no_file_path", self.lang)
+        return t("url_label_full", self.lang)
+
+    def _note_message(self, note: str) -> str:
+        """A normalisation note as a sentence for the status bar.
+
+        The request records notes in one language for the log; the window says
+        the two the user can actually act on in theirs, and falls back to the
+        raw note for anything else rather than swallowing it.
+        """
+        if "browser" in note:
+            return t("reader_browser_unavailable", self.lang)
+        if "AI pass" in note or "account or key" in note:
+            return t("method_ai_unavailable", self.lang)
+        return note
+
+    def _start_copy_pass(self) -> None:
+        """The AI-patterns question, over whichever source is selected."""
+        if self.source == SOURCE_REPO:
             self._start_repo_analysis()
+        elif self.source == SOURCE_FILE:
+            self._start_file_copy_analysis()
+        else:
+            self._start_web_analysis()
 
     def _detector_config_for(self, detector_name: str) -> dict:
         """Per-detector construction arguments.
@@ -730,8 +963,17 @@ class MainWindow(QMainWindow):
         self._track_worker(self.worker)
         self.worker.start()
 
-    def _start_repo_analysis(self) -> None:
-        path = self.repo_path_edit.text().strip()
+    def _start_file_copy_analysis(self) -> None:
+        """The copy question asked of one HTML file.
+
+        The same worker as a repository, over a single named path: a file that
+        was named is a file to read, so the extension list and the exclusions
+        that a walk needs do not apply to it.
+        """
+        self._start_repo_analysis(self.file_path_edit.text().strip())
+
+    def _start_repo_analysis(self, path: str | None = None) -> None:
+        path = path if path is not None else self.repo_path_edit.text().strip()
         if not path:
             QMessageBox.warning(self, "", t("no_repo_path", self.lang))
             return
@@ -805,7 +1047,7 @@ class MainWindow(QMainWindow):
 
     def _on_audit_finished(self, result) -> None:
         self.audit_result = result
-        if self.browser_check.isChecked():
+        if self._last_request is not None and self._last_request.wants_browser:
             self._run_browser_pass()
         self._populate_audit_list()
         # Show the audited page straight away rather than waiting for a click.
@@ -824,6 +1066,13 @@ class MainWindow(QMainWindow):
         # wordings of one summary is two things to keep true.
         self.status_bar.showMessage(
             audit_explanations.summary_line(result, self.lang))
+        if getattr(self, "_pending_copy_pass", False):
+            # The second half of a both-questions run. `_reset_scan_ui` would
+            # wipe the audit rows that just arrived, so the copy pass appends
+            # to them instead: `_populate_flagged_list` puts the audit findings
+            # back first.
+            self._pending_copy_pass = False
+            self._start_copy_pass()
 
     def _run_browser_pass(self) -> None:
         """Re-audit each page in a real browser, on this thread.
@@ -1007,14 +1256,23 @@ class MainWindow(QMainWindow):
     def _populate_audit_list(self) -> None:
         self.flagged_list.clear()
         self._expanded_item = None
-        if self.audit_result is None:
+        if not self._add_audit_rows():
             self._show_audit_empty_state()
             return
+        self.results_stack.setCurrentIndex(0)
 
+    def _add_audit_rows(self) -> int:
+        """Append the audit findings to the list and say how many there were.
+
+        Separate from clearing the list because a run can ask both questions,
+        and then the copy pass finishes second and must add to these rows
+        rather than replace them.
+        """
+        if self.audit_result is None:
+            return 0
         issues = self.audit_result.issues()
         if not issues:
-            self._show_audit_empty_state()
-            return
+            return 0
 
         self.results_stack.setCurrentIndex(0)
         self.flagged_list.setItemDelegate(self.finding_delegate)
@@ -1036,6 +1294,7 @@ class MainWindow(QMainWindow):
             item.setToolTip(explanation.found)
             item.setData(Qt.ItemDataRole.UserRole, (MODE_AUDIT, issue, None))
             self.flagged_list.addItem(item)
+        return len(issues)
 
     def _show_audit_empty_state(self) -> None:
         """An audit with no findings is a result, not a blank screen — and it
@@ -1393,13 +1652,20 @@ class MainWindow(QMainWindow):
     def _populate_flagged_list(self) -> None:
         self.flagged_list.clear()
         self._expanded_item = None
+        # A both-questions run put its audit findings here first; they are part
+        # of the same result and must not disappear when the copy pass lands.
+        audit_rows = (self._add_audit_rows()
+                      if self._last_request is not None
+                      and self._last_request.wants_accessibility else 0)
         if not self.result:
-            self._show_empty_state()
+            if not audit_rows:
+                self._show_empty_state()
             return
         flagged = [s for s in self.result.spans if s.confidence != Confidence.LOW]
         flagged.sort(key=lambda s: s.score, reverse=True)
         if not flagged:
-            self._show_empty_state()
+            if not audit_rows:
+                self._show_empty_state()
             return
 
         self.results_stack.setCurrentIndex(0)
@@ -1426,7 +1692,7 @@ class MainWindow(QMainWindow):
                 is_character=self._is_character_span(span),
             ))
             item.setToolTip(span.explanation)
-            item.setData(Qt.ItemDataRole.UserRole, (self.mode, span, block))
+            item.setData(Qt.ItemDataRole.UserRole, (self._text_row_kind(), span, block))
             self.flagged_list.addItem(item)
             if self._last_selected_key and key[0] == self._last_selected_key[0]:
                 item_to_reselect = (item, span, block)

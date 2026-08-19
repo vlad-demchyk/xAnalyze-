@@ -171,6 +171,96 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Pagina web",
         "en": "Web page",
     },
+    # --- the three independent choices -----------------------------------
+    #
+    # Source, reading, question, judge. Four controls where there used to be
+    # one, because they were never one decision.
+    "source_site": {
+        "uk": "Сайт", "it": "Sito", "en": "Site",
+    },
+    "source_repo": {
+        "uk": "Репозиторій", "it": "Repository", "en": "Repository",
+    },
+    "source_file": {
+        "uk": "Файл HTML", "it": "File HTML", "en": "HTML file",
+    },
+    "reader_label": {
+        "uk": "Читати:", "it": "Leggere:", "en": "Read:",
+    },
+    "reader_label_full": {
+        "uk": "Що читати: код у тому вигляді, як він написаний, сторінку в "
+              "тому вигляді, як її показує браузер, або і те, і те.",
+        "it": "Cosa leggere: il codice come è scritto, la pagina come la "
+              "mostra un browser, o entrambi.",
+        "en": "What to read: the code as written, the page as a browser "
+              "renders it, or both.",
+    },
+    "reader_code": {
+        "uk": "Код", "it": "Codice", "en": "Code",
+    },
+    "reader_browser": {
+        "uk": "У браузері", "it": "Nel browser", "en": "In a browser",
+    },
+    "reader_both": {
+        "uk": "Код і браузер", "it": "Codice e browser", "en": "Code and browser",
+    },
+    "reader_browser_unavailable": {
+        "uk": "Репозиторій нічим не віддає сторінку, тож рендерити нічого: "
+              "код читається як написаний.",
+        "it": "Un repository non serve pagine, quindi non c'è nulla da "
+              "renderizzare: il codice si legge come è scritto.",
+        "en": "A repository serves no pages, so there is nothing to render: "
+              "the code is read as written.",
+    },
+    "checks_label": {
+        "uk": "Оцінка:", "it": "Valutazione:", "en": "Assess:",
+    },
+    "checks_label_full": {
+        "uk": "Що шукати: дефекти доступності й сторінки, ознаки тексту, "
+              "написаного моделлю, або і те, і те за один прогін.",
+        "it": "Cosa cercare: difetti di accessibilità e di pagina, segni di "
+              "testo scritto da un modello, o entrambi in una sola volta.",
+        "en": "What to look for: accessibility and page defects, signs of "
+              "model-written copy, or both in one run.",
+    },
+    "check_accessibility": {
+        "uk": "Доступність", "it": "Accessibilità", "en": "Accessibility",
+    },
+    "check_ai_patterns": {
+        "uk": "AI-патерни", "it": "Pattern AI", "en": "AI patterns",
+    },
+    "checks_both": {
+        "uk": "Доступність і AI", "it": "Accessibilità e AI",
+        "en": "Accessibility and AI",
+    },
+    "method_label": {
+        "uk": "Метод:", "it": "Metodo:", "en": "Method:",
+    },
+    "method_label_full": {
+        "uk": "Хто оцінює: локальний двигун без мережі, модель через ключ або "
+              "акаунт xFormat, або обидва разом.",
+        "it": "Chi valuta: il motore locale senza rete, un modello tramite "
+              "chiave o account xFormat, o entrambi.",
+        "en": "Who judges: the offline engine with no network, a model "
+              "through a key or an xFormat account, or both.",
+    },
+    "method_local": {
+        "uk": "Локальний двигун", "it": "Motore locale", "en": "Offline engine",
+    },
+    "method_ai": {
+        "uk": "AI", "it": "AI", "en": "AI",
+    },
+    "method_both": {
+        "uk": "Локальний і AI", "it": "Locale e AI", "en": "Offline and AI",
+    },
+    "method_ai_unavailable": {
+        "uk": "Для AI потрібен ключ або вхід у акаунт xFormat. Прогін іде "
+              "локальним двигуном.",
+        "it": "L'AI richiede una chiave o l'accesso a un account xFormat. "
+              "L'esecuzione usa il motore locale.",
+        "en": "The AI pass needs a key or a signed-in xFormat account. "
+              "Running the offline engine instead.",
+    },
     "mode_repo": {
         "uk": "Репозиторій (код)",
         "it": "Repository (codice)",

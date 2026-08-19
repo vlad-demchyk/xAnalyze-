@@ -10,7 +10,7 @@ from crawler import CrawlConfig, crawl
 from detectors.base import DetectorUnavailable
 from detectors.factory import DetectorFactory
 from models import AnalysisResult, CodeBlock, FileResult, PageResult, RepoAnalysisResult, TextBlock, TextSpan
-from repo_scanner import ScanConfig, scan_repo
+from repo_scanner import ScanConfig, scan_file, scan_repo
 
 
 def _apply_suppressions(result, settings, root):
@@ -165,8 +165,19 @@ class RepoAnalysisWorker(QThread):
             def progress_cb(rel_path: str) -> None:
                 self.scanning.emit(rel_path)
 
-            config = ScanConfig(ignore_patterns=self.ignore_patterns, scope=self.scope)
-            files: list[FileResult] = scan_repo(self.root_dir, config, progress_cb=progress_cb)
+            from pathlib import Path
+
+            if Path(self.root_dir).is_file():
+                # One named file, which is what the HTML-file source asks for.
+                # Naming a file is an instruction to read it, so neither the
+                # extension list nor the exclusions apply - the same rule the
+                # CLI already follows for a named path.
+                progress_cb(Path(self.root_dir).name)
+                files: list[FileResult] = [scan_file(self.root_dir, self.scope)]
+            else:
+                config = ScanConfig(ignore_patterns=self.ignore_patterns,
+                                    scope=self.scope)
+                files = scan_repo(self.root_dir, config, progress_cb=progress_cb)
             if self._cancelled:
                 return
 
