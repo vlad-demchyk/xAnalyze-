@@ -1074,7 +1074,28 @@ class MainWindow(QMainWindow):
             self._clear_layout(self.detail_layout)
             self.detail_layout.addWidget(self._build_audit_detail_widget(issue))
         else:
+            # In a narrow window there is no third column, so the explanation
+            # expands under the row that was clicked - the same behaviour the
+            # text scan has always had. Without this branch an audit finding
+            # in a narrow window answered a click with nothing at all.
+            self._toggle_audit_detail(self.flagged_list.currentItem(), issue)
+
+    def _toggle_audit_detail(self, item, issue) -> None:
+        """Expand the finding under its row, or collapse it if already open."""
+        if item is None:
+            return
+        if self._expanded_item is item:
             self._collapse_inline_detail()
+            return
+        self._collapse_inline_detail()
+        detail = self._build_audit_detail_widget(issue)
+        # Bounded: an explanation with four blocks and two code samples is
+        # taller than a list row has any business being, and a row that fills
+        # the window hides the findings the user is comparing it against.
+        detail.setMaximumHeight(460)
+        self.flagged_list.setItemWidget(item, detail)
+        item.setSizeHint(QSize(0, min(detail.sizeHint().height(), 460)))
+        self._expanded_item = item
 
     def _build_audit_detail_widget(self, issue) -> QWidget:
         """One finding, laid out as the four questions it answers.
