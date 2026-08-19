@@ -15,10 +15,11 @@ Kept out of `main_window.py` for one reason each:
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QRect, QSize, Qt
+from PySide6.QtCore import QPoint, QRect, QSize, Qt
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath
 from PySide6.QtWidgets import (
-    QLabel, QSizePolicy, QStyle, QStyledItemDelegate, QVBoxLayout, QWidget,
+    QLabel, QLayout, QSizePolicy, QStyle, QStyledItemDelegate, QVBoxLayout,
+    QWidget,
 )
 
 from i18n.translations import t
@@ -339,3 +340,114 @@ def diagnostics_message(page, lang: str) -> str:
         kept=diagnostics.blocks_kept,
     )
     return "\n".join("• " + line for line in lines) + "\n\n" + measured
+
+
+class FlowLayout(QLayout):
+    """A row that wraps instead of squeezing.
+
+    `QHBoxLayout` answers "not enough width" by shrinking its children, which
+    for a toolbar means labels clipped to nothing and, for a row of chips, a
+    column that cannot narrow past the sum of its pills. Neither is a layout
+    decision anyone would make on purpose; they are what happens when a row has
+    no way to become two rows.
+
+    This is the standard flow layout: place items left to right, break when the
+    next one would not fit, and report the height that width implies. The height
+    depends on the width, which is the whole point and also the reason
+    `hasHeightForWidth` has to say so - a parent that does not ask will hand out
+    a single row's height and clip everything below it.
+    """
+
+    def __init__(self, parent=None, margin: int = 0, spacing: int = 6):
+        super().__init__(parent)
+        self._items: list = []
+        self.setContentsMargins(margin, margin, margin, margin)
+        self._spacing = spacing
+
+    # --- QLayout plumbing. Qt owns the items once they are added.
+    def addItem(self, item) -> None:  # noqa: N802 - Qt's spelling
+        self._items.append(item)
+
+    def count(self) -> int:
+        return len(self._items)
+
+    def itemAt(self, index):  # noqa: N802
+        return self._items[index] if 0 <= index < len(self._items) else None
+
+    def takeAt(self, index):  # noqa: N802
+        return self._items.pop(index) if 0 <= index < len(self._items) else None
+
+    def expandingDirections(self):  # noqa: N802
+        return Qt.Orientations(Qt.Orientation(0))
+
+    def setSpacing(self, spacing: int) -> None:  # noqa: N802
+        self._spacing = spacing
+
+    def spacing(self) -> int:
+        return self._spacing
+
+    # --- the part that matters
+    def hasHeightForWidth(self) -> bool:  # noqa: N802
+        return True
+
+    def heightForWidth(self, width: int) -> int:  # noqa: N802
+        return self._layout(QRect(0, 0, width, 0), apply=False)
+
+    def setGeometry(self, rect) -> None:  # noqa: N802
+        super().setGeometry(rect)
+        self._layout(rect, apply=True)
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        return self.minimumSize()
+
+    def minimumSize(self) -> QSize:  # noqa: N802
+        # The widest single item, not the sum: a row that can wrap is only as
+        # wide as the one thing that cannot be broken.
+        size = QSize(0, 0)
+        for item in self._items:
+            size = size.expandedTo(item.minimumSize())
+        margins = self.contentsMargins()
+        return size + QSize(margins.left() + margins.right(),
+                            margins.top() + margins.bottom())
+
+    def _layout(self, rect, apply: bool) -> int:
+        """Place the items and return the height the given width implies.
+
+        Two passes per line, because the items on one line have different
+        heights: a label is shorter than the combo it names, and placing both
+        at the top of the line leaves the label floating above the field's
+        centre. So a line is collected first, then placed centred in it.
+        """
+        margins = self.contentsMargins()
+        left = rect.x() + margins.left()
+        top = rect.y() + margins.top()
+        right = rect.right() - margins.right()
+
+        x, y = left, top
+        line: list = []
+        line_height = 0
+
+        def flush() -> None:
+            if not apply:
+                return
+            for item, item_x, hint in line:
+                offset = (line_height - hint.height()) // 2
+                item.setGeometry(QRect(QPoint(item_x, y + offset), hint))
+
+        for item in self._items:
+            widget = item.widget()
+            if widget is not None and widget.isHidden():
+                continue
+            hint = item.sizeHint()
+            if x > left and x + hint.width() > right:
+                flush()
+                line = []
+                x = left
+                y += line_height + self._spacing
+                line_height = 0
+            line.append((item, x, hint))
+            x += hint.width() + self._spacing
+            line_height = max(line_height, hint.height())
+
+        flush()
+        return y + line_height - rect.y() + margins.bottom()

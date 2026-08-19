@@ -39,9 +39,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Link crawl depth",
     },
     "detector_label": {
-        "uk": "Детектор",
-        "it": "Rilevatore",
-        "en": "Detector",
+        "uk": "Детектор:",
+        "it": "Rilevatore:",
+        "en": "Detector:",
     },
     "ui_language_label": {
         "uk": "Мова:",

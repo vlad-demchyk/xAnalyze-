@@ -35,8 +35,8 @@ from ui import theme
 from ui.code_preview import highlight_range
 from ui.site_preview import build_highlight_js
 from ui.widgets import (
-    ROW_ROLE, EmptyState, FindingDelegate, RowData, chip, diagnostics_message,
-    divider, field, heading, muted, panel, restyle,
+    ROW_ROLE, EmptyState, FindingDelegate, FlowLayout, RowData, chip,
+    diagnostics_message, divider, field, heading, muted, panel, restyle,
 )
 from ui.worker import (
     AnalysisWorker, AuditWorker, RepoAnalysisWorker, RewriteAllWorker,
@@ -352,9 +352,12 @@ class MainWindow(QMainWindow):
         self.toolbar = QWidget()
         self.toolbar.setProperty("class", theme.CLASS_TOOLBAR)
         self.toolbar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        controls = QHBoxLayout(self.toolbar)
-        controls.setContentsMargins(gap, gap, gap, gap)
-        controls.setSpacing(self.palette_tokens.space_sm)
+        # The toolbar carries the source, its fields, three choices, the
+        # detector and three buttons. In a row that cannot wrap, a narrow window
+        # answers that by clipping labels to nothing; this answers it by using a
+        # second line.
+        controls = FlowLayout(self.toolbar, margin=gap,
+                              spacing=self.palette_tokens.space_sm)
 
         self.mode_label = QLabel()
         self.mode_combo = QComboBox()
@@ -467,7 +470,11 @@ class MainWindow(QMainWindow):
         controls.addWidget(self.mode_combo)
         # Stretch 2, not 3: the path field will happily eat the row, and the
         # first thing to go is the label of the browser switch beside it.
-        controls.addWidget(self.source_controls_stack, stretch=2)
+        # No stretch factor in a flow: the field block asks for a width it can
+        # use, and wraps to its own line when the window is too narrow for the
+        # rest of the row beside it.
+        self.source_controls_stack.setMinimumWidth(280)
+        controls.addWidget(self.source_controls_stack)
         for w in (self.reader_label, self.reader_combo,
                   self.checks_label, self.checks_combo,
                   self.method_label, self.method_combo,
@@ -540,7 +547,11 @@ class MainWindow(QMainWindow):
         # Bulk actions. The unicode fix is offline and free, so it's offered
         # in both modes; the two LLM-backed buttons are repo-only.
         self.bulk_actions_row = QWidget()
-        bulk_layout = QHBoxLayout(self.bulk_actions_row)
+        # Up to six buttons here, and which ones depends on the question asked.
+        # A flow keeps their labels readable at any width instead of clipping
+        # them all equally.
+        bulk_layout = FlowLayout(self.bulk_actions_row,
+                                 spacing=self.palette_tokens.space_sm)
         bulk_layout.setContentsMargins(12, 10, 12, 12)
         self.fix_unicode_btn = QPushButton()
         self.fix_unicode_btn.clicked.connect(self._on_fix_unicode_clicked)
@@ -558,7 +569,6 @@ class MainWindow(QMainWindow):
         self.undo_fix_btn.clicked.connect(self._on_undo_fix_clicked)
         self.export_report_btn = QPushButton()
         self.export_report_btn.clicked.connect(self._on_export_report_clicked)
-        bulk_layout.setSpacing(self.palette_tokens.space_sm)
         for b in (self.fix_unicode_btn, self.generate_list_btn, self.auto_replace_btn,
                   self.fix_on_disk_btn, self.undo_fix_btn, self.export_report_btn):
             bulk_layout.addWidget(b)
@@ -1629,19 +1639,32 @@ class MainWindow(QMainWindow):
         # The identity of the finding, as chips: severity, where it is, and
         # who found it. A row of small facts reads faster than a sentence
         # that has to be parsed to get at the same three things.
-        chips = QHBoxLayout()
-        chips.setSpacing(6)
+        # A flow, not a row: chips used to push the column's minimum width to
+        # the sum of their own, so the third column could not be narrowed and a
+        # long selector made the whole window unshrinkable.
+        chips_host = QWidget()
+        chips = FlowLayout(chips_host, spacing=6)
         severity_chip = QLabel(t(f"severity_{issue.severity}", self.lang))
         severity_chip.setProperty("class", _SEVERITY_BADGE[issue.severity])
         chips.addWidget(severity_chip)
-        where = f"{t('detail_line', self.lang)} {issue.line}" if issue.line else (
-            issue.selector[-48:] or Path(issue.source).name)
-        chips.addWidget(chip(where))
+        # The tail of the selector, short enough not to dictate how narrow the
+        # column may become. The whole of it is on the chip as a tooltip: it is
+        # worth having, just not worth 300 pixels of minimum width.
+        if issue.line:
+            where = f"{t('detail_line', self.lang)} {issue.line}"
+            where_full = where
+        else:
+            where_full = issue.selector or Path(issue.source).name
+            where = where_full[-28:]
+            if len(where_full) > 28:
+                where = "…" + where
+        where_chip = chip(where)
+        where_chip.setToolTip(where_full)
+        chips.addWidget(where_chip)
         chips.addWidget(chip(issue.rule_id))
         if issue.engine and issue.engine != "static":
             chips.addWidget(chip(issue.engine))
-        chips.addStretch(1)
-        layout.addLayout(chips)
+        layout.addWidget(chips_host)
 
         layout.addWidget(divider())
 
