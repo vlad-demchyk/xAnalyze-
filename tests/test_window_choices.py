@@ -75,6 +75,42 @@ class Choices(unittest.TestCase):
         self._select(self.window.checks_combo, (CHECK_ACCESSIBILITY, CHECK_AI_PATTERNS))
         self.assertNotEqual(self.window._text_row_kind(), "audit")
 
+    def test_changing_the_question_reuses_the_fetched_pages(self):
+        self._select_raw(self.window.mode_combo, SOURCE_SITE)
+        self.window.url_edit.setText("https://example.com")
+        self._select(self.window.checks_combo, (CHECK_ACCESSIBILITY,))
+        first = self.window.current_request()
+        self.window._remember_extraction(first, pages=["one", "two"])
+        # Same site, different question: nothing to fetch again.
+        self._select(self.window.checks_combo, (CHECK_AI_PATTERNS,))
+        self.assertEqual(self.window._reusable_pages(), ["one", "two"])
+
+    def test_a_new_target_does_not_reuse_them(self):
+        self._select_raw(self.window.mode_combo, SOURCE_SITE)
+        self.window.url_edit.setText("https://example.com")
+        self.window._remember_extraction(self.window.current_request(),
+                                         pages=["one"])
+        self.window.url_edit.setText("https://other.example")
+        self.assertIsNone(self.window._reusable_pages())
+
+    def test_a_deeper_crawl_does_not_reuse_them(self):
+        self._select_raw(self.window.mode_combo, SOURCE_SITE)
+        self.window.url_edit.setText("https://example.com")
+        self.window.depth_spin.setValue(0)
+        self.window._remember_extraction(self.window.current_request(),
+                                         pages=["one"])
+        self.window.depth_spin.setValue(2)
+        self.assertIsNone(self.window._reusable_pages())
+
+    def test_changing_the_source_forgets_them(self):
+        self._select_raw(self.window.mode_combo, SOURCE_SITE)
+        self.window.url_edit.setText("https://example.com")
+        self.window._remember_extraction(self.window.current_request(),
+                                         pages=["one"])
+        self._select_raw(self.window.mode_combo, SOURCE_REPO)
+        self._select_raw(self.window.mode_combo, SOURCE_SITE)
+        self.assertIsNone(self.window._reusable_pages())
+
     def test_the_file_source_reads_the_file_field(self):
         self._select_raw(self.window.mode_combo, SOURCE_FILE)
         self.window.file_path_edit.setText("/tmp/page.html")

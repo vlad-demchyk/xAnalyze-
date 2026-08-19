@@ -116,6 +116,16 @@ class MainWindow(QMainWindow):
         #: be answered from the pages already fetched. See
         #: `AnalysisRequest.reuses_extraction`.
         self._last_request = None
+        #: The request whose fetch produced `_cached_pages` / `_cached_files`,
+        #: and the documents themselves. Held apart from `_last_request`
+        #: because a run can fail or be cancelled after the fetch succeeded.
+        self._extraction_request = None
+        self._cached_pages = None
+        self._cached_files = None
+        #: The scope the cached files were extracted under. A different scope
+        #: extracts different text, so it invalidates them even though the
+        #: source and the target are the same.
+        self._cached_scope = None
 
         self.worker = None  # AnalysisWorker | RepoAnalysisWorker | None
         self._rewrite_worker: RewriteAllWorker | None = None
@@ -688,6 +698,7 @@ class MainWindow(QMainWindow):
         return AnalysisRequest(
             source=self.source,
             target=self._current_target(),
+            depth=self.depth_spin.value(),
             readers=self._chosen_readers(),
             checks=self._chosen_checks(),
             methods=self._chosen_methods(),
@@ -701,6 +712,48 @@ class MainWindow(QMainWindow):
             return self.file_path_edit.text().strip()
         return self.url_edit.text().strip()
 
+    def _reusable_pages(self):
+        """Pages an earlier run already fetched for this exact target, or None.
+
+        This is the payoff of separating the axes: changing the question or the
+        judge used to mean crawling the site again, which is the slowest
+        possible way to answer a question about pages already on this machine.
+        """
+        request = self.current_request()
+        if self._cached_pages and request.reuses_extraction(self._extraction_request):
+            return self._cached_pages
+        return None
+
+    def _reusable_files(self):
+        """The repository counterpart, with one extra condition.
+
+        The scope decides what is extracted at all - copy, comments, or both -
+        so a changed scope is a changed extraction and cannot be reused.
+        """
+        request = self.current_request()
+        if (self._cached_files
+                and self._cached_scope == self._repo_scope()
+                and request.reuses_extraction(self._extraction_request)):
+            return self._cached_files
+        return None
+
+    def _remember_extraction(self, request, *, pages=None, files=None,
+                             scope=None) -> None:
+        self._extraction_request = request
+        if pages is not None:
+            self._cached_pages = pages
+        if files is not None:
+            self._cached_files = files
+            self._cached_scope = scope
+
+    def _forget_extraction(self) -> None:
+        """Drop the cache. Called when the source or the target changes: those
+        are the two things the cached documents *are*."""
+        self._extraction_request = None
+        self._cached_pages = None
+        self._cached_files = None
+        self._cached_scope = None
+
     def _on_choice_changed(self, _idx: int = 0) -> None:
         """A changed question does not invalidate the fetched pages.
 
@@ -713,6 +766,7 @@ class MainWindow(QMainWindow):
 
     def _on_mode_changed(self, _idx: int) -> None:
         self.source = self.mode_combo.currentData() or SOURCE_SITE
+        self._forget_extraction()
         self._retranslate_choices()
         self._apply_mode_visibility()
         # Switching source invalidates whatever was scanned before.
@@ -946,7 +1000,12 @@ class MainWindow(QMainWindow):
         detector_config = self._detector_config_for(detector_name)
         self._reset_scan_ui()
 
+        reused = self._reusable_pages()
+        if reused is not None:
+            self.status_bar.showMessage(t("status_reusing_pages", self.lang,
+                                         count=len(reused)))
         self.worker = AnalysisWorker(
+            pages=reused,
             root_url=url,
             depth=self.depth_spin.value(),
             detector_name=detector_name,
@@ -983,6 +1042,7 @@ class MainWindow(QMainWindow):
         self._reset_scan_ui()
 
         self.worker = RepoAnalysisWorker(
+            files=self._reusable_files(),
             root_dir=path,
             ignore_patterns=self.repo_ignore_patterns,
             detector_name=detector_name,
@@ -1591,6 +1651,9 @@ class MainWindow(QMainWindow):
 
     def _on_web_finished(self, result: AnalysisResult) -> None:
         self.result = result
+        # Remembered on success only: a cancelled or failed fetch has nothing
+        # worth answering the next question from.
+        self._remember_extraction(self._last_request, pages=result.pages)
         self._populate_flagged_list()
         n_flags = sum(1 for s in result.spans if s.confidence != Confidence.LOW)
         self.status_bar.showMessage(
@@ -1600,6 +1663,8 @@ class MainWindow(QMainWindow):
 
     def _on_repo_finished(self, result: RepoAnalysisResult) -> None:
         self.result = result
+        self._remember_extraction(self._last_request, files=result.files,
+                                  scope=self._repo_scope())
         self._populate_flagged_list()
         n_flags = sum(1 for s in result.spans if s.confidence != Confidence.LOW)
         self.status_bar.showMessage(

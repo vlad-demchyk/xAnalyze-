@@ -56,10 +56,16 @@ class AnalysisWorker(QThread):
 
     def __init__(self, root_url: str, depth: int, detector_name: str,
                  detector_config: dict, max_pages: int = 30,
-                 unicode_categories: tuple | None = None, settings=None, parent=None):
+                 unicode_categories: tuple | None = None, settings=None,
+                 pages: list | None = None, parent=None):
         super().__init__(parent)
         self.settings = settings
         self.ignore_root = None  # a URL has no folder to hold an ignore file
+        #: Pages already fetched by an earlier run over the same target. Given
+        #: them, this worker never touches the network: the expensive half of a
+        #: scan is getting the documents, and changing the question about them
+        #: is not a reason to fetch them again.
+        self.pages = pages
         self.root_url = root_url
         self.depth = depth
         self.detector_name = detector_name
@@ -76,8 +82,11 @@ class AnalysisWorker(QThread):
             def progress_cb(url: str, depth: int) -> None:
                 self.crawling.emit(url, depth)
 
-            config = CrawlConfig(max_depth=self.depth, max_pages=self.max_pages)
-            pages: list[PageResult] = crawl(self.root_url, config, progress_cb=progress_cb)
+            if self.pages is not None:
+                pages: list[PageResult] = self.pages
+            else:
+                config = CrawlConfig(max_depth=self.depth, max_pages=self.max_pages)
+                pages = crawl(self.root_url, config, progress_cb=progress_cb)
             if self._cancelled:
                 return
 
@@ -145,9 +154,15 @@ class RepoAnalysisWorker(QThread):
 
     def __init__(self, root_dir: str, ignore_patterns: list[str], detector_name: str,
                  detector_config: dict, unicode_categories: tuple | None = None,
-                 scope: str = "content", settings=None, parent=None):
+                 scope: str = "content", settings=None,
+                 files: list | None = None, parent=None):
         super().__init__(parent)
         self.settings = settings
+        #: Files already read by an earlier run, for the same reason
+        #: `AnalysisWorker.pages` exists. A changed scope is not reusable,
+        #: though - the scope decides what gets extracted in the first place -
+        #: so the window only passes this when the scope is unchanged.
+        self.files = files
         self.ignore_root = root_dir
         self.root_dir = root_dir
         self.ignore_patterns = ignore_patterns
@@ -167,13 +182,15 @@ class RepoAnalysisWorker(QThread):
 
             from pathlib import Path
 
-            if Path(self.root_dir).is_file():
+            if self.files is not None:
+                files: list[FileResult] = self.files
+            elif Path(self.root_dir).is_file():
                 # One named file, which is what the HTML-file source asks for.
                 # Naming a file is an instruction to read it, so neither the
                 # extension list nor the exclusions apply - the same rule the
                 # CLI already follows for a named path.
                 progress_cb(Path(self.root_dir).name)
-                files: list[FileResult] = [scan_file(self.root_dir, self.scope)]
+                files = [scan_file(self.root_dir, self.scope)]
             else:
                 config = ScanConfig(ignore_patterns=self.ignore_patterns,
                                     scope=self.scope)

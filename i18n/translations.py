@@ -184,6 +184,11 @@ _STRINGS: dict[str, dict[str, str]] = {
     "source_file": {
         "uk": "Файл HTML", "it": "File HTML", "en": "HTML file",
     },
+    "status_reusing_pages": {
+        "uk": "Сторінки вже завантажені ({count}), обхід не потрібен",
+        "it": "Pagine già scaricate ({count}), nessuna nuova scansione",
+        "en": "Pages already fetched ({count}), no new crawl",
+    },
     "reader_label": {
         "uk": "Читати:", "it": "Leggere:", "en": "Read:",
     },

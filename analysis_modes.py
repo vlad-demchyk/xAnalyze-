@@ -71,6 +71,9 @@ class AnalysisRequest:
     """
     source: str = SOURCE_SITE
     target: str = ""
+    #: Link depth for a site. Part of what was fetched, so a deeper run cannot
+    #: be answered from a shallower one's pages.
+    depth: int = 0
     readers: tuple = (READER_CODE,)
     checks: tuple = CHECKS
     methods: tuple = (METHOD_LOCAL,)
@@ -108,8 +111,9 @@ class AnalysisRequest:
             notes.append("no method left, running the offline engine")
 
         return AnalysisRequest(
-            source=source, target=self.target, readers=readers, checks=checks,
-            methods=methods, ai_available=self.ai_available, notes=notes,
+            source=source, target=self.target, depth=self.depth,
+            readers=readers, checks=checks, methods=methods,
+            ai_available=self.ai_available, notes=notes,
         )
 
     # ---------------------------------------------------------------- queries
@@ -154,6 +158,11 @@ class AnalysisRequest:
         if previous is None:
             return False
         if (previous.source, previous.target) != (self.source, self.target):
+            return False
+        if self.depth > previous.depth:
+            # A deeper crawl visits pages the shallower one never fetched.
+            # Going shallower is fine: the pages are all there, and the run
+            # simply looks at fewer of them.
             return False
         # A browser pass reads more than a fetch does, so a run that only
         # fetched cannot answer one that wants the rendered page.

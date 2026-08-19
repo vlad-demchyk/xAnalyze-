@@ -90,6 +90,16 @@ class ReusingWhatWasFetched(unittest.TestCase):
         second = self._site(readers=(READER_CODE,)).normalised()
         self.assertTrue(second.reuses_extraction(first))
 
+    def test_a_deeper_crawl_cannot_reuse_a_shallower_one(self):
+        first = self._site(depth=0).normalised()
+        second = self._site(depth=2).normalised()
+        self.assertFalse(second.reuses_extraction(first))
+
+    def test_a_shallower_run_can_reuse_a_deeper_one(self):
+        first = self._site(depth=2).normalised()
+        second = self._site(depth=0).normalised()
+        self.assertTrue(second.reuses_extraction(first))
+
     def test_nothing_to_reuse_on_the_first_run(self):
         self.assertFalse(self._site().normalised().reuses_extraction(None))
 
