@@ -29,9 +29,10 @@ mv XAnalyze.app /Applications/
 ### CLI (macOS/Linux)
 
 ```bash
-curl -L -o xanalyze https://github.com/vlad-demchyk/xAnalyze-/releases/latest/download/xanalyze
-chmod +x xanalyze
-sudo mv xanalyze /usr/local/bin/xanalyze
+curl -L -o ~/bin/xanalyze https://github.com/vlad-demchyk/xAnalyze-/releases/latest/download/xanalyze
+chmod +x ~/bin/xanalyze
+echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
 ```
 
 ### Dal codice sorgente
@@ -94,8 +95,6 @@ xanalyze audit https://example.com --browser --breakpoints all
 ### CLI
 
 ```bash
-rm /usr/local/bin/xanalyze
-# o se installato in ~/bin:
 rm ~/bin/xanalyze
 ```
 
