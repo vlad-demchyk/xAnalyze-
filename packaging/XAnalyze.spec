@@ -126,6 +126,18 @@ app = BUNDLE(
 
 # --------------------------------------------------------------- post-build
 
+import os
+
+# Create xanalyze CLI copy inside the bundle
+macos_dir = DIST / "XAnalyze.app" / "Contents" / "MacOS"
+cli_copy = macos_dir / "xanalyze"
+gui_exe = macos_dir / "XAnalyze"
+if gui_exe.exists() and not cli_copy.exists():
+    import shutil
+    shutil.copy2(str(gui_exe), str(cli_copy))
+    print(f"XAnalyze: created CLI copy at {cli_copy}")
+
+
 def repair_webengine_framework(framework_root: Path) -> bool:
     """Put `QtWebEngineProcess` back where Qt looks for it.
 

@@ -18,6 +18,7 @@ from PySide6.QtCore import QObject, Signal
 from analysis_modes import (
     CHECK_AI_PATTERNS,
     METHOD_AI,
+    METHOD_EMBEDDING,
     METHOD_LOCAL,
     SOURCE_SITE,
 )
@@ -44,6 +45,7 @@ class AppState(QObject):
     provider_changed = Signal(str)        # new provider key
     ai_available_changed = Signal(bool)   # account state changed
     mode_changed = Signal(str)            # derived mode changed
+    scope_changed = Signal(str)           # new scope
 
     # Fired after any axis changes, in addition to the specific signal.
     # Listeners that care about the combined state (e.g. button visibility)
@@ -59,6 +61,7 @@ class AppState(QObject):
         self._ai_available: bool = False
         self._target: str = ""
         self._depth: int = 0
+        self._scope: str = "content"
 
     # -- source ------------------------------------------------------------
     @property
@@ -148,6 +151,18 @@ class AppState(QObject):
 
     def set_depth(self, value: int) -> None:
         self._depth = max(0, value)
+
+    # -- scope -------------------------------------------------------------
+    @property
+    def scope(self) -> str:
+        return self._scope
+
+    def set_scope(self, value: str) -> None:
+        if value == self._scope:
+            return
+        self._scope = value
+        self.scope_changed.emit(value)
+        self.any_changed.emit()
 
     # -- derived -----------------------------------------------------------
     @property

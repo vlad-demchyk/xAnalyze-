@@ -10,14 +10,15 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QFileDialog, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+    QComboBox, QFileDialog, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QSizePolicy, QSpinBox, QVBoxLayout, QWidget,
 )
 
 from analysis_modes import (
-    CHECK_ACCESSIBILITY, CHECK_AI_PATTERNS, METHOD_AI, METHOD_LOCAL,
+    CHECK_ACCESSIBILITY, CHECK_AI_PATTERNS, METHOD_AI, METHOD_EMBEDDING, METHOD_LOCAL,
     SOURCE_FILE, SOURCE_REPO, SOURCE_SITE,
 )
+from repo_scanner import SCOPE_BOTH, SCOPE_CONTENT, SCOPE_TECHNICAL
 from i18n.translations import t
 from ui.design_system import TOKENS as T
 
@@ -54,6 +55,7 @@ class Sidebar(QWidget):
     depth_changed = Signal(int)
     checks_changed = Signal(tuple)
     method_changed = Signal(tuple)
+    scope_changed = Signal(str)
     settings_clicked = Signal()
     account_clicked = Signal()
 
@@ -87,6 +89,8 @@ class Sidebar(QWidget):
         self._add_method_selection(layout)
         layout.addSpacing(T.space_3)
         self._add_depth_control(layout)
+        layout.addSpacing(T.space_3)
+        self._add_scope_combo(layout)
         layout.addStretch(1)
         self._add_account_info(layout)
         layout.addSpacing(T.space_3)
@@ -313,10 +317,45 @@ class Sidebar(QWidget):
 
         layout.addWidget(self.depth_container)
 
+    def _add_scope_combo(self, layout: QVBoxLayout):
+        self.scope_container = QWidget()
+        scope_layout = QHBoxLayout(self.scope_container)
+        scope_layout.setContentsMargins(0, 0, 0, 0)
+        scope_layout.setSpacing(T.space_2)
+
+        label = QLabel(t("scope_label", self.lang))
+        label.setStyleSheet(f"color: {T.text_secondary}; font-size: {T.font_size_sm}px;")
+        scope_layout.addWidget(label)
+
+        self.scope_combo = QComboBox()
+        self.scope_combo.setFixedHeight(28)
+        self.scope_combo.setStyleSheet(f"""
+            QComboBox {{
+                background-color: {T.bg_input};
+                border: 1px solid {T.border_default};
+                border-radius: {T.radius_sm}px;
+                padding: 0 {T.space_2}px;
+                color: {T.text_primary};
+                font-size: {T.font_size_sm}px;
+            }}
+            QComboBox:focus {{
+                border-color: {T.accent};
+            }}
+        """)
+        for value in (SCOPE_CONTENT, SCOPE_TECHNICAL, SCOPE_BOTH):
+            self.scope_combo.addItem(t(f"scope_{value}", self.lang), userData=value)
+        self.scope_combo.currentIndexChanged.connect(
+            lambda: self.scope_changed.emit(self.scope_combo.currentData()))
+        scope_layout.addWidget(self.scope_combo)
+        scope_layout.addStretch(1)
+
+        layout.addWidget(self.scope_container)
+
     def _add_method_selection(self, layout: QVBoxLayout):
         self.method_chips: dict[str, FilterChip] = {}
         methods = [
             (METHOD_LOCAL, t("method_local", self.lang)),
+            (METHOD_EMBEDDING, t("method_embedding", self.lang)),
             (METHOD_AI, t("method_ai", self.lang)),
         ]
         row = QWidget()

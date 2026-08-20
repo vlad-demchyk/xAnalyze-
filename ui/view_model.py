@@ -22,6 +22,7 @@ from analysis_modes import (
     CHECK_ACCESSIBILITY,
     CHECK_AI_PATTERNS,
     METHOD_AI,
+    METHOD_EMBEDDING,
     METHOD_LOCAL,
     READER_BROWSER,
     READER_CODE,
@@ -74,6 +75,16 @@ class MainViewModel(QObject):
 
     # -- error signal ------------------------------------------------------
     error = Signal(str)                     # error message
+
+    # -- browser pass signal -----------------------------------------------
+    browser_pass_needed = Signal()          # audit done, browser pass needed
+
+    # -- UI dialog signals -------------------------------------------------
+    fix_confirm_needed = Signal(int, int)   # (ready_count, pending_count)
+    fix_outcome = Signal(str, list)         # (message, written_by_model_rules)
+    undo_outcome = Signal(str)              # message
+    download_choice_needed = Signal(bool, bool)  # (has_audit, has_text)
+    unicode_fixed = Signal(int)             # filled count
 
     # -- state signals -----------------------------------------------------
     busy_changed = Signal(bool)             # analysis running or not
@@ -178,8 +189,7 @@ class MainViewModel(QObject):
         self._cached_scope = None
 
     def _repo_scope(self) -> str:
-        from repo_scanner import SCOPE_BOTH
-        return SCOPE_BOTH
+        return self.state.scope
 
     # -- detector selection ------------------------------------------------
     def _detector_for_request(self) -> tuple[str, dict]:
@@ -190,6 +200,8 @@ class MainViewModel(QObject):
             name = "hybrid"
         elif request.wants_ai:
             name = judge
+        elif request.wants_embedding:
+            name = "embedding"
         else:
             name = "offline"
         return name, self._detector_config_for(name, judge)
@@ -489,6 +501,8 @@ class MainViewModel(QObject):
     def _on_audit_finished(self, result):
         self.audit_result = result
         self.audit_result_ready.emit(result)
+        if self._last_request and self._last_request.wants_browser:
+            self.browser_pass_needed.emit()
         if self._pending_copy_pass:
             self._pending_copy_pass = False
             self._start_copy_pass()
@@ -528,33 +542,138 @@ class MainViewModel(QObject):
 
     # -- fix actions -------------------------------------------------------
     def fix_unicode(self, spans):
-        from unicode_rules import deterministic_fix
-        fixes = deterministic_fix(spans)
-        self.status_message.emit(f"Fixed {fixes} character(s)")
+        if not spans or not self.result:
+            return
+        blocks_by_id = {b.block_id: b for b in self.result.blocks()}
+        filled = 0
+        for span in spans:
+            block = blocks_by_id.get(span.block_id)
+            if block is None or span.replacement is None:
+                continue
+            original = block.text[span.start:span.end]
+            if span.replacement != original:
+                self.drafts[(block.block_id, span.start, span.end)] = span.replacement
+                filled += 1
+        self.unicode_fixed.emit(filled)
+        self.buttons_changed.emit()
 
     def fix_on_disk(self):
         from audit import fix_ai, fixer
         if self.audit_result is None:
             return
         ready, pending, skipped = fixer.plan_fixes(self.audit_result.documents)
-        # fill_locally needs page text
+
         page_text = ""
         if self.audit_result.documents:
             page_text = self.audit_result.documents[0].source
         filled, pending = fix_ai.fill_locally(pending, page_text)
         ready += filled
+
+        if not ready and not pending:
+            self.status_message.emit("Nothing to fix")
+            return
+
+        if pending:
+            self.fix_confirm_needed.emit(len(ready), len(pending))
+            return
+
         outcome = fixer.apply_fixes(ready)
         outcome.skipped.extend(skipped)
+        self._report_fix_outcome(outcome, [])
+
+    def apply_fix_with_ai(self, use_ai: bool):
+        from audit import fix_ai, fixer
+        if self.audit_result is None:
+            return
+        ready, pending, skipped = fixer.plan_fixes(self.audit_result.documents)
+
+        page_text = ""
+        if self.audit_result.documents:
+            page_text = self.audit_result.documents[0].source
+        filled, pending = fix_ai.fill_locally(pending, page_text)
+        ready += filled
+
+        written_by_model = []
+        if use_ai and pending:
+            import rewriter
+            try:
+                provider = rewriter.build_provider(self.settings)
+                filled, pending = fix_ai.describe(pending, page_text, provider,
+                                                  self.settings.ui_language)
+                ready += filled
+                written_by_model = [p.rule_id for p in filled]
+            except rewriter.LLMUnavailable as exc:
+                self.error.emit(str(exc))
+
+        outcome = fixer.apply_fixes(ready)
+        outcome.skipped.extend(skipped)
+        for plan in pending:
+            outcome.skipped.append(
+                fixer.SkippedFix(plan.rule_id, plan.path, plan.line, plan.needs_input))
+        self._report_fix_outcome(outcome, written_by_model)
+
+    def _report_fix_outcome(self, outcome, written_by_model):
+        from i18n.translations import t
+        lang = self.settings.ui_language
+        parts = []
+        if outcome.written:
+            parts.append(t("fix_written", lang, n=len(outcome.written)))
+        if outcome.skipped:
+            parts.append(t("fix_skipped", lang, n=len(outcome.skipped)))
+        if written_by_model:
+            parts.append(t("fix_model_wrote", lang, n=len(written_by_model)))
+        message = "\n".join(parts) if parts else t("fix_nothing_ready", lang)
+        self.fix_outcome.emit(message, written_by_model)
         self.buttons_changed.emit()
 
     def undo_fix(self):
         from audit import fixer
+        from i18n.translations import t
+        lang = self.settings.ui_language
         docs = self.audit_result.documents if self.audit_result else []
         paths = fixer.backups_for(docs)
         if not paths:
             return
         restored, problems = fixer.restore(paths)
+        message = t("undo_done", lang, files=len(restored))
+        if problems:
+            message += "\n\n" + "\n".join(problems)
+        self.undo_outcome.emit(message)
         self.buttons_changed.emit()
+
+    # -- download actions --------------------------------------------------
+    def download(self):
+        has_audit = bool(self.audit_result and self.audit_result.documents)
+        has_text = bool(self.result and self.result.spans)
+        if not has_audit and not has_text:
+            return
+        self.download_choice_needed.emit(has_audit, has_text)
+
+    def export_styled_report(self, path: str):
+        from report.export import write_styled_report
+        from report.model import from_accessibility, from_text_analysis
+        has_text = bool(self.result and self.result.spans)
+        has_audit = bool(self.audit_result and self.audit_result.documents)
+        model = from_accessibility(self.audit_result, lang=self.settings.ui_language) if has_audit else None
+        if has_text:
+            text_model = from_text_analysis(self.result, lang=self.settings.ui_language)
+            if model:
+                model.findings.extend(text_model.findings)
+            else:
+                model = text_model
+        if model is None:
+            return
+        write_styled_report(model, path)
+        self.status_message.emit(f"Report saved: {path}")
+
+    def export_agent_report(self, path: str):
+        import cli
+        if self.audit_result is None:
+            return
+        class _Args:
+            report = path
+        cli._write_report(self.audit_result, _Args(), self.settings.ui_language, None)
+        self.status_message.emit(f"Report saved: {path}")
 
     # -- suppression -------------------------------------------------------
     def ignore_span(self, span: TextSpan, block):

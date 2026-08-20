@@ -282,6 +282,12 @@ class MainWindow(QMainWindow):
         self.view_model.repo_result_ready.connect(self._on_vm_repo_result)
         self.view_model.audit_result_ready.connect(self._on_vm_audit_result)
         self.view_model.rewrite_ready.connect(self._on_rewrite_finished)
+        self.view_model.browser_pass_needed.connect(self._run_browser_pass)
+        self.view_model.fix_confirm_needed.connect(self._on_fix_confirm_needed)
+        self.view_model.fix_outcome.connect(self._on_fix_outcome)
+        self.view_model.undo_outcome.connect(self._on_undo_outcome)
+        self.view_model.download_choice_needed.connect(self._on_download_choice_needed)
+        self.view_model.unicode_fixed.connect(self._on_unicode_fixed)
 
     def _setup_shortcuts(self) -> None:
         """Keyboard shortcuts for power users."""
@@ -1985,113 +1991,15 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------- writing an audit back
 
     def _on_fix_on_disk_clicked(self) -> None:
-        """Write the corrections the audit already knows, into the files.
-
-        Two tiers, and the difference is stated before anything is written:
-        corrections that follow from the markup go in unattended, while ones
-        that encode a judgement - is this image decorative, what does this
-        page promise - are only written when a model has been asked to supply
-        the words, and are named as the model's afterwards.
-        """
-        from audit import fix_ai, fixer
-
-        if self.audit_result is None:
-            return
-        ready, pending, skipped = fixer.plan_fixes(self.audit_result.documents)
-
-        page_text = self._audited_text()
-        filled, pending = fix_ai.fill_locally(pending, page_text)
-        ready += filled
-
-        use_ai = False
-        if pending:
-            answer = QMessageBox.question(
-                self, t("fix_on_disk_button", self.lang),
-                t("fix_confirm_body", self.lang,
-                  ready=len(ready), pending=len(pending)),
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                | QMessageBox.StandardButton.Cancel,
-            )
-            if answer == QMessageBox.StandardButton.Cancel:
-                return
-            use_ai = answer == QMessageBox.StandardButton.Yes
-        elif not ready:
-            QMessageBox.information(self, t("fix_on_disk_button", self.lang),
-                                    t("fix_nothing_ready", self.lang))
-            return
-
-        written_by_model = []
-        if use_ai:
-            import rewriter
-
-            try:
-                provider = rewriter.build_provider(self.settings)
-                filled, pending = fix_ai.describe(pending, page_text, provider,
-                                                  self.lang)
-                ready += filled
-                written_by_model = [p.rule_id for p in filled]
-            except rewriter.LLMUnavailable as exc:
-                QMessageBox.warning(self, t("fix_on_disk_button", self.lang), str(exc))
-
-        outcome = fixer.apply_fixes(ready)
-        outcome.skipped.extend(skipped)
-        for plan in pending:
-            outcome.skipped.append(
-                fixer.SkippedFix(plan.rule_id, plan.path, plan.line, plan.needs_input))
-
-        self._report_fix_outcome(outcome, written_by_model)
-        self._reaudit_after_fix()
+        self.view_model.fix_on_disk()
 
     def _on_undo_fix_clicked(self) -> None:
-        from audit import fixer
-
-        paths = fixer.backups_for(self.audit_result.documents if self.audit_result else [])
-        if not paths:
-            return
-        restored, problems = fixer.restore(paths)
-        message = t("undo_done", self.lang, files=len(restored))
-        if problems:
-            message += "\n\n" + "\n".join(problems)
-        QMessageBox.information(self, t("undo_fix_button", self.lang), message)
-        self._reaudit_after_fix()
+        self.view_model.undo_fix()
 
     def _on_download_clicked(self) -> None:
-        """Ask which report, then write it.
-
-        The question is only asked when there is a choice: with only an audit
-        or only a text scan in hand one of the two documents cannot be built,
-        and offering it would be a dialog whose second option is an error
-        message waiting to happen.
-        """
-        has_audit = bool(self.audit_result and self.audit_result.documents)
-        has_text = bool(self.result and self.result.spans)
-        if not has_audit and not has_text:
-            return
-        if not has_audit:
-            self._on_styled_report_clicked()
-            return
-
-        box = QMessageBox(self)
-        box.setWindowTitle(t("download_button", self.lang))
-        box.setText(t("download_which", self.lang))
-        styled = box.addButton(_styled_report_text(self.lang, "button"),
-                               QMessageBox.ButtonRole.AcceptRole)
-        agent = box.addButton(t("export_report_button", self.lang),
-                              QMessageBox.ButtonRole.AcceptRole)
-        # The briefing is the technical one, so the reader-facing document is
-        # the default: it is what someone who clicked "Download" without a
-        # further thought most likely meant.
-        box.setDefaultButton(styled)
-        box.addButton(QMessageBox.StandardButton.Cancel)
-        box.exec()
-        clicked = box.clickedButton()
-        if clicked is styled:
-            self._on_styled_report_clicked()
-        elif clicked is agent:
-            self._on_export_report_clicked()
+        self.view_model.download()
 
     def _on_export_report_clicked(self) -> None:
-        """Save a briefing another tool - or a coding agent - can act on."""
         if self.audit_result is None:
             return
         path, _filter = QFileDialog.getSaveFileName(
@@ -2099,12 +2007,8 @@ class MainWindow(QMainWindow):
             "Markdown (*.md);;JSON (*.json)")
         if not path:
             return
-        import cli
-
-        class _Args:
-            report = path
         try:
-            cli._write_report(self.audit_result, _Args(), self.lang, None)
+            self.view_model.export_agent_report(path)
         except OSError as exc:
             QMessageBox.warning(self, t("export_report_button", self.lang), str(exc))
             return
@@ -2112,15 +2016,6 @@ class MainWindow(QMainWindow):
                                 t("export_report_done", self.lang, path=path))
 
     def _on_styled_report_clicked(self) -> None:
-        """Save the branded, print-ready report - the same findings the
-        list already shows, laid out as a document instead of a list.
-
-        Independent of `_on_export_report_clicked`: that one always reads
-        `self.audit_result` and writes the agent briefing; this one builds
-        from whichever result(s) this run actually has, text or audit or
-        both (a "both questions" run merges the two into one document, its
-        audit findings first - same order `_populate_flagged_list` uses).
-        """
         has_text = bool(self.result and self.result.spans)
         has_audit = bool(self.audit_result and self.audit_result.documents)
         if not has_text and not has_audit:
@@ -2130,19 +2025,8 @@ class MainWindow(QMainWindow):
             "PDF (*.pdf);;HTML (*.html)")
         if not path:
             return
-
-        from report.export import write_styled_report
-        from report.model import from_accessibility, from_text_analysis
-
-        model = from_accessibility(self.audit_result, lang=self.lang) if has_audit else None
-        if has_text:
-            text_model = from_text_analysis(self.result, drafts=self.drafts)
-            if model is None:
-                model = text_model
-            else:
-                model.findings.extend(text_model.findings)
         try:
-            write_styled_report(path, model, self.lang)
+            self.view_model.export_styled_report(path)
         except (OSError, RuntimeError) as exc:
             QMessageBox.warning(self, _styled_report_text(self.lang, "button"), str(exc))
             return
@@ -2667,6 +2551,52 @@ class MainWindow(QMainWindow):
         self.analyze_btn.setEnabled(True)
         self.cancel_btn.setEnabled(False)
 
+    # -- ViewModel signal handlers -----------------------------------------
+    def _on_fix_confirm_needed(self, ready_count: int, pending_count: int) -> None:
+        answer = QMessageBox.question(
+            self, t("fix_on_disk_button", self.lang),
+            t("fix_confirm_body", self.lang, ready=ready_count, pending=pending_count),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            | QMessageBox.StandardButton.Cancel,
+        )
+        if answer == QMessageBox.StandardButton.Cancel:
+            return
+        use_ai = answer == QMessageBox.StandardButton.Yes
+        self.view_model.apply_fix_with_ai(use_ai)
+
+    def _on_fix_outcome(self, message: str, written_by_model: list) -> None:
+        QMessageBox.information(self, t("fix_on_disk_button", self.lang), message)
+        self._reaudit_after_fix()
+
+    def _on_undo_outcome(self, message: str) -> None:
+        QMessageBox.information(self, t("undo_fix_button", self.lang), message)
+        self._reaudit_after_fix()
+
+    def _on_download_choice_needed(self, has_audit: bool, has_text: bool) -> None:
+        if not has_audit:
+            self._on_styled_report_clicked()
+            return
+        box = QMessageBox(self)
+        box.setWindowTitle(t("download_button", self.lang))
+        box.setText(t("download_which", self.lang))
+        styled = box.addButton(_styled_report_text(self.lang, "button"),
+                               QMessageBox.ButtonRole.AcceptRole)
+        agent = box.addButton(t("export_report_button", self.lang),
+                              QMessageBox.ButtonRole.AcceptRole)
+        box.setDefaultButton(styled)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is styled:
+            self._on_styled_report_clicked()
+        elif clicked is agent:
+            self._on_export_report_clicked()
+
+    def _on_unicode_fixed(self, filled: int) -> None:
+        self._populate_flagged_list()
+        self._update_repo_buttons_enabled()
+        QMessageBox.information(self, "", t("unicode_fixed_summary", self.lang, n=filled))
+
     # ------------------------------------------------------------- column 2
 
     @staticmethod
@@ -3154,32 +3084,10 @@ class MainWindow(QMainWindow):
         return items
 
     def _on_fix_unicode_clicked(self) -> None:
-        """Fill in a corrected draft for every non-keyboard character found.
-
-        Entirely local: the replacement for each character is fixed by the
-        rule table, so there's no model call, no cost, and no waiting. In
-        repo mode the drafts then flow into "Auto-replace in files" like
-        any other; in web mode they're drafts to copy out.
-        """
         spans = self._unicode_spans()
         if not spans:
             return
-        blocks_by_id = {b.block_id: b for b in self.result.blocks()}
-        filled = 0
-        for span in spans:
-            block = blocks_by_id.get(span.block_id)
-            if block is None or span.replacement is None:
-                continue
-            # Use the correction the detector already worked out. It knew the
-            # surrounding word; this code does not, and recomputing it from
-            # the isolated span would turn homoglyph fixes into no-ops.
-            original = block.text[span.start:span.end]
-            if span.replacement != original:
-                self.drafts[(block.block_id, span.start, span.end)] = span.replacement
-                filled += 1
-        self._populate_flagged_list()
-        self._update_repo_buttons_enabled()
-        QMessageBox.information(self, "", t("unicode_fixed_summary", self.lang, n=filled))
+        self.view_model.fix_unicode(spans)
 
     def _on_generate_list_clicked(self) -> None:
         self._run_bulk_rewrite(auto_replace=False)

@@ -527,6 +527,192 @@ def cmd_cache(args) -> int:
     return EXIT_OK
 
 
+def cmd_fullscan(args) -> int:
+    """Full scan: AI patterns + accessibility audit + reports for agent.
+
+    Combines scan (AI patterns, characters) and audit (accessibility, SEO,
+    performance, best practices) into one command. Saves styled report and
+    agent briefing, outputs JSON for agent consumption.
+    """
+    import audit
+    from audit.explanations import summary_line
+
+    lang = args.language or "en"
+    target = args.target
+    is_url = target.startswith(("http://", "https://")) or args.url
+
+    # Validate target
+    if not is_url:
+        if not Path(target).exists():
+            print(f"path not found: {target}", file=sys.stderr)
+            return EXIT_ERROR
+
+    # --- Phase 1: AI patterns scan (for local files/repos) ---
+    scan_findings = []
+    scan_result = None
+    if not is_url:
+        # Build scan args
+        class ScanArgs:
+            paths = [target]
+            ext = args.ext
+            exclude = args.exclude
+            no_default_excludes = getattr(args, "no_default_excludes", False)
+            use_default_excludes = not getattr(args, "no_default_excludes", False)
+            max_files = args.max_files
+            detector = args.detector
+            scope = args.scope
+            no_typography = getattr(args, "no_typography", False)
+            no_ignore = False
+            no_unicode = False
+            categories = None
+            json = False
+            check = False
+            incremental = False
+            styled_report = None
+            language = lang
+
+        files = _collect_files(ScanArgs.paths, ScanArgs)
+        if files:
+            scan_findings, _ = _analyze(files, ScanArgs)
+            # Clean findings for JSON serialization (remove _span, _block)
+            clean_findings = [_public(f) for f in scan_findings]
+            scan_result = {
+                "findings": clean_findings,
+                "counts": {
+                    "total": len(clean_findings),
+                    "style": len([f for f in clean_findings if f.get("source") == "style"]),
+                    "characters": len([f for f in clean_findings if f.get("source") == "characters"]),
+                },
+            }
+
+    # --- Phase 2: Accessibility audit ---
+    audit_result = None
+    audit_issues = []
+    if is_url:
+        from crawler import CrawlConfig, crawl
+
+        if not target.startswith(("http://", "https://")):
+            target = "https://" + target
+        config = CrawlConfig(max_depth=args.depth, max_pages=args.max_pages)
+        pages = _crawl_maybe_rendering(target, config)
+        audit_result = audit.analyze_pages(pages, target)
+    elif _is_page_file(target):
+        audit_result = audit.analyze_page_file(target)
+    else:
+        from repo_scanner import ScanConfig, scan_repo
+
+        ignore = _parse_ignore_text(DEFAULT_IGNORE_PATTERNS) if not getattr(args, "no_default_excludes", False) else []
+        ignore += list(args.exclude or [])
+        repo_files = scan_repo(target, ScanConfig(ignore_patterns=ignore,
+                                                   max_files=args.max_files))
+        if repo_files:
+            audit_result = audit.analyze_files(repo_files, target)
+
+    if audit_result:
+        for doc in audit_result.documents:
+            audit_issues.extend(doc.issues)
+
+    # --- Phase 3: Build combined result ---
+    clean_findings = scan_result["findings"] if scan_result else []
+    combined = {
+        "target": args.target,
+        "is_url": is_url,
+        "language": lang,
+        "scan": scan_result or {"findings": [], "counts": {"total": 0, "style": 0, "characters": 0}},
+        "audit": {
+            "counts": {
+                "critical": sum(1 for i in audit_issues if i.severity == "critical"),
+                "serious": sum(1 for i in audit_issues if i.severity == "serious"),
+                "moderate": sum(1 for i in audit_issues if i.severity == "moderate"),
+                "minor": sum(1 for i in audit_issues if i.severity == "minor"),
+            },
+            "issues": [
+                {
+                    "rule": i.rule_id,
+                    "category": i.category,
+                    "severity": i.severity,
+                    "selector": i.selector,
+                    "snippet": i.snippet[:200] if i.snippet else None,
+                    "fix_snippet": i.fix_snippet[:200] if i.fix_snippet else None,
+                }
+                for i in audit_issues
+            ],
+        },
+        "summary": {
+            "total_findings": len(clean_findings) + len(audit_issues),
+            "ai_patterns": len([f for f in clean_findings if f.get("source") == "style"]),
+            "characters": len([f for f in clean_findings if f.get("source") == "characters"]),
+            "accessibility": sum(1 for i in audit_issues if i.category == "accessibility"),
+            "seo": sum(1 for i in audit_issues if i.category == "seo"),
+            "performance": sum(1 for i in audit_issues if i.category == "performance"),
+            "best_practices": sum(1 for i in audit_issues if i.category == "best_practices"),
+        },
+    }
+
+    # --- Phase 4: Save reports ---
+    if getattr(args, "styled_report", None):
+        from report.export import write_styled_report
+        from report.model import from_accessibility, from_text_analysis
+
+        model = None
+        if audit_result:
+            model = from_accessibility(audit_result, lang=lang)
+        if scan_result and scan_findings:
+            # Build a minimal result for styled report
+            class _ScanResult:
+                def __init__(self, findings):
+                    self.spans = []
+                    self._findings = findings
+            text_model = from_text_analysis(_ScanResult(scan_findings), lang=lang)
+            if model:
+                model.findings.extend(text_model.findings)
+            else:
+                model = text_model
+        if model:
+            write_styled_report(args.styled_report, model, lang)
+            print(f"# styled report: {args.styled_report}", file=sys.stderr)
+
+    if getattr(args, "report", None):
+        if audit_result:
+            _write_report(audit_result, args, lang, None)
+            print(f"# agent briefing: {args.report}", file=sys.stderr)
+
+    # --- Phase 5: Output ---
+    if args.json:
+        print(json.dumps(combined, indent=2, ensure_ascii=False))
+    else:
+        # Human-readable summary
+        print(f"\n{'='*60}")
+        print(f"FULL SCAN: {args.target}")
+        print(f"{'='*60}")
+        print(f"\n--- AI Patterns (detector: {args.detector}) ---")
+        print(f"  Total findings: {combined['scan']['counts']['total']}")
+        print(f"  Style (AI): {combined['scan']['counts']['style']}")
+        print(f"  Characters: {combined['scan']['counts']['characters']}")
+        print(f"\n--- Accessibility Audit ---")
+        c = combined['audit']['counts']
+        print(f"  Critical: {c['critical']}")
+        print(f"  Serious: {c['serious']}")
+        print(f"  Moderate: {c['moderate']}")
+        print(f"  Minor: {c['minor']}")
+        print(f"\n--- Summary ---")
+        s = combined['summary']
+        print(f"  Total: {s['total_findings']}")
+        print(f"  AI patterns: {s['ai_patterns']}")
+        print(f"  Characters: {s['characters']}")
+        print(f"  Accessibility: {s['accessibility']}")
+        print(f"  SEO: {s['seo']}")
+        print(f"  Performance: {s['performance']}")
+        print(f"  Best practices: {s['best_practices']}")
+
+    if args.check:
+        critical = combined['audit']['counts']['critical']
+        serious = combined['audit']['counts']['serious']
+        if critical > 0 or serious > 0:
+            return EXIT_FINDINGS
+    return EXIT_OK
+
+
 def cmd_compare(args) -> int:
     """Compare different detectors on the same files."""
     files = _collect_files(args.paths, args)
@@ -1774,6 +1960,48 @@ def build_parser() -> argparse.ArgumentParser:
     p_ai_rewrite.add_argument("--quiet", action="store_true",
                               help="print only the rewrite")
     p_ai_rewrite.set_defaults(func=cmd_ai_rewrite)
+
+    p_fullscan = sub.add_parser(
+        "fullscan",
+        help="full scan: AI patterns + accessibility audit + reports for agent")
+    p_fullscan.add_argument(
+        "target",
+        help="URL to crawl, a directory to scan, or one .html file")
+    p_fullscan.add_argument("--url", action="store_true",
+                            help="treat target as URL even without scheme")
+    p_fullscan.add_argument("--depth", type=int, default=0,
+                            help="crawl depth for URLs (default 0)")
+    p_fullscan.add_argument("--max-pages", type=int, default=30,
+                            help="max pages to crawl (default 30)")
+    p_fullscan.add_argument("--max-files", type=int, default=5000,
+                            help="max files to scan (default 5000)")
+    p_fullscan.add_argument("--ext", nargs="*", default=None,
+                            help="file extensions to scan")
+    p_fullscan.add_argument("--exclude", action="append", default=None,
+                            help="additional gitignore patterns to exclude")
+    p_fullscan.add_argument("--no-default-excludes", action="store_true",
+                            help="don't skip node_modules/, dist/, .git/ etc")
+    p_fullscan.add_argument("--detector", default="offline",
+                            help="detector for AI patterns: offline, embedding, "
+                                 "hybrid, llm-judge")
+    p_fullscan.add_argument("--scope", default="both",
+                            choices=["content", "technical", "both"],
+                            help="what to read for AI patterns (default: both)")
+    p_fullscan.add_argument("--no-typography", action="store_true",
+                            help="leave em dashes and curly quotes alone")
+    p_fullscan.add_argument("--styled-report", default=None, metavar="PATH",
+                            help="branded PDF/HTML report for a person")
+    p_fullscan.add_argument("--report", default=None, metavar="PATH",
+                            help="agent briefing: .md or .json by suffix")
+    p_fullscan.add_argument("--json", action="store_true",
+                            help="machine-readable JSON output for agent")
+    p_fullscan.add_argument("--check", action="store_true",
+                            help="exit 1 when critical/serious issues found")
+    p_fullscan.add_argument("--language", default=None,
+                            help="uk | it | en; language of reports")
+    p_fullscan.add_argument("--browser", action="store_true",
+                            help="also load pages in a real browser")
+    p_fullscan.set_defaults(func=cmd_fullscan)
 
     p_clean = sub.add_parser("clean", help="filter text from stdin to stdout")
     common(p_clean, with_paths=False)
