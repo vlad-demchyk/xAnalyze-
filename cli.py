@@ -459,10 +459,9 @@ def cmd_fix(args) -> int:
     result = apply_replacements(plans) if plans else None
 
     if args.no_backup and result:
-        for path in result.files_changed:
-            backup = path + ".bak"
-            if os.path.exists(backup):
-                os.remove(backup)
+        # Don't delete existing .bak files from previous runs — only skip
+        # creating new ones. The user might need them for recovery.
+        pass
 
     applied = {
         "passages_applied": result.passages_applied if result else 0,
@@ -663,7 +662,7 @@ def cmd_fullscan(args) -> int:
                 def __init__(self, findings):
                     self.spans = []
                     self._findings = findings
-            text_model = from_text_analysis(_ScanResult(scan_findings), lang=lang)
+            text_model = from_text_analysis(_ScanResult(scan_findings))
             if model:
                 model.findings.extend(text_model.findings)
             else:
@@ -993,7 +992,7 @@ def _document_text(result) -> str:
         if path.startswith(("http://", "https://")):
             continue
         try:
-            with open(path, encoding="utf-8", errors="replace") as handle:
+            with open(path, encoding="utf-8", errors="surrogateescape") as handle:
                 markup = handle.read()
         except OSError:
             continue

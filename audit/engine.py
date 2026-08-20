@@ -114,6 +114,9 @@ def _line_lookup(raw_text: str):
 #: Suffixes whose contents are a finished document rather than a fragment of
 #: one. Everything else in a repository is source that merely contains markup.
 PAGE_SUFFIXES = {".html", ".htm", ".xhtml"}
+# Files to skip in repo audit — source code, tests, configs
+SKIP_AUDIT_SUFFIXES = {".tsx", ".jsx", ".mjs", ".ts", ".js", ".py", ".rb", ".go", ".rs", ".java", ".c", ".cpp", ".h"}
+SKIP_AUDIT_PATTERNS = {"test", "spec", "__tests__", "node_modules", ".min."}
 
 
 def analyze_document(markup: str, source: str, rules=None,
@@ -253,6 +256,12 @@ def analyze_files(file_results, root: str, rules=None, ai_review=None) -> Access
         if file_result.error or not file_result.raw_text:
             continue
         if "<" not in file_result.raw_text:
+            continue
+        # Skip source code files and test files
+        path_lower = file_result.path.lower()
+        if any(path_lower.endswith(ext) for ext in SKIP_AUDIT_SUFFIXES):
+            continue
+        if any(pat in path_lower for pat in SKIP_AUDIT_PATTERNS):
             continue
         kind = ("page" if Path(file_result.path).suffix.lower() in PAGE_SUFFIXES
                 else "fragment")

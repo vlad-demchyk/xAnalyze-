@@ -117,7 +117,7 @@ def apply_replacements(plans: list[ReplacementPlan]) -> ApplyResult:
             continue
 
         try:
-            with open(file_path, "w", encoding="utf-8") as fh:
+            with open(file_path, "w", encoding="utf-8", newline="") as fh:
                 fh.write(content)
             result.files_changed.append(file_path)
             result.passages_applied += applied_here

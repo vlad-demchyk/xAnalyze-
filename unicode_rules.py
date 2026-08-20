@@ -241,6 +241,49 @@ def _find_homoglyphs(text: str) -> list[Anomaly]:
     return out
 
 
+# HTML entities that represent non-keyboard characters
+_HTML_ENTITIES = {
+    "&mdash;": "-",
+    "&#8212;": "-",
+    "&ndash;": "-",
+    "&#8211;": "-",
+    "&lsquo;": "'",
+    "&#8216;": "'",
+    "&rsquo;": "'",
+    "&#8217;": "'",
+    "&ldquo;": '"',
+    "&#8220;": '"',
+    "&rdquo;": '"',
+    "&#8221;": '"',
+    "&hellip;": "...",
+    "&#8230;": "...",
+    "&nbsp;": " ",
+    "&#160;": " ",
+    "&bull;": "*",
+    "&#8226;": "*",
+    "&middot;": "*",
+    "&#183;": "*",
+}
+
+_HTML_ENTITY_RE = re.compile("|".join(re.escape(e) for e in _HTML_ENTITIES))
+
+
+def _find_html_entities(text: str) -> list[Anomaly]:
+    """Find HTML entities that represent non-keyboard characters."""
+    out = []
+    for match in _HTML_ENTITY_RE.finditer(text):
+        entity = match.group(0)
+        replacement = _HTML_ENTITIES.get(entity, "")
+        if replacement:
+            out.append(Anomaly(
+                start=match.start(), end=match.end(),
+                original=entity, replacement=replacement,
+                category=CAT_TYPOGRAPHY,
+                description=f"HTML entity {entity} -> {replacement!r}"
+            ))
+    return out
+
+
 def find_anomalies(text: str, language: str | None = None,
                     categories: tuple[str, ...] = ALL_CATEGORIES) -> list[Anomaly]:
     """Return every anomaly in `text`, sorted by position and merged into
@@ -271,6 +314,9 @@ def find_anomalies(text: str, language: str | None = None,
     if CAT_HOMOGLYPH in categories:
         taken = {a.start for a in found}
         found.extend(a for a in _find_homoglyphs(text) if a.start not in taken)
+
+    # HTML entities that represent non-keyboard characters
+    found.extend(_find_html_entities(text))
 
     found.sort(key=lambda a: a.start)
     return _merge_adjacent(found)
