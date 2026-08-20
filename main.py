@@ -482,6 +482,15 @@ class MainWindow(QMainWindow):
                 settings=self.settings,
             )
             self.worker.finished_ok.connect(self._on_repo_finished)
+        elif source == "file":
+            # Single file - use repo worker with the file path
+            self.worker = RepoAnalysisWorker(
+                files=None, root_dir=target, ignore_patterns=[],
+                detector_name=detector_name, detector_config=detector_config,
+                unicode_categories=None, scope="both",
+                settings=self.settings,
+            )
+            self.worker.finished_ok.connect(self._on_repo_finished)
         else:
             url = target
             if not url.startswith(("http://", "https://", "file://")):
