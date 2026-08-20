@@ -76,8 +76,9 @@ class BrowserAuditOptions:
     disabled_rules: list = field(default_factory=list)
     #: Milliseconds to wait after load before auditing, for the JavaScript
     #: that renders the page to finish. Deliberately generous: auditing a
-    #: half-rendered SPA produces confident nonsense.
-    settle_ms: int = 1200
+    #: half-rendered SPA produces confident nonsense. 2500ms is enough for
+    #: most React/Vue/Next.js apps to hydrate and render their content.
+    settle_ms: int = 2500
     #: Let a `file://` page read its neighbours on disk. Off for anything
     #: fetched over the network, where it would be a way for a remote page to
     #: read the local drive; switched on only when the user themselves pointed

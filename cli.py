@@ -605,7 +605,8 @@ def cmd_fullscan(args) -> int:
 
         if not target.startswith(("http://", "https://")):
             target = "https://" + target
-        config = CrawlConfig(max_depth=args.depth, max_pages=args.max_pages)
+        config = CrawlConfig(max_depth=args.depth, max_pages=args.max_pages,
+                             render_mode=_render_mode(args))
         pages = _crawl_maybe_rendering(target, config)
         audit_result = audit.analyze_pages(pages, target)
     elif _is_page_file(target):
@@ -1745,6 +1746,117 @@ def cmd_ai_rewrite(args) -> int:
     return EXIT_OK
 
 
+def cmd_serve(args) -> int:
+    """Start local HTTP server for agent-as-judge.
+
+    The agent can send text to this server and get back a score.
+    This allows the agent to act as the LLM judge without an API key.
+
+    Endpoints:
+        POST /judge - Judge text for AI patterns
+        GET /health - Health check
+        GET /detectors - List available detectors
+    """
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+    import json
+
+    class JudgeHandler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            if self.path == "/judge":
+                content_length = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(content_length)
+                try:
+                    data = json.loads(body)
+                    text = data.get("text", "")
+                    language = data.get("language", "en")
+
+                    if not text.strip():
+                        self._respond(400, {"error": "No text provided"})
+                        return
+
+                    # Use agent-llm-judge detector
+                    from detectors.factory import DetectorFactory
+                    from models import TextBlock
+
+                    detector = DetectorFactory.create("agent-llm-judge")
+                    block = TextBlock(
+                        block_id="serve",
+                        page_url="http://localhost",
+                        dom_path="",
+                        text=text,
+                        language_hint=language,
+                    )
+                    spans = detector.analyze_block(block)
+
+                    if spans:
+                        span = spans[0]
+                        self._respond(200, {
+                            "score": round(span.score, 3),
+                            "confidence": span.confidence.value,
+                            "explanation": span.explanation,
+                            "details": span.details,
+                        })
+                    else:
+                        self._respond(200, {
+                            "score": 0.0,
+                            "confidence": "low",
+                            "explanation": "No AI patterns detected",
+                        })
+
+                except json.JSONDecodeError:
+                    self._respond(400, {"error": "Invalid JSON"})
+                except Exception as e:
+                    self._respond(500, {"error": str(e)})
+            else:
+                self._respond(404, {"error": "Not found"})
+
+        def do_GET(self):
+            if self.path == "/health":
+                self._respond(200, {"status": "ok", "version": "0.1.0"})
+            elif self.path == "/detectors":
+                from detectors.factory import DetectorFactory
+                self._respond(200, {
+                    "detectors": DetectorFactory.available(),
+                })
+            else:
+                self._respond(404, {"error": "Not found"})
+
+        def _respond(self, status: int, data: dict):
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps(data, ensure_ascii=False).encode())
+
+        def log_message(self, format, *args):
+            # Suppress default logging
+            pass
+
+    host = args.host
+    port = args.port
+
+    print(f"Starting XAnalyze agent judge server on {host}:{port}", file=sys.stderr)
+    print(f"Endpoints:", file=sys.stderr)
+    print(f"  POST /judge - Judge text for AI patterns", file=sys.stderr)
+    print(f"  GET  /health - Health check", file=sys.stderr)
+    print(f"  GET  /detectors - List available detectors", file=sys.stderr)
+    print(f"", file=sys.stderr)
+    print(f"Example:", file=sys.stderr)
+    print(f"  curl -X POST http://{host}:{port}/judge \\", file=sys.stderr)
+    print(f"    -H 'Content-Type: application/json' \\", file=sys.stderr)
+    print(f"    -d '{{\"text\": \"It is worth noting...\"}}'", file=sys.stderr)
+
+    try:
+        server = HTTPServer((host, port), JudgeHandler)
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\\nServer stopped.", file=sys.stderr)
+        return EXIT_OK
+    except Exception as e:
+        print(f"Server error: {e}", file=sys.stderr)
+        return EXIT_ERROR
+
+
 # ------------------------------------------------------------------ parser
 
 def build_parser() -> argparse.ArgumentParser:
@@ -2031,6 +2143,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_clean.add_argument("--language", default=None, choices=["uk", "it", "en"],
                          help="override language detection")
     p_clean.set_defaults(func=cmd_clean)
+
+    p_serve = sub.add_parser(
+        "serve",
+        help="start local HTTP server for agent-as-judge")
+    p_serve.add_argument("--port", type=int, default=8765,
+                         help="port to listen on (default: 8765)")
+    p_serve.add_argument("--host", default="localhost",
+                         help="host to bind to (default: localhost)")
+    p_serve.set_defaults(func=cmd_serve)
 
     return parser
 

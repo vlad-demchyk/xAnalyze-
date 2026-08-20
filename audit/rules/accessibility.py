@@ -20,8 +20,8 @@ from __future__ import annotations
 import re
 
 from ..base import (
-    ACCESSIBILITY, CRITICAL, EXACT, MINOR, MODERATE, NEEDS_BROWSER, SERIOUS,
-    Issue, Rule, RuleRegistry, is_binding, snippet_of,
+    ACCESSIBILITY, CRITICAL, EXACT, MINOR, MODERATE, NEEDS_BROWSER, PERFORMANCE,
+    SERIOUS, Issue, Rule, RuleRegistry, is_binding, snippet_of,
 )
 
 # Elements that are focusable and actionable, i.e. need an accessible name.
@@ -606,10 +606,274 @@ def contrast_ratio(foreground: tuple, background: tuple) -> float:
     return (light + 0.05) / (dark + 0.05)
 
 
+class LandmarkRegions(AccessibilityRule):
+    """Page should have landmark regions for screen reader navigation.
+
+    Landmarks (<main>, <nav>, <header>, <footer>, or ARIA equivalents) let
+    screen reader users jump directly to the section they need instead of
+    tabbing through the entire page. A page with no landmarks at all forces
+    linear navigation.
+    """
+    id = "landmark-regions"
+    page_level = True
+    severity = MODERATE
+    wcag = ("1.3.1", "2.4.1")
+
+    _LANDMARK_TAGS = {"main", "nav", "header", "footer", "aside", "form"}
+    _LANDMARK_ROLES = {
+        "banner", "complementary", "contentinfo", "form", "main",
+        "navigation", "region", "search",
+    }
+
+    def check(self, document, context) -> list:
+        if document.find("html") is None:
+            return []
+        found = set()
+        for tag in document.find_all(True):
+            if tag.name in self._LANDMARK_TAGS:
+                found.add(tag.name)
+            role = (tag.get("role") or "").lower().strip()
+            if role in self._LANDMARK_ROLES:
+                found.add(role)
+        if "main" in found or "main" in {t.name for t in document.find_all("main")}:
+            return []
+        return [Issue(
+            rule_id=self.id, severity=self.severity, source=context.source,
+            snippet="<body>…</body>",
+            details={"found": sorted(found)},
+            fix_snippet='<main>…</main>',
+        )]
+
+
+class SkipLink(AccessibilityRule):
+    """First focusable element should be a skip-to-content link.
+
+    Keyboard users (including screen reader users) need a way to bypass
+    repeated navigation. The convention is a link at the top of the page
+    that jumps to the main content area. Without it, every page visit
+    requires tabbing through the entire nav.
+    """
+    id = "skip-link"
+    page_level = True
+    severity = MODERATE
+    wcag = ("2.4.1",)
+
+    def check(self, document, context) -> list:
+        if document.find("html") is None:
+            return []
+        body = document.find("body")
+        if body is None:
+            return []
+        # Look for a link near the top that points to an anchor
+        for tag in body.find_all("a", href=True, limit=10):
+            href = (tag.get("href") or "").strip()
+            if href.startswith("#") and len(href) > 1:
+                target_id = href[1:]
+                if body.find(id=target_id) is not None:
+                    return []
+        return [Issue(
+            rule_id=self.id, severity=self.severity, source=context.source,
+            snippet="<body>…</body>",
+            details={},
+            fix_snippet='<a href="#main-content" class="skip-link">Skip to main content</a>',
+        )]
+
+
+class FormErrorMessage(AccessibilityRule):
+    """Form inputs with errors should be described by the error message.
+
+    When a form field has an error (indicated by aria-invalid="true"), the
+    error message must be programmatically linked to the field via
+    aria-describedby or aria-errormessage. Without this, screen reader users
+    know the field is invalid but not why.
+    """
+    id = "form-error-message"
+    severity = SERIOUS
+    wcag = ("3.3.1",)
+
+    def check(self, document, context) -> list:
+        issues = []
+        for tag in document.find_all(("input", "select", "textarea")):
+            if (tag.get("aria-invalid") or "").lower() != "true":
+                continue
+            described_by = (tag.get("aria-describedby") or "").strip()
+            errormessage = (tag.get("aria-errormessage") or "").strip()
+            if described_by or errormessage:
+                continue
+            selector, line = context.locate(tag)
+            issues.append(Issue(
+                rule_id=self.id, severity=self.severity, selector=selector,
+                line=line, snippet=snippet_of(tag), source=context.source,
+                details={"element": tag.name, "type": tag.get("type", "")},
+            ))
+        return issues
+
+
+class TableScope(AccessibilityRule):
+    """Data table headers should use scope attribute.
+
+    The scope attribute on <th> tells screen readers whether the header
+    applies to a row or a column. Without it, complex tables become
+    ambiguous — the user hears a cell value but not which header it belongs to.
+    """
+    id = "table-scope"
+    severity = MODERATE
+    wcag = ("1.3.1",)
+
+    def check(self, document, context) -> list:
+        issues = []
+        for table in document.find_all("table"):
+            if table.get("role") == "presentation":
+                continue
+            rows = table.find_all("tr")
+            if len(rows) < 2:
+                continue
+            ths = table.find_all("th")
+            if not ths:
+                continue
+            # Only flag if there are th elements but none use scope
+            has_scope = any(th.get("scope") for th in ths)
+            if has_scope:
+                continue
+            # Multi-row or multi-column tables benefit most from scope
+            if len(ths) <= 1:
+                continue
+            selector, line = context.locate(table)
+            issues.append(Issue(
+                rule_id=self.id, severity=self.severity, selector=selector,
+                line=line, snippet=snippet_of(table), source=context.source,
+                details={"th_count": len(ths), "rows": len(rows)},
+                fix_snippet='<th scope="col">…</th>',
+            ))
+        return issues
+
+
+class HreflangLinks(AccessibilityRule):
+    """Multilingual pages should declare language alternatives.
+
+    hreflang links tell search engines and browsers which language/version
+    of a page exists. Without them, users may land on the wrong language
+    version, and search engines cannot properly index multilingual content.
+    """
+    id = "hreflang-links"
+    page_level = True
+    severity = MINOR
+    wcag = ("3.1.2",)
+
+    def check(self, document, context) -> list:
+        if document.find("html") is None:
+            return []
+        html_tag = document.find("html")
+        lang = (html_tag.get("lang") or "").strip()
+        if not lang:
+            return []  # Already reported by html-lang rule
+        # Check if there are links to other language versions
+        links = document.find_all("a", hreflang=True)
+        alternate_links = [l for l in document.find_all("link")
+                          if "alternate" in (l.get("rel") or []) and l.get("hreflang")]
+        if links or alternate_links:
+            return []
+        # Only suggest if the page content suggests multilingual site
+        # (e.g., has language switcher patterns)
+        for tag in document.find_all("a", href=True):
+            href = (tag.get("href") or "").lower()
+            text = _text_of(tag).lower()
+            if any(f"/{lc}/" in href or f"/{lc}" in href
+                   for lc in ("en", "uk", "it", "de", "fr", "es", "pl")):
+                return [Issue(
+                    rule_id=self.id, severity=self.severity, source=context.source,
+                    snippet="<head>…</head>",
+                    details={"lang": lang},
+                    fix_snippet=f'<link rel="alternate" hreflang="en" href="https://example.com/en/" />',
+                )]
+        return []
+
+
+class BreadcrumbMarkup(AccessibilityRule):
+    """Breadcrumb navigation should use proper markup.
+
+    Breadcrumbs help users understand their location in the site hierarchy.
+    When present, they should use <nav aria-label="breadcrumb"> and an
+    ordered list (<ol>) for proper screen reader announcement.
+    """
+    id = "breadcrumb-markup"
+    severity = MINOR
+    wcag = ("1.3.1", "2.4.8")
+
+    _BREADCRUMB_SELECTORS = [
+        {"class": "breadcrumb"}, {"class": "breadcrumbs"},
+        {"aria-label": "breadcrumb"}, {"aria-label": "Breadcrumbs"},
+        {"aria-label": "Breadcrumb"},
+    ]
+
+    def check(self, document, context) -> list:
+        issues = []
+        for selector in self._BREADCRUMB_SELECTORS:
+            for tag in document.find_all(attrs=selector):
+                # Check if it's properly wrapped in nav
+                if tag.name == "nav":
+                    continue
+                parent_nav = tag.find_parent("nav")
+                if parent_nav:
+                    continue
+                # Has breadcrumb-like content but not in nav
+                if tag.find("a") or tag.find("li"):
+                    selector_path, line = context.locate(tag)
+                    issues.append(Issue(
+                        rule_id=self.id, severity=self.severity,
+                        selector=selector_path, line=line,
+                        snippet=snippet_of(tag), source=context.source,
+                        details={"element": tag.name},
+                        fix_snippet='<nav aria-label="breadcrumb"><ol>…</ol></nav>',
+                    ))
+                    break  # One finding per page
+        return issues
+
+
+class ImageModernFormat(AccessibilityRule):
+    """Images should use modern formats when possible.
+
+    WebP and AVIF offer better compression than PNG/JPG, reducing page
+    weight and improving load times. The srcset attribute allows serving
+    different sizes to different viewports.
+    """
+    id = "image-modern-format"
+    severity = MINOR
+    category = PERFORMANCE
+    wcag = ()
+
+    _LEGACY_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".bmp")
+    _MODERN_EXTENSIONS = (".webp", ".avif", ".svg")
+
+    def check(self, document, context) -> list:
+        issues = []
+        for tag in document.find_all("img"):
+            src = (tag.get("src") or "").lower()
+            if not src:
+                continue
+            # Skip data URIs and SVGs
+            if src.startswith("data:") or src.endswith(".svg"):
+                continue
+            # Check if using legacy format without srcset
+            has_legacy = any(src.endswith(ext) for ext in self._LEGACY_EXTENSIONS)
+            has_srcset = bool(tag.get("srcset"))
+            if has_legacy and not has_srcset:
+                selector, line = context.locate(tag)
+                issues.append(Issue(
+                    rule_id=self.id, severity=self.severity,
+                    category=self.category, selector=selector, line=line,
+                    snippet=snippet_of(tag), source=context.source,
+                    details={"src": src[:120]},
+                ))
+        return issues
+
+
 for _rule in (
     ImageAlt, ImageAltIsFilename, ControlName, VagueLinkText, DocumentLanguage,
     DocumentTitle, HeadingOrder, MissingH1, PositiveTabindex, DuplicateIds,
     BrokenAriaReference, ButtonWithoutType, MediaWithoutCaptions, AutoplayingMedia,
     TableStructure, ViewportZoomBlocked, InlineContrast,
+    LandmarkRegions, SkipLink, FormErrorMessage, TableScope,
+    HreflangLinks, BreadcrumbMarkup, ImageModernFormat,
 ):
     RuleRegistry.register(_rule)
