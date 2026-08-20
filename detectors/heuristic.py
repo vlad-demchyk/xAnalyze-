@@ -27,6 +27,8 @@ import re
 import statistics
 
 from models import TextBlock, TextSpan, score_to_confidence
+from abbreviations import find_word_before_period, is_abbreviation
+from lang_detect import guess_language_safe
 from .base import Detector
 from .factory import DetectorFactory
 
@@ -144,7 +146,7 @@ CLICHE_PHRASES: dict[str, list[str]] = {
         # немає людського пулу, тож precision не міряється, і ціна хибного
         # спрацювання тут вища за ціну пропуску.
         # хеджування і зачини
-        "варто зауважити", "слід зазначити", "необхідно розуміти",
+        "варто зауважити", "слід зазначити", "важливо зазначити", "необхідно розуміти",
         "загалом кажучи", "певною мірою",
         # часові зачини
         "у сучасному цифровому", "у наш час", "в епоху", "сьогодні, коли",
@@ -327,8 +329,48 @@ def combine_score(uniformity, repetition, dashes, structural: bool,
     return max(0.0, min(1.0, 1.0 - remaining))
 
 
-def _sentences(text: str) -> list[str]:
-    return [s.strip() for s in _SENTENCE_SPLIT_RE.split(text) if s.strip()]
+def _sentences(text: str, language: str | None = None) -> list[str]:
+    """Split text into sentences, respecting abbreviations.
+
+    The naive regex splits on every period followed by whitespace, which
+    breaks on abbreviations like "es." or "Dr.". This version checks
+    whether the word before each period is a known abbreviation and, if
+    so, does not split there.
+    """
+    if not text or not text.strip():
+        return []
+
+    # Find all potential split points (periods, !, ?, …)
+    split_points = []
+    for i, ch in enumerate(text):
+        if ch in '.!?…':
+            # Check if next char is whitespace (potential split point)
+            if i + 1 < len(text) and text[i + 1] in ' \t\n':
+                # Check if this is an abbreviation
+                word = find_word_before_period(text, i)
+                if word and is_abbreviation(word, language):
+                    continue  # Skip this split point
+                split_points.append(i + 1)  # Split after the punctuation
+
+    if not split_points:
+        result = [text.strip()] if text.strip() else []
+        return result
+
+    # Split at the identified points
+    result = []
+    start = 0
+    for pos in split_points:
+        chunk = text[start:pos].strip()
+        if chunk:
+            result.append(chunk)
+        start = pos
+
+    # Add remaining text
+    remaining = text[start:].strip()
+    if remaining:
+        result.append(remaining)
+
+    return result
 
 
 def _words(text: str) -> list[str]:
@@ -389,7 +431,7 @@ def _em_dash_score(text: str, word_count: int):
     return max(0.0, min(1.0, (per_100_words - 0.3) / 1.7))
 
 
-def _structural_matches(text: str, language: str) -> list[tuple[int, str]]:
+def _structural_matches(text: str, language: str | None) -> list[tuple[int, str]]:
     """Every structural-pattern match as (start_offset, matched_text).
 
     Offsets are kept because the boost this drives belongs to the sentence
@@ -401,9 +443,15 @@ def _structural_matches(text: str, language: str) -> list[tuple[int, str]]:
     constructions get carried into Ukrainian and Italian copy untranslated),
     but only added once for English itself — otherwise every English hit was
     found twice and shown to the user twice.
+
+    When language is None (too short to detect), check ALL patterns.
     """
     patterns = list(STRUCTURAL_PATTERNS["en"])
-    if language != "en":
+    if language is None:
+        # Check all language-specific patterns
+        for lang_patterns in STRUCTURAL_PATTERNS.values():
+            patterns.extend(lang_patterns)
+    elif language != "en":
         patterns = list(STRUCTURAL_PATTERNS.get(language, [])) + patterns
     hits: list[tuple[int, str]] = []
     for pattern in patterns:
@@ -427,14 +475,30 @@ _COMPILED_CLICHES: dict[str, list[tuple[str, re.Pattern]]] = {
 }
 
 
-def _cliche_hits(text: str, language: str) -> list[str]:
+def _cliche_hits(text: str, language: str | None) -> list[str]:
     # The English list is always checked as well, since English marketing
     # phrases turn up untranslated in Ukrainian and Italian copy. For
     # English itself that would otherwise scan — and report — every phrase
     # twice, so the language list is only added when it isn't already 'en'.
-    candidates = list(_COMPILED_CLICHES["en"])
-    if language != "en":
-        candidates = list(_COMPILED_CLICHES.get(language, [])) + candidates
+    #
+    # When language is None (too short to detect), check ALL lists to avoid
+    # silently missing hits in the correct language.
+    if language is None:
+        candidates = []
+        for lang_set in _COMPILED_CLICHES.values():
+            candidates.extend(lang_set)
+        # Deduplicate by phrase text to avoid reporting the same hit twice
+        seen = set()
+        unique = []
+        for phrase, pattern in candidates:
+            if phrase not in seen:
+                seen.add(phrase)
+                unique.append((phrase, pattern))
+        candidates = unique
+    else:
+        candidates = list(_COMPILED_CLICHES["en"])
+        if language != "en":
+            candidates = list(_COMPILED_CLICHES.get(language, [])) + candidates
     return [phrase for phrase, pattern in candidates if pattern.search(text)]
 
 
@@ -445,8 +509,8 @@ class HeuristicDetector(Detector):
 
     def analyze_block(self, block: TextBlock) -> list[TextSpan]:
         text = block.text
-        language = block.language_hint or guess_language(text)
-        sentences = _sentences(text)
+        language = block.language_hint or guess_language_safe(text)
+        sentences = _sentences(text, language)
         if not sentences:
             return []
 
@@ -474,6 +538,15 @@ class HeuristicDetector(Detector):
             score = combine_score(uniformity=burst, repetition=diversity,
                                   dashes=em_dash, structural=bool(structural),
                                   cliches=hits)
+
+            # Statistical signals alone (uniformity, diversity, dashes) are
+            # weak indicators. Without at least one concrete marker (a cliché
+            # phrase or a structural pattern), the score must stay below the
+            # reporting threshold. This prevents false positives on technical
+            # descriptions, locale strings, and other non-marketing text that
+            # happens to have uniform sentence lengths.
+            if not hits and not structural and score >= 0.33:
+                score = 0.32
 
             explanation_bits = [
                 f"{name}={value:.2f}" if value is not None else f"{name}=not measured"
