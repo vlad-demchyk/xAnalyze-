@@ -533,15 +533,29 @@ def cmd_fullscan(args) -> int:
     performance, best practices) into one command. Saves styled report and
     agent briefing, outputs JSON for agent consumption.
 
-    Reports are auto-saved to ~/Desktop unless --styled-report/--report
-    specify a different path.
+    For URLs and HTML files: automatically enables browser rendering and
+    responsive breakpoints (desktop, tablet, mobile). Reports are auto-saved
+    to ~/Desktop unless --styled-report/--report specify a different path.
+
+    With --agent: starts a local HTTP server for agent-as-judge, allowing
+    the agent to judge text without an API key.
+
+    Usage:
+      xanalyze fullscan https://example.com           # full scan with browser
+      xanalyze fullscan ./repo                        # repo scan (no browser)
+      xanalyze fullscan https://example.com --breakpoints desktop  # desktop only
+      xanalyze fullscan https://example.com --agent   # with agent judge server
     """
     import audit
     from audit.explanations import summary_line
+    import threading
 
     lang = args.language or "en"
     target = args.target
     is_url = target.startswith(("http://", "https://")) or args.url
+    is_page_file = _is_page_file(target) if not is_url else False
+    # Browser is automatic for URLs and HTML files, not for repos
+    wants_browser = is_url or is_page_file
 
     # Auto-generate report paths on Desktop if not specified
     desktop = Path.home() / "Desktop"
@@ -553,8 +567,87 @@ def cmd_fullscan(args) -> int:
     if not getattr(args, "report", None):
         args.report = str(desktop / f"xanalyze-{target_name}-{timestamp}.md")
 
+    # --- Agent judge server ---
+    agent_server = None
+    agent_port = getattr(args, "agent_port", 8765)
+    if getattr(args, "agent", False):
+        # Start agent judge server in background
+        from http.server import HTTPServer, BaseHTTPRequestHandler
+        import json as json_mod
+
+        class AgentJudgeHandler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                if self.path == "/judge":
+                    content_length = int(self.headers.get("Content-Length", 0))
+                    body = self.rfile.read(content_length)
+                    try:
+                        data = json_mod.loads(body)
+                        text = data.get("text", "")
+                        language = data.get("language", "en")
+
+                        if not text.strip():
+                            self._respond(400, {"error": "No text provided"})
+                            return
+
+                        from detectors.factory import DetectorFactory
+                        from models import TextBlock
+
+                        detector = DetectorFactory.create("agent-llm-judge")
+                        block = TextBlock(
+                            block_id="serve",
+                            page_url="http://localhost",
+                            dom_path="",
+                            text=text,
+                            language_hint=language,
+                        )
+                        spans = detector.analyze_block(block)
+
+                        if spans:
+                            span = spans[0]
+                            self._respond(200, {
+                                "score": round(span.score, 3),
+                                "confidence": span.confidence.value,
+                                "explanation": span.explanation,
+                                "details": span.details,
+                            })
+                        else:
+                            self._respond(200, {
+                                "score": 0.0,
+                                "confidence": "low",
+                                "explanation": "No AI patterns detected",
+                            })
+                    except Exception as e:
+                        self._respond(500, {"error": str(e)})
+                else:
+                    self._respond(404, {"error": "Not found"})
+
+            def do_GET(self):
+                if self.path == "/health":
+                    self._respond(200, {"status": "ok"})
+                else:
+                    self._respond(404, {"error": "Not found"})
+
+            def _respond(self, status, data):
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json_mod.dumps(data).encode())
+
+            def log_message(self, format, *args):
+                pass
+
+        try:
+            agent_server = HTTPServer(("localhost", agent_port), AgentJudgeHandler)
+            server_thread = threading.Thread(target=agent_server.serve_forever, daemon=True)
+            server_thread.start()
+            print(f"# Agent judge server started on port {agent_port}", file=sys.stderr)
+            print(f"# POST http://localhost:{agent_port}/judge", file=sys.stderr)
+        except Exception as e:
+            print(f"# Warning: Could not start agent server: {e}", file=sys.stderr)
+
     # Validate target
-    if not is_url:
+    if not is_url and not is_page_file:
         if not Path(target).exists():
             print(f"path not found: {target}", file=sys.stderr)
             return EXIT_ERROR
@@ -601,15 +694,16 @@ def cmd_fullscan(args) -> int:
     audit_result = None
     audit_issues = []
     if is_url:
-        from crawler import CrawlConfig, crawl
+        from crawler import CrawlConfig, RENDER_AUTO, crawl
 
         if not target.startswith(("http://", "https://")):
             target = "https://" + target
+        # Always use RENDER_AUTO for fullscan on URLs
         config = CrawlConfig(max_depth=args.depth, max_pages=args.max_pages,
-                             render_mode=_render_mode(args))
+                             render_mode=RENDER_AUTO)
         pages = _crawl_maybe_rendering(target, config)
         audit_result = audit.analyze_pages(pages, target)
-    elif _is_page_file(target):
+    elif is_page_file:
         audit_result = audit.analyze_page_file(target)
     else:
         from repo_scanner import ScanConfig, scan_repo
@@ -622,8 +716,8 @@ def cmd_fullscan(args) -> int:
             audit_result = audit.analyze_files(repo_files, target)
 
     if audit_result:
-        # Run browser pass if requested
-        if getattr(args, "browser", False):
+        # Run browser pass automatically for URLs and HTML files
+        if wants_browser:
             suppressions = suppression.Suppressions.load(
                 _settings_for_ignore(args), _ignore_root(args))
             _run_browser_pass(audit_result, suppressions, args)
@@ -697,33 +791,13 @@ def cmd_fullscan(args) -> int:
             _write_report(audit_result, args, lang, None)
             print(f"# agent briefing: {args.report}", file=sys.stderr)
 
-    # --- Phase 5: Output ---
-    if args.json:
-        print(json.dumps(combined, indent=2, ensure_ascii=False))
-    else:
-        # Human-readable summary
-        print(f"\n{'='*60}")
-        print(f"FULL SCAN: {args.target}")
-        print(f"{'='*60}")
-        print(f"\n--- AI Patterns (detector: {args.detector}) ---")
-        print(f"  Total findings: {combined['scan']['counts']['total']}")
-        print(f"  Style (AI): {combined['scan']['counts']['style']}")
-        print(f"  Characters: {combined['scan']['counts']['characters']}")
-        print(f"\n--- Accessibility Audit ---")
-        c = combined['audit']['counts']
-        print(f"  Critical: {c['critical']}")
-        print(f"  Serious: {c['serious']}")
-        print(f"  Moderate: {c['moderate']}")
-        print(f"  Minor: {c['minor']}")
-        print(f"\n--- Summary ---")
-        s = combined['summary']
-        print(f"  Total: {s['total_findings']}")
-        print(f"  AI patterns: {s['ai_patterns']}")
-        print(f"  Characters: {s['characters']}")
-        print(f"  Accessibility: {s['accessibility']}")
-        print(f"  SEO: {s['seo']}")
-        print(f"  Performance: {s['performance']}")
-        print(f"  Best practices: {s['best_practices']}")
+    # --- Phase 5: Output (always JSON for agent) ---
+    print(json.dumps(combined, indent=2, ensure_ascii=False))
+
+    # Stop agent server if started
+    if agent_server:
+        agent_server.shutdown()
+        print(f"# Agent judge server stopped", file=sys.stderr)
 
     if args.check:
         critical = combined['audit']['counts']['critical']
@@ -2124,18 +2198,22 @@ def build_parser() -> argparse.ArgumentParser:
                             help="branded PDF/HTML report for a person")
     p_fullscan.add_argument("--report", default=None, metavar="PATH",
                             help="agent briefing: .md or .json by suffix")
-    p_fullscan.add_argument("--json", action="store_true",
-                            help="machine-readable JSON output for agent")
     p_fullscan.add_argument("--check", action="store_true",
                             help="exit 1 when critical/serious issues found")
     p_fullscan.add_argument("--language", default=None,
                             help="uk | it | en; language of reports")
-    p_fullscan.add_argument("--browser", action="store_true",
-                            help="also load pages in a real browser")
-    p_fullscan.add_argument("--breakpoints", nargs="?", const="all", default=None,
+    p_fullscan.add_argument("--breakpoints", nargs="?", const="all", default="all",
                             metavar="NAMES",
-                            help="with --browser: audit at several widths "
-                                 "(desktop 1440, tablet 834, mobile 390)")
+                            help="responsive breakpoints for browser audit: "
+                                 "all (default), desktop, tablet, mobile, "
+                                 "or comma-separated subset (e.g. desktop,mobile)")
+    p_fullscan.add_argument("--agent", action="store_true",
+                            help="start agent judge server and use it for "
+                                 "AI pattern detection (no API key needed)")
+    p_fullscan.add_argument("--agent-port", type=int, default=8765,
+                            help="port for agent judge server (default: 8765)")
+    p_fullscan.add_argument("--json", action="store_true",
+                            help="machine-readable JSON output for agent")
     p_fullscan.set_defaults(func=cmd_fullscan)
 
     p_clean = sub.add_parser("clean", help="filter text from stdin to stdout")
