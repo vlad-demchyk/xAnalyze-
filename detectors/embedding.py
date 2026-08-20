@@ -22,8 +22,8 @@ from models import TextBlock, TextSpan, Confidence, score_to_confidence
 from .base import Detector
 from .factory import DetectorFactory
 
-# Default model - small, fast, good quality
-DEFAULT_MODEL = "all-MiniLM-L6-v2"
+# Default model - multilingual, good quality for uk/it/en
+DEFAULT_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 
 # Path to corpus relative to project root
 CORPUS_PATH = Path(__file__).resolve().parent.parent / "corpus" / "labelled.jsonl"
