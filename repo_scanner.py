@@ -261,6 +261,8 @@ _CODE_LOOKS_LIKE_RE = re.compile(
     r"=>|function\s*\(|\bimport\b|\bexport\b|\breturn\b|;\s*$|^\s*(const|let|var)\b",
     re.IGNORECASE,
 )
+# HTML entities end with ; — don't let that trigger the code detector
+_HTML_ENTITY_RE = re.compile(r"&\w{1,8};")
 _ALPHA_RE = re.compile(r"[^\W\d_]", re.UNICODE)  # at least one letter
 # A dotted identifier with no spaces: `aiChat.gallery.next`. Only the dotted
 # form is treated as a key, because a single word ("Download") is exactly what
@@ -386,7 +388,10 @@ def _is_probably_content(text: str) -> bool:
         return False
     if not _ALPHA_RE.search(text):
         return False
-    if _CODE_LOOKS_LIKE_RE.search(text):
+    # HTML entities (&mdash; &#8212; etc.) end with ; which looks like code
+    # Strip them before checking
+    stripped = _HTML_ENTITY_RE.sub("", text)
+    if _CODE_LOOKS_LIKE_RE.search(stripped):
         return False
     if re.fullmatch(r"[A-Z0-9_]+", text):  # CONSTANT_LIKE_TOKEN
         return False
