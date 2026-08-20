@@ -60,30 +60,36 @@ class Sidebar(QWidget):
     def __init__(self, lang: str = "uk", parent=None):
         super().__init__(parent)
         self.lang = lang
-        self.setProperty("class", "sidebar")
         self.setFixedWidth(T.sidebar_width)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+        self.setStyleSheet(f"""
+            QWidget {{
+                background-color: {T.bg_surface};
+                border-right: 1px solid {T.border_strong};
+            }}
+        """)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(T.space_3, T.space_4, T.space_3, T.space_4)
+        layout.setContentsMargins(T.space_4, T.space_4, T.space_4, T.space_4)
         layout.setSpacing(T.space_2)
 
         self._add_header(layout)
+        layout.addSpacing(T.space_4)
         self._add_section_title(layout, t("mode_label", lang))
         self._add_source_buttons(layout)
         layout.addSpacing(T.space_3)
         self._add_target_input(layout)
-        layout.addSpacing(T.space_3)
+        layout.addSpacing(T.space_4)
         self._add_section_title(layout, t("checks_label", lang))
         self._add_check_filters(layout)
-        layout.addSpacing(T.space_2)
+        layout.addSpacing(T.space_3)
         self._add_section_title(layout, t("method_label", lang))
         self._add_method_selection(layout)
-        layout.addSpacing(T.space_2)
+        layout.addSpacing(T.space_3)
         self._add_depth_control(layout)
         layout.addStretch(1)
         self._add_account_info(layout)
-        layout.addSpacing(T.space_2)
+        layout.addSpacing(T.space_3)
         self._add_settings_button(layout)
         layout.addSpacing(T.space_3)
         self._add_analyze_button(layout)
@@ -91,13 +97,28 @@ class Sidebar(QWidget):
     def _add_header(self, layout: QVBoxLayout):
         """App title."""
         title = QLabel("XAnalyze")
-        title.setProperty("class", "heading-lg")
+        title.setStyleSheet(f"""
+            QLabel {{
+                color: {T.text_primary};
+                font-size: {T.font_size_xl}px;
+                font-weight: 700;
+                letter-spacing: -0.5px;
+            }}
+        """)
         layout.addWidget(title)
-        layout.addSpacing(T.space_4)
 
     def _add_section_title(self, layout: QVBoxLayout, text: str):
         label = QLabel(text)
-        label.setProperty("class", "sidebar-title")
+        label.setStyleSheet(f"""
+            QLabel {{
+                color: {T.text_secondary};
+                font-size: {T.font_size_xs}px;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                padding: {T.space_1}px 0;
+            }}
+        """)
         layout.addWidget(label)
 
     def _add_source_buttons(self, layout: QVBoxLayout):

@@ -85,6 +85,13 @@ class FindingRow(QWidget):
 class FindingsList(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setStyleSheet(f"""
+            QWidget {{
+                background-color: {T.bg_surface};
+                border: 1px solid {T.border_strong};
+                border-radius: {T.radius_lg}px;
+            }}
+        """)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -94,6 +101,8 @@ class FindingsList(QWidget):
             QWidget {{
                 background-color: {T.bg_elevated};
                 border-bottom: 1px solid {T.border_strong};
+                border-top-left-radius: {T.radius_lg}px;
+                border-top-right-radius: {T.radius_lg}px;
             }}
         """)
         header_layout = QHBoxLayout(header)
@@ -118,7 +127,7 @@ class FindingsList(QWidget):
         self.list = QListWidget()
         self.list.setStyleSheet(f"""
             QListWidget {{
-                background-color: {T.bg_base};
+                background-color: {T.bg_surface};
                 border: none;
                 outline: none;
                 padding: {T.space_1}px;
@@ -167,17 +176,25 @@ class DetailPanel(QWidget):
 
         header = QLabel("Details")
         header.setStyleSheet(f"""
-            color: {T.text_primary};
-            font-size: {T.font_size_lg}px;
-            font-weight: 600;
-            padding-bottom: {T.space_2}px;
-            border-bottom: 1px solid {T.border_default};
+            QLabel {{
+                color: {T.text_primary};
+                font-size: {T.font_size_lg}px;
+                font-weight: 600;
+                padding-bottom: {T.space_2}px;
+                border-bottom: 1px solid {T.border_default};
+            }}
         """)
         layout.addWidget(header)
 
         self.placeholder = QLabel("Select a finding\nto see details")
         self.placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.placeholder.setStyleSheet(f"color: {T.text_disabled}; font-size: {T.font_size_base}px; padding: {T.space_8}px;")
+        self.placeholder.setStyleSheet(f"""
+            QLabel {{
+                color: {T.text_disabled};
+                font-size: {T.font_size_base}px;
+                padding: {T.space_8}px;
+            }}
+        """)
         layout.addWidget(self.placeholder)
 
         self.detail_widget = QWidget()
@@ -191,11 +208,23 @@ class DetailPanel(QWidget):
 
         self.title_label = QLabel()
         self.title_label.setWordWrap(True)
-        self.title_label.setStyleSheet(f"color: {T.text_primary}; font-size: {T.font_size_lg}px; font-weight: 600;")
+        self.title_label.setStyleSheet(f"""
+            QLabel {{
+                color: {T.text_primary};
+                font-size: {T.font_size_lg}px;
+                font-weight: 600;
+            }}
+        """)
         detail_layout.addWidget(self.title_label)
 
         self.source_label = QLabel()
-        self.source_label.setStyleSheet(f"color: {T.text_secondary}; font-size: {T.font_size_sm}px; font-family: {T.font_mono};")
+        self.source_label.setStyleSheet(f"""
+            QLabel {{
+                color: {T.text_secondary};
+                font-size: {T.font_size_sm}px;
+                font-family: {T.font_mono};
+            }}
+        """)
         detail_layout.addWidget(self.source_label)
 
         desc_box = QWidget()
@@ -292,7 +321,13 @@ class PreviewPanel(QWidget):
         header_layout.setContentsMargins(T.space_4, T.space_3, T.space_3, T.space_3)
 
         title = QLabel("Preview")
-        title.setStyleSheet(f"color: {T.text_primary}; font-size: {T.font_size_lg}px; font-weight: 600;")
+        title.setStyleSheet(f"""
+            QLabel {{
+                color: {T.text_primary};
+                font-size: {T.font_size_lg}px;
+                font-weight: 600;
+            }}
+        """)
         header_layout.addWidget(title)
         header_layout.addStretch(1)
 
@@ -322,7 +357,7 @@ class PreviewPanel(QWidget):
         self.content.setPlaceholderText("Page preview will appear here...")
         self.content.setStyleSheet(f"""
             QPlainTextEdit {{
-                background-color: {T.bg_base};
+                background-color: {T.bg_surface};
                 border: none;
                 border-bottom-left-radius: {T.radius_lg}px;
                 border-bottom-right-radius: {T.radius_lg}px;
