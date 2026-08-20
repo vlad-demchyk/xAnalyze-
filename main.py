@@ -55,7 +55,7 @@ class SeverityBadge(QLabel):
 class FindingRow(QWidget):
     def __init__(self, severity: str, text: str, source: str = "", parent=None):
         super().__init__(parent)
-        self.setFixedHeight(40)
+        self.setMinimumHeight(36)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         layout = QHBoxLayout(self)
@@ -63,21 +63,12 @@ class FindingRow(QWidget):
         layout.setSpacing(T.space_3)
 
         self.badge = SeverityBadge(severity)
-        layout.addWidget(self.badge)
+        layout.addWidget(self.badge, alignment=Qt.AlignmentFlag.AlignTop)
 
         self.text_label = QLabel(text)
+        self.text_label.setWordWrap(True)
         self.text_label.setStyleSheet(f"color: {T.text_primary}; font-size: {T.font_size_sm}px;")
         layout.addWidget(self.text_label, stretch=1)
-
-        if source:
-            self.source_label = QLabel(source)
-            self.source_label.setStyleSheet(f"""
-                color: {T.text_disabled};
-                font-size: {T.font_size_xs}px;
-                font-family: {T.font_mono};
-            """)
-            self.source_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            layout.addWidget(self.source_label)
 
         self.setStyleSheet(f"""
             QWidget {{
@@ -158,7 +149,7 @@ class FindingsList(QWidget):
         self._count = 0
 
     def add_finding(self, severity: str, text: str, source: str = ""):
-        row = FindingRow(severity, text, source)
+        row = FindingRow(severity, text)
         item = QListWidgetItem()
         item.setSizeHint(row.sizeHint() + QSize(0, 8))
         item.setData(Qt.ItemDataRole.UserRole, (severity, text, source))
@@ -188,8 +179,6 @@ class DetailPanel(QWidget):
                 color: {T.text_primary};
                 font-size: {T.font_size_lg}px;
                 font-weight: 600;
-                padding-bottom: {T.space_3}px;
-                border-bottom: 1px solid {T.border_default};
             }}
         """)
         layout.addWidget(header)
@@ -209,11 +198,35 @@ class DetailPanel(QWidget):
         self.detail_widget.setStyleSheet("background: transparent;")
         detail_layout = QVBoxLayout(self.detail_widget)
         detail_layout.setContentsMargins(0, 0, 0, 0)
-        detail_layout.setSpacing(T.space_4)
+        detail_layout.setSpacing(T.space_3)
+
+        # Severity + source row
+        meta_row = QWidget()
+        meta_row.setStyleSheet("background: transparent;")
+        meta_layout = QHBoxLayout(meta_row)
+        meta_layout.setContentsMargins(0, 0, 0, 0)
+        meta_layout.setSpacing(T.space_2)
 
         self.severity_badge = SeverityBadge("high")
-        detail_layout.addWidget(self.severity_badge)
+        meta_layout.addWidget(self.severity_badge)
 
+        self.source_badge = QLabel()
+        self.source_badge.setStyleSheet(f"""
+            QLabel {{
+                background-color: {T.bg_elevated};
+                border: 1px solid {T.border_default};
+                border-radius: {T.radius_sm}px;
+                padding: 2px {T.space_2}px;
+                color: {T.text_secondary};
+                font-size: {T.font_size_xs}px;
+                font-family: {T.font_mono};
+            }}
+        """)
+        meta_layout.addWidget(self.source_badge)
+        meta_layout.addStretch(1)
+        detail_layout.addWidget(meta_row)
+
+        # Title
         self.title_label = QLabel()
         self.title_label.setWordWrap(True)
         self.title_label.setStyleSheet(f"""
@@ -225,21 +238,11 @@ class DetailPanel(QWidget):
         """)
         detail_layout.addWidget(self.title_label)
 
-        self.source_label = QLabel()
-        self.source_label.setStyleSheet(f"""
-            QLabel {{
-                color: {T.text_secondary};
-                font-size: {T.font_size_sm}px;
-                font-family: {T.font_mono};
-            }}
-        """)
-        detail_layout.addWidget(self.source_label)
-
+        # Description box
         desc_box = QWidget()
         desc_box.setStyleSheet(f"""
             QWidget {{
                 background-color: {T.bg_elevated};
-                border: 1px solid {T.border_default};
                 border-radius: {T.radius_md}px;
             }}
         """)
@@ -251,6 +254,7 @@ class DetailPanel(QWidget):
         desc_layout.addWidget(self.description)
         detail_layout.addWidget(desc_box)
 
+        # Action buttons
         btn_row = QWidget()
         btn_row.setStyleSheet("background: transparent;")
         btn_layout = QHBoxLayout(btn_row)
@@ -299,7 +303,7 @@ class DetailPanel(QWidget):
         self.detail_widget.setVisible(True)
         self.severity_badge.set_severity(severity)
         self.title_label.setText(text)
-        self.source_label.setText(source or "")
+        self.source_badge.setText(source or "No source")
 
 
 class PreviewPanel(QWidget):
