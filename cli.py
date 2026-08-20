@@ -494,6 +494,30 @@ def cmd_clean(args) -> int:
     return EXIT_OK
 
 
+def cmd_cache(args) -> int:
+    """Manage the scan cache."""
+    from scan_cache import get_cache
+    
+    cache = get_cache()
+    
+    if args.cache_command == "stats":
+        stats = cache.stats()
+        print(f"Cache entries: {stats['entries']}")
+        print(f"Cache size: {stats['size_bytes']} bytes")
+        return EXIT_OK
+    
+    if args.cache_command == "clear":
+        cache.clear()
+        print("Cache cleared.")
+        return EXIT_OK
+    
+    if args.cache_command == "path":
+        print(cache.cache_path)
+        return EXIT_OK
+    
+    return EXIT_OK
+
+
 def cmd_audit(args) -> int:
     """Audit a URL or a folder across all four categories.
 
@@ -1605,6 +1629,25 @@ def build_parser() -> argparse.ArgumentParser:
     p_undo.add_argument("paths", nargs="+",
                         help="files or folders that were corrected")
     p_undo.set_defaults(func=cmd_undo)
+
+    p_cache = sub.add_parser(
+        "cache",
+        help="manage the scan cache")
+    cache_sub = p_cache.add_subparsers(dest="cache_command", required=True)
+    
+    p_cache_stats = cache_sub.add_parser(
+        "stats", help="show cache statistics")
+    p_cache_stats.set_defaults(func=cmd_cache)
+    
+    p_cache_clear = cache_sub.add_parser(
+        "clear", help="clear the cache")
+    p_cache_clear.set_defaults(func=cmd_cache)
+    
+    p_cache_path = cache_sub.add_parser(
+        "path", help="show cache file path")
+    p_cache_path.set_defaults(func=cmd_cache)
+    
+    p_cache.set_defaults(func=cmd_cache)
 
     p_ai = sub.add_parser("ai", help="account and AI-backed operations")
     ai_sub = p_ai.add_subparsers(dest="ai_command", required=True)
