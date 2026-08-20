@@ -662,6 +662,8 @@ def cmd_fullscan(args) -> int:
                 def __init__(self, findings):
                     self.spans = []
                     self._findings = findings
+                def blocks(self):
+                    return []
             text_model = from_text_analysis(_ScanResult(scan_findings))
             if model:
                 model.findings.extend(text_model.findings)

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Bad Accessibility Test</title>
+</head>
+<body>
+    <!-- Missing lang attribute -->
+    
+    <!-- Images without alt -->
+    <img src="photo.jpg">
+    <img src="logo.png" alt="">
+    <img src="banner.jpg" alt="banner">
+    
+    <!-- Links without text -->
+    <a href="/page"></a>
+    <a href="/about"><img src="icon.png"></a>
+    <a href="/contact">Click here</a>
+    
+    <!-- Form without labels -->
+    <form>
+        <input type="text" name="username">
+        <input type="email" name="email">
+        <input type="password" name="password">
+        <select name="country">
+            <option>Ukraine</option>
+            <option>Italy</option>
+        </select>
+        <button type="submit">Submit</button>
+    </form>
+    
+    <!-- Low contrast text -->
+    <p style="color: #ccc; background: #fff;">This text has low contrast</p>
+    <p style="color: #999; background: #fff;">This text also has low contrast</p>
+    
+    <!-- Missing heading hierarchy -->
+    <h1>Main Title</h1>
+    <h3>Skipped h2</h3>
+    <h5>Skipped h4</h5>
+    
+    <!-- Table without headers -->
+    <table>
+        <tr>
+            <td>Name</td>
+            <td>Age</td>
+            <td>City</td>
+        </tr>
+        <tr>
+            <td>John</td>
+            <td>30</td>
+            <td>New York</td>
+        </tr>
+    </table>
+    
+    <!-- Missing form labels -->
+    <label for="email">Email</label>
+    <input type="email" id="email2" name="email2">
+    
+    <!-- Positive tabindex -->
+    <div tabindex="5">Focusable div</div>
+    <div tabindex="10">Another focusable div</div>
+    
+    <!-- Missing button type -->
+    <button>Click me</button>
+    
+    <!-- Empty button -->
+    <button></button>
+    
+    <!-- Missing document structure -->
+    <div>
+        <div>
+            <div>Deeply nested content</div>
+        </div>
+    </div>
+</body>
+</html>

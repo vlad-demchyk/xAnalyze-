@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <!-- Missing viewport meta tag -->
+    <title>Bad Viewport Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            width: 1200px;
+            margin: 0 auto;
+        }
+        .fixed-width {
+            width: 800px;
+            height: 400px;
+            background: #f0f0f0;
+            border: 1px solid #ccc;
+        }
+        .small-text {
+            font-size: 10px;
+        }
+        .tiny-text {
+            font-size: 8px;
+        }
+        .touch-target {
+            width: 20px;
+            height: 20px;
+            background: #007bff;
+            display: inline-block;
+            margin: 2px;
+        }
+        .overflow-content {
+            width: 300px;
+            overflow-x: auto;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Viewport Issues Test</h1>
+        
+        <!-- Fixed width container -->
+        <div class="fixed-width">
+            <p>This container has a fixed width of 800px</p>
+        </div>
+        
+        <!-- Small text -->
+        <p class="small-text">This text is very small (10px)</p>
+        <p class="tiny-text">This text is tiny (8px)</p>
+        
+        <!-- Small touch targets -->
+        <div>
+            <span class="touch-target"></span>
+            <span class="touch-target"></span>
+            <span class="touch-target"></span>
+            <span class="touch-target"></span>
+        </div>
+        
+        <!-- Overflow content -->
+        <div class="overflow-content">
+            This is a very long text that will overflow the container and require horizontal scrolling to read the full content.
+        </div>
+        
+        <!-- Fixed position elements -->
+        <div style="position: fixed; top: 10px; right: 10px; background: red; color: white; padding: 10px;">
+            Fixed element
+        </div>
+        
+        <!-- Large images without responsive sizing -->
+        <img src="large-image.jpg" width="1200" height="800">
+        
+        <!-- Table with fixed layout -->
+        <table style="width: 100%; table-layout: fixed;">
+            <tr>
+                <td style="width: 300px;">Column 1</td>
+                <td style="width: 300px;">Column 2</td>
+                <td style="width: 300px;">Column 3</td>
+                <td style="width: 300px;">Column 4</td>
+            </tr>
+        </table>
+    </div>
+</body>
+</html>

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Good Site - No Issues</title>
+    <meta name="description" content="A well-built website with no accessibility, SEO, or performance issues.">
+    <link rel="canonical" href="https://example.com/good-site">
+    
+    <!-- Open Graph -->
+    <meta property="og:title" content="Good Site">
+    <meta property="og:description" content="A well-built website">
+    <meta property="og:image" content="https://example.com/image.jpg">
+    
+    <!-- Structured data -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "WebPage",
+        "name": "Good Site",
+        "description": "A well-built website"
+    }
+    </script>
+    
+    <!-- Preconnect -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    
+    <!-- Font with display swap -->
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #fff;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        img {
+            max-width: 100%;
+            height: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Welcome to Our Website</h1>
+            <nav aria-label="Main navigation">
+                <ul>
+                    <li><a href="/">Home</a></li>
+                    <li><a href="/about">About</a></li>
+                    <li><a href="/contact">Contact</a></li>
+                </ul>
+            </nav>
+        </header>
+        
+        <main>
+            <h2>About Us</h2>
+            <p>We are a company that builds websites. Our team has been working in this field for over 10 years.</p>
+            
+            <img src="team.jpg" alt="Our team of 10 people standing in front of the office building" width="800" height="600">
+            
+            <h2>Our Services</h2>
+            <ul>
+                <li>Web Design</li>
+                <li>Web Development</li>
+                <li>SEO Optimization</li>
+            </ul>
+            
+            <h2>Contact</h2>
+            <form aria-label="Contact form">
+                <label for="name">Name</label>
+                <input type="text" id="name" name="name" required>
+                
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" required>
+                
+                <label for="message">Message</label>
+                <textarea id="message" name="message" required></textarea>
+                
+                <button type="submit">Send Message</button>
+            </form>
+        </main>
+        
+        <footer>
+            <p>&copy; 2026 Good Site. All rights reserved.</p>
+        </footer>
+    </div>
+</body>
+</html>

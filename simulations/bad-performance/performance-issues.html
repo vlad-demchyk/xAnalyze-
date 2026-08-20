@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bad Performance Test</title>
+    
+    <!-- Render-blocking CSS -->
+    <link rel="stylesheet" href="https://example.com/styles1.css">
+    <link rel="stylesheet" href="https://example.com/styles2.css">
+    <link rel="stylesheet" href="https://example.com/styles3.css">
+    <link rel="stylesheet" href="https://example.com/styles4.css">
+    
+    <!-- Render-blocking JS -->
+    <script src="https://example.com/script1.js"></script>
+    <script src="https://example.com/script2.js"></script>
+    <script src="https://example.com/script3.js"></script>
+    
+    <!-- Large inline CSS -->
+    <style>
+        /* Large inline CSS block */
+        body { font-family: Arial; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        /* ... imagine 50KB of CSS here ... */
+    </style>
+    
+    <!-- Large inline JS -->
+    <script>
+        // Large inline JS block
+        function processData(data) {
+            // ... imagine 100KB of JS here ...
+            return data;
+        }
+    </script>
+</head>
+<body>
+    <h1>Performance Issues Test</h1>
+    
+    <!-- Images without lazy loading -->
+    <img src="hero.jpg" alt="Hero">
+    <img src="photo1.jpg" alt="Photo 1">
+    <img src="photo2.jpg" alt="Photo 2">
+    <img src="photo3.jpg" alt="Photo 3">
+    <img src="photo4.jpg" alt="Photo 4">
+    
+    <!-- Images without dimensions -->
+    <img src="large-image.jpg" alt="Large Image">
+    
+    <!-- Third-party scripts -->
+    <script src="https://www.googletagmanager.com/gtm.js"></script>
+    <script src="https://connect.facebook.net/en_US/fbevents.js"></script>
+    <script src="https://www.google-analytics.com/analytics.js"></script>
+    
+    <!-- Synchronous third-party script -->
+    <script src="https://unpkg.com/matter.js"></script>
+    
+    <!-- Large DOM -->
+    <div class="large-container">
+        <!-- Imagine 1000+ nested divs here -->
+        <div><div><div><div><div><div><div><div><div><div>
+        <div><div><div><div><div><div><div><div><div><div>
+        <div><div><div><div><div><div><div><div><div><div>
+        </div></div></div></div></div></div></div></div></div></div>
+        </div></div></div></div></div></div></div></div></div></div>
+        </div></div></div></div></div></div></div></div></div></div>
+    </div>
+    
+    <!-- Font without display swap -->
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=block" rel="stylesheet">
+    
+    <!-- Missing preconnect -->
+    <link rel="stylesheet" href="https://cdn.example.com/styles.css">
+    
+    <!-- Missing font-display -->
+    <style>
+        @font-face {
+            font-family: 'CustomFont';
+            src: url('font.woff2') format('woff2');
+        }
+    </style>
+</body>
+</html>
