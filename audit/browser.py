@@ -508,23 +508,41 @@ def _element_key(issue) -> str:
 #: tell that `image-alt`, `axe:image-alt` and an HTMLCS 1_1_1 message about a
 #: missing alt are one finding rather than three.
 _RULE_FAMILIES = {
-    "image-alt": "alt", "axe:image-alt": "alt", "htmlcs:1_1_1": "alt",
-    "control-name": "name", "axe:button-name": "name", "axe:link-name": "name",
+    # alt text
+    "image-alt": "alt", "image-alt-filename": "alt",
+    "axe:image-alt": "alt", "htmlcs:1_1_1": "alt",
+    # accessible name
+    "control-name": "name",
+    "axe:button-name": "name", "axe:link-name": "name",
     "axe:input-button-name": "name", "axe:aria-input-field-name": "name",
-    "axe:label": "name",
-    "html-lang": "lang", "axe:html-has-lang": "lang", "axe:html-lang-valid": "lang",
+    "axe:label": "name", "htmlcs:4_1_2": "name",
+    # language
+    "html-lang": "lang",
+    "axe:html-has-lang": "lang", "axe:html-lang-valid": "lang",
+    # title
     "document-title": "title", "axe:document-title": "title",
-    "duplicate-id": "id", "axe:duplicate-id": "id", "axe:duplicate-id-active": "id",
-    "heading-order": "heading-order", "axe:heading-order": "heading-order",
-    "contrast-inline": "contrast", "axe:color-contrast": "contrast",
+    # headings
+    "heading-order": "heading-order", "page-has-h1": "heading-order",
+    "axe:heading-order": "heading-order", "axe:page-has-heading-one": "heading-order",
+    # ids
+    "duplicate-id": "id", "aria-reference-broken": "id",
+    "axe:duplicate-id": "id", "axe:duplicate-id-active": "id",
+    # contrast
+    "contrast-inline": "contrast",
+    "axe:color-contrast": "contrast", "htmlcs:1_4_3": "contrast",
+    # tables
     "table-headers": "table", "axe:th-has-data-cells": "table",
+    # zoom
     "viewport-zoom": "zoom", "axe:meta-viewport": "zoom",
+    # tabindex
     "tabindex-positive": "tabindex", "axe:tabindex": "tabindex",
+    # link text
     "link-text-vague": "link-text", "axe:link-in-text-block": "link-text",
-    # HTML_CodeSniffer names success criteria, not rules, so its codes have to
-    # be mapped by hand: 1.1.1 is text alternatives, 4.1.2 is name/role/value,
-    # 1.4.3 is contrast.
-    "htmlcs:4_1_2": "name", "htmlcs:1_4_3": "contrast",
+    # buttons
+    "button-type": "button-type",
+    # media
+    "media-captions": "media", "media-autoplay": "media",
+    "axe:video-caption": "media", "axe:audio-caption": "media",
 }
 
 
