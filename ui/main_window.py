@@ -348,15 +348,15 @@ class MainWindow(QMainWindow):
     def _show_field_error(self, field: QLineEdit, message: str) -> None:
         """Highlight field and show error in status bar."""
         field.setProperty("class", "field-error")
-        from ui import theme as _t
-        _t.restyle(field)
+        field.style().unpolish(field)
+        field.style().polish(field)
         self.status_bar.showMessage(message)
 
     def _clear_field_error(self, field: QLineEdit) -> None:
         """Clear error highlight when user types."""
         field.setProperty("class", "")
-        from ui import theme as _t
-        _t.restyle(field)
+        field.style().unpolish(field)
+        field.style().polish(field)
         self.status_bar.clearMessage()
 
     def _on_vm_web_result(self, result) -> None:
