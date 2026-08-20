@@ -57,6 +57,12 @@ def render(span, block_text: str, lang: str = "uk") -> Explanation:
         return _character_explanation(span, details, lang)
     if source == "style":
         return _style_explanation(span, details, block_text, lang)
+    # A hybrid run merges a model span and an offline one into a single
+    # finding and keeps both records (see `detectors/hybrid.py`); rendering
+    # only the model's prose there would throw away the concrete half of the
+    # reason - which cliché, which signal.
+    if details.get("offline"):
+        return _agreement_explanation(span, details, block_text, lang)
     return _opaque_explanation(span, lang)
 
 
@@ -88,7 +94,13 @@ def _character_explanation(span, details: dict, lang: str) -> Explanation:
 
 # ------------------------------------------------------------------ style
 
-def _style_explanation(span, details: dict, block_text: str, lang: str) -> Explanation:
+def _style_reasons(details: dict, lang: str) -> list:
+    """The offline pass's reasons, from its own record.
+
+    Split out of `_style_explanation` because a hybrid finding needs exactly
+    this list under a different title, and a second copy of the rendering
+    would be a second place to update when a signal is added.
+    """
     reasons = []
     cliches = details.get("cliches") or []
     structural = details.get("structural") or []
@@ -109,7 +121,11 @@ def _style_explanation(span, details: dict, block_text: str, lang: str) -> Expla
         # claims a measurement that was never taken.
         if value is not None and value >= SIGNAL_FLOOR:
             reasons.append(t(translation_key, lang, value=f"{value:.2f}"))
+    return reasons
 
+
+def _style_explanation(span, details: dict, block_text: str, lang: str) -> Explanation:
+    reasons = _style_reasons(details, lang)
     if not reasons:
         reasons.append(t("why_weak_combination", lang))
 
@@ -128,6 +144,32 @@ def _style_explanation(span, details: dict, block_text: str, lang: str) -> Expla
         caveat=t("why_style_caveat", lang),
         suggestion=suggestion,
         suggestion_note=note,
+    )
+
+
+# -------------------------------------------------------------- agreement
+
+def _agreement_explanation(span, details: dict, block_text: str,
+                           lang: str) -> Explanation:
+    """One passage, two engines. The model's sentence first, because it is
+    the specific objection; the offline signals under it, because they are
+    the checkable part. The suggestion still comes from the offline rules -
+    agreement does not make a rewrite decidable without a model."""
+    reasons = []
+    if span.explanation:
+        reasons.append(t("why_agreement_model", lang, reason=span.explanation))
+    reasons.extend(_style_reasons(details.get("offline") or {}, lang))
+
+    flagged = block_text[span.start:span.end]
+    offline_details = details.get("offline") or {}
+    suggestion = offline_suggestions.suggest(flagged, offline_details.get("language"))
+    return Explanation(
+        title=t("why_agreement_title", lang),
+        reasons=reasons,
+        caveat=t("why_agreement_caveat", lang),
+        suggestion=suggestion,
+        suggestion_note=(t("suggest_offline_wording", lang) if suggestion
+                         else t("suggest_needs_model", lang)),
     )
 
 

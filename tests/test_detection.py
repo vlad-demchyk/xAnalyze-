@@ -105,6 +105,35 @@ class StyleFindings(unittest.TestCase):
         self.assertTrue(by_text["It is not just a tool but a partner."])
         self.assertEqual(by_text["Enter your password here."], [])
 
+    def test_the_other_two_languages_catch_the_same_constructions(self):
+        """Parity, checked as behaviour rather than as list length.
+
+        The Ukrainian and Italian lists were brought up to the English one in
+        August 2026 because a single cliché hit scores 0.30 and the reporting
+        threshold is 0.33: a sentence that fires one phrase in Ukrainian and
+        two in English is reported in English and silent in Ukrainian, which
+        read as "the tool does not work in my language" and was in fact "the
+        list is half as dense".
+        """
+        cases = (
+            # "це не просто про X; це про Y" - the Ukrainian form of
+            # "it's not about X, it's about Y". The older pattern expected
+            # "а" and could not match it.
+            ("uk", "Це не просто про економію часу; це про зміну того, як ви працюєте."),
+            ("it", "Non si tratta di risparmiare tempo: si tratta di cambiare il modo in cui lavori."),
+        )
+        for lang, text in cases:
+            with self.subTest(lang=lang):
+                style = [s for s in spans(text, lang)
+                         if s.details.get("source") == "style"]
+                self.assertTrue(any(s.details.get("structural") for s in style),
+                                f"no structural hit for {lang}")
+
+    def test_a_ukrainian_sentence_with_two_hits_clears_the_threshold(self):
+        text = ("Наша мета проста: прибрати тертя із завдань, що вас сповільнюють, "
+                "щоб ви могли зосередитися на важливому.")
+        self.assertGreaterEqual(top_score(text, "uk"), 0.33)
+
     def test_english_patterns_are_not_reported_twice(self):
         # Regression: the English list was concatenated onto itself for
         # English text, so every hit was found and shown twice.

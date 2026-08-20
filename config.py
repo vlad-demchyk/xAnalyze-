@@ -12,13 +12,44 @@ import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-APP_NAME = "ai-content-scanner"
+APP_NAME = "xanalyze"
+# Pre-rename config dir name. Only used to migrate an existing install's
+# settings into the new location the first time this runs after upgrading;
+# see `migrate_legacy_file`.
+OLD_APP_NAME = "ai-content-scanner"
+
+
+def migrate_legacy_file(old_dir: Path, new_dir: Path, filename: str) -> None:
+    """Copy `filename` from `old_dir` into `new_dir` once, if needed.
+
+    Used when an app/service gets renamed and its config dir (or keychain
+    fallback dir) moves with it: without this, someone upgrading would find
+    the app behaving like a fresh install and silently lose settings that
+    were never actually gone, just under the old directory name.
+
+    Only runs when `new_dir` doesn't have the file yet, so it's idempotent
+    and never clobbers changes made after the migration already happened.
+    The old file is left in place (copied, not moved) — another instance of
+    the app, an older version, or some other tool may still be reading or
+    writing it until everything using the old name is gone.
+    """
+    new_file = new_dir / filename
+    if new_file.exists():
+        return
+    old_file = old_dir / filename
+    if not old_file.exists():
+        return
+    try:
+        new_file.write_bytes(old_file.read_bytes())
+    except OSError:
+        pass
 
 
 def _config_dir() -> Path:
     base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
     path = Path(base) / APP_NAME
     path.mkdir(parents=True, exist_ok=True)
+    migrate_legacy_file(Path(base) / OLD_APP_NAME, path, "settings.json")
     return path
 
 
@@ -28,7 +59,17 @@ CONFIG_FILE = _config_dir() / "settings.json"
 @dataclass
 class Settings:
     ui_language: str = "uk"                 # 'uk' | 'it' | 'en'
+    # Kept only so a choice made in an older version can be migrated into
+    # `default_method` and `llm_provider` on load - nothing reads it to
+    # decide what runs any more. See `_migrate_detector_choice`.
     default_detector: str = "offline"        # matches DetectorFactory registry names
+    # What the window's method combo is set to: which engines judge the copy.
+    # Stored as the same "+"-joined key the combo carries (see
+    # `MainWindow.choice_key`): "local", "ai", or "local+ai" for the hybrid.
+    # A method rather than a detector name because "run a model too" is the
+    # decision the user makes; which class implements it follows from that
+    # and from `llm_provider`.
+    default_method: str = "local"
     crawl_depth: int = 1
     max_pages: int = 30
     # Anthropic's current default model. Older ids stay valid — this is only
@@ -134,12 +175,49 @@ _MIGRATIONS = {
 }
 
 
+#: The judge each old `default_detector` value stood for, as a provider.
+#: One direction only: this is a migration, not a lookup table for running
+#: code - see `detectors/judges.py` for that.
+_DETECTOR_PROVIDERS = {
+    "claude-llm-judge": "anthropic",
+    "xformat-llm-judge": "xformat",
+    "claude-code-llm-judge": "claude-code",
+}
+
+
+def _migrate_detector_choice(settings: "Settings") -> "Settings":
+    """Turn "my detector is the xFormat judge" into "my method is hybrid and
+    my account is xFormat".
+
+    Someone who had picked a judge in the old dropdown was asking for a model
+    to read their text; after the change, the method combo decides that, and
+    leaving it at its default would have quietly demoted them to offline-only
+    on first launch - the same silent substitution this release exists to
+    remove. The hybrid is the honest target rather than AI-only: the offline
+    pass is free, finds exact character defects a model does not, and used to
+    run alongside every judge anyway.
+
+    Only the stored default is touched, and only while the new fields are
+    still untouched themselves, so a deliberate choice made after upgrading
+    is never overwritten by one made before it.
+    """
+    provider = _DETECTOR_PROVIDERS.get(settings.default_detector)
+    if provider is None:
+        return settings
+    if settings.default_method == Settings.default_method:
+        settings.default_method = "local+ai"
+    if settings.llm_provider == Settings.llm_provider:
+        settings.llm_provider = provider
+    settings.default_detector = "offline"
+    return settings
+
+
 def _migrate(settings: "Settings") -> "Settings":
     for field_name, replacements in _MIGRATIONS.items():
         current = getattr(settings, field_name, None)
         if current in replacements:
             setattr(settings, field_name, replacements[current])
-    return settings
+    return _migrate_detector_choice(settings)
 
 
 def get_anthropic_api_key() -> str | None:

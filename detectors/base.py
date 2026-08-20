@@ -25,6 +25,14 @@ class Detector(ABC):
     #: languages this backend claims to support well
     supported_languages: tuple[str, ...] = ("uk", "it", "en")
 
+    #: Whether this backend already reports non-keyboard characters itself.
+    #: Declared here rather than checked by name at the call site: callers
+    #: run that pass alongside whichever detector was chosen (it is free and
+    #: answers a different question), and the one thing they must not do is
+    #: run it twice over a detector that contains it - which is what listing
+    #: the names in `ui/worker.py` did until a second such detector existed.
+    includes_character_pass: bool = False
+
     def __init__(self, **config):
         self.config = config
 
@@ -49,6 +57,14 @@ class Detector(ABC):
         return spans
 
     def _error_span(self, block: TextBlock, exc: Exception) -> TextSpan:
+        """A block the detector could not judge.
+
+        Stamped in `details` rather than recognised by its low confidence:
+        callers drop low-confidence spans, so a failure that only looked like
+        a weak finding was dropped with them, and a scan whose every batch
+        failed printed "No findings". A block nobody read is not a clean
+        block, and the difference has to survive that filter.
+        """
         from models import Confidence
         return TextSpan(
             block_id=block.block_id,
@@ -58,6 +74,7 @@ class Detector(ABC):
             confidence=Confidence.LOW,
             detector_name=self.name,
             explanation=f"detector error: {exc}",
+            details={"error": str(exc)},
         )
 
 

@@ -7,7 +7,9 @@ from . import unicode_anomalies  # noqa: F401
 from . import offline  # noqa: F401
 from . import claude_llm_judge  # noqa: F401
 from . import xformat_llm_judge  # noqa: F401
+from . import claude_code_llm_judge  # noqa: F401
 from . import claude_watermark_stub  # noqa: F401
+from . import hybrid  # noqa: F401
 
 from .base import Detector, DetectorUnavailable  # noqa: F401
 from .factory import DetectorFactory  # noqa: F401

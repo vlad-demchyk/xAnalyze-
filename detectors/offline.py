@@ -45,6 +45,7 @@ class OfflineDetector(Detector):
     name = "offline"
     display_name = "Offline — wording + non-keyboard characters (free)"
     supported_languages = ("uk", "it", "en")
+    includes_character_pass = True
 
     def __init__(self, categories: tuple = ALL_CATEGORIES,
                  include_style: bool = True, **config):

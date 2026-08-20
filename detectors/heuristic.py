@@ -136,11 +136,50 @@ CLICHE_PHRASES: dict[str, list[str]] = {
         "оптимізувати робочі процеси", "оптимізували роботу",
         "не просто про", "сучасного професіонала", "передовому ai",
         "передові технології", "потужні технології",
+        # Доповнення до паритету з англійським списком (2026-08-20). Складене
+        # як дзеркало наявних англійських записів, а не з корпусу: список,
+        # дописаний із текстів, на яких його ж і міряють, вимірює память.
+        # Свідомо НЕ додані загальні сполучники ("отже,", "таким чином,") і
+        # звичайні слова на кшталт "надійний" чи "ключовий": для української
+        # немає людського пулу, тож precision не міряється, і ціна хибного
+        # спрацювання тут вища за ціну пропуску.
+        # хеджування і зачини
+        "варто зауважити", "слід зазначити", "необхідно розуміти",
+        "загалом кажучи", "певною мірою",
+        # часові зачини
+        "у сучасному цифровому", "у наш час", "в епоху", "сьогодні, коли",
+        "у світі, що швидко змінюється", "дедалі більше",
+        # підсумки
+        "підсумовуючи вищесказане", "у підсумку,", "одним словом,",
+        # гачки уваги
+        "розберімося", "уявіть собі", "а що, якщо", "залишайтеся з нами",
+        "давайте розглянемо", "давайте зануримось",
+        # маркетингові звороти
+        "не шукайте далі", "вивільніть потенціал", "нові можливості",
+        "справжня революція", "проривне рішення", "на новий рівень",
+        "гнучке рішення", "запорука успіху", "ключ до успіху",
+        "низка переваг", "чимало переваг", "широкий вибір",
+        # продуктова й інтерфейсна копія
+        "справлятися з будь-яким", "будь-яке завдання",
+        "зосередитися на важливому", "зосередитись на головному",
+        "щоб ви могли зосередитися", "плавніший досвід",
+        "інтуїтивніший досвід", "бездоганний досвід",
+        "єдиний робочий простір", "усе необхідне", "жодних складнощів",
+        "без зайвих зусиль", "лише кілька кроків", "у два кліки",
+        "за лічені хвилини", "заощаджуйте час", "економте час",
+        "підвищте продуктивність", "зробіть більше за менший час",
+        "створено для того, щоб", "розроблено, щоб", "просто працює",
+        "довіряють тисячі", "тисячі команд", "надійна безпека",
+        "змінює те, як", "змінити те, як",
         # окремі слова-маркери
         "розмаїття", "оптимальний", "функціональність", "феномен",
         "невід'ємно", "інноваційність", "ландшафт", "аспект",
         "усвідомленість", "побоювання", "дискомфорт", "новітність",
         "адаптований", "захоплюючий", "сучасність",
+        "інноваційний", "трансформаційний", "безшовний", "масштабований",
+        "проривний", "передовий", "неперевершений", "багатогранний",
+        "всеосяжний", "революціонізувати", "максимізувати", "нівелювати",
+        "уможливлює", "покликаний", "вирізняється", "гармонійно",
     ],
     "it": [
         # frasi cliché
@@ -160,10 +199,43 @@ CLICHE_PHRASES: dict[str, list[str]] = {
         "la nostra missione", "e molto altro", "potente ma semplice",
         "panorama digitale", "sblocca il pieno potenziale",
         "ottimizza il tuo flusso di lavoro", "non si tratta solo di",
+        # Aggiunte per la parità con la lista inglese (2026-08-20), scritte
+        # come specchio delle voci inglesi e non ricavate dal corpus. Come
+        # per l'ucraino, niente congiunzioni generiche ("quindi,", "dunque,"):
+        # senza un pool umano italiano la precisione non è misurabile.
+        # aperture e attenuazioni
+        "va notato che", "occorre considerare", "in linea di massima",
+        "in una certa misura",
+        # aperture temporali
+        "nell'era digitale", "in un mondo in continua evoluzione",
+        "ai giorni nostri", "sempre più spesso",
+        # chiusure
+        "per riassumere", "in sintesi", "in definitiva,",
+        # ganci di attenzione
+        "scopriamo insieme", "immagina di", "e se ti dicessi",
+        "resta con noi", "vediamo insieme",
+        # espressioni di marketing
+        "non cercare oltre", "libera il potenziale", "nuove possibilità",
+        "una vera rivoluzione", "soluzione all'avanguardia",
+        "porta a un nuovo livello", "la chiave del successo",
+        "una serie di vantaggi", "ampia scelta",
+        # copy di prodotto e di interfaccia
+        "qualunque sia il tuo", "concentrarti su ciò che conta",
+        "così puoi concentrarti", "esperienza più fluida",
+        "esperienza impeccabile", "un unico spazio di lavoro",
+        "tutto ciò di cui hai bisogno", "senza alcuno sforzo",
+        "in pochi passaggi", "in due clic", "in pochissimo tempo",
+        "risparmia tempo", "aumenta la produttività",
+        "fai di più in meno tempo", "progettato per", "funziona e basta",
+        "scelto da migliaia", "migliaia di team", "sicurezza affidabile",
+        "cambia il modo in cui",
         # singole parole/aggettivi ricorrenti
         "dinamico", "efficiente", "innovativo", "stimolante", "efficienza",
         "agevolare", "massimizzare", "ottimizzazione", "integrazione",
         "indagare", "rivoluzionario", "imprescindibile", "fondamentale",
+        "trasformativo", "scalabile", "senza soluzione di continuità",
+        "ineguagliabile", "poliedrico", "onnicomprensivo", "all'avanguardia",
+        "consentendo di", "permettendoti di", "si distingue per",
     ],
 }
 
@@ -185,11 +257,22 @@ STRUCTURAL_PATTERNS: dict[str, list[re.Pattern]] = {
         re.compile(r"\bне просто\b.{0,40}\bа\b", re.IGNORECASE),
         re.compile(r"\bсправа не в\b.{0,40}\bсправа в\b", re.IGNORECASE),
         re.compile(r"\bчи ви\b.{0,30}\bчи\b", re.IGNORECASE),
+        # "це не просто про X; це про Y" - та сама конструкція, що й англійська
+        # "it's not about X, it's about Y", але з "про" замість "а", тому
+        # перший патерн її не ловив.
+        re.compile(r"\bце не просто про\b.{0,40}\bце про\b", re.IGNORECASE),
+        re.compile(r"\bжодних\s+\w+\.\s*жодних\s+\w+\.\s*(лише|тільки)\b",
+                   re.IGNORECASE),
+        re.compile(r"\b(виведіть|виведе|вивести)\b.{0,25}\bна новий рівень\b",
+                   re.IGNORECASE),
     ],
     "it": [
         re.compile(r"\bnon solo\b.{0,40}\bma anche\b", re.IGNORECASE),
         re.compile(r"\bnon si tratta di\b.{0,40}\bsi tratta di\b", re.IGNORECASE),
         re.compile(r"\bche tu sia\b.{0,30}\bo\b", re.IGNORECASE),
+        re.compile(r"\bniente\s+\w+\.\s*niente\s+\w+\.\s*solo\b", re.IGNORECASE),
+        re.compile(r"\bport(a|are|ando)\b.{0,25}\ba un nuovo livello\b",
+                   re.IGNORECASE),
     ],
 }
 

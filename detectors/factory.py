@@ -45,6 +45,17 @@ class DetectorFactory:
         return name
 
     @classmethod
+    def lookup(cls, name: str) -> type[Detector] | None:
+        """The class registered under `name`, or None.
+
+        For questions that are about the backend rather than about one run -
+        "does this one already report characters?" - where building an
+        instance would mean paying for a client, a key check or a session
+        just to read a class attribute.
+        """
+        return cls._registry.get(cls.resolve(name))
+
+    @classmethod
     def available(cls) -> list[str]:
         return sorted(cls._registry.keys())
 
