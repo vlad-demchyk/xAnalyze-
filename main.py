@@ -55,11 +55,11 @@ class SeverityBadge(QLabel):
 class FindingRow(QWidget):
     def __init__(self, severity: str, text: str, source: str = "", parent=None):
         super().__init__(parent)
-        self.setFixedHeight(36)
+        self.setFixedHeight(40)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(T.space_3, 0, T.space_3, 0)
+        layout.setContentsMargins(T.space_4, T.space_2, T.space_4, T.space_2)
         layout.setSpacing(T.space_3)
 
         self.badge = SeverityBadge(severity)
@@ -79,7 +79,15 @@ class FindingRow(QWidget):
             self.source_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             layout.addWidget(self.source_label)
 
-        self.setStyleSheet(f"QWidget {{ background: transparent; border-bottom: 1px solid {T.border_subtle}; }}")
+        self.setStyleSheet(f"""
+            QWidget {{
+                background: transparent;
+                border-radius: {T.radius_md}px;
+            }}
+            QWidget:hover {{
+                background-color: {T.bg_hover};
+            }}
+        """)
 
 
 class FindingsList(QWidget):
@@ -93,7 +101,7 @@ class FindingsList(QWidget):
             }}
         """)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(1, 1, 1, 1)
         layout.setSpacing(0)
 
         header = QWidget()
@@ -130,17 +138,17 @@ class FindingsList(QWidget):
                 background-color: {T.bg_surface};
                 border: none;
                 outline: none;
-                padding: {T.space_1}px;
+                padding: {T.space_2}px;
             }}
             QListWidget::item {{
-                padding: 0;
-                margin: 0;
+                padding: {T.space_1}px 0;
+                margin: 0 0 {T.space_1}px 0;
                 border: none;
                 background: transparent;
+                border-radius: {T.radius_md}px;
             }}
             QListWidget::item:selected {{
                 background-color: {T.accent_muted};
-                border-left: 2px solid {T.accent};
             }}
             QListWidget::item:hover:!selected {{
                 background-color: {T.bg_hover};
@@ -152,7 +160,7 @@ class FindingsList(QWidget):
     def add_finding(self, severity: str, text: str, source: str = ""):
         row = FindingRow(severity, text, source)
         item = QListWidgetItem()
-        item.setSizeHint(row.sizeHint() + QSize(0, 4))
+        item.setSizeHint(row.sizeHint() + QSize(0, 8))
         item.setData(Qt.ItemDataRole.UserRole, (severity, text, source))
         self.list.addItem(item)
         self.list.setItemWidget(item, row)
@@ -172,7 +180,7 @@ class DetailPanel(QWidget):
         """)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(T.space_4, T.space_4, T.space_4, T.space_4)
-        layout.setSpacing(T.space_3)
+        layout.setSpacing(T.space_4)
 
         header = QLabel("Details")
         header.setStyleSheet(f"""
@@ -180,7 +188,7 @@ class DetailPanel(QWidget):
                 color: {T.text_primary};
                 font-size: {T.font_size_lg}px;
                 font-weight: 600;
-                padding-bottom: {T.space_2}px;
+                padding-bottom: {T.space_3}px;
                 border-bottom: 1px solid {T.border_default};
             }}
         """)
@@ -201,7 +209,7 @@ class DetailPanel(QWidget):
         self.detail_widget.setStyleSheet("background: transparent;")
         detail_layout = QVBoxLayout(self.detail_widget)
         detail_layout.setContentsMargins(0, 0, 0, 0)
-        detail_layout.setSpacing(T.space_3)
+        detail_layout.setSpacing(T.space_4)
 
         self.severity_badge = SeverityBadge("high")
         detail_layout.addWidget(self.severity_badge)
@@ -236,7 +244,7 @@ class DetailPanel(QWidget):
             }}
         """)
         desc_layout = QVBoxLayout(desc_box)
-        desc_layout.setContentsMargins(T.space_3, T.space_3, T.space_3, T.space_3)
+        desc_layout.setContentsMargins(T.space_4, T.space_4, T.space_4, T.space_4)
         self.description = QLabel("Description of the issue will appear here.")
         self.description.setWordWrap(True)
         self.description.setStyleSheet(f"color: {T.text_primary}; background: transparent;")
@@ -247,7 +255,7 @@ class DetailPanel(QWidget):
         btn_row.setStyleSheet("background: transparent;")
         btn_layout = QHBoxLayout(btn_row)
         btn_layout.setContentsMargins(0, 0, 0, 0)
-        btn_layout.setSpacing(T.space_2)
+        btn_layout.setSpacing(T.space_3)
 
         fix_btn = QPushButton("Fix")
         fix_btn.setStyleSheet(f"""
@@ -305,7 +313,7 @@ class PreviewPanel(QWidget):
             }}
         """)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(1, 1, 1, 1)
         layout.setSpacing(0)
 
         header = QWidget()
@@ -318,7 +326,7 @@ class PreviewPanel(QWidget):
             }}
         """)
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(T.space_4, T.space_3, T.space_3, T.space_3)
+        header_layout.setContentsMargins(T.space_4, T.space_3, T.space_4, T.space_3)
 
         title = QLabel("Preview")
         title.setStyleSheet(f"""
@@ -361,7 +369,7 @@ class PreviewPanel(QWidget):
                 border: none;
                 border-bottom-left-radius: {T.radius_lg}px;
                 border-bottom-right-radius: {T.radius_lg}px;
-                padding: {T.space_3}px;
+                padding: {T.space_4}px;
                 color: {T.text_primary};
                 font-family: {T.font_mono};
                 font-size: {T.font_size_sm}px;
