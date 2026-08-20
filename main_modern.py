@@ -15,13 +15,16 @@ from PySide6.QtWidgets import (
 )
 
 import config
+import detectors  # noqa: F401 - registers detectors
+from analysis_modes import AnalysisRequest
 from ui.design_system import TOKENS as T
 from ui.modern_theme import build_modern_qss
 from ui.sidebar import Sidebar
+from ui.worker import AnalysisWorker, RepoAnalysisWorker, AuditWorker
 
 
 class SeverityBadge(QLabel):
-    """Styled severity badge - colored pill, not plain text."""
+    """Small uniform severity badge."""
 
     STYLES = {
         "critical": (T.critical, "#ffffff"),
@@ -32,6 +35,8 @@ class SeverityBadge(QLabel):
 
     def __init__(self, severity: str, parent=None):
         super().__init__(parent)
+        self.setFixedSize(52, 20)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.set_severity(severity)
 
     def set_severity(self, severity: str):
@@ -41,65 +46,56 @@ class SeverityBadge(QLabel):
             QLabel {{
                 background-color: {bg};
                 color: {fg};
-                border-radius: {T.radius_sm}px;
-                padding: 2px {T.space_2}px;
-                font-size: {T.font_size_xs}px;
-                font-weight: 600;
-                min-width: 40px;
-                text-align: center;
+                border-radius: 3px;
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 0.5px;
             }}
         """)
 
 
 class FindingRow(QWidget):
-    """One finding row with badge + text + source."""
+    """Compact finding row."""
 
     def __init__(self, severity: str, text: str, source: str = "", parent=None):
         super().__init__(parent)
-        self.setProperty("class", "finding-row")
+        self.setFixedHeight(36)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(T.space_3, T.space_2, T.space_3, T.space_2)
+        layout.setContentsMargins(T.space_3, 0, T.space_3, 0)
         layout.setSpacing(T.space_3)
 
-        # Severity badge
         self.badge = SeverityBadge(severity)
         layout.addWidget(self.badge)
 
-        # Text
         self.text_label = QLabel(text)
-        self.text_label.setProperty("class", "finding-text")
-        self.text_label.setWordWrap(True)
+        self.text_label.setStyleSheet(f"""
+            QLabel {{
+                color: {T.text_primary};
+                font-size: {T.font_size_sm}px;
+            }}
+        """)
         layout.addWidget(self.text_label, stretch=1)
 
-        # Source (file:line)
         if source:
             self.source_label = QLabel(source)
-            self.source_label.setProperty("class", "muted-xs")
+            self.source_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {T.text_disabled};
+                    font-size: {T.font_size_xs}px;
+                    font-family: {T.font_mono};
+                }}
+            """)
             self.source_label.setAlignment(
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
             )
             layout.addWidget(self.source_label)
 
         self.setStyleSheet(f"""
-            QWidget[class="finding-row"] {{
+            QWidget {{
                 background: transparent;
                 border-bottom: 1px solid {T.border_subtle};
-                border-radius: 0;
-                padding: {T.space_2}px 0;
-            }}
-            QWidget[class="finding-row"]:hover {{
-                background-color: {T.bg_hover};
-            }}
-            QLabel[class="finding-text"] {{
-                color: {T.text_primary};
-                font-size: {T.font_size_base}px;
-            }}
-            QLabel[class="muted-xs"] {{
-                color: {T.text_disabled};
-                font-size: {T.font_size_xs}px;
-                font-family: {T.font_mono};
             }}
         """)
 
@@ -160,16 +156,19 @@ class FindingsList(QWidget):
                 background-color: {T.bg_base};
                 border: none;
                 outline: none;
+                padding: {T.space_1}px;
             }}
             QListWidget::item {{
                 padding: 0;
                 margin: 0;
                 border: none;
+                background: transparent;
             }}
             QListWidget::item:selected {{
                 background-color: {T.accent_muted};
+                border-left: 2px solid {T.accent};
             }}
-            QListWidget::item:hover {{
+            QListWidget::item:hover:!selected {{
                 background-color: {T.bg_hover};
             }}
         """)
@@ -415,31 +414,111 @@ class PreviewPanel(QWidget):
 
 
 class ThemeToggle(QPushButton):
-    """Theme toggle button (dark/light)."""
+    """Theme toggle button."""
 
     def __init__(self, parent=None):
-        super().__init__("🌙", parent)
-        self.setFixedSize(32, 32)
-        self.setToolTip("Toggle theme")
+        super().__init__("Dark", parent)
+        self.setFixedHeight(28)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.is_dark = True
         self.setStyleSheet(f"""
             QPushButton {{
                 background: transparent;
                 border: 1px solid {T.border_default};
-                border-radius: {T.radius_md}px;
-                font-size: 16px;
+                border-radius: {T.radius_sm}px;
+                padding: 0 {T.space_3}px;
+                color: {T.text_secondary};
+                font-size: {T.font_size_xs}px;
             }}
             QPushButton:hover {{
                 background-color: {T.bg_hover};
                 border-color: {T.text_secondary};
+                color: {T.text_primary};
             }}
         """)
-        self.clicked.connect(self._toggle)
 
-    def _toggle(self):
-        self.is_dark = not self.is_dark
-        self.setText("☀️" if self.is_dark else "🌙")
+
+class AnalysisWorker(QThread):
+    """Background thread for analysis."""
+
+    finished = Signal(object)  # list of findings
+    error = Signal(str)
+
+    def __init__(self, path: str, detector_name: str = "offline", parent=None):
+        super().__init__(parent)
+        self.path = path
+        self.detector_name = detector_name
+
+    def run(self):
+        try:
+            from pathlib import Path
+            p = Path(self.path)
+
+            # Create detector
+            detector = DetectorFactory.create(self.detector_name)
+
+            # Scan
+            if p.is_file():
+                files = [scan_file(str(p))]
+            else:
+                config = ScanConfig(max_files=100)
+                files = scan_repo(str(p), config)
+
+            # Analyze
+            all_blocks = []
+            for f in files:
+                all_blocks.extend(f.blocks)
+
+            spans = detector.analyze_blocks(all_blocks)
+
+            # Convert to findings
+            findings = []
+            for span in spans:
+                # Find the block
+                block = None
+                for f in files:
+                    for b in f.blocks:
+                        if b.block_id == span.block_id:
+                            block = b
+                            break
+                    if block:
+                        break
+
+                if block:
+                    text = block.text[span.start:span.end]
+                    source = getattr(block, "file_path", getattr(block, "page_url", ""))
+                    line = getattr(block, "line_number", 0)
+
+                    # Map confidence to severity
+                    severity_map = {
+                        Confidence.HIGH: "high",
+                        Confidence.MEDIUM: "medium",
+                        Confidence.LOW: "low",
+                    }
+                    severity = severity_map.get(span.confidence, "low")
+
+                    # Add source type prefix
+                    source_type = span.details.get("source", "unknown")
+                    if source_type == "characters":
+                        severity = "medium"  # Characters are always medium
+                        prefix = "[CHAR] "
+                    elif source_type == "style":
+                        prefix = "[STYLE] "
+                    elif source_type == "embedding":
+                        prefix = "[EMBED] "
+                    else:
+                        prefix = ""
+
+                    findings.append({
+                        "severity": severity,
+                        "text": prefix + text[:100],
+                        "source": f"{source}:{line}" if line else source,
+                        "details": span.details,
+                        "score": span.score,
+                    })
+
+            self.finished.emit(findings)
+        except Exception as e:
+            self.error.emit(str(e))
 
 
 class ModernMainWindow(QMainWindow):
@@ -523,6 +602,32 @@ class ModernMainWindow(QMainWindow):
         source = self.sidebar.get_source()
         target = self.sidebar.get_target()
         print(f"Analyzing: {source} -> {target}")
+
+        if not target:
+            return
+
+        # Clear previous findings
+        self.findings.list.clear()
+        self.findings._count = 0
+        self.findings.count_label.setText("0 items")
+
+        # Determine detector based on source
+        # For now, use offline detector
+        detector_name = "offline"
+
+        # Start analysis in background
+        self.worker = AnalysisWorker(target, detector_name)
+        self.worker.finished.connect(self._on_analysis_finished)
+        self.worker.error.connect(self._on_analysis_error)
+        self.worker.start()
+
+    def _on_analysis_finished(self, findings):
+        print(f"Analysis complete: {len(findings)} findings")
+        for f in findings:
+            self.findings.add_finding(f["severity"], f["text"], f["source"])
+
+    def _on_analysis_error(self, error):
+        print(f"Analysis error: {error}")
 
     def _on_finding_clicked(self, item: QListWidgetItem):
         data = item.data(Qt.ItemDataRole.UserRole)
