@@ -2431,6 +2431,12 @@ class MainWindow(QMainWindow):
         chips.addWidget(chip(issue.rule_id))
         if issue.engine and issue.engine != "static":
             chips.addWidget(chip(issue.engine))
+        also = (issue.details or {}).get("also_found_by", [])
+        if also:
+            also_label = ", ".join(also)
+            confirm_chip = chip(f"+ {also_label}")
+            confirm_chip.setToolTip(f"Also confirmed by: {also_label}")
+            chips.addWidget(confirm_chip)
         layout.addWidget(chips_host)
 
         layout.addWidget(divider())
