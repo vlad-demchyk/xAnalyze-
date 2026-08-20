@@ -38,7 +38,7 @@ class EmbeddingDetector(Detector):
 
     def __init__(self, model_name: str = DEFAULT_MODEL,
                  corpus_path: str | None = None,
-                 threshold: float = 0.50, **config):
+                 threshold: float = 0.60, **config):
         super().__init__(**config)
         self.model_name = model_name
         self.corpus_path = Path(corpus_path) if corpus_path else CORPUS_PATH
@@ -98,6 +98,12 @@ class EmbeddingDetector(Detector):
         if not text.strip():
             return []
 
+        # Skip short texts - embeddings are unreliable for single words
+        # or very short phrases. Minimum 5 words for meaningful analysis.
+        word_count = len(text.split())
+        if word_count < 5:
+            return []
+
         # Compute embedding for input text
         text_embedding = self._model.encode([text])
 
@@ -116,6 +122,10 @@ class EmbeddingDetector(Detector):
 
         # Normalize to 0..1
         score = max(0.0, min(1.0, (score_raw + 1.0) / 2.0))
+
+        # Skip if below threshold
+        if score < self.threshold:
+            return []
 
         # Find the most similar AI text for explanation
         ai_idx = np.argmax([float(s) for s, l in zip(similarities, self._reference_labels) if l == "model"])

@@ -22,7 +22,7 @@ try:
     from ui.main_window import MainWindow
     from analysis_modes import (
         AnalysisRequest, CHECK_ACCESSIBILITY, CHECK_AI_PATTERNS, METHOD_AI,
-        METHOD_LOCAL,
+        METHOD_EMBEDDING, METHOD_LOCAL,
     )
     from detectors.judges import JUDGE_BY_PROVIDER
 except Exception:  # noqa: BLE001 - no Qt here is a skip, not a failure
@@ -97,7 +97,10 @@ class MethodDecidesTheEngine(unittest.TestCase):
         self.window._retranslate_choices()
         offered = [self.window.method_combo.itemData(i)
                    for i in range(self.window.method_combo.count())]
-        self.assertEqual(offered, [MainWindow.choice_key((METHOD_LOCAL,))])
+        self.assertEqual(offered, [
+            MainWindow.choice_key((METHOD_LOCAL,)),
+            MainWindow.choice_key((METHOD_EMBEDDING,)),
+        ])
         self.assertFalse(self.window.method_combo.isEnabled())
 
     def test_a_stored_ai_method_with_no_account_is_stated_not_swallowed(self):

@@ -78,7 +78,7 @@ def score_rows(rows: list, detector_name: str = "offline") -> list:
                           page_url="corpus://labelled", dom_path="",
                           language_hint=row.get("language") or "")
         spans = [s for s in detector.analyze_block(block)
-                 if (s.details or {}).get("source") == "style"]
+                 if (s.details or {}).get("source") != "characters"]
         score = max((s.score for s in spans), default=0.0)
         scored.append({**row, "score": score,
                        "confidence": score_to_confidence(score).value})
