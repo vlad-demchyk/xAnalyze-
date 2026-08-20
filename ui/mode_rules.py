@@ -16,6 +16,7 @@ from analysis_modes import (
     CHECK_ACCESSIBILITY,
     CHECK_AI_PATTERNS,
     METHOD_AI,
+    METHOD_EMBEDDING,
     METHOD_LOCAL,
     READER_BROWSER,
     READER_CODE,

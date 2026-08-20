@@ -37,7 +37,7 @@ def responsive_breakpoints():
     return BREAKPOINTS
 from file_writer import apply_replacements, build_plans
 from analysis_modes import (
-    CHECKS, CHECK_ACCESSIBILITY, CHECK_AI_PATTERNS, METHOD_AI, METHOD_LOCAL,
+    CHECKS, CHECK_ACCESSIBILITY, CHECK_AI_PATTERNS, METHOD_AI, METHOD_EMBEDDING, METHOD_LOCAL,
     METHODS, READER_BROWSER, READER_CODE, SOURCE_FILE, SOURCE_REPO,
     SOURCE_SITE, AnalysisRequest, available_readers, supports_browser,
 )
@@ -1352,7 +1352,10 @@ class MainWindow(QMainWindow):
         ])
 
         ai_ready = self._ai_available()
-        method_options = [(t("method_local", lang), self.choice_key((METHOD_LOCAL,)))]
+        method_options = [
+            (t("method_local", lang), self.choice_key((METHOD_LOCAL,))),
+            (t("method_embedding", lang), self.choice_key((METHOD_EMBEDDING,))),
+        ]
         if ai_ready:
             method_options.append((t("method_ai", lang), self.choice_key((METHOD_AI,))))
             method_options.append((t("method_both", lang), self.choice_key((METHOD_LOCAL, METHOD_AI))))
@@ -1585,6 +1588,8 @@ class MainWindow(QMainWindow):
             name = "hybrid"
         elif request.wants_ai:
             name = judge
+        elif request.wants_embedding:
+            name = "embedding"
         else:
             name = "offline"
         return name, self._detector_config_for(name, judge)
@@ -1619,6 +1624,9 @@ class MainWindow(QMainWindow):
             # The character categories are a content decision the user makes
             # in Settings; style analysis is always on in this detector.
             return {"categories": self._active_unicode_categories() or ()}
+        if resolved == "embedding":
+            # Embedding detector uses sentence-transformers, no API key needed
+            return {}
         return {}
 
     def _reset_scan_ui(self) -> None:

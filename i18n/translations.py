@@ -323,6 +323,9 @@ _STRINGS: dict[str, dict[str, str]] = {
     "method_local": {
         "uk": "Локальний двигун", "it": "Motore locale", "en": "Offline engine",
     },
+    "method_embedding": {
+        "uk": "Семантичний аналіз", "it": "Analisi semantica", "en": "Semantic analysis",
+    },
     "method_ai": {
         "uk": "AI", "it": "AI", "en": "AI",
     },

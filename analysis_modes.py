@@ -39,7 +39,8 @@ CHECKS = (CHECK_ACCESSIBILITY, CHECK_AI_PATTERNS)
 
 METHOD_LOCAL = "local"
 METHOD_AI = "ai"
-METHODS = (METHOD_LOCAL, METHOD_AI)
+METHOD_EMBEDDING = "embedding"
+METHODS = (METHOD_LOCAL, METHOD_AI, METHOD_EMBEDDING)
 
 #: Which readers each source can support at all. A repository has no server to
 #: answer a request, so nothing can render it; a site and a self-contained file
@@ -146,6 +147,10 @@ class AnalysisRequest:
     @property
     def wants_ai(self) -> bool:
         return METHOD_AI in self.methods
+
+    @property
+    def wants_embedding(self) -> bool:
+        return METHOD_EMBEDDING in self.methods
 
     def reuses_extraction(self, previous: "AnalysisRequest | None") -> bool:
         """Can the pages already fetched for `previous` answer this request?
