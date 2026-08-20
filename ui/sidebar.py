@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QHBoxLayout, QLabel, QLineEdit, QPushButton,
+    QFileDialog, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QSizePolicy, QSpinBox, QVBoxLayout, QWidget,
 )
 
@@ -127,19 +127,53 @@ class Sidebar(QWidget):
         self.url_input.returnPressed.connect(self.analyze_clicked)
         layout.addWidget(self.url_input)
 
-        # Repo path input (for repo)
+        # Repo path input (for repo) - with browse button
+        self.repo_container = QWidget()
+        repo_layout = QHBoxLayout(self.repo_container)
+        repo_layout.setContentsMargins(0, 0, 0, 0)
+        repo_layout.setSpacing(T.space_2)
         self.repo_input = QLineEdit()
         self.repo_input.setPlaceholderText(t("repo_path_placeholder", self.lang))
         self.repo_input.setProperty("class", "search")
-        self.repo_input.setVisible(False)
-        layout.addWidget(self.repo_input)
+        repo_layout.addWidget(self.repo_input, stretch=1)
+        self.repo_browse = QPushButton("...")
+        self.repo_browse.setFixedSize(36, 36)
+        self.repo_browse.setToolTip("Browse for folder")
+        self.repo_browse.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.repo_browse.clicked.connect(self._browse_folder)
+        repo_layout.addWidget(self.repo_browse)
+        self.repo_container.setVisible(False)
+        layout.addWidget(self.repo_container)
 
-        # File path input (for file)
+        # File path input (for file) - with browse button
+        self.file_container = QWidget()
+        file_layout = QHBoxLayout(self.file_container)
+        file_layout.setContentsMargins(0, 0, 0, 0)
+        file_layout.setSpacing(T.space_2)
         self.file_input = QLineEdit()
         self.file_input.setPlaceholderText(t("file_path_placeholder", self.lang))
         self.file_input.setProperty("class", "search")
-        self.file_input.setVisible(False)
-        layout.addWidget(self.file_input)
+        file_layout.addWidget(self.file_input, stretch=1)
+        self.file_browse = QPushButton("...")
+        self.file_browse.setFixedSize(36, 36)
+        self.file_browse.setToolTip("Browse for HTML file")
+        self.file_browse.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.file_browse.clicked.connect(self._browse_file)
+        file_layout.addWidget(self.file_browse)
+        self.file_container.setVisible(False)
+        layout.addWidget(self.file_container)
+
+    def _browse_folder(self):
+        path = QFileDialog.getExistingDirectory(self, "Select folder")
+        if path:
+            self.repo_input.setText(path)
+
+    def _browse_file(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select HTML file", "",
+            "HTML (*.html *.htm *.xhtml);;All files (*)")
+        if path:
+            self.file_input.setText(path)
 
     def _add_check_filters(self, layout: QVBoxLayout):
         self.check_chips: dict[str, FilterChip] = {}
@@ -201,8 +235,8 @@ class Sidebar(QWidget):
 
     def _update_target_visibility(self, source: str):
         self.url_input.setVisible(source == SOURCE_SITE)
-        self.repo_input.setVisible(source == SOURCE_REPO)
-        self.file_input.setVisible(source == SOURCE_FILE)
+        self.repo_container.setVisible(source == SOURCE_REPO)
+        self.file_container.setVisible(source == SOURCE_FILE)
         self.depth_container.setVisible(source == SOURCE_SITE)
 
     def _on_check_toggled(self, _checked: bool):
