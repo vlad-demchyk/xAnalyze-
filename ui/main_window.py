@@ -265,7 +265,6 @@ class MainWindow(QMainWindow):
         """
         # -- combos -> AppState --
         self.mode_combo.currentIndexChanged.connect(self._on_mode_to_state)
-        self.reader_combo.currentIndexChanged.connect(self._on_reader_to_state)
         self.checks_combo.currentIndexChanged.connect(self._on_checks_to_state)
         self.method_combo.currentIndexChanged.connect(self._on_method_to_state)
         self.provider_combo.currentIndexChanged.connect(self._on_provider_to_state)
@@ -306,11 +305,6 @@ class MainWindow(QMainWindow):
         data = self.mode_combo.currentData()
         if data:
             self.app_state.set_source(data)
-
-    def _on_reader_to_state(self, _idx: int) -> None:
-        data = self.reader_combo.currentData()
-        if data:
-            self.app_state.set_readers(self._decode_choice(data, (READER_CODE,)))
 
     def _on_checks_to_state(self, _idx: int) -> None:
         data = self.checks_combo.currentData()
@@ -709,13 +703,16 @@ class MainWindow(QMainWindow):
         # source. Kept as three combos rather than one list of combinations:
         # the combinations multiply (3 x 3 x 3), and the point of separating
         # them is that the user changes one without restating the other two.
+        # Reader combo hidden - auto-determined by source
         self.reader_label = QLabel()
+        self.reader_label.setVisible(False)
         self.reader_combo = QComboBox()
+        self.reader_combo.setVisible(False)
         self.checks_label = QLabel()
         self.checks_combo = QComboBox()
         self.method_label = QLabel()
         self.method_combo = QComboBox()
-        for combo in (self.reader_combo, self.checks_combo, self.method_combo):
+        for combo in (self.checks_combo, self.method_combo):
             combo.setSizeAdjustPolicy(
                 QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
             combo.setMinimumContentsLength(12)
@@ -765,8 +762,7 @@ class MainWindow(QMainWindow):
         adv_layout = QHBoxLayout(self.advanced_row)
         adv_layout.setContentsMargins(gap, 0, gap, gap)
         adv_layout.setSpacing(self.palette_tokens.space_sm)
-        for w in (self.reader_label, self.reader_combo,
-                  self.method_label, self.method_combo,
+        for w in (self.method_label, self.method_combo,
                   self.provider_label, self.provider_combo):
             adv_layout.addWidget(w)
         adv_layout.addStretch(1)

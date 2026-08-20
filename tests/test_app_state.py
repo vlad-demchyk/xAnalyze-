@@ -11,8 +11,6 @@ try:
         CHECK_AI_PATTERNS,
         METHOD_AI,
         METHOD_LOCAL,
-        READER_BROWSER,
-        READER_CODE,
         SOURCE_FILE,
         SOURCE_REPO,
         SOURCE_SITE,
@@ -51,29 +49,6 @@ class TestSourceChanges(unittest.TestCase):
         self.state.source_changed.connect(lambda v: received.append(v))
         self.state.set_source(SOURCE_SITE)
         self.assertEqual(received, [])
-
-
-@unittest.skipIf(QApplication is None, "PySide6 not available")
-class TestReaderChanges(unittest.TestCase):
-    app = None
-
-    @classmethod
-    def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
-
-    def setUp(self):
-        self.state = AppState()
-
-    def test_source_change_normalizes_reader(self):
-        self.state.set_readers((READER_BROWSER,))
-        self.state.set_source(SOURCE_REPO)
-        self.assertEqual(self.state.readers, (READER_CODE,))
-
-    def test_reader_signal(self):
-        received = []
-        self.state.reader_changed.connect(lambda v: received.append(v))
-        self.state.set_readers((READER_BROWSER,))
-        self.assertEqual(received, [(READER_BROWSER,)])
 
 
 @unittest.skipIf(QApplication is None, "PySide6 not available")

@@ -30,6 +30,17 @@ def available_readers_for(source: str) -> tuple[str, ...]:
     return AVAILABLE_READERS.get(source, (READER_CODE,))
 
 
+def auto_readers(source: str) -> tuple[str, ...]:
+    """The readers the tool should use for this source, chosen automatically.
+
+    The user no longer picks a reader: a site is always read both ways
+    (HTTP fetch + browser render) because the comparison itself is a
+    finding — copy that only exists after JavaScript hydration. A
+    repository has no server, so it is read from disk only.
+    """
+    return AVAILABLE_READERS.get(source, (READER_CODE,))
+
+
 def reader_available(source: str, reader: str) -> bool:
     """Can this reader be used with this source?"""
     return reader in available_readers_for(source)

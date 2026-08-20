@@ -16,6 +16,7 @@ from analysis_modes import (
     SOURCE_SITE,
 )
 from ui.mode_rules import (
+    auto_readers,
     available_readers_for,
     col1_stack_index,
     derive_mode,
@@ -41,6 +42,17 @@ class TestAvailableReaders(unittest.TestCase):
 
     def test_unknown_source_defaults_to_code(self):
         self.assertEqual(available_readers_for("unknown"), (READER_CODE,))
+
+
+class TestAutoReaders(unittest.TestCase):
+    def test_site_uses_both(self):
+        self.assertEqual(auto_readers(SOURCE_SITE), (READER_CODE, READER_BROWSER))
+
+    def test_repo_uses_code(self):
+        self.assertEqual(auto_readers(SOURCE_REPO), (READER_CODE,))
+
+    def test_file_uses_both(self):
+        self.assertEqual(auto_readers(SOURCE_FILE), (READER_CODE, READER_BROWSER))
 
 
 class TestReaderAvailable(unittest.TestCase):

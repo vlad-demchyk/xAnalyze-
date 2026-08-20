@@ -19,14 +19,12 @@ from analysis_modes import (
     CHECK_AI_PATTERNS,
     METHOD_AI,
     METHOD_LOCAL,
-    READER_CODE,
     SOURCE_SITE,
 )
 from ui.mode_rules import (
-    available_readers_for,
+    auto_readers,
     derive_mode,
     normalize_method_choice,
-    normalize_reader_choice,
     provider_visible,
 )
 
@@ -41,7 +39,6 @@ class AppState(QObject):
 
     # -- signals -----------------------------------------------------------
     source_changed = Signal(str)          # new source
-    reader_changed = Signal(tuple)        # new readers tuple
     checks_changed = Signal(tuple)        # new checks tuple
     method_changed = Signal(tuple)        # new methods tuple
     provider_changed = Signal(str)        # new provider key
@@ -56,7 +53,6 @@ class AppState(QObject):
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._source: str = SOURCE_SITE
-        self._readers: tuple[str, ...] = (READER_CODE,)
         self._checks: tuple[str, ...] = (CHECK_AI_PATTERNS,)
         self._methods: tuple[str, ...] = (METHOD_LOCAL,)
         self._provider: str = ""
@@ -74,24 +70,15 @@ class AppState(QObject):
             return
         old_mode = self.mode
         self._source = value
-        self._readers = normalize_reader_choice(value, self._readers)
         self.source_changed.emit(value)
-        self.reader_changed.emit(self._readers)
         self._emit_mode_if_changed(old_mode)
         self.any_changed.emit()
 
-    # -- readers -----------------------------------------------------------
+    # -- readers (auto-determined from source) -----------------------------
     @property
     def readers(self) -> tuple[str, ...]:
-        return self._readers
-
-    def set_readers(self, value: tuple[str, ...]) -> None:
-        normalised = normalize_reader_choice(self._source, value)
-        if normalised == self._readers:
-            return
-        self._readers = normalised
-        self.reader_changed.emit(normalised)
-        self.any_changed.emit()
+        """The readers for the current source, determined automatically."""
+        return auto_readers(self._source)
 
     # -- checks ------------------------------------------------------------
     @property
