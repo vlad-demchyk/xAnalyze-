@@ -34,3 +34,203 @@
 {"text": "Most of the time you want the default. The rest of this section is about the times you do not.", "label": "human", "language": "en", "source": "library documentation register", "register": "documentation"}
 {"text": "Save often. The editor recovers unsaved work on a crash, but it makes no promises about a power cut.", "label": "human", "language": "en", "source": "user-manual register", "register": "documentation"}
 {"text": "If the button is greyed out, the field above it is empty or holds something the form will not accept.", "label": "human", "language": "en", "source": "user-manual register", "register": "documentation"}
+{"text": "Безкоштовні легкі AI-моделі", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Перевір адресу email і спробуй ще раз.", "label": "human", "language": "uk", "source": "xformat-landing/uk.json", "register": "locale"}
+{"text": "OAuth 2.0 Client ID (Web application) from Google Cloud Console; enable the Google Drive API. Only the public Client ID is stored.", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Такої сторінки немає", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Додати варіант написання", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Хмарний Vision (висока якість)", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Спершу конвертуйте у PDF, потім підпишіть PDF.", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Aggiungi un documento del candidato. La valutazione parte sempre da un file caricato, così le prove restano tracciabili.", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Видалити «{{name}}» з історії?", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Collega un account cloud per importare i suoi file in qualsiasi area di caricamento.", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Run PDF, OCR, signing, compression, and text cleanup locally. Add cloud AI for translation, document chat, image generation, media workflows, batch analysis, and speech only when you need it.", "label": "human", "language": "en", "source": "xformat-landing/en.json", "register": "locale"}
+{"text": "What we store, and what we don't", "label": "human", "language": "en", "source": "xformat-landing/en.json", "register": "locale"}
+{"text": "HEIC обробляється локально через WASM", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Створіть тему, навчайтесь у зосередженому reader і зберігайте кожну спробу на цьому пристрої.", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Перемикач моделі змінює баланс швидкості й глибини. Auto - хороший типовий вибір; конкретну модель беріть, коли потрібен певний провайдер.", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Unisci i file nell'ordine di caricamento e ricevi una sola sintesi condivisa.", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Підтвердь акаунт через email, а тоді увійди.", "label": "human", "language": "uk", "source": "xformat-landing/uk.json", "register": "locale"}
+{"text": "Почніть зі збереженого опису вакансії", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Chiedi un riassunto, rischi, date, obblighi: ciò che conta per questo documento.", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Dove risiedono i tuoi dati", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Урок, його ревізії та збережені відповіді буде видалено. Цю дію не можна скасувати.", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Nessun account? Creane uno", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Local or cloud AI for extra features.", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Один запит - і асистент може перекласти, зробити короткий зміст, створити нотатку чи знайти файл в одній відповіді, а не просто написати текст.", "label": "human", "language": "uk", "source": "xformat-landing/uk.json", "register": "locale"}
+{"text": "Встановіть XFormat на свій пристрій для найкращого досвіду", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Client ID OAuth 2.0 (applicazione Web) dalla Google Cloud Console; abilita la Google Drive API. Viene salvato solo il Client ID pubblico.", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Use my personal data", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Keyboard shortcut to open the AI quick-action composer.", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Розпізнавання мовлення (транскрипція)", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Що ви знаєте про компанію: продукт, стек, розмір. Іде в контекст переробки, у резюме не потрапляє.", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Write the replies yourself, no AI. The button below voices them.", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Формат .doc (Word 97–2003) не підтримується в браузері. Збережіть документ як DOCX або PDF і спробуйте знову.", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Прибрати зайві пробіли", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Each finished item keeps the real audio track next to its transcript, so you can listen back while correcting and export the text.", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Опишіть відео, яке хочете згенерувати…", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "I currently work here", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Draw a signature to sign “{{name}}”. It will be saved for next time.", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Select a setting to view", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "The usage journal records only what a bill needs: feature, model, provider, token counts and cost. Prompts, responses and uploaded files are never written to our database or logs.", "label": "human", "language": "en", "source": "xformat-landing/en.json", "register": "locale"}
+{"text": "Assistente conversazionale", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Lo stesso CV può essere analizzato per piu ruoli.", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "http://localhost:11434", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Press Summarize. Long inputs are summarised in passes, so a big PDF does not need to be cut down first.", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Grazie - abbiamo ricevuto il tuo messaggio e risponderemo presto via email.", "label": "human", "language": "it", "source": "xformat-landing/it.json", "register": "locale"}
+{"text": "Funzione sconosciuta", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "{{model}} (as configured above)", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Unlisted: only people with the link", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Профілів ще немає. Створіть один для автозаповнення промптів.", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Le chiavi API non sono mai salvate in chiaro", "label": "human", "language": "it", "source": "xformat-landing/it.json", "register": "locale"}
+{"text": "Adds video generation to the shared AI budget (text, image, video, TTS, STT)", "label": "human", "language": "en", "source": "xformat-landing/en.json", "register": "locale"}
+{"text": "Формулювання звіряються з тим, що зазвичай просить ця роль.", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Quality uses LibreOffice for faithful layout and selectable text. Compatibility stays in the browser.", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Funzioni principali del periodo", "label": "human", "language": "it", "source": "xformat-landing/it.json", "register": "locale"}
+{"text": "Вставте те, що треба перекласти", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Вийти з повного екрану", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "A space is a set of documents", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Install XFormat from your browser menu", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Il tuo modello AI locale non è caricato", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "For example: speed, direction", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Помилка активації моделі", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Numbers, dates and names are carried over as written.", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "That file could not be read.", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Замало тексту для перевірки. Вставте повне CV або прикріпіть файл.", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Free lightweight AI models", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Illimitato, paghi solo ciò che usi", "label": "human", "language": "it", "source": "xformat-landing/it.json", "register": "locale"}
+{"text": "натисніть оновити, щоб повторити", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Istruzioni più brevi danno di solito un testo piu prevedibile.", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "для пошуку по документах", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "↑↓ навігація · Enter відкрити · Esc закрити · Ctrl+/", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Account - impostazioni", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Speak, then keep the track", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Add a few details about yourself so your account profile is complete.", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Наприклад: швидкість, напрямок", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "delivery instructions", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Cosa conserviamo e cosa no", "label": "human", "language": "it", "source": "xformat-landing/it.json", "register": "locale"}
+{"text": "Кандидати оцінюються за однаковими критеріями, по черзі.", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Add a signature and finish paperwork without printing anything.", "label": "human", "language": "en", "source": "xformat-landing/en.json", "register": "locale"}
+{"text": "Generate text with AI from a prompt. Write content, ideas, drafts. User asks: write text, ai generate, створити текст.", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Conversione PDF, Word e testo - in v1", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Full-quality models (Gemini Flash / Flash Lite)", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Traduzione in corso...", "label": "human", "language": "it", "source": "xformat-landing/it.json", "register": "locale"}
+{"text": "Наприклад: працюю в підтримці з 2018 року, моя пошта…", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Convert PDF pages to vector SVG graphics. Vectorize PDF for editing. User asks: pdf to svg, vector pdf, svg export.", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Короткий підсумок вашого досвіду на основі фактів.", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Impossibile preparare l'email", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Selettore discendente", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Rileva automaticamente", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Не вийшло. Запис і далі чекає на ваше рішення.", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "You're signed in and already have a working AI provider set up. Switch to the company subscription instead?", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Delete {{count}} item(s)?", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Ogni generazione è indipendente: lo stesso prompt dà risultati nuovi.", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Add documents and images in order to build a book.", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Locale (ONNX nel browser)", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "sfocato, bassa qualità, distorto…", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Exactly what a reader will receive. Your subject memory, private notes and chat history never leave this device.", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Необов'язкові побажання", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Оберіть локальну модель, щоб почати", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Non è arrivata nessuna bozza. Riprova, oppure rispondi tu a una domanda.", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Pronto a leggere il tuo testo", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Зміна регістру, форматування тексту", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Shared AI budget across text, image, video, and audio workflows", "label": "human", "language": "en", "source": "xformat-landing/en.json", "register": "locale"}
+{"text": "Оберіть план, щоб почати", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "~40 MB · WASM · оптимізований ONNX", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Візьми застосунок XFormat для компʼютера - офлайн AI і якісніші локальні голоси", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Avanzate - usa le tue credenziali dell'app", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Team HR e recruiting", "label": "human", "language": "it", "source": "xformat-landing/it.json", "register": "locale"}
+{"text": "Download the signed PDF, or save it to storage to find it later.", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Get a structured answer", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Formatta testo: maiuscole, minuscole, title case. Richieste: formattare testo, maiuscolo.", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Scarica lo snapshot nella libreria Coach locale. I progressi restano sul dispositivo.", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Generate text from a custom prompt using AI", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "per la ricerca nei documenti", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Спробуй реальний сценарій до реєстрації.", "label": "human", "language": "uk", "source": "xformat-landing/uk.json", "register": "locale"}
+{"text": "Повідомити про іншу проблему", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Il confronto è più facile se ogni CV è stato letto nello stesso formato.", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "This week's limit is exhausted. Upgrade your plan to continue immediately.", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Used as chat memory context when enabled above", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Усі файлові інструменти, плюс AI на безкоштовних легких моделях (~20 запитів/день) - без картки, без ключа.", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "This cannot be undone. Other devices will stop syncing and keep only what they already have locally.", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "URL base Stable Diffusion WebUI - avvia con --api --nowebui", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "© 2026 Владислав Демчик. Усі права захищено. XFormat та його вміст захищені відповідним законодавством про авторське право.", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Le Q&A sui documenti indicizzano i file localmente. Il modello embed si scarica automaticamente (~24 MB, poi in cache).", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Чат «Запитати про XFormat»", "label": "human", "language": "uk", "source": "xformat-landing/uk.json", "register": "locale"}
+{"text": "Copied to clipboard!", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Aggiungi la nota a uno spazio", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Ліміт вашої підписки вичерпано. Перемикаюсь на локальний рушій на цьому пристрої, щоб продовжити.", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Inserisci i fatti che hai, poi chiedi una formulazione più forte. Non viene proposto nulla che non sia nel tuo profilo.", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Додати як перший розділ", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Already have an account? Sign in", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Оберіть опис або введіть свої критерії нижче", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Comparison is easier when every CV was read in the same format.", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Що саме синхронізується і скільки лишилось місця, керується в розділі «Хмарна памʼять» в акаунті.", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Il movimento si descrive nel prompt, non si aggiunge dopo.", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Ogni domanda richiede un testo.", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Верх головної сторінки", "label": "human", "language": "uk", "source": "xformat-landing/uk.json", "register": "locale"}
+{"text": "no published language list", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Converti il documento in un altro formato (PDF, DOCX, MD…). Esecuzione locale.", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Інтенсивне використання, малі команди.", "label": "human", "language": "uk", "source": "xformat-landing/uk.json", "register": "locale"}
+{"text": "Власний API-ключ для необмеженого AI будь-коли", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "That link address is taken. Choose another one.", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Latin scripts locally; Cyrillic uses system voice", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Конвертація документів", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Due motori, un'unica app", "label": "human", "language": "it", "source": "xformat-landing/it.json", "register": "locale"}
+{"text": "Киньте одне зображення або пакет. Конвертація йде у браузері - файли не залишають пристрій.", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Прибрати з улюблених", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Finestra di contesto", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Vedi privacy e dettagli sulla data retention", "label": "human", "language": "it", "source": "xformat-landing/it.json", "register": "locale"}
+{"text": "Un documento aggiunto reindicizza sé stesso, non l'intero spazio.", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Натисніть, щоб активувати", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Оплата підписки ще не запущена - вхід уже працює, а використання AI за планом з'явиться незабаром.", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Fai una domanda sui documenti…", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Caricamento del modello di embedding", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Переклад тексту локальною AI. Українська англійська італійська. Запити: перекласти текст, translate.", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Usage, tokens, subscription, support, and profile.", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Ad esempio, algebra di base", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Informazioni sull'app", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Зберігайте вимоги вакансії окремо від підтверджених фактів кар'єри.", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Il video richiede molto più tempo di un'immagine: l'attesa è normale.", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Коригування за контекстом", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Backups sync automatically through your xFormat subscription, with no manual save or restore.", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Genera immagini e video da prompt testuali", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Scanned pages go through recognition first.", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Un modello per ogni funzione - ricerca (RAG), OCR, riconoscimento vocale, sintesi vocale e lettura in chat.", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Inizia dai fatti che puoi confermare", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Sei gia con noi? Accedi", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Завантаж XFormat на свій компʼютер.", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Failed to download model", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Відповіді тут будуються з документів цього простору.", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Chi lavora tra più lingue", "label": "human", "language": "it", "source": "xformat-landing/it.json", "register": "locale"}
+{"text": "Voicing stopped at line {{line}} of {{total}} and the remaining lines were not attempted, because the same failure would repeat on each of them. Reason: {{reason}}", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Ми не використовуємо твій вміст для тренування моделей і не передаємо його третім сторонам поза виконанням самого запиту.", "label": "human", "language": "uk", "source": "xformat-landing/uk.json", "register": "locale"}
+{"text": "Ролі розподіляються до того, як обрані голоси.", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Що має вийти після уроку", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Природне озвучення будь-якого тексту.", "label": "human", "language": "uk", "source": "xformat-landing/uk.json", "register": "locale"}
+{"text": "a partire da €0/mese", "label": "human", "language": "it", "source": "xformat-landing/it.json", "register": "locale"}
+{"text": "Riduci il peso del file senza perdite di qualità visibili.", "label": "human", "language": "it", "source": "xformat-landing/it.json", "register": "locale"}
+{"text": "Кілька документів можна проаналізувати за один прохід.", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Non è un'immagine - trascina un file JPG, PNG o WebP.", "label": "human", "language": "it", "source": "xformat-landing/it.json", "register": "locale"}
+{"text": "Convert, sign, transcribe, analyze", "label": "human", "language": "en", "source": "xformat-landing/en.json", "register": "locale"}
+{"text": "Could not attach \"{{name}}\" to the request - file skipped", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Scegli un piano, ottieni un budget mensile di crediti AI condiviso e usa subito le funzioni di testo, immagini, TTS e STT - senza configurare una API key. La generazione video è disponibile da Pro in su.", "label": "human", "language": "it", "source": "xformat-landing/it.json", "register": "locale"}
+{"text": "Analizzato rispetto al brief del ruolo fornito.", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Відповідайте лише на запитане", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Remote models via API - more capable, needs internet", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Oppure aggiungi a uno spazio esistente", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Між записами з датами є проміжок у {{count}} місяці. Додайте контекст, лише якщо він посилює CV.", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Локально (з фоллбеком на хмару)", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Analisi approfondita", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Це запрошення вже не діє.", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Passa ad analisi approfondita", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Mantieni come immagini", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Оберіть голос, яким читати цю мову. Змінити можна в налаштуваннях.", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Закріпити на сторінці буфера обміну", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Якість, розмір, стиль", "label": "human", "language": "uk", "source": "xformat/apps/web/src/locales/uk.json", "register": "locale"}
+{"text": "Preciso (bassa variabilità)", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Not found in the document: {{fields}}", "label": "human", "language": "en", "source": "xformat/apps/web/src/locales/en.json", "register": "locale"}
+{"text": "Scarica XFormat per il tuo computer.", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Accesso effettuato - provider AI passato ad Abbonamento", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "Converti foto e immagini tra JPG, PNG, WebP, HEIC, SVG. Cambia formato immagine. Richieste: convertire foto, jpeg in png, cambiare formato.", "label": "human", "language": "it", "source": "xformat/apps/web/src/locales/it.json", "register": "locale"}
+{"text": "L'hero ha due call to action principali: \"Prova il web\" apre l'app reale su app.xformat.net in una nuova scheda, mentre \"Prova la demo\" scorre fino alla demo interattiva. Sfondo animato e mock inclinato sono elementi decorativi.", "label": "human", "language": "it", "source": "xformat-landing/it.json", "register": "locale"}
