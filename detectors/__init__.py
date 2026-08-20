@@ -11,6 +11,7 @@ from . import claude_code_llm_judge  # noqa: F401
 from . import claude_watermark_stub  # noqa: F401
 from . import hybrid  # noqa: F401
 from . import embedding  # noqa: F401
+from . import agent_llm_judge  # noqa: F401
 
 from .base import Detector, DetectorUnavailable  # noqa: F401
 from .factory import DetectorFactory  # noqa: F401
