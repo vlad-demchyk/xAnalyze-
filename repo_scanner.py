@@ -27,7 +27,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from lang_detect import guess_language
-from models import KIND_INJECTED, KIND_MARKUP, KIND_TECHNICAL, CodeBlock, FileResult
+from models import (
+    KIND_INJECTED, KIND_MARKUP, KIND_TECHNICAL, CodeBlock, FileResult,
+    ScanDiagnostics,
+)
 
 # ---------------------------------------------------------------- scopes
 #
@@ -61,6 +64,23 @@ DEFAULT_EXTENSIONS = (
     ".js", ".ts", ".mjs", ".cjs",
 )
 
+# Server-side and framework languages that carry no markup of their own but
+# still hand strings straight to a person: a Django `render()` context, a
+# Laravel `__()` call, a Rails `flash[:notice]`. The tag-based rules
+# (`_TAG_GAP_RE`, `_renders_text`) never run on these — there is no markup to
+# walk — only the pattern-based injection rules do. See `_extract_blocks`.
+BACKEND_EXTENSIONS = (".py", ".php", ".rb", ".erb", ".go", ".java", ".cs")
+
+# Which pattern set a suffix uses. `.erb` shares Ruby's patterns (ERB is
+# Rails' template language, embedded straight into `.erb` files) rather than
+# having its own entry.
+_BACKEND_LANGUAGE = {
+    ".py": "py", ".php": "php", ".rb": "rb", ".erb": "rb",
+    ".go": "go", ".java": "java", ".cs": "cs",
+}
+
+CONTENT_EXTENSIONS = DEFAULT_EXTENSIONS + BACKEND_EXTENSIONS
+
 # Where a localised product keeps its copy. The files are ordinary JSON or
 # YAML and would be meaningless to scan wholesale — `package.json` and
 # `tsconfig.json` are not copy — so they are recognised by location and name
@@ -93,6 +113,15 @@ TECHNICAL_EXTENSIONS = DEFAULT_EXTENSIONS + (
     ".yaml", ".toml",
 )
 
+# Measured against ~/repositories/xformat (11.7k content blocks): sampling
+# every block between 5 and 16 characters showed real UI copy at every length
+# in that band ("Salva", "Model", "Dashboard", "Come funziona"), while the
+# noise at the same lengths ("request_failed", "rate_limited", "sk-...",
+# "v1") is snake_case/kebab-case, no-space, or otherwise identifier-shaped —
+# not short. Raising this threshold would cut legitimate five-letter button
+# labels without meaningfully reducing the junk, because length does not
+# separate the two populations here; `_looks_technical` does. So the floor
+# stays low and the junk is caught by shape instead.
 MIN_BLOCK_LEN = 8
 
 # A comment has to be a sentence, not a directive, to be worth judging.
@@ -102,6 +131,24 @@ MIN_COMMENT_LEN = 40
 
 # Sensible default excludes, gitignore-style. Editable in the UI before a
 # scan; this is just the starting point.
+#
+# The last five entries were added after running the tool over eight real
+# projects in August 2026, where every one of the 107 findings in a WordPress
+# site came from a vendored plugin nobody in that project wrote, and a
+# SharePoint solution reported the same defect from its deployed copy as well
+# as from its source.
+#
+# Two candidates were deliberately NOT added, and the reason is worth keeping:
+# `lib/` and `release/`. They are build output in a SPFx project - which is
+# how one en dash in a Cherry Bank address came to be reported four times -
+# but `src/lib/` is *source* in most React and Svelte projects, and excluding
+# by that name blinded the scanner to 67 real findings in xFormat's own
+# `apps/*/src/lib` the moment it was tried. A name cannot tell a build output
+# from a source directory; identical content can, which is what the
+# cross-file deduplication below does instead.
+#
+# Every entry here is a default, not a law: `--no-default-excludes` drops the
+# lot, and auditing a dependency on purpose is a real thing to want.
 DEFAULT_IGNORE_PATTERNS = """\
 .git/
 node_modules/
@@ -133,6 +180,12 @@ android/build/
 android/.gradle/
 .gradle/
 *.egg-info/
+bower_components/
+third_party/
+Pods/
+ClientSideAssets/
+wp-content/plugins/
+**/app/plugins/
 """
 
 _SCRIPT_STYLE_COMMENT_RE = re.compile(
@@ -147,6 +200,11 @@ _CODE_COMMENT_RE = re.compile(
     r"/\*.*?\*/|(?<![:\w])//[^\n]*",
     re.DOTALL,
 )
+# `#` comments, for the backend languages that use them. Not masked
+# unconditionally: `#{...}` is Ruby string interpolation, not a comment, so
+# `#` immediately followed by `{` is left alone.
+_HASH_COMMENT_RE = re.compile(r"(?<!\$)#(?!\{)[^\n]*")
+_HASH_COMMENT_EXTENSIONS = frozenset((".py", ".rb", ".php"))
 # Text that a browser will render sits between the `>` that closes an element
 # tag and the `<` that opens the next one. Matching a bare `>` instead is what
 # made a `.tsx` file read as copy: `useState<boolean>(false)` and `a > b` end
@@ -214,7 +272,12 @@ _KEY_LIKE_RE = re.compile(r"^[A-Za-z_][\w-]*(?:\.[A-Za-z_][\w-]*)+$")
 class ScanConfig:
     extensions: tuple[str, ...] | None = None
     ignore_patterns: list[str] = field(default_factory=lambda: _parse_ignore_text(DEFAULT_IGNORE_PATTERNS))
-    max_files: int = 500
+    #: The walk's ceiling. 5000 rather than 500 because the two numbers used
+    #: to disagree between callers: the CLI passed 5000 and the window passed
+    #: nothing, so the desktop app read 500 files of a 1732-file repository
+    #: and said nothing about the other 1232. One default, and a cap that
+    #: records itself in `ScanDiagnostics.truncated` when it bites.
+    max_files: int = 5000
     max_file_size_bytes: int = 2_000_000
     scope: str = SCOPE_CONTENT
 
@@ -229,7 +292,7 @@ class ScanConfig:
             return tuple(self.extensions)
         if self.scope in (SCOPE_TECHNICAL, SCOPE_BOTH):
             return TECHNICAL_EXTENSIONS
-        return DEFAULT_EXTENSIONS
+        return CONTENT_EXTENSIONS
 
 
 def _parse_ignore_text(text: str) -> list[str]:
@@ -270,6 +333,54 @@ def _build_matcher(patterns: list[str]):
         return matcher
 
 
+# Machine-facing shapes that pass every other content check but are not
+# something a person reads: identifiers, paths, formats. One rule underlies
+# all of them: does this reach a human, or does it only reach a machine?
+# `"user_not_found"` is a code; `"Користувача не знайдено"` is content.
+_SNAKE_KEBAB_RE = re.compile(r"^[a-z][a-z0-9]*(?:[_.-][a-z0-9]+)+$")
+_URL_RE = re.compile(r"^[a-zA-Z][\w+.-]*://|^www\.")
+_MIME_RE = re.compile(r"^[a-z]+/[a-z0-9.+-]+$")
+# A path: rooted (`/x`, `./x`, `../x`) or at least one `segment/segment`,
+# never containing a space — real copy with a slash in it ("AI / ML") has
+# spaces around the slash.
+_PATH_LIKE_RE = re.compile(r"^(?:\.{1,2}/|/)[\w./-]*$|^[\w.-]+/[\w./-]+$")
+_CSS_SELECTOR_RE = re.compile(r"^[.#][\w-]+(?:[ >+~][.#]?[\w-]*)*$")
+_DATE_FORMAT_RE = re.compile(r"^(?:%[a-zA-Z]|[YMDHhms]|[\-/:., ])+$")
+
+
+def _looks_technical(text: str) -> bool:
+    """Is this shaped like something a machine reads, not a person?
+
+    Catches what length alone cannot: `"request_failed"` and `"Dashboard"`
+    are both plausible lengths for real copy, but only one of them is a key.
+
+    An unresolved `${...}` is included here: a JS template literal or a
+    dynamically-built i18n key (`` `cv.check.${check.id}` ``) captured with
+    its expression still in it was pulled out mid-expression, not as text a
+    reader ever sees. `{{ ... }}` is deliberately NOT treated the same way,
+    even though it looks parallel — measured against xformat, `{{name}}` /
+    `{{count}}` is i18next's own placeholder syntax sitting inside finished,
+    reviewable prose ("Delete «{{name}}» from history?", "{{count}} words
+    left"), and filtering on it discarded ~600 real content blocks for a
+    handful of actual leaks that `${` alone already catches.
+    """
+    if "${" in text:
+        return True
+    if _URL_RE.match(text):
+        return True
+    if _MIME_RE.match(text):
+        return True
+    if _SNAKE_KEBAB_RE.match(text):
+        return True
+    if " " not in text and _PATH_LIKE_RE.match(text):
+        return True
+    if _CSS_SELECTOR_RE.match(text):
+        return True
+    if _DATE_FORMAT_RE.match(text) and re.search(r"[YMDHhms%]", text):
+        return True
+    return False
+
+
 def _is_probably_content(text: str) -> bool:
     if len(text) < MIN_BLOCK_LEN:
         return False
@@ -280,6 +391,8 @@ def _is_probably_content(text: str) -> bool:
     if re.fullmatch(r"[A-Z0-9_]+", text):  # CONSTANT_LIKE_TOKEN
         return False
     if text.startswith(("//", "/*", "#")):
+        return False
+    if _looks_technical(text):
         return False
     return True
 
@@ -377,27 +490,78 @@ def _string_pattern(prefix: str) -> re.Pattern:
 
 _INJECTION_PATTERNS = (
     # placeholder="Search the docs"   /   alt='Team photo'
-    _string_pattern(r"\b(?:" + "|".join(_VISIBLE_ATTRIBUTES) + r")\s*="),
+    #
+    # `(?<!:)` excludes a bound prop: Vue's `:placeholder="expr"` and
+    # `v-bind:title="expr"` both have a literal `:` immediately before the
+    # attribute name, and the quoted "value" there is a JS expression, not
+    # rendered text, even when it happens to look like a string.
+    _string_pattern(r"(?<!:)\b(?:" + "|".join(_VISIBLE_ATTRIBUTES) + r")\s*="),
     # element.textContent = "All set"
     _string_pattern(r"\.(?:textContent|innerText|innerHTML|placeholder|title|alt)\s*="),
     # t("Welcome back")  /  i18n.t('Welcome back')
     _string_pattern(r"\b(?:" + "|".join(_I18N_CALLS) + r")\s*\("),
     # title: "Welcome back"   (object literals, locale files, config)
-    _string_pattern(r"\b(?:" + "|".join(_CONTENT_KEYS) + r")\s*:"),
+    # An optional trailing quote is allowed before the colon so a Python/Ruby
+    # dict with a quoted key ('title': '...') matches the same as JS object
+    # shorthand (title: '...').
+    _string_pattern(r"\b(?:" + "|".join(_CONTENT_KEYS) + r")[\"']?\s*:"),
+)
+
+# Backend-language-specific injection sites. Kept separate from
+# `_INJECTION_PATTERNS` because they only make sense for the language they
+# are named after; a stray `flash[:notice] = "..."` match in a JS file would
+# be a false positive, not a find.
+_BACKEND_INJECTION_EXTRA: dict[str, tuple[re.Pattern, ...]] = {
+    # Django/DRF: JsonResponse({'detail': '...'}), Response(detail='...').
+    # `["']?` allows the quoted-dict-key spelling ('detail': '...') as well
+    # as the bare kwarg spelling (detail='...').
+    # Python gettext shorthand: _("Welcome back"). `(?<![\w.])` keeps this
+    # off `self._(...)` / `foo._(...)` attribute access and off `__(...)`,
+    # which is matched separately via `_I18N_CALLS`.
+    "py": (
+        _string_pattern(r"\bdetail[\"']?\s*[:=]"),
+        _string_pattern(r"(?<![\w.])_\s*\("),
+    ),
+    # Laravel: echo "Hello";
+    "php": (
+        _string_pattern(r"\becho\s+"),
+    ),
+    # Rails: flash[:notice] = "Saved"
+    "rb": (
+        _string_pattern(r"flash\[:\w+\]\s*="),
+    ),
+}
+
+# Python: WELCOME = "Welcome back" — a module-level string constant. Only
+# recognised by an ALL_CAPS name, which is the convention these are written
+# under; a lowercase `welcome = "..."` is far more often a local variable
+# than user-facing copy and is left alone.
+_CONSTANT_ASSIGN_RE = re.compile(
+    r"^[ \t]*[A-Z][A-Z0-9_]*\s*=\s*"
+    r"""(?P<quote>["'])(?P<text>(?:\\.|(?!(?P=quote))[^\\])*)(?P=quote)""",
+    re.MULTILINE,
+)
+# Blade: {{ 'Welcome back' }} — a literal string handed straight to the
+# template's echo. `{{ $variable }}` does not match: there is no quote.
+_BLADE_LITERAL_RE = re.compile(
+    r"""\{\{\s*(?P<quote>["'])(?P<text>(?:\\.|(?!(?P=quote))[^\\])*)(?P=quote)\s*\}\}"""
+)
+# ERB: <%= 'Welcome back' %> — same idea, Rails' template syntax.
+_ERB_LITERAL_RE = re.compile(
+    r"""<%=\s*(?P<quote>["'])(?P<text>(?:\\.|(?!(?P=quote))[^\\])*)(?P=quote)\s*%>"""
 )
 
 
-def _extract_injected_blocks(raw_text: str, masked: str, file_path: str) -> list[CodeBlock]:
-    """String literals that become visible copy.
+def _collect_string_matches(raw_text: str, masked: str, patterns,
+                            file_path: str, blocks: list[CodeBlock], seen: set) -> None:
+    """Run each pattern over `masked`, keeping only spans that read as copy.
 
-    Runs over `masked` — the text with comment, script and style bodies
-    blanked to equal-length spaces — so a commented-out `placeholder="..."`
-    is not reported as live copy, while every offset still lines up with the
-    original file.
+    Shared by markup-adjacent injection (`_extract_injected_blocks`) and the
+    backend-language patterns (`_extract_backend_blocks`): both just capture
+    a quoted string in group "text" and need the same content/key/dedup
+    filtering before it becomes a `CodeBlock`.
     """
-    blocks: list[CodeBlock] = []
-    seen: set = set()
-    for pattern in _INJECTION_PATTERNS:
+    for pattern in patterns:
         for match in pattern.finditer(masked):
             start, end = match.span("text")
             text = match.group("text")
@@ -416,6 +580,42 @@ def _extract_injected_blocks(raw_text: str, masked: str, file_path: str) -> list
             blocks.append(
                 _make_code_block(raw_text, file_path, start, end, stripped, KIND_INJECTED)
             )
+
+
+def _extract_injected_blocks(raw_text: str, masked: str, file_path: str) -> list[CodeBlock]:
+    """String literals that become visible copy.
+
+    Runs over `masked` — the text with comment, script and style bodies
+    blanked to equal-length spaces — so a commented-out `placeholder="..."`
+    is not reported as live copy, while every offset still lines up with the
+    original file.
+    """
+    blocks: list[CodeBlock] = []
+    seen: set = set()
+    _collect_string_matches(raw_text, masked, _INJECTION_PATTERNS, file_path, blocks, seen)
+    return blocks
+
+
+def _extract_backend_blocks(raw_text: str, masked: str, file_path: str, suffix: str) -> list[CodeBlock]:
+    """Copy in a server-side language that has no markup of its own.
+
+    No tag walk runs here — `.py`/`.php`/`.rb`/`.go`/`.java`/`.cs` are not
+    tag-based, so `_TAG_GAP_RE` would either match nothing or, worse, match
+    something incidental (a `<` comparison). Only the pattern-based sites are
+    read: a render() context key, a translation call, a template's literal
+    echo, an ALL_CAPS string constant.
+    """
+    blocks: list[CodeBlock] = []
+    seen: set = set()
+    language = _BACKEND_LANGUAGE.get(suffix)
+    patterns = list(_BACKEND_INJECTION_EXTRA.get(language, ()))
+    if language == "py":
+        patterns.append(_CONSTANT_ASSIGN_RE)
+    elif language == "php":
+        patterns.append(_BLADE_LITERAL_RE)
+    elif language == "rb":
+        patterns.append(_ERB_LITERAL_RE)
+    _collect_string_matches(raw_text, masked, patterns, file_path, blocks, seen)
     return blocks
 
 
@@ -536,6 +736,8 @@ def _extract_locale_blocks(raw_text: str, file_path: str) -> list[CodeBlock]:
             continue
         if _CODE_LOOKS_LIKE_RE.search(stripped):
             continue
+        if _looks_technical(stripped):
+            continue
         start += len(text) - len(text.lstrip())
         end -= len(text) - len(text.rstrip())
         if raw_text[start:end] != stripped:
@@ -545,6 +747,34 @@ def _extract_locale_blocks(raw_text: str, file_path: str) -> list[CodeBlock]:
             _make_code_block(raw_text, file_path, start, end, stripped, KIND_INJECTED)
         )
     return blocks
+
+
+def mask_code_comments(raw_text: str, file_path: str) -> str:
+    """Blank out code comments, keeping every other character where it was.
+
+    Spaces rather than deletion because offsets are load-bearing: block spans,
+    `sourceline` and `sourcepos` all index into the original text, and a mask
+    that shortened the file would move every one of them. Newlines are kept
+    for the same reason one step up - blanking them too keeps every offset
+    correct while silently merging a twenty-line comment into one line, and
+    then every line number after it is twenty short.
+
+    Public because the audit needs the same masking for the same reason the
+    extractor does. A comment that talks about markup - `// on remount ->
+    <img> ERR_FILE_NOT_FOUND` - is markup to an HTML parser, and the audit was
+    reporting those prose mentions as real elements with no `alt`.
+    """
+    suffix = Path(file_path).suffix.lower()
+    masked = _SCRIPT_STYLE_COMMENT_RE.sub(_blank_but_newlines, raw_text)
+    masked = _CODE_COMMENT_RE.sub(_blank_but_newlines, masked)
+    if suffix in _HASH_COMMENT_EXTENSIONS:
+        masked = _HASH_COMMENT_RE.sub(_blank_but_newlines, masked)
+    return masked
+
+
+def _blank_but_newlines(match) -> str:
+    text = match.group(0)
+    return "".join("\n" if ch == "\n" else " " for ch in text)
 
 
 def _extract_blocks(raw_text: str, file_path: str,
@@ -566,8 +796,9 @@ def _extract_blocks(raw_text: str, file_path: str,
             return _extract_locale_blocks(raw_text, file_path)
         return []
 
-    masked = _SCRIPT_STYLE_COMMENT_RE.sub(lambda m: " " * len(m.group(0)), raw_text)
-    masked = _CODE_COMMENT_RE.sub(lambda m: " " * len(m.group(0)), masked)
+    suffix = Path(file_path).suffix.lower()
+
+    masked = mask_code_comments(raw_text, file_path)
 
     blocks: list[CodeBlock] = []
     if scope in (SCOPE_TECHNICAL, SCOPE_BOTH):
@@ -577,22 +808,27 @@ def _extract_blocks(raw_text: str, file_path: str,
         return blocks
 
     seen_spans: set[tuple[int, int]] = set()
-    for gap in _TAG_GAP_RE.finditer(masked):
-        if not _renders_text(gap.group("name")):
-            continue
-        gap_text = gap.group("gap")
-        gap_start = gap.start("gap")
-        for start, end, text in _extract_literal_runs(gap_text, gap_start):
-            if not _is_markup_run(text):
+
+    # Backend languages carry no markup of their own — see BACKEND_EXTENSIONS
+    # — so the tag walk is skipped for them entirely rather than run and
+    # produce nothing (or, worse, mis-fire on a `<` comparison).
+    if suffix not in BACKEND_EXTENSIONS:
+        for gap in _TAG_GAP_RE.finditer(masked):
+            if not _renders_text(gap.group("name")):
                 continue
-            if (start, end) in seen_spans:
-                continue
-            if raw_text[start:end] != text:
-                continue  # defensive: offsets must line up with the ORIGINAL file
-            seen_spans.add((start, end))
-            blocks.append(
-                _make_code_block(raw_text, file_path, start, end, text, KIND_MARKUP)
-            )
+            gap_text = gap.group("gap")
+            gap_start = gap.start("gap")
+            for start, end, text in _extract_literal_runs(gap_text, gap_start):
+                if not _is_markup_run(text):
+                    continue
+                if (start, end) in seen_spans:
+                    continue
+                if raw_text[start:end] != text:
+                    continue  # defensive: offsets must line up with the ORIGINAL file
+                seen_spans.add((start, end))
+                blocks.append(
+                    _make_code_block(raw_text, file_path, start, end, text, KIND_MARKUP)
+                )
 
     # Copy that never sits between two tags: attributes, DOM assignments,
     # translation calls, content-keyed object literals. Skipped where markup
@@ -602,6 +838,13 @@ def _extract_blocks(raw_text: str, file_path: str,
             continue
         seen_spans.add((block.start, block.end))
         blocks.append(block)
+
+    if suffix in BACKEND_EXTENSIONS:
+        for block in _extract_backend_blocks(raw_text, masked, file_path, suffix):
+            if (block.start, block.end) in seen_spans:
+                continue
+            seen_spans.add((block.start, block.end))
+            blocks.append(block)
 
     blocks.sort(key=lambda b: b.start)
     return blocks
@@ -622,21 +865,33 @@ def scan_file(path: str, scope: str = SCOPE_CONTENT) -> FileResult:
                       raw_text=raw_text)
 
 
-def scan_repo(root_dir: str, config: ScanConfig | None = None, progress_cb=None) -> list[FileResult]:
+def scan_repo(root_dir: str, config: ScanConfig | None = None, progress_cb=None,
+              diagnostics: ScanDiagnostics | None = None) -> list[FileResult]:
     """Walk root_dir, skip anything matched by config.ignore_patterns, and
     extract tag-embedded text from every file with a matching extension.
 
     progress_cb, if given, is called as progress_cb(relative_path) right
     before each file is read, so a UI can show live progress.
+
+    `diagnostics`, if given, is filled with what the walk saw: how many files
+    were opened, how many were skipped and why, and whether the cap stopped
+    it early. An out-parameter rather than a changed return type because
+    every caller wants the files and only some want the accounting - the same
+    shape `cli._collect`'s `missing_out` already uses.
     """
     config = config or ScanConfig()
     root = Path(root_dir).resolve()
     extensions = config.effective_extensions()
     matcher = _build_matcher(config.ignore_patterns)
+    diagnostics = diagnostics if diagnostics is not None else ScanDiagnostics()
+    diagnostics.limit = config.max_files
 
     results: list[FileResult] = []
     for path in sorted(root.rglob("*")):
         if len(results) >= config.max_files:
+            # Recorded, then stopped. A bare `break` here is what made a
+            # partial answer look like a complete one.
+            diagnostics.truncated = True
             break
         if path.is_dir():
             continue
@@ -658,6 +913,7 @@ def scan_repo(root_dir: str, config: ScanConfig | None = None, progress_cb=None)
                 skip = True
                 break
         if skip or matcher(rel, is_dir=False):
+            diagnostics.skipped_ignored += 1
             continue
 
         if progress_cb:
@@ -665,14 +921,18 @@ def scan_repo(root_dir: str, config: ScanConfig | None = None, progress_cb=None)
 
         try:
             if path.stat().st_size > config.max_file_size_bytes:
+                diagnostics.skipped_too_large += 1
                 results.append(FileResult(path=str(path), error="file too large, skipped"))
                 continue
             raw_text = path.read_text(encoding="utf-8", errors="strict")
         except (OSError, UnicodeDecodeError) as exc:
+            diagnostics.unreadable += 1
             results.append(FileResult(path=str(path), error=str(exc)))
             continue
 
         blocks = _extract_blocks(raw_text, str(path), config.scope)
+        diagnostics.files_read += 1
+        diagnostics.blocks_found += len(blocks)
         results.append(FileResult(path=str(path), blocks=blocks, raw_text=raw_text))
 
     return results

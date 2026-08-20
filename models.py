@@ -174,10 +174,50 @@ class FileResult:
 
 
 @dataclass
+class ScanDiagnostics:
+    """What the walk actually opened, and what happened to it.
+
+    The repository counterpart of `PageDiagnostics`, and it exists for the
+    same reason: "no findings" is ambiguous in the worst way. A run that read
+    161 files and scored none of them above the threshold, and a run that
+    matched no files at all, produced the same `No findings.` and the same
+    `{"total": 0, "files": 0}` - because `counts.files` counts files *among
+    the findings*. Measured on real projects: `xformat-backend` reads 161
+    files and 202 blocks and reports neither number anywhere.
+
+    Recorded during the walk rather than derived afterwards: by the time a
+    caller holds a list of `FileResult`, the files that were never opened
+    have left no trace to count.
+    """
+    #: Files whose extension matched and which the walk actually opened.
+    files_read: int = 0
+    #: Files skipped by an ignore pattern, and by which kind of pattern -
+    #: a user's own exclusion is a different fact from a built-in default.
+    skipped_ignored: int = 0
+    skipped_too_large: int = 0
+    unreadable: int = 0
+    blocks_found: int = 0
+    #: True when the walk stopped early on `ScanConfig.max_files`. The one
+    #: fact that must never be silent: everything past the cap is unexamined,
+    #: and a result that does not say so claims to have looked at a whole
+    #: repository when it looked at part of one.
+    truncated: bool = False
+    #: The cap that did the truncating, so the message can name it.
+    limit: int = 0
+
+    @property
+    def complete(self) -> bool:
+        return not self.truncated
+
+
+@dataclass
 class RepoAnalysisResult:
     root_dir: str
     files: list[FileResult] = field(default_factory=list)
     spans: list[TextSpan] = field(default_factory=list)
+    #: What the walk saw. Default-constructed so every existing caller keeps
+    #: working and simply reports zeroes until it fills this in.
+    diagnostics: "ScanDiagnostics" = field(default_factory=lambda: ScanDiagnostics())
 
     def blocks(self) -> list[CodeBlock]:
         out: list[CodeBlock] = []

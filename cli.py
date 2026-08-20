@@ -25,13 +25,14 @@ from pathlib import Path
 
 import detectors  # noqa: F401 - registers the detectors
 import suppression
+import duplicates
 import unicode_rules
 import config
 from audit.base import CATEGORIES
 from detectors.factory import DetectorFactory
 from file_writer import ReplacementPlan, apply_replacements
 from lang_detect import guess_language
-from models import Confidence
+from models import Confidence, RepoAnalysisResult, ScanDiagnostics
 from repo_scanner import DEFAULT_EXTENSIONS, DEFAULT_IGNORE_PATTERNS, ScanConfig, _parse_ignore_text, scan_file, scan_repo
 
 # `fix` may only apply findings whose correction is fixed by a rule. That is
@@ -48,9 +49,15 @@ EXIT_ERROR = 2
 
 # --------------------------------------------------------------- collection
 
-def _collect_files(paths: list[str], args, missing_out=None) -> list:
+def _collect_files(paths: list[str], args, missing_out=None,
+                   diagnostics_out=None) -> list:
     """Turn the given paths into FileResults. A directory is walked with the
-    exclusion rules; a file named directly is always scanned."""
+    exclusion rules; a file named directly is always scanned.
+
+    `diagnostics_out`, if given, collects one `ScanDiagnostics` per walked
+    directory, so the caller can say what was read rather than only what was
+    found. A file named directly needs none: naming it is the answer.
+    """
     ignore = _parse_ignore_text(DEFAULT_IGNORE_PATTERNS) if args.use_default_excludes else []
     ignore += list(args.exclude or [])
     # None lets the scope pick the extension set (comments are worth reading
@@ -66,12 +73,15 @@ def _collect_files(paths: list[str], args, missing_out=None) -> list:
     for raw in paths:
         p = Path(raw)
         if p.is_dir():
+            walk = ScanDiagnostics()
             results.extend(scan_repo(str(p), ScanConfig(
                 extensions=extensions,
                 ignore_patterns=ignore,
                 max_files=args.max_files,
                 scope=scope,
-            )))
+            ), diagnostics=walk))
+            if diagnostics_out is not None:
+                diagnostics_out.append((str(p), walk))
         elif p.exists():
             results.append(scan_file(str(p), scope))
         else:
@@ -80,6 +90,60 @@ def _collect_files(paths: list[str], args, missing_out=None) -> list:
     if missing_out is not None:
         missing_out.extend(missing)
     return results
+
+
+# Re-exported rather than defined here: the window needs the same mapping,
+# and the copy that used to live in this file was invisible to it. See
+# `detectors/judges.py`.
+from detectors.judges import (  # noqa: E402 - kept beside its users
+    JUDGE_ALIASES, JUDGE_BY_PROVIDER, JUDGE_NAMES, judge_for_provider,
+)
+
+#: The name that runs both engines over the same text and merges the result.
+#: Spelled here as well as in the factory because `--detector hybrid` needs
+#: the provider resolved for the judge half, exactly like a bare judge does.
+HYBRID_NAME = "hybrid"
+
+
+def _create_detector(args):
+    """Build the detector `--detector` asked for, billed where it belongs.
+
+    `scan` used to build it by name alone, which meant the name carried the
+    billing decision: `claude-llm-judge` and only it, paid for with an
+    `ANTHROPIC_API_KEY` from the environment. `audit --ai` had already stopped
+    working that way - it asks `rewriter` which account is in play, so inside
+    a Claude Code session it uses that session. The two commands disagreed on
+    the same machine, and the disagreement showed up as an error message about
+    a key the user did not need.
+    """
+    import rewriter
+
+    name = args.detector
+    provider = getattr(args, "provider", None)
+
+    def resolved_judge() -> str:
+        settings = config.Settings.load()
+        return judge_for_provider(rewriter.effective_provider_name(
+            settings, force=provider, allow_auto=True))
+
+    if name == HYBRID_NAME:
+        # The hybrid runs the offline pass itself, so only its judge half
+        # needs an account - resolved the same way a bare judge is, which is
+        # what keeps `--provider` meaning one thing across both.
+        judge = resolved_judge()
+        judge_config = ({"api_key": config.get_anthropic_api_key()}
+                        if judge == "claude-llm-judge" else {})
+        return DetectorFactory.create(
+            name, judge_name=judge, judge_config=judge_config)
+
+    if name in JUDGE_NAMES and (provider or name in JUDGE_ALIASES):
+        name = resolved_judge()
+
+    if name == "claude-llm-judge":
+        # The key can live in the keychain as well as the environment; reading
+        # only the environment made a key entered in Settings invisible here.
+        return DetectorFactory.create(name, api_key=config.get_anthropic_api_key())
+    return DetectorFactory.create(name)
 
 
 def _categories(args) -> tuple[str, ...]:
@@ -121,7 +185,26 @@ def _ignore_root(args) -> str | None:
     return getattr(args, "target", None)
 
 
-def _analyze(file_results, args):
+def _report_detector_errors(spans) -> int:
+    """Say, once, what the detector could not judge. Returns how many blocks."""
+    failures = [s for s in spans if (s.details or {}).get("error")]
+    if not failures:
+        return 0
+    reasons = []
+    for span in failures:
+        reason = span.details["error"]
+        if reason not in reasons:
+            reasons.append(reason)
+    print(f"# {len(failures)} block(s) were not judged by "
+          f"{failures[0].detector_name}:", file=sys.stderr)
+    for reason in reasons[:3]:
+        print(f"#   {reason}", file=sys.stderr)
+    if len(reasons) > 3:
+        print(f"#   ... and {len(reasons) - 3} other error(s)", file=sys.stderr)
+    return len(failures)
+
+
+def _analyze(file_results, args, unjudged_out: list | None = None):
     """Return (findings, blocks_by_id). Findings are plain dicts so the JSON
     output and the human output share one shape."""
     blocks = [b for f in file_results for b in f.blocks]
@@ -143,9 +226,18 @@ def _analyze(file_results, args):
                      if s.confidence != Confidence.LOW
                      or (s.details or {}).get("source") == CHARACTER_SOURCE)
     if args.detector and args.detector != "none" and not wants_style:
-        detector = DetectorFactory.create(args.detector)
-        spans.extend(s for s in detector.analyze_blocks(blocks)
-                     if s.confidence != Confidence.LOW)
+        detector = _create_detector(args)
+        judged = detector.analyze_blocks(blocks)
+        # Blocks the detector could not read at all. Reported rather than
+        # filtered away with the weak findings: an exhausted plan or a dead
+        # key would otherwise print "No findings", which reads as a clean
+        # result and is the one answer a failed run must never give.
+        failed = _report_detector_errors(judged)
+        if failed and unjudged_out is not None:
+            unjudged_out.append(failed)
+        spans.extend(s for s in judged
+                     if s.confidence != Confidence.LOW
+                     and not (s.details or {}).get("error"))
 
     # Applied before anything is reported, so a suppressed finding never
     # reaches --json, the exit code, or `fix`. The project's own
@@ -185,11 +277,28 @@ def _public(finding: dict) -> dict:
     return {k: v for k, v in finding.items() if not k.startswith("_")}
 
 
-def _print_json(findings, applied=None) -> None:
+def _print_json(findings, applied=None, walked=None) -> None:
     payload = {
         "findings": [_public(f) for f in findings],
         "counts": _counts(findings),
     }
+    if walked:
+        # What was read, beside what was found. `counts.files` counts files
+        # among the *findings*, so without this an empty result cannot say
+        # whether it read 161 files or none.
+        payload["read"] = [
+            {
+                "root": root,
+                "files_read": walk.files_read,
+                "blocks_found": walk.blocks_found,
+                "skipped_ignored": walk.skipped_ignored,
+                "skipped_too_large": walk.skipped_too_large,
+                "unreadable": walk.unreadable,
+                "truncated": walk.truncated,
+                "limit": walk.limit,
+            }
+            for root, walk in walked
+        ]
     if applied is not None:
         payload["applied"] = applied
     print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -202,6 +311,11 @@ def _counts(findings) -> dict:
         counts[key] = counts.get(key, 0) + 1
     counts["total"] = len(findings)
     counts["files"] = len({f["file"] for f in findings})
+    # How many of those are the same text in a copy of the same file. A
+    # project that keeps its build output beside its source reports every
+    # defect once per copy, and the difference between the two numbers is
+    # the only warning a reader gets that this is happening.
+    counts["distinct"] = len(duplicates.group(findings))
     return counts
 
 
@@ -217,36 +331,84 @@ def _visible(text: str) -> str:
     return "".join(out)
 
 
-def _print_human(findings) -> None:
+def _coverage_line(walked) -> str:
+    """One sentence about what was actually opened.
+
+    Printed whether or not anything was found, because the number that
+    matters when nothing was found is this one.
+    """
+    if not walked:
+        return ""
+    files = sum(w.files_read for _root, w in walked)
+    blocks = sum(w.blocks_found for _root, w in walked)
+    skipped = sum(w.skipped_ignored for _root, w in walked)
+    line = f"Read {files} file(s), {blocks} block(s) of text; {skipped} skipped by exclusions."
+    truncated = [(root, w) for root, w in walked if w.truncated]
+    for root, w in truncated:
+        line += (f"\n! {root}: stopped at the {w.limit}-file limit - everything "
+                 f"past it was not examined. Raise it with --max-files.")
+    return line
+
+
+def _print_human(findings, walked=None) -> None:
+    coverage = _coverage_line(walked)
     if not findings:
         print("No findings.")
+        if coverage:
+            print(coverage)
         return
     current = None
-    for f in findings:
+    # One row per distinct finding, with its copies named under it. Nothing
+    # is dropped - see `duplicates.py` for why the copies still have to be
+    # in the list even though they are not printed as separate rows.
+    for f, others in duplicates.group(findings):
         if f["file"] != current:
             current = f["file"]
             print(f"\n{current}")
         rep = "" if f["replacement"] is None else f"  ->  {f['replacement']!r}"
         print(f"  line {f['line']:>4}  [{f['confidence']}]  {_visible(f['text'])!r}{rep}")
         print(f"              {f['explanation']}")
+        if others:
+            print(f"              same text in {len(others)} other file(s):")
+            for copy in duplicates.copies_of(f, others)[:3]:
+                print(f"                {copy}")
+            if len(others) > 3:
+                print(f"                ... and {len(others) - 3} more")
     c = _counts(findings)
-    print(f"\n{c['total']} finding(s) in {c['files']} file(s).")
+    distinct = len(duplicates.group(findings))
+    tail = "" if distinct == c["total"] else f" ({distinct} distinct)"
+    print(f"\n{c['total']} finding(s) in {c['files']} file(s){tail}.")
+    if coverage:
+        print(coverage)
 
 
 # ---------------------------------------------------------------- commands
 
 def cmd_scan(args) -> int:
     missing: list = []
-    files = _collect_files(args.paths, args, missing_out=missing)
-    findings, _ = _analyze(files, args)
+    unjudged: list = []
+    walked: list = []
+    files = _collect_files(args.paths, args, missing_out=missing,
+                           diagnostics_out=walked)
+    findings, _ = _analyze(files, args, unjudged_out=unjudged)
     if args.json:
-        _print_json(findings)
+        _print_json(findings, walked=walked)
     else:
-        _print_human(findings)
+        _print_human(findings, walked=walked)
+    if getattr(args, "styled_report", None):
+        _write_styled_text_report(files, findings, args)
     if missing:
         # Said again at the end: the warning above scrolls past a long report,
         # and "nothing found" plus exit 0 is indistinguishable from success.
         print(f"# {len(missing)} path(s) did not exist; nothing was read from them",
+              file=sys.stderr)
+        return EXIT_ERROR
+    if unjudged:
+        # Same rule, one step further in: a detector that was asked and could
+        # not answer leaves the text unread, and exit 0 would report that as
+        # clean to whatever runs this in a pipeline.
+        print("# the requested detector could not read the text; "
+              "the result above is not a clean bill of health",
               file=sys.stderr)
         return EXIT_ERROR
     if args.check and findings:
@@ -395,7 +557,7 @@ def cmd_audit(args) -> int:
         _settings_for_ignore(args), _ignore_root(args))
 
     if getattr(args, "browser", False):
-        _run_browser_pass(result, suppressions)
+        _run_browser_pass(result, suppressions, args)
 
     for document in result.documents:
         document.issues = suppression.filter_issues(document.issues, suppressions)
@@ -427,6 +589,12 @@ def cmd_audit(args) -> int:
                                        if i.category in wanted]
     if getattr(args, "report", None):
         _write_report(result, args, lang, fix_outcome)
+    if getattr(args, "styled_report", None):
+        from report.export import write_styled_report
+        from report.model import from_accessibility
+
+        write_styled_report(args.styled_report, from_accessibility(result, lang), lang)
+        print(f"# styled report: {args.styled_report}", file=sys.stderr)
 
     if args.json:
         print(json.dumps({
@@ -587,6 +755,27 @@ def cmd_undo(args) -> int:
     return EXIT_ERROR if problems and not restored else EXIT_OK
 
 
+def _write_styled_text_report(files, findings, args) -> None:
+    """`scan --styled-report`: the same findings as `--json`, laid out as a
+    document for a person instead of a pipeline.
+
+    Rebuilds a `RepoAnalysisResult` from what `_analyze` already computed —
+    the actual `FileResult`s and the actual `TextSpan`s it kept under
+    `finding["_span"]` — rather than re-scanning: `report.model.
+    from_text_analysis` reads that type, and everything it needs was
+    produced a few lines up in `cmd_scan`, at no extra cost.
+    """
+    from report.export import write_styled_report
+    from report.model import from_text_analysis
+
+    lang = getattr(args, "language", None) or "en"
+    root = args.paths[0] if len(args.paths) == 1 else ", ".join(args.paths)
+    result = RepoAnalysisResult(root_dir=root, files=files,
+                                spans=[f["_span"] for f in findings])
+    write_styled_report(args.styled_report, from_text_analysis(result), lang)
+    print(f"# styled report: {args.styled_report}", file=sys.stderr)
+
+
 #: Where a run's numbers are remembered between runs, beside the report. Small
 #: on purpose: counts and dates, never findings, so it stays readable and
 #: cannot become a second source of truth about the code.
@@ -722,9 +911,8 @@ def _report_markdown(payload: dict, lang: str) -> str:
         "",
     ]
 
-    history = payload.get("history") or []
-    if len(history) > 1:
-        previous = history[-2]
+    previous = _previous_run(payload)
+    if previous is not None:
         before, now = sum(previous["counts"].values()), summary["total"]
         direction = "down" if now < before else ("up" if now > before else "unchanged")
         out += [
@@ -819,6 +1007,24 @@ def _report_markdown(payload: dict, lang: str) -> str:
     return "\n".join(out)
 
 
+def _previous_run(payload: dict) -> dict | None:
+    """The last run of *this* target, or None if there was not one.
+
+    The history file lives beside the report, so pointing `--report` at one
+    path while scanning different things put unrelated runs in one list, and
+    the comparison then read the count of another target as progress on this
+    one - a run over a clean file announced "8 finding(s). Now 0 - down"
+    because the previous entry was a different root. Matching on root and mode
+    is what makes the sentence true: an audit and a text scan of the same
+    directory count different things and are not each other's history either.
+    """
+    history = payload.get("history") or []
+    root, mode = payload.get("root"), payload.get("mode")
+    mine = [e for e in history[:-1]
+            if e.get("root") == root and e.get("mode") == mode]
+    return mine[-1] if mine else None
+
+
 def _read_history(report_path: Path) -> list:
     history_path = Path(str(report_path) + HISTORY_SUFFIX)
     try:
@@ -845,7 +1051,47 @@ def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
 
-def _run_browser_pass(result, suppressions) -> None:
+#: `--breakpoints` with no value means all of them.
+def _chosen_breakpoints(args):
+    """The widths to audit at, or () for the engine's default single pass."""
+    from audit import responsive
+
+    raw = getattr(args, "breakpoints", None)
+    if not raw:
+        return ()
+    if raw == "all":
+        return responsive.BREAKPOINTS
+    wanted = [name.strip() for name in raw.split(",") if name.strip()]
+    known = {name: (name, w, h) for name, w, h in responsive.BREAKPOINTS}
+    unknown = [name for name in wanted if name not in known]
+    if unknown:
+        raise SystemExit(
+            f"unknown breakpoint: {', '.join(unknown)}. "
+            f"Valid: {', '.join(known)}")
+    # Kept in the canonical order, widest first, whatever order they were
+    # typed in: the first pass to see a finding is the one whose selector the
+    # merged row keeps, and that should not depend on typing order.
+    return tuple(known[name] for name, _w, _h in responsive.BREAKPOINTS
+                 if name in wanted)
+
+
+def _audit_at_widths(urls, options, sizes) -> list:
+    """One browser, every page, every width."""
+    from audit import driver
+    from audit import responsive
+    from dataclasses import replace
+
+    driver.ensure_headless_application()
+    runner = driver.BrowserAuditRunner(
+        replace(options, viewport=(sizes[0][1], sizes[0][2])))
+    try:
+        return [responsive.audit_responsive(url, sizes, options, runner=runner)
+                for url in urls]
+    finally:
+        runner.close()
+
+
+def _run_browser_pass(result, suppressions, args=None) -> None:
     """Load each audited page in a real browser and fold the findings in.
 
     Runs for a crawled site and for a single self-contained HTML file. Not for
@@ -877,12 +1123,15 @@ def _run_browser_pass(result, suppressions) -> None:
         disabled_rules=list(suppressions.rules),
         allow_local_files=result.mode == "file",
     )
-    print(f"# browser pass over {len(targets)} page(s)", file=sys.stderr)
+    sizes = _chosen_breakpoints(args) if args is not None else ()
+    where = (f" at {len(sizes)} widths" if sizes else "")
+    print(f"# browser pass over {len(targets)} page(s){where}", file=sys.stderr)
     # The document is still keyed by its own source (a path, in file mode), so
     # the findings land back on the row the user recognises rather than on a
     # `file://` URL they never typed.
     urls = [_browser_url(d.source) for d in targets]
-    audits = driver.audit_urls(urls, options)
+    audits = (_audit_at_widths(urls, options, sizes) if sizes
+              else driver.audit_urls(urls, options))
     by_url = {a.url: a for a in audits}
     for document, url in zip(targets, urls):
         page_audit = by_url.get(url)
@@ -897,7 +1146,8 @@ def _run_browser_pass(result, suppressions) -> None:
         # themselves: axe and our own rule both report a missing `alt`, and
         # a run with --browser must not double every such row.
         document.issues = browser_mod.deduplicate(
-            list(document.issues) + list(page_audit.issues))
+            list(document.issues) + list(page_audit.issues),
+            markup=getattr(page_audit, "html", "") or "")
 
 
 #: Extensions that make a file a page rather than a piece of a project.
@@ -1204,7 +1454,7 @@ def cmd_ai_rewrite(args) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="ai-content-scanner",
+        prog="xanalyze",
         description="Find and fix characters no keyboard produces (and optionally "
                     "flag AI-sounding copy) in web pages' source files. "
                     "Designed to run after an LLM coding agent.",
@@ -1225,7 +1475,15 @@ def build_parser() -> argparse.ArgumentParser:
             p.add_argument("--detector", default="none",
                            help="also run a content detector: offline (adds the "
                                 "wording/cliche analysis to the character pass) | "
-                                "claude-llm-judge | xformat-llm-judge | none")
+                                "llm-judge (ask a model, billed to whichever "
+                                "account --provider names) | hybrid (offline "
+                                "first, then a model checks and extends it) | "
+                                "claude-llm-judge | xformat-llm-judge | "
+                                "claude-code-llm-judge | none")
+            p.add_argument("--provider", default=None,
+                           choices=["anthropic", "xformat", "claude-code"],
+                           help="which account pays for --detector llm-judge; "
+                                "the default is the same one `ai status` reports")
             p.add_argument("--no-unicode", action="store_true",
                            help="skip the non-keyboard character pass")
             p.add_argument("--scope", default="content",
@@ -1247,6 +1505,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_scan = sub.add_parser("scan", help="report findings without changing anything")
     common(p_scan)
+    p_scan.add_argument("--styled-report", default=None, metavar="PATH",
+                        help="also write a branded, print-ready report for a "
+                             "person to read: a .pdf or .html by suffix. "
+                             "Different from --json/--check, which are for a "
+                             "pipeline, not a reader")
+    p_scan.add_argument("--language", default=None, help="uk | it | en; "
+                        "language of --styled-report's own labels (default en)")
     p_scan.set_defaults(func=cmd_scan)
 
     p_fix = sub.add_parser("fix", help="rewrite non-keyboard characters in place")
@@ -1315,6 +1580,21 @@ def build_parser() -> argparse.ArgumentParser:
                               "state pass and load measurements. Works for a "
                               "URL and for a single .html file; not for a "
                               "project folder. Slower")
+    p_audit.add_argument("--breakpoints", nargs="?", const="all", default=None,
+                         metavar="NAMES",
+                         help="with --browser: audit each page at several "
+                              "widths (desktop 1440, tablet 834, mobile 390) "
+                              "instead of one. Bare, or a comma-separated "
+                              "subset. A finding seen at several widths stays "
+                              "one row and records where it was seen; one seen "
+                              "at a single width says so - which is the point, "
+                              "since a mobile menu is not in the DOM at all at "
+                              "desktop width")
+    p_audit.add_argument("--styled-report", default=None, metavar="PATH",
+                         help="also write a branded, print-ready report for a "
+                              "person to read: a .pdf or .html by suffix. "
+                              "Different from --report, which is a briefing "
+                              "for an agent")
     p_audit.set_defaults(func=cmd_audit)
 
     # `ai` groups everything that spends money or needs an account, so the
