@@ -107,6 +107,8 @@ class MainViewModel(QObject):
 
         # Pending copy pass (for both-questions runs)
         self._pending_copy_pass = False
+        # File mode: run code analysis then browser analysis
+        self._file_both_passes = False
 
     # -- public properties -------------------------------------------------
     @property
@@ -339,11 +341,10 @@ class MainViewModel(QObject):
         if self.state.source == SOURCE_REPO:
             self._start_repo_analysis()
         elif self.state.source == SOURCE_FILE:
-            if self._reusable_pages() is not None:
-                self._start_web_analysis(
-                    root=_browser_url(self.state.target))
-            else:
-                self._start_file_copy_analysis()
+            # File: always run code analysis first, then browser if available.
+            # The raw file and the rendered DOM show different things.
+            self._file_both_passes = self._reusable_pages() is not None
+            self._start_file_copy_analysis()
         else:
             self._start_web_analysis()
 
@@ -463,17 +464,27 @@ class MainViewModel(QObject):
         self.error.emit(message)
 
     def _on_web_finished(self, result: AnalysisResult):
-        self.result = result
-        self._remember_extraction(self._last_request,
-                                  pages=result.pages)
-        self.web_result_ready.emit(result)
+        if isinstance(self.result, RepoAnalysisResult) and self.state.source == SOURCE_FILE:
+            # Merge browser findings into the code analysis result
+            self.result.spans.extend(result.spans)
+            self.repo_result_ready.emit(self.result)
+        else:
+            self.result = result
+            self._remember_extraction(self._last_request,
+                                      pages=result.pages)
+            self.web_result_ready.emit(result)
 
     def _on_repo_finished(self, result: RepoAnalysisResult):
         self.result = result
         self._remember_extraction(self._last_request,
                                   files=result.files,
                                   scope=self._repo_scope())
-        self.repo_result_ready.emit(result)
+        if self._file_both_passes:
+            # Code analysis done, now run browser analysis on the rendered DOM
+            self._file_both_passes = False
+            self._start_web_analysis(root=_browser_url(self.state.target))
+        else:
+            self.repo_result_ready.emit(result)
 
     def _on_audit_finished(self, result):
         self.audit_result = result
