@@ -29,9 +29,9 @@ mv XAnalyze.app /Applications/
 ### CLI (macOS/Linux)
 
 ```bash
-curl -L -o ~/bin/xanalyze https://github.com/vlad-demchyk/xAnalyze-/releases/latest/download/xanalyze
-chmod +x ~/bin/xanalyze
-echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc
+curl -L -o xanalyze-cli.tar.gz https://github.com/vlad-demchyk/xAnalyze-/releases/latest/download/xanalyze-cli-macos-arm64.tar.gz
+tar -xzf xanalyze-cli.tar.gz
+echo 'export PATH="$PWD/xanalyze:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
