@@ -18,7 +18,10 @@ from pathlib import Path
 
 from bs4 import BeautifulSoup
 
-from .base import CATEGORIES, SEVERITY_ORDER, Issue, RuleContext, RuleRegistry
+from .base import (
+    CATEGORIES, SEVERITY_ORDER, Issue, RuleContext, RuleRegistry,
+    remember_source,
+)
 
 
 @dataclass
@@ -115,7 +118,8 @@ PAGE_SUFFIXES = {".html", ".htm", ".xhtml"}
 
 def analyze_document(markup: str, source: str, rules=None,
                      line_numbers: bool = False, ai_review=None,
-                     document_kind: str = "page") -> DocumentReport:
+                     document_kind: str = "page",
+                     source_text: str | None = None) -> DocumentReport:
     """Run every rule over one document.
 
     `ai_review` is an optional `AIAccessibilityReview`. It runs on the same
@@ -129,6 +133,12 @@ def analyze_document(markup: str, source: str, rules=None,
     except Exception as exc:  # noqa: BLE001 - malformed markup is a finding, not a crash
         return DocumentReport(source=source, error=str(exc))
 
+    # The source text, kept with the parsed document so a finding can quote
+    # the file rather than the parser's re-print of it. See `snippet_of`.
+    # The *unmasked* text, when the caller had to mask something to parse it:
+    # a snippet must show what the developer will find in the file.
+    remember_source(document, source_text if source_text is not None else markup)
+
     context = RuleContext(source=source)
     context.document_kind = document_kind
     context.dom_path = _dom_path
@@ -138,8 +148,12 @@ def analyze_document(markup: str, source: str, rules=None,
     if document_kind != "page":
         # A component file is a piece of a page. Asking it for a doctype, a
         # title or exactly one h1 reports the absence of things that belong to
-        # the page it will be part of.
-        rules = [rule for rule in rules if not getattr(rule, "page_level", False)]
+        # the page it will be part of. A rule that needs a stylesheet is
+        # skipped for the same reason: the fragment carries none, so an
+        # "absent" verdict would be indistinguishable from an unseen one.
+        rules = [rule for rule in rules
+                if not getattr(rule, "page_level", False)
+                and not getattr(rule, "needs_external_css", False)]
 
     report = DocumentReport(source=source)
     report.elements_checked = len(document.find_all(True))
@@ -242,9 +256,18 @@ def analyze_files(file_results, root: str, rules=None, ai_review=None) -> Access
             continue
         kind = ("page" if Path(file_result.path).suffix.lower() in PAGE_SUFFIXES
                 else "fragment")
-        report = analyze_document(file_result.raw_text, file_result.path, rules,
+        markup = file_result.raw_text
+        if kind == "fragment":
+            # A source file's comments are prose, and prose talks about markup:
+            # `// the <img> is replaced on remount` is an element with no alt
+            # to an HTML parser. Masked rather than stripped, so every line and
+            # column still points where it did.
+            from repo_scanner import mask_code_comments
+            markup = mask_code_comments(markup, file_result.path)
+        report = analyze_document(markup, file_result.path, rules,
                                   line_numbers=True, ai_review=ai_review,
-                                  document_kind=kind)
+                                  document_kind=kind,
+                                  source_text=file_result.raw_text)
         if report.issues or report.error:
             result.documents.append(report)
     return result

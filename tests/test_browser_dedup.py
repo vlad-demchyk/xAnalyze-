@@ -104,8 +104,6 @@ class DeduplicateTests(unittest.TestCase):
         self.assertEqual(len(kept), 1)
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class SameEngineCorroborationTests(unittest.TestCase):
@@ -120,3 +118,73 @@ class SameEngineCorroborationTests(unittest.TestCase):
         ])
         self.assertEqual(len(kept), 1)
         self.assertNotIn("also_found_by", kept[0].details)
+
+
+class IdenticalElementsTests(unittest.TestCase):
+    """Two elements that serialise identically cannot be told apart by their
+    serialisation - so the document is asked instead.
+
+    The element key is built from the snippet, so a page with several bare
+    `<button></button>` tags gives every one of them the same key. That key
+    used to merge them across engines, and the finding on the second button
+    attached to the first as corroboration and disappeared - a real missing
+    accessible name, dropped from the report.
+    """
+
+    TWO_BUTTONS = "<html><body><button></button><button></button></body></html>"
+    ONE_HEADING = "<html><body><h2>Good evening</h2></body></html>"
+
+    def _buttons(self, engine, count):
+        return [issue("control-name", engine, snippet="<button></button>")
+                for _ in range(count)]
+
+    def test_a_second_button_is_not_swallowed_by_the_first(self):
+        merged = browser.deduplicate(
+            self._buttons("static", 2) + self._buttons("axe", 2),
+            markup=self.TWO_BUTTONS)
+        self.assertEqual(len(merged), 4)
+
+    def test_no_corroboration_is_claimed_between_elements_nobody_can_pair(self):
+        merged = browser.deduplicate(
+            self._buttons("static", 2) + self._buttons("axe", 2),
+            markup=self.TWO_BUTTONS)
+        for row in merged:
+            self.assertNotIn("also_found_by", row.details)
+
+    def test_an_element_the_document_has_once_still_collapses(self):
+        """The evidence cuts both ways: one heading in the document means a
+        repeated message about it is a repeat."""
+        merged = browser.deduplicate([
+            issue("htmlcs:1_3_1_A", "htmlcs", "<h2>Good evening</h2>"),
+            issue("htmlcs:1_3_1_A", "htmlcs", "<h2>Good evening</h2>"),
+        ], markup=self.ONE_HEADING)
+        self.assertEqual(len(merged), 1)
+
+    def test_an_unambiguous_element_still_collapses_across_engines(self):
+        merged = browser.deduplicate([
+            issue("image-alt", "static", '<img src="a.png"/>'),
+            issue("axe:image-alt", "axe", '<img src="a.png">'),
+        ], markup='<html><body><img src="a.png"></body></html>')
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0].details.get("also_found_by"), ["axe"])
+
+    def test_a_finding_that_names_the_element_is_still_paired(self):
+        """A selector says which button, so the ambiguity does not apply."""
+        merged = browser.deduplicate([
+            issue("control-name", "static", "<button></button>",
+                  "html > body > button:nth-of-type(2)"),
+            issue("control-name", "axe", "<button></button>",
+                  "html > body > button:nth-of-type(2)"),
+        ], markup=self.TWO_BUTTONS)
+        self.assertEqual(len(merged), 1)
+
+    def test_without_a_document_nothing_changes(self):
+        merged = browser.deduplicate([
+            issue("image-alt", "static", '<img src="a.png"/>'),
+            issue("axe:image-alt", "axe", '<img src="a.png">'),
+        ])
+        self.assertEqual(len(merged), 1)
+
+
+if __name__ == "__main__":
+    unittest.main()

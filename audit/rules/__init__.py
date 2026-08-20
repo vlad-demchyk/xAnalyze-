@@ -7,4 +7,5 @@ have to scroll past keyboard-focus logic to find them.
 from . import accessibility  # noqa: F401
 from . import best_practices  # noqa: F401
 from . import performance  # noqa: F401
+from . import provenance  # noqa: F401
 from . import seo  # noqa: F401

@@ -50,6 +50,11 @@ SCRIPT_TIMEOUT_MS = 60_000
 #: broke an engine, and the report should be able to say which.
 LOAD_TIMEOUT_MS = 30_000
 
+#: How long to let a viewport resize reach the renderer before asking the
+#: page anything. Measured rather than guessed: below ~100ms the first probe
+#: after a resize still reports the previous width.
+VIEWPORT_SETTLE_MS = 200
+
 #: Chromium flags for a headless run. Set before QtWebEngine initialises or
 #: they are ignored, which is why `ensure_headless_application` exists rather
 #: than the caller doing this by hand.
@@ -179,6 +184,13 @@ class BrowserAuditRunner:
         self.options = options or browser.BrowserAuditOptions()
         self._profile = profile
         self._page = None
+        #: The widget that gives the page a size, when one was asked for.
+        #: A page with no view has a viewport of 0x0, and a page that
+        #: believes it is 0 pixels wide matches every `max-width` media
+        #: query there is - which is how a "responsive" audit can produce
+        #: three identical mobile-shaped answers and look like it worked.
+        self._view = None
+        self._viewport = self.options.viewport
 
     # ------------------------------------------------------------- lifecycle
 
@@ -194,6 +206,8 @@ class BrowserAuditRunner:
             profile = QWebEngineProfile(None)
             self._profile = profile
         page = QWebEnginePage(profile, None)
+        if self._viewport:
+            page = self._attach_view(page)
         settings = page.settings()
         settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
         # The point of this pass is to see what a visitor sees, which includes
@@ -207,10 +221,58 @@ class BrowserAuditRunner:
         self._page = page
         return page
 
+    def _attach_view(self, page):
+        """Give the page a real, sized viewport without putting a window on
+        anyone's screen.
+
+        `WA_DontShowOnScreen` is the whole trick: the widget goes through
+        show(), so it acquires a size, a layout and a compositor - which is
+        what `window.innerWidth` and every media query read - but the window
+        system never maps it. Without `show()` the size stays 0x0 no matter
+        what `resize()` was called with; without the attribute, running an
+        audit from the desktop app would flash a second window in the user's
+        face for every page.
+        """
+        from PySide6.QtCore import Qt
+        from PySide6.QtWebEngineWidgets import QWebEngineView
+
+        view = QWebEngineView()
+        view.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        view.setPage(page)
+        width, height = self._viewport
+        view.resize(int(width), int(height))
+        view.show()
+        self._view = view
+        return page
+
+    def set_viewport(self, width: int, height: int) -> None:
+        """Resize the page's viewport, for the next `audit()` call.
+
+        The resize has to reach the renderer process before the page is asked
+        anything, and that happens on the event loop rather than on this
+        line - hence the short pump. Cheap: it is once per breakpoint, not
+        once per page.
+        """
+        self._viewport = (int(width), int(height))
+        if self._page is None:
+            return
+        if self._view is None:
+            self._page = self._attach_view(self._page)
+        else:
+            self._view.resize(int(width), int(height))
+        _pump(VIEWPORT_SETTLE_MS)
+
     def close(self) -> None:
         # Order matters: Qt warns "Release of profile requested but
         # WebEnginePage still not deleted" and can crash if the profile outlives
         # its page only in Python's eyes.
+        view, self._view = self._view, None
+        if view is not None:
+            # The view before the page it shows: a view left holding a
+            # deleted page is the same class of crash as a profile left
+            # holding a deleted page.
+            view.setPage(None)
+            view.deleteLater()
         page, self._page = self._page, None
         if page is not None:
             page.deleteLater()
@@ -347,7 +409,9 @@ class BrowserAuditRunner:
         # One finding per problem, whoever found it: the same missing `alt`
         # reported by our rule, by axe and by HTML_CodeSniffer is one row that
         # names its corroboration, not three rows.
-        result.issues = browser.deduplicate(issues)
+        # The rendered document goes with them: whether two findings are about
+        # one element or two is a question only the page can answer.
+        result.issues = browser.deduplicate(issues, markup=result.html)
         return result
 
 
@@ -393,6 +457,15 @@ class html_renderer:
             # that rendered to nothing.
             raise RuntimeError(result.error)
         return result.html
+
+
+def _pump(milliseconds: int) -> None:
+    """Run the event loop for a fixed time, on the caller's thread."""
+    from PySide6.QtCore import QEventLoop, QTimer
+
+    loop = QEventLoop()
+    QTimer.singleShot(milliseconds, loop.quit)
+    loop.exec()
 
 
 def audit_urls(urls, options: browser.BrowserAuditOptions | None = None) -> list:

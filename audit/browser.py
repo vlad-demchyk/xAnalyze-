@@ -84,6 +84,13 @@ class BrowserAuditOptions:
     #: the tool at a file, and then only because an exported page whose images
     #: sit beside it would otherwise be audited half-loaded.
     allow_local_files: bool = False
+    #: The size the page believes it is being viewed at, as `(width, height)`
+    #: in CSS pixels, or None for whatever the engine defaults to. Set, it is
+    #: what makes a responsive audit possible: media queries answer to this
+    #: number, so a page audited at one size has only been audited at one
+    #: size - the mobile navigation of most sites does not exist in the DOM
+    #: at desktop width, and neither do its findings.
+    viewport: tuple | None = None
     #: Also bring back the DOM as the browser built it. This is what lets a
     #: client-rendered page be *read* rather than only audited: the copy and
     #: the links of an application shell exist only after hydration, and a
@@ -349,7 +356,7 @@ DEFAULT_BUDGETS = {
 }
 
 
-def deduplicate(issues: list) -> list:
+def deduplicate(issues: list, markup: str = "") -> list:
     """Collapse the same problem found by more than one engine.
 
     Two engines on the same element and the same underlying rule is one
@@ -369,33 +376,61 @@ def deduplicate(issues: list) -> list:
     Cross-engine only. Within one engine the selectors are consistent and two
     findings on `<button></button>` really are two buttons; merging those
     would hide a genuine second problem, which is worse than a duplicate row.
+
+    An element key that several elements share is not an identity, and the
+    document is what says so. Two empty `<button></button>` tags have the same
+    name and the same (absent) attributes, so the key alone made them one
+    element: the finding on the second button attached to the first as "also
+    found by axe" and vanished from the list - a real missing accessible name,
+    dropped. Nothing local can pair them either, because the engines that
+    repeat an element are the ones that emit no selector.
+
+    So `markup` decides. When the document holds exactly one element with that
+    key, a repeat really is a repeat and collapses as before (HTML_CodeSniffer
+    emits two messages under one criterion for the same heading). When it
+    holds several, no finding about them is merged with any other - at worst a
+    duplicate row, which is the trade this function already makes in the other
+    direction. Without `markup` nothing changes: the key still merges across
+    engines, because there is no evidence to say otherwise.
     """
     from .base import SEVERITY_ORDER
+
+    #: How many elements of each key the document actually contains. Empty
+    #: when the caller had no document to give.
+    element_counts = _element_counts(markup)
 
     kept: dict = {}
     order = []
     #: (source, family, element key) -> the issue already kept for it, used
     #: only to match findings that came from a *different* engine.
     by_element: dict = {}
+    unpaired = 0
 
     for issue in issues:
         family = _rule_family(issue.rule_id)
         element = _element_key(issue)
+        shared = element_counts.get(element, 0) > 1
 
         existing = None
-        if element:
+        if element and not shared:
             candidate = by_element.get((issue.source, family, element))
             if candidate is not None and candidate.engine != issue.engine:
                 existing = candidate
 
-        signature = (issue.source, family, issue.selector or issue.snippet)
+        if shared and not issue.selector:
+            # Several such elements exist and this finding does not say which.
+            # Given to nothing else to merge with, rather than to the wrong one.
+            unpaired += 1
+            signature = (issue.source, family, issue.snippet, unpaired)
+        else:
+            signature = (issue.source, family, issue.selector or issue.snippet)
         if existing is None:
             existing = kept.get(signature)
 
         if existing is None:
             kept[signature] = issue
             order.append(signature)
-            if element:
+            if element and not shared:
                 by_element.setdefault((issue.source, family, element), issue)
             continue
 
@@ -416,6 +451,37 @@ def deduplicate(issues: list) -> list:
 #: The opening tag of a snippet: name, then everything up to the `>`.
 _OPEN_TAG = re.compile(r"<\s*([a-zA-Z][a-zA-Z0-9-]*)((?:\s+[^>]*?)?)/?\s*>")
 _ATTRIBUTE = re.compile(r"([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)")
+
+
+def _element_counts(markup: str) -> dict:
+    """How many elements of each `_element_key` the document contains.
+
+    Parsed once per document. The key is built the same way as from a snippet,
+    so the two are comparable: that is the whole point of computing it here
+    rather than trusting the findings to describe the page.
+    """
+    if not markup:
+        return {}
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(markup, "html.parser")
+    except Exception:  # noqa: BLE001 - unparseable markup just means no evidence
+        return {}
+    counts: dict = {}
+    for tag in soup.find_all(True):
+        key = _key_of_tag(tag)
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def _key_of_tag(tag) -> str:
+    attributes = sorted(
+        (name.lower(),
+         " ".join(value) if isinstance(value, list) else str(value))
+        for name, value in (tag.attrs or {}).items()
+    )
+    rendered = ";".join(f"{name}={value}" for name, value in attributes)
+    return f"{tag.name.lower()}|{rendered}"
 
 
 def _element_key(issue) -> str:

@@ -16,7 +16,8 @@ from __future__ import annotations
 import re
 
 from ..base import (
-    MINOR, MODERATE, SEO, SERIOUS, Issue, Rule, RuleRegistry, snippet_of,
+    MINOR, MODERATE, NEEDS_BROWSER, SEO, SERIOUS, Issue, Rule, RuleRegistry,
+    snippet_of,
 )
 
 _WHITESPACE_RE = re.compile(r"\s+")
@@ -197,6 +198,11 @@ class ImagesMissingDimensions(SeoRule):
     make one page's report list the same image twice."""
     id = "seo-image-dimensions"
     severity = MINOR
+    needs_external_css = True
+    # An external stylesheet can still reserve the space this markup does
+    # not - same ambiguity `perf-layout-shift` already marks honestly for
+    # lazy images; this is its eager-image counterpart, on the same tags.
+    confidence = NEEDS_BROWSER
 
     def check(self, document, context) -> list:
         issues = []
@@ -208,7 +214,8 @@ class ImagesMissingDimensions(SeoRule):
             issues.append(Issue(
                 rule_id=self.id, severity=self.severity, category=self.category,
                 selector=selector, line=line, snippet=snippet_of(tag),
-                source=context.source, details={"src": (tag.get("src") or "")[:120]},
+                source=context.source, confidence=self.confidence,
+                details={"src": (tag.get("src") or "")[:120]},
             ))
         return issues
 

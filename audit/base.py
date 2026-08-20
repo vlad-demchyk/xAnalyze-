@@ -124,6 +124,18 @@ class Rule(ABC):
     #: were never supposed to be there — which is how a repo report fills up
     #: with findings nobody can act on.
     page_level: bool = False
+    #: True when a "missing" verdict depends on a stylesheet the parser never
+    #: sees. `<img>` with no `width`/`height` still might have both reserved
+    #: by a CSS class or a sibling `.module.css` file - true on a live page,
+    #: which is why `--browser` catches the real absence there. A repo
+    #: fragment carries none of that: its own file is all a rule ever sees,
+    #: and treating an unknown as a violation is indistinguishable from
+    #: treating an unstyled `<div>` as one. Confirmed against
+    #: `~/repositories/xformat`: every one of 48 `seo-image-dimensions`
+    #: findings on `.tsx` fragments had no `width`/`height` *and* no
+    #: `className`/`style` visible in the snippet either - not a bound
+    #: expression to read, evidence genuinely absent rather than hidden.
+    needs_external_css: bool = False
 
     @abstractmethod
     def check(self, document, context) -> list:
@@ -209,14 +221,95 @@ def is_binding(value) -> str:
     return ""
 
 
-def snippet_of(tag, limit: int = 160) -> str:
-    """The opening tag, without its children.
+#: Where a parsed document remembers the text it was parsed from, so a
+#: snippet can be quoted from the source instead of re-serialised. Attached to
+#: the soup by `analyze_document`; absent for a document that has no source
+#: text of its own, such as a DOM read back out of a browser.
+SOURCE_ATTR = "_xa_source"
+LINE_STARTS_ATTR = "_xa_line_starts"
 
-    Deliberately not `str(tag)`: a `<div>` wrapping half the page would put
-    that half into the report, and the attributes are what the finding is
-    about anyway.
+
+def remember_source(document, markup: str) -> None:
+    """Let `snippet_of` quote this document rather than re-print it."""
+    starts = [0]
+    for index, char in enumerate(markup):
+        if char == "\n":
+            starts.append(index + 1)
+    setattr(document, SOURCE_ATTR, markup)
+    setattr(document, LINE_STARTS_ATTR, starts)
+
+
+def _source_of(tag):
+    """The markup this tag was parsed from, and its line offsets."""
+    node = tag
+    while node is not None:
+        markup = getattr(node, SOURCE_ATTR, None)
+        if markup is not None:
+            return markup, getattr(node, LINE_STARTS_ATTR, None)
+        node = getattr(node, "parent", None)
+    return None, None
+
+
+def _open_tag_end(markup: str, start: int) -> int:
+    """Where the opening tag that begins at `start` ends.
+
+    Not `markup.find(">")`: a JSX attribute can contain one
+    (`title={a > b ? "x" : "y"}`), and so can a quoted value. Quotes and brace
+    depth are tracked for exactly that reason.
     """
+    quote = ""
+    depth = 0
+    for index in range(start, len(markup)):
+        char = markup[index]
+        if quote:
+            if char == quote:
+                quote = ""
+            continue
+        if char in "\"'":
+            quote = char
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth = max(0, depth - 1)
+        elif char == ">" and depth == 0:
+            return index + 1
+    return -1
+
+
+def snippet_of(tag, limit: int = 160) -> str:
+    """The opening tag as it is written in the file.
+
+    Deliberately not `str(tag)` when the source is known. An HTML parser is
+    the only practical way to run these rules over a JSX or Vue file, but it
+    re-prints what it parsed: `className` comes back as `classname`, and an
+    expression attribute (`alt={photo.caption}`) comes back as the debris
+    `alt="{photo.caption}"` or as empty `="" ?=""` pairs. A developer reading
+    the report then cannot find the line, because that text is not in their
+    file. So the snippet is cut out of the original markup by the position the
+    parser recorded, and `str(tag)` remains the fallback for a document with
+    no source text - a DOM read back out of a browser, where the serialisation
+    *is* the truth.
+
+    A `<div>` wrapping half the page is still cut at its opening tag: the
+    attributes are what the finding is about.
+    """
+    markup, line_starts = _source_of(tag)
+    line = getattr(tag, "sourceline", None)
+    column = getattr(tag, "sourcepos", None)
+    if markup and line_starts and line and column is not None:
+        index = int(line) - 1
+        if 0 <= index < len(line_starts):
+            start = line_starts[index] + int(column)
+            if 0 <= start < len(markup) and markup[start] == "<":
+                end = _open_tag_end(markup, start)
+                if end != -1:
+                    return _clip(markup[start:end], limit)
+
     text = str(tag)
     closing = text.find(">")
-    opening = text[:closing + 1] if closing != -1 else text
-    return opening if len(opening) <= limit else opening[:limit - 1] + "…"
+    return _clip(text[:closing + 1] if closing != -1 else text, limit)
+
+
+def _clip(text: str, limit: int) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[:limit - 1] + "…"

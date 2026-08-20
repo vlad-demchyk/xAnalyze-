@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from i18n.translations import t
+from i18n.translations import plural, t
 
 from .base import NEEDS_BROWSER, RuleRegistry
 
@@ -64,6 +64,7 @@ def render(issue, lang: str = "uk") -> IssueExplanation:
     # Values are pre-formatted so a template only has to interpolate: the
     # keys differ per rule, and a missing one must not raise inside the UI.
     fields = _template_fields(details)
+    _add_count_noun(stem, fields, lang)
 
     # All four strings get the same values: "how to fix it" is worth far
     # more when it names the actual budget, the actual limit and the actual
@@ -78,7 +79,25 @@ def render(issue, lang: str = "uk") -> IssueExplanation:
     )
     if issue.confidence == NEEDS_BROWSER:
         explanation.caveat = t("a11y_needs_browser", lang)
+    _add_breakpoints(explanation, details, lang)
     return explanation
+
+
+def _add_breakpoints(explanation, details: dict, lang: str) -> None:
+    """Say at which widths the finding was seen, when more than one was tried.
+
+    Appended to "what was found" rather than made a caveat: at which width a
+    problem exists is part of the problem. A row that exists at exactly one
+    width is the one worth naming out loud - it is the half of the page the
+    other passes cannot see at all (see `audit/responsive.py`).
+    """
+    names = details.get("breakpoints") or []
+    if not names:
+        return
+    key = "a11y_breakpoint_only" if len(names) == 1 else "a11y_breakpoint_seen"
+    sentence = t(key, lang, breakpoints=", ".join(
+        t(f"breakpoint_{name}", lang) for name in names))
+    explanation.found = f"{explanation.found} {sentence}".strip()
 
 
 #: Engines whose findings carry their own prose. Ours do not appear here:
@@ -152,6 +171,41 @@ def _fill(key: str, lang: str, fields: dict) -> str:
         return template
 
 
+#: Per-rule noun forms for a `{count}` that is followed by a noun rather
+#: than standing alone as a label (`знайдено N файлів`, unlike the plain
+#: `Знайдено заголовків h1: {count}` label-then-number rows, which need no
+#: agreement because the noun never follows the number). Keyed by rule stem
+#: because "count" means a different noun for every rule that uses it.
+_COUNT_NOUNS = {
+    "perf_render_blocking": {
+        "uk": dict(one="блокувальний файл", few="блокувальні файли",
+                   many="блокувальних файлів"),
+        "it": dict(one="file bloccante", few="file bloccanti"),
+        "en": dict(one="blocking file", few="blocking files"),
+    },
+    "perf_preconnect": {
+        # Genitive, governed by "до": 2-4 and 5+ share one plural form, same
+        # as the locative documents count in `summary_line`.
+        "uk": dict(one="чужого домену", few="чужих доменів", many="чужих доменів"),
+        "it": dict(one="dominio esterno", few="domini esterni"),
+        "en": dict(one="external host", few="external hosts"),
+    },
+}
+
+
+def _add_count_noun(stem: str, fields: dict, lang: str) -> None:
+    forms_by_lang = _COUNT_NOUNS.get(stem)
+    if forms_by_lang is None:
+        return
+    count = fields.get("count")
+    if not isinstance(count, int):
+        return
+    forms = forms_by_lang.get(lang, forms_by_lang["en"])
+    noun_key = {"perf_render_blocking": "files_noun",
+               "perf_preconnect": "domains_noun"}[stem]
+    fields[noun_key] = plural(count, lang, **forms)
+
+
 def _template_fields(details: dict) -> dict:
     fields = {}
     for key, value in details.items():
@@ -175,14 +229,27 @@ def _wcag_for(rule_id: str) -> tuple:
         return ()
 
 
+#: The noun after a document count, by language. Locative case in Ukrainian
+#: ("на ... документі/документах"): 2-4 and 5+ share one plural form there,
+#: so `few` and `many` are given the same string rather than inventing a
+#: second one the grammar has no room for.
+_DOCUMENTS_NOUN = {
+    "uk": dict(one="документі", few="документах", many="документах"),
+    "it": dict(one="documento", few="documenti"),
+    "en": dict(one="document", few="documents"),
+}
+
+
 def summary_line(result, lang: str = "uk") -> str:
     """One sentence over a whole run, for the status bar and report header."""
     counts = result.counts()
+    documents = len(result.documents_with_issues())
     return t(
         "a11y_summary", lang,
         critical=counts.get("critical", 0),
         serious=counts.get("serious", 0),
         moderate=counts.get("moderate", 0),
         minor=counts.get("minor", 0),
-        documents=len(result.documents_with_issues()),
+        documents=documents,
+        documents_noun=plural(documents, lang, **_DOCUMENTS_NOUN.get(lang, _DOCUMENTS_NOUN["en"])),
     )

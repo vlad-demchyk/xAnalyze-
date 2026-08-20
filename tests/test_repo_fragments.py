@@ -17,6 +17,7 @@ COMPONENT = (
     '    <button onClick={onClose} aria-label="Close">x</button>\n'
     '    <label htmlFor="q">Search</label>\n'
     '    <input id="q" onChange={update} value={query} />\n'
+    '    <img src={photo.url} alt={photo.caption} />\n'
     '  </div>;\n'
     '}\n'
 )
@@ -59,6 +60,16 @@ class Fragments(unittest.TestCase):
     def test_a_field_labelled_with_htmlFor_counts_as_labelled(self):
         self.assertNotIn("control-name", _rules(_run("src/Panel.tsx", COMPONENT)))
 
+    def test_a_component_image_with_no_size_attributes_is_not_flagged(self):
+        """`seo-image-dimensions` needs a stylesheet to know whether the
+        space is reserved, and a fragment carries none - the same reasoning
+        that already excuses it from `page_level` rules, on a different
+        rule attribute (`needs_external_css`). Confirmed live: every one of
+        48 such findings on `~/repositories/xformat` .tsx files had no
+        width/height *and* no className/style either - nothing bound to
+        read, evidence genuinely unavailable rather than hidden."""
+        self.assertNotIn("seo-image-dimensions", _rules(_run("src/Panel.tsx", COMPONENT)))
+
 
 class Pages(unittest.TestCase):
     def test_an_html_file_is_still_judged_as_a_page(self):
@@ -72,11 +83,24 @@ class Pages(unittest.TestCase):
     def test_a_real_inline_handler_is_still_reported(self):
         self.assertIn("bp-inline-handlers", _rules(_run("public/index.html", PAGE)))
 
+    def test_an_undersized_image_on_a_real_page_is_still_reported(self):
+        """Fixing the fragment must not also blind the page: an external
+        stylesheet is unknown there too, but the tool has always reported it,
+        now with an honest needs-browser caveat rather than silence."""
+        page = ('<!DOCTYPE html><html lang="en"><head><title>x</title></head>'
+               '<body><h1>x</h1><img src="hero.jpg" alt="Hero"></body></html>')
+        self.assertIn("seo-image-dimensions", _rules(_run("public/index.html", page)))
+
     def test_page_level_rules_exist_and_are_a_minority(self):
         rules = RuleRegistry.all_rules()
         page_level = [r.id for r in rules if getattr(r, "page_level", False)]
         self.assertTrue(page_level)
         self.assertLess(len(page_level), len(rules))
+
+    def test_needs_external_css_rules_are_skipped_only_for_fragments(self):
+        rules = RuleRegistry.all_rules()
+        marked = [r.id for r in rules if getattr(r, "needs_external_css", False)]
+        self.assertIn("seo-image-dimensions", marked)
 
 
 if __name__ == "__main__":

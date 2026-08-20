@@ -128,8 +128,28 @@ def _normalize(url: str) -> str:
     return parsed._replace(fragment="").geturl()
 
 
+def _host_key(url: str) -> str:
+    """The host, in the form two URLs can be compared by.
+
+    Case and the default port are noise; `www.` is the part that matters. A
+    site that redirects its apex to `www` links to itself under both names, and
+    comparing `netloc` literally made those two names two different sites - so
+    a crawl that started at the apex followed nothing at all, and the emptiness
+    looked like a site without links.
+    """
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+    port = parsed.port
+    default = {"http": 80, "https": 443}.get(parsed.scheme, None)
+    if port and port != default:
+        return f"{host}:{port}"
+    return host
+
+
 def _same_domain(a: str, b: str) -> bool:
-    return urlparse(a).netloc == urlparse(b).netloc
+    return _host_key(a) == _host_key(b)
 
 
 def _should_render(mode: str, diagnostics) -> bool:
@@ -333,6 +353,26 @@ def _diagnose(diag: PageDiagnostics, url: str, html: str, blocks: list) -> None:
         diag.reasons.append(EMPTY_NO_TEXT)
     else:
         diag.reasons.append(EMPTY_TOO_SHORT)
+
+
+def page_from_html(html: str, url: str, depth: int = 0) -> PageResult:
+    """One page's worth of result, built from HTML somebody else obtained.
+
+    The crawl is the usual way to get HTML, but not the only one: a single
+    local file opened in a browser has no crawl to be part of - there is one
+    document, already rendered, and `requests` cannot even fetch it (it does
+    not speak `file://`). Extracting and diagnosing it still has to happen the
+    same way, so that path is this function rather than a second copy of the
+    body of `crawl`.
+    """
+    diagnostics = PageDiagnostics()
+    diagnostics.final_url = url
+    diagnostics.html_bytes = len(html or "")
+    diagnostics.reasons = [RENDERED]
+    blocks = _extract_text_blocks(html or "", url, diagnostics)
+    _diagnose(diagnostics, url, html or "", blocks)
+    return PageResult(url=url, depth=depth, blocks=blocks, raw_html=html,
+                      diagnostics=diagnostics)
 
 
 def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
