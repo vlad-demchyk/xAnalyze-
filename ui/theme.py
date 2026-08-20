@@ -178,6 +178,15 @@ QSpinBox:disabled, QComboBox:disabled {{
     background-color: {c(p.bg_muted)};
 }}
 
+QLineEdit[class="field-error"] {{
+    border: 1px solid {c(p.error)};
+}}
+
+QLabel[class="field-error"] {{
+    color: {c(p.error)};
+    font-size: {p.font_size_sm}px;
+}}
+
 QComboBox::drop-down {{
     border: none;
     width: 22px;

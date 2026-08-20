@@ -173,10 +173,20 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Analisi aggiuntiva",
         "en": "Additional analysis",
     },
+    "detail_analyze_tooltip": {
+        "uk": "Запустити повторний аналіз лише цього фрагмента поточним детектором",
+        "it": "Riavvia l'analisi solo di questo frammento con il rilevatore attuale",
+        "en": "Re-run analysis on just this passage with the current detector",
+    },
     "detail_refactor_button": {
         "uk": "Рефактор через мій AI",
         "it": "Rifattorizza con la mia IA",
         "en": "Refactor via my AI",
+    },
+    "detail_refactor_tooltip": {
+        "uk": "Надіслати фрагмент до вашого AI-провайдера для перепису",
+        "it": "Invia il frammento al tuo provider IA per la riscrittura",
+        "en": "Send this passage to your AI provider for rewriting",
     },
     "detail_analyzing": {
         "uk": "Аналізую фрагмент…",
@@ -694,6 +704,16 @@ _STRINGS: dict[str, dict[str, str]] = {
         "uk": "Налаштування…",
         "it": "Impostazioni…",
         "en": "Settings…",
+    },
+    "advanced_show": {
+        "uk": "Більше…",
+        "it": "Altro…",
+        "en": "More…",
+    },
+    "advanced_hide": {
+        "uk": "Менше",
+        "it": "Meno",
+        "en": "Less",
     },
     "settings_title": {
         "uk": "Налаштування",

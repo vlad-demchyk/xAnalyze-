@@ -3,14 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QSize, Qt, QUrl
-from PySide6.QtGui import QColor, QIcon
+from PySide6.QtGui import QColor, QIcon, QKeySequence, QShortcut
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QHBoxLayout,
     QFrame, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
     QMessageBox,
-    QPlainTextEdit, QPushButton, QSpinBox, QSplitter, QStackedWidget,
-    QStatusBar, QTextEdit, QVBoxLayout, QWidget,
+    QPlainTextEdit, QPushButton, QSizePolicy, QSpinBox, QSplitter,
+    QStackedWidget, QStatusBar, QTextEdit, QVBoxLayout, QWidget,
 )
 
 import config
@@ -251,6 +251,7 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self._retranslate_ui()
         self._wire_app_state()
+        self._setup_shortcuts()
         self._update_layout_mode(force=True)
         _ask_account_later(self)
 
@@ -282,6 +283,24 @@ class MainWindow(QMainWindow):
         self.view_model.repo_result_ready.connect(self._on_vm_repo_result)
         self.view_model.audit_result_ready.connect(self._on_vm_audit_result)
         self.view_model.rewrite_ready.connect(self._on_rewrite_finished)
+
+    def _setup_shortcuts(self) -> None:
+        """Keyboard shortcuts for power users."""
+        # Esc = Cancel running analysis
+        esc = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
+        esc.activated.connect(self._on_cancel_clicked)
+        # Ctrl+K / Cmd+K = Focus URL/path field
+        focus_url = QShortcut(QKeySequence("Ctrl+K"), self)
+        focus_url.activated.connect(self._focus_target_field)
+
+    def _focus_target_field(self) -> None:
+        """Focus the input field for the current source."""
+        if self.app_state.source == SOURCE_REPO:
+            self.repo_path_edit.setFocus()
+        elif self.app_state.source == SOURCE_FILE:
+            self.file_path_edit.setFocus()
+        else:
+            self.url_edit.setFocus()
 
     def _on_mode_to_state(self, _idx: int) -> None:
         data = self.mode_combo.currentData()
@@ -318,6 +337,27 @@ class MainWindow(QMainWindow):
 
     def _on_vm_error(self, message: str) -> None:
         QMessageBox.warning(self, "", message)
+
+    def _on_advanced_toggle(self, checked: bool) -> None:
+        """Show or hide the advanced toolbar controls (reader, method, provider)."""
+        self.advanced_row.setVisible(checked)
+        lang = self.lang
+        self.advanced_toggle.setText(
+            t("advanced_hide", lang) if checked else t("advanced_show", lang))
+
+    def _show_field_error(self, field: QLineEdit, message: str) -> None:
+        """Highlight field and show error in status bar."""
+        field.setProperty("class", "field-error")
+        from ui import theme as _t
+        _t.restyle(field)
+        self.status_bar.showMessage(message)
+
+    def _clear_field_error(self, field: QLineEdit) -> None:
+        """Clear error highlight when user types."""
+        field.setProperty("class", "")
+        from ui import theme as _t
+        _t.restyle(field)
+        self.status_bar.clearMessage()
 
     def _on_vm_web_result(self, result) -> None:
         """ViewModel finished a web scan - update the UI."""
@@ -585,6 +625,7 @@ class MainWindow(QMainWindow):
         web_layout.setContentsMargins(0, 0, 0, 0)
         self.url_label = QLabel()
         self.url_edit = QLineEdit()
+        self.url_edit.textChanged.connect(lambda: self._clear_field_error(self.url_edit))
         self.depth_label = QLabel()
         self.depth_spin = QSpinBox()
         self.depth_spin.setRange(0, 5)
@@ -592,21 +633,20 @@ class MainWindow(QMainWindow):
         for w in (self.url_label, self.url_edit, self.depth_label, self.depth_spin):
             web_layout.addWidget(w)
         web_layout.setStretch(1, 3)
+        self.url_error = muted()
+        self.url_error.setProperty("class", "field-error")
+        self.url_error.setVisible(False)
 
         # --- repo-mode controls ---
         repo_controls = QWidget()
         repo_layout = QHBoxLayout(repo_controls)
         repo_layout.setContentsMargins(0, 0, 0, 0)
         self.repo_path_edit = QLineEdit()
+        self.repo_path_edit.textChanged.connect(lambda: self._clear_field_error(self.repo_path_edit))
         self.browse_btn = QPushButton()
         self.browse_btn.clicked.connect(self._on_browse_clicked)
         self.exclusions_btn = QPushButton()
         self.exclusions_btn.clicked.connect(self._on_exclusions_clicked)
-        # What counts as text in a repository is a real decision, not a
-        # preference: copy that ships to a reader and comments that never do
-        # want different judgement, and only one of the two should ever be
-        # rewritten unattended. So it sits in the toolbar next to the path,
-        # not buried in Settings.
         self.scope_label = QLabel()
         self.scope_combo = QComboBox()
         self.scope_combo.setSizeAdjustPolicy(
@@ -618,17 +658,24 @@ class MainWindow(QMainWindow):
                   self.scope_label, self.scope_combo):
             repo_layout.addWidget(w)
         repo_layout.setStretch(0, 3)
+        self.repo_error = muted()
+        self.repo_error.setProperty("class", "field-error")
+        self.repo_error.setVisible(False)
 
         # --- single-file controls ---
         file_controls = QWidget()
         file_layout = QHBoxLayout(file_controls)
         file_layout.setContentsMargins(0, 0, 0, 0)
         self.file_path_edit = QLineEdit()
+        self.file_path_edit.textChanged.connect(lambda: self._clear_field_error(self.file_path_edit))
         self.file_browse_btn = QPushButton()
         self.file_browse_btn.clicked.connect(self._on_browse_file_clicked)
         file_layout.addWidget(self.file_path_edit)
         file_layout.addWidget(self.file_browse_btn)
         file_layout.setStretch(0, 3)
+        self.file_error = muted()
+        self.file_error.setProperty("class", "field-error")
+        self.file_error.setVisible(False)
 
         self.source_controls_stack = QStackedWidget()
         self.source_controls_stack.addWidget(web_controls)   # index 0
@@ -674,6 +721,14 @@ class MainWindow(QMainWindow):
             combo.setMinimumContentsLength(12)
             combo.currentIndexChanged.connect(self._on_choice_changed)
 
+        # --- advanced controls (hidden by default) ---
+        self.advanced_toggle = QPushButton()
+        self.advanced_toggle.setCheckable(True)
+        self.advanced_toggle.setChecked(False)
+        self.advanced_toggle.clicked.connect(self._on_advanced_toggle)
+        self.advanced_toggle.setSizePolicy(
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+
         self.analyze_btn = QPushButton()
         self.analyze_btn.setDefault(True)
         self.analyze_btn.clicked.connect(self._on_analyze_clicked)
@@ -688,23 +743,35 @@ class MainWindow(QMainWindow):
         # is what stops this row from growing unusable.
         controls.addWidget(self.mode_label)
         controls.addWidget(self.mode_combo)
-        # Stretch 2, not 3: the path field will happily eat the row, and the
-        # first thing to go is the label of the browser switch beside it.
-        # No stretch factor in a flow: the field block asks for a width it can
-        # use, and wraps to its own line when the window is too narrow for the
-        # rest of the row beside it.
-        self.source_controls_stack.setMinimumWidth(280)
+        self.source_controls_stack.setMinimumWidth(200)
+        self.source_controls_stack.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         controls.addWidget(self.source_controls_stack)
-        for w in (self.reader_label, self.reader_combo,
-                  self.checks_label, self.checks_combo,
-                  self.method_label, self.method_combo,
-                  self.provider_label, self.provider_combo,
-                  self.analyze_btn, self.cancel_btn, self.settings_btn):
-            controls.addWidget(w)
-        # Analyze is the one action the toolbar exists for, so it is the only
-        # filled button on it; everything else stays an outline control.
+        # Checks is always visible - it's the primary question
+        controls.addWidget(self.checks_label)
+        controls.addWidget(self.checks_combo)
+        # Advanced toggle shows/hides reader, method, provider
+        controls.addWidget(self.advanced_toggle)
+        controls.addWidget(self.analyze_btn)
+        controls.addWidget(self.cancel_btn)
+        controls.addWidget(self.settings_btn)
         self.analyze_btn.setProperty("class", theme.CLASS_PRIMARY)
         root.addWidget(self.toolbar)
+
+        # Advanced row (hidden by default) - below the main toolbar
+        self.advanced_row = QWidget()
+        self.advanced_row.setProperty("class", theme.CLASS_TOOLBAR)
+        self.advanced_row.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        adv_layout = QHBoxLayout(self.advanced_row)
+        adv_layout.setContentsMargins(gap, 0, gap, gap)
+        adv_layout.setSpacing(self.palette_tokens.space_sm)
+        for w in (self.reader_label, self.reader_combo,
+                  self.method_label, self.method_combo,
+                  self.provider_label, self.provider_combo):
+            adv_layout.addWidget(w)
+        adv_layout.addStretch(1)
+        self.advanced_row.setVisible(False)
+        root.addWidget(self.advanced_row)
 
         # --- three-column body -------------------------------------------------
         self.columns_splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -920,9 +987,10 @@ class MainWindow(QMainWindow):
         self.scope_combo.setToolTip(t(f"scope_{self._repo_scope()}_full", lang))
 
         for name, (button, width) in self.breakpoint_buttons.items():
-            button.setText(t(f"breakpoint_{name}", lang))
+            label = t(f"breakpoint_{name}", lang)
+            button.setText(label)
             button.setToolTip(t("breakpoint_tooltip", lang,
-                                name=t(f"breakpoint_{name}", lang), width=width))
+                                name=label, width=width))
         # Refilled, not just relabelled: the entries themselves are words.
         self._populate_providers()
         self.provider_label.setText(t("provider_label", lang))
@@ -939,6 +1007,9 @@ class MainWindow(QMainWindow):
         self.analyze_btn.setText(t("analyze_button", lang))
         self.cancel_btn.setText(t("cancel_button", lang))
         self.settings_btn.setText(t("settings_button", lang))
+        self.advanced_toggle.setText(
+            t("advanced_hide", lang) if self.advanced_toggle.isChecked()
+            else t("advanced_show", lang))
         self.flagged_header.setText(t("flagged_list_header", lang))
         self.col1_header.setText(t("site_preview_header", lang))
         # The action row is icons, and the words move into the tooltips: six
@@ -1406,12 +1477,38 @@ class MainWindow(QMainWindow):
                 if (s.details or {}).get("source") == "characters"]
 
     def _on_analyze_clicked(self) -> None:
+        # Inline validation before starting
+        if not self._validate_target():
+            return
         self._sync_state_from_ui()
         self._reset_scan_ui()
         self._save_settings_from_combos()
         error = self.view_model.analyze()
         if error and error != "browser_failed":
             QMessageBox.warning(self, "", error)
+
+    def _validate_target(self) -> bool:
+        """Validate the current target field inline. Returns True if valid."""
+        self._clear_all_field_errors()
+        target = self._current_target()
+        if target:
+            return True
+        lang = self.lang
+        if self.app_state.source == SOURCE_REPO:
+            self._show_field_error(self.repo_path_edit,
+                                   t("no_repo_path", lang))
+        elif self.app_state.source == SOURCE_FILE:
+            self._show_field_error(self.file_path_edit,
+                                   t("no_file_path", lang))
+        else:
+            self._show_field_error(self.url_edit,
+                                   t("url_label_full", lang))
+        return False
+
+    def _clear_all_field_errors(self) -> None:
+        """Clear all inline error indicators."""
+        for field in (self.url_edit, self.repo_path_edit, self.file_path_edit):
+            self._clear_field_error(field)
 
     def _sync_state_from_ui(self) -> None:
         """Push current widget values into AppState before an action."""
@@ -2953,8 +3050,11 @@ class MainWindow(QMainWindow):
         btn_row = QHBoxLayout()
         save_btn = QPushButton(t("replace_save", lang))
         save_btn.setProperty("class", theme.CLASS_PRIMARY)
+        save_btn.setToolTip(t("replace_save", lang))
         analyze_btn = QPushButton(t("detail_analyze_button", lang))
+        analyze_btn.setToolTip(t("detail_analyze_tooltip", lang))
         refactor_btn = QPushButton(t("detail_refactor_button", lang))
+        refactor_btn.setToolTip(t("detail_refactor_tooltip", lang))
         ignore_btn = self._build_ignore_button(
             lambda: self._on_ignore_span_clicked(span, block))
         btn_row.addWidget(save_btn)
