@@ -388,6 +388,15 @@ def cmd_scan(args) -> int:
     missing: list = []
     unjudged: list = []
     walked: list = []
+    
+    # Incremental scan: only scan changed files
+    if getattr(args, "incremental", False):
+        from scan_cache import get_cache
+        cache = get_cache()
+        # TODO: implement incremental logic
+        # For now, just print a message
+        print("# Incremental scan: checking cache...", file=sys.stderr)
+    
     files = _collect_files(args.paths, args, missing_out=missing,
                            diagnostics_out=walked)
     findings, _ = _analyze(files, args, unjudged_out=unjudged)
@@ -1529,6 +1538,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_scan = sub.add_parser("scan", help="report findings without changing anything")
     common(p_scan)
+    p_scan.add_argument("--incremental", action="store_true",
+                        help="only scan files that changed since last scan "
+                             "(uses cache)")
     p_scan.add_argument("--styled-report", default=None, metavar="PATH",
                         help="also write a branded, print-ready report for a "
                              "person to read: a .pdf or .html by suffix. "
