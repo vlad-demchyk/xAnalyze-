@@ -527,6 +527,63 @@ def cmd_cache(args) -> int:
     return EXIT_OK
 
 
+def cmd_compare(args) -> int:
+    """Compare different detectors on the same files."""
+    files = _collect_files(args.paths, args)
+    if not files:
+        print("No files found.", file=sys.stderr)
+        return EXIT_ERROR
+    
+    blocks = [b for f in files for b in f.blocks]
+    if not blocks:
+        print("No text blocks found.", file=sys.stderr)
+        return EXIT_ERROR
+    
+    detectors_to_compare = ["offline", "embedding"]
+    results = {}
+    
+    for det_name in detectors_to_compare:
+        try:
+            detector = DetectorFactory.create(det_name)
+            spans = detector.analyze_blocks(blocks)
+            style_spans = [s for s in spans 
+                          if s.confidence != Confidence.LOW
+                          and (s.details or {}).get("source") != "characters"]
+            results[det_name] = {
+                "total": len(style_spans),
+                "scores": [s.score for s in style_spans],
+            }
+        except Exception as e:
+            results[det_name] = {"error": str(e)}
+    
+    if args.json:
+        import json
+        output = {}
+        for name, data in results.items():
+            if "error" in data:
+                output[name] = data
+            else:
+                output[name] = {
+                    "total": data["total"],
+                    "mean_score": sum(data["scores"]) / len(data["scores"]) if data["scores"] else 0,
+                    "max_score": max(data["scores"]) if data["scores"] else 0,
+                }
+        print(json.dumps(output, indent=2))
+    else:
+        print(f"Comparing detectors on {len(blocks)} blocks:")
+        print()
+        for name, data in results.items():
+            if "error" in data:
+                print(f"  {name}: error - {data['error']}")
+            else:
+                mean = sum(data["scores"]) / len(data["scores"]) if data["scores"] else 0
+                max_s = max(data["scores"]) if data["scores"] else 0
+                print(f"  {name}: {data['total']} findings, "
+                      f"mean={mean:.3f}, max={max_s:.3f}")
+    
+    return EXIT_OK
+
+
 def cmd_audit(args) -> int:
     """Audit a URL or a folder across all four categories.
 
@@ -1660,6 +1717,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_cache_path.set_defaults(func=cmd_cache)
     
     p_cache.set_defaults(func=cmd_cache)
+
+    p_compare = sub.add_parser(
+        "compare",
+        help="compare different detectors on the same files")
+    common(p_compare)
+    p_compare.set_defaults(func=cmd_compare)
 
     p_ai = sub.add_parser("ai", help="account and AI-backed operations")
     ai_sub = p_ai.add_subparsers(dest="ai_command", required=True)
