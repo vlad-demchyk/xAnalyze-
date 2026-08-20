@@ -15,8 +15,8 @@ from PySide6.QtWidgets import (
 )
 
 from analysis_modes import (
-    CHECK_ACCESSIBILITY, CHECK_AI_PATTERNS, SOURCE_FILE,
-    SOURCE_REPO, SOURCE_SITE,
+    CHECK_ACCESSIBILITY, CHECK_AI_PATTERNS, METHOD_AI, METHOD_LOCAL,
+    SOURCE_FILE, SOURCE_REPO, SOURCE_SITE,
 )
 from i18n.translations import t
 from ui.design_system import TOKENS as T
@@ -53,6 +53,9 @@ class Sidebar(QWidget):
     target_changed = Signal(str)
     depth_changed = Signal(int)
     checks_changed = Signal(tuple)
+    method_changed = Signal(tuple)
+    settings_clicked = Signal()
+    account_clicked = Signal()
 
     def __init__(self, lang: str = "uk", parent=None):
         super().__init__(parent)
@@ -65,32 +68,24 @@ class Sidebar(QWidget):
         layout.setContentsMargins(T.space_3, T.space_4, T.space_3, T.space_4)
         layout.setSpacing(T.space_2)
 
-        # -- Logo area --
         self._add_header(layout)
-
-        # -- Source selection --
         self._add_section_title(layout, t("mode_label", lang))
         self._add_source_buttons(layout)
-
-        layout.addSpacing(T.space_4)
-
-        # -- Target input --
+        layout.addSpacing(T.space_3)
         self._add_target_input(layout)
-
-        layout.addSpacing(T.space_4)
-
-        # -- Filters --
+        layout.addSpacing(T.space_3)
         self._add_section_title(layout, t("checks_label", lang))
         self._add_check_filters(layout)
-
         layout.addSpacing(T.space_2)
-
-        # -- Depth (for web) --
+        self._add_section_title(layout, t("method_label", lang))
+        self._add_method_selection(layout)
+        layout.addSpacing(T.space_2)
         self._add_depth_control(layout)
-
         layout.addStretch(1)
-
-        # -- Analyze button --
+        self._add_account_info(layout)
+        layout.addSpacing(T.space_2)
+        self._add_settings_button(layout)
+        layout.addSpacing(T.space_3)
         self._add_analyze_button(layout)
 
     def _add_header(self, layout: QVBoxLayout):
@@ -114,6 +109,27 @@ class Sidebar(QWidget):
         ]
         for source, label in sources:
             btn = SourceButton(label, source)
+            btn.setFixedHeight(32)
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: transparent;
+                    border: none;
+                    border-radius: {T.radius_md}px;
+                    padding: 0 {T.space_3}px;
+                    color: {T.text_secondary};
+                    font-size: {T.font_size_sm}px;
+                    text-align: left;
+                }}
+                QPushButton:hover {{
+                    background-color: {T.bg_hover};
+                    color: {T.text_primary};
+                }}
+                QPushButton:checked {{
+                    background-color: {T.accent_muted};
+                    color: {T.accent};
+                    font-weight: 500;
+                }}
+            """)
             btn.clicked.connect(lambda checked, s=source: self._on_source_clicked(s))
             self.source_buttons[source] = btn
             layout.addWidget(btn)
@@ -123,41 +139,70 @@ class Sidebar(QWidget):
         # URL input (for site)
         self.url_input = QLineEdit()
         self.url_input.setPlaceholderText(t("url_placeholder", self.lang))
-        self.url_input.setProperty("class", "search")
+        self.url_input.setFixedHeight(34)
+        self.url_input.setStyleSheet(f"""
+            QLineEdit {{
+                background-color: {T.bg_input};
+                border: 1px solid {T.border_default};
+                border-radius: {T.radius_md}px;
+                padding: 0 {T.space_3}px;
+                color: {T.text_primary};
+                font-size: {T.font_size_sm}px;
+            }}
+            QLineEdit:focus {{
+                border-color: {T.accent};
+            }}
+        """)
         self.url_input.returnPressed.connect(self.analyze_clicked)
         layout.addWidget(self.url_input)
 
-        # Repo path input (for repo) - with browse button
+        # Repo path (for repo) - input + browse
         self.repo_container = QWidget()
         repo_layout = QHBoxLayout(self.repo_container)
         repo_layout.setContentsMargins(0, 0, 0, 0)
         repo_layout.setSpacing(T.space_2)
         self.repo_input = QLineEdit()
-        self.repo_input.setPlaceholderText(t("repo_path_placeholder", self.lang))
-        self.repo_input.setProperty("class", "search")
+        self.repo_input.setPlaceholderText("Path to folder...")
+        self.repo_input.setFixedHeight(34)
+        self.repo_input.setStyleSheet(self.url_input.styleSheet())
         repo_layout.addWidget(self.repo_input, stretch=1)
-        self.repo_browse = QPushButton("...")
-        self.repo_browse.setFixedSize(36, 36)
-        self.repo_browse.setToolTip("Browse for folder")
+        self.repo_browse = QPushButton("Browse")
+        self.repo_browse.setFixedHeight(34)
         self.repo_browse.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.repo_browse.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {T.bg_elevated};
+                border: 1px solid {T.border_default};
+                border-radius: {T.radius_md}px;
+                padding: 0 {T.space_3}px;
+                color: {T.text_secondary};
+                font-size: {T.font_size_sm}px;
+            }}
+            QPushButton:hover {{
+                background-color: {T.bg_hover};
+                border-color: {T.text_secondary};
+                color: {T.text_primary};
+            }}
+        """)
         self.repo_browse.clicked.connect(self._browse_folder)
         repo_layout.addWidget(self.repo_browse)
         self.repo_container.setVisible(False)
         layout.addWidget(self.repo_container)
 
-        # File path input (for file) - with browse button
+        # File path (for file) - input + browse
         self.file_container = QWidget()
         file_layout = QHBoxLayout(self.file_container)
         file_layout.setContentsMargins(0, 0, 0, 0)
         file_layout.setSpacing(T.space_2)
         self.file_input = QLineEdit()
-        self.file_input.setPlaceholderText(t("file_path_placeholder", self.lang))
-        self.file_input.setProperty("class", "search")
+        self.file_input.setPlaceholderText("Path to HTML file...")
+        self.file_input.setFixedHeight(34)
+        self.file_input.setStyleSheet(self.url_input.styleSheet())
         file_layout.addWidget(self.file_input, stretch=1)
-        self.file_browse = QPushButton("...")
-        self.file_browse.setFixedSize(36, 36)
-        self.file_browse.setToolTip("Browse for HTML file")
+        self.file_browse = QPushButton("Browse")
+        self.file_browse.setFixedHeight(34)
         self.file_browse.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.file_browse.setStyleSheet(self.repo_browse.styleSheet())
         self.file_browse.clicked.connect(self._browse_file)
         file_layout.addWidget(self.file_browse)
         self.file_container.setVisible(False)
@@ -188,6 +233,27 @@ class Sidebar(QWidget):
         for check, label in checks:
             chip = FilterChip(label, check)
             chip.setChecked(True)
+            chip.setFixedHeight(28)
+            chip.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {T.bg_elevated};
+                    border: 1px solid {T.border_default};
+                    border-radius: {T.radius_sm}px;
+                    padding: 0 {T.space_2}px;
+                    color: {T.text_secondary};
+                    font-size: {T.font_size_xs}px;
+                }}
+                QPushButton:hover {{
+                    background-color: {T.bg_hover};
+                    border-color: {T.text_secondary};
+                    color: {T.text_primary};
+                }}
+                QPushButton:checked {{
+                    background-color: {T.accent_muted};
+                    border-color: {T.accent};
+                    color: {T.accent};
+                }}
+            """)
             chip.toggled.connect(self._on_check_toggled)
             self.check_chips[check] = chip
             row_layout.addWidget(chip)
@@ -201,28 +267,168 @@ class Sidebar(QWidget):
         depth_layout.setSpacing(T.space_2)
 
         label = QLabel(t("depth_label", self.lang))
-        label.setProperty("class", "muted")
+        label.setStyleSheet(f"color: {T.text_secondary}; font-size: {T.font_size_sm}px;")
         depth_layout.addWidget(label)
 
         self.depth_spin = QSpinBox()
         self.depth_spin.setRange(0, 5)
         self.depth_spin.setValue(1)
-        self.depth_spin.setFixedWidth(60)
+        self.depth_spin.setFixedSize(56, 28)
+        self.depth_spin.setStyleSheet(f"""
+            QSpinBox {{
+                background-color: {T.bg_input};
+                border: 1px solid {T.border_default};
+                border-radius: {T.radius_sm}px;
+                padding: 0 {T.space_2}px;
+                color: {T.text_primary};
+                font-size: {T.font_size_sm}px;
+            }}
+            QSpinBox:focus {{
+                border-color: {T.accent};
+            }}
+        """)
         depth_layout.addWidget(self.depth_spin)
         depth_layout.addStretch(1)
 
         layout.addWidget(self.depth_container)
 
+    def _add_method_selection(self, layout: QVBoxLayout):
+        self.method_chips: dict[str, FilterChip] = {}
+        methods = [
+            (METHOD_LOCAL, t("method_local", self.lang)),
+            (METHOD_AI, t("method_ai", self.lang)),
+        ]
+        row = QWidget()
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(T.space_2)
+        for method, label in methods:
+            chip = FilterChip(label, method)
+            chip.setFixedHeight(28)
+            chip.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {T.bg_elevated};
+                    border: 1px solid {T.border_default};
+                    border-radius: {T.radius_sm}px;
+                    padding: 0 {T.space_2}px;
+                    color: {T.text_secondary};
+                    font-size: {T.font_size_xs}px;
+                }}
+                QPushButton:hover {{
+                    background-color: {T.bg_hover};
+                    border-color: {T.text_secondary};
+                    color: {T.text_primary};
+                }}
+                QPushButton:checked {{
+                    background-color: {T.accent_muted};
+                    border-color: {T.accent};
+                    color: {T.accent};
+                }}
+            """)
+            chip.toggled.connect(self._on_method_toggled)
+            self.method_chips[method] = chip
+            row_layout.addWidget(chip)
+        # Local is default
+        self.method_chips[METHOD_LOCAL].setChecked(True)
+        row_layout.addStretch(1)
+        layout.addWidget(row)
+
+    def _add_account_info(self, layout: QVBoxLayout):
+        self.account_widget = QWidget()
+        account_layout = QHBoxLayout(self.account_widget)
+        account_layout.setContentsMargins(0, 0, 0, 0)
+        account_layout.setSpacing(T.space_2)
+
+        self.account_label = QLabel("Not signed in")
+        self.account_label.setStyleSheet(f"""
+            QLabel {{
+                color: {T.text_disabled};
+                font-size: {T.font_size_xs}px;
+            }}
+        """)
+        account_layout.addWidget(self.account_label, stretch=1)
+
+        self.account_btn = QPushButton("Sign in")
+        self.account_btn.setFixedHeight(24)
+        self.account_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.account_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                border: none;
+                color: {T.accent};
+                font-size: {T.font_size_xs}px;
+            }}
+            QPushButton:hover {{
+                text-decoration: underline;
+            }}
+        """)
+        self.account_btn.clicked.connect(self.account_clicked)
+        account_layout.addWidget(self.account_btn)
+        layout.addWidget(self.account_widget)
+
+    def _add_settings_button(self, layout: QVBoxLayout):
+        self.settings_btn = QPushButton(t("settings_button", self.lang))
+        self.settings_btn.setFixedHeight(32)
+        self.settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.settings_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                border: 1px solid {T.border_default};
+                border-radius: {T.radius_md}px;
+                color: {T.text_secondary};
+                font-size: {T.font_size_sm}px;
+            }}
+            QPushButton:hover {{
+                background-color: {T.bg_hover};
+                border-color: {T.text_secondary};
+                color: {T.text_primary};
+            }}
+        """)
+        self.settings_btn.clicked.connect(self.settings_clicked)
+        layout.addWidget(self.settings_btn)
+
     def _add_analyze_button(self, layout: QVBoxLayout):
         self.analyze_btn = QPushButton(t("analyze_button", self.lang))
-        self.analyze_btn.setProperty("class", "primary")
+        self.analyze_btn.setFixedHeight(36)
+        self.analyze_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.analyze_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {T.accent_emphasis};
+                border: none;
+                border-radius: {T.radius_md}px;
+                color: #ffffff;
+                font-weight: 600;
+                font-size: {T.font_size_sm}px;
+            }}
+            QPushButton:hover {{
+                background-color: {T.accent};
+            }}
+            QPushButton:disabled {{
+                background-color: {T.bg_active};
+                color: {T.text_disabled};
+            }}
+        """)
         self.analyze_btn.setDefault(True)
         self.analyze_btn.clicked.connect(self.analyze_clicked)
-        self.analyze_btn.setFixedHeight(40)
         layout.addWidget(self.analyze_btn)
 
         self.cancel_btn = QPushButton(t("cancel_button", self.lang))
-        self.cancel_btn.setProperty("class", "ghost")
+        self.cancel_btn.setFixedHeight(36)
+        self.cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.cancel_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                border: 1px solid {T.border_default};
+                border-radius: {T.radius_md}px;
+                color: {T.text_secondary};
+                font-size: {T.font_size_sm}px;
+            }}
+            QPushButton:hover {{
+                background-color: {T.bg_hover};
+                border-color: {T.text_secondary};
+                color: {T.text_primary};
+            }}
+        """)
         self.cancel_btn.setVisible(False)
         self.cancel_btn.clicked.connect(self.cancel_clicked)
         layout.addWidget(self.cancel_btn)
@@ -245,6 +451,12 @@ class Sidebar(QWidget):
         )
         self.checks_changed.emit(checks)
 
+    def _on_method_toggled(self, _checked: bool):
+        methods = tuple(
+            method for method, chip in self.method_chips.items() if chip.isChecked()
+        )
+        self.method_changed.emit(methods)
+
     def get_source(self) -> str:
         for source, btn in self.source_buttons.items():
             if btn.isChecked():
@@ -265,6 +477,11 @@ class Sidebar(QWidget):
     def get_checks(self) -> tuple[str, ...]:
         return tuple(
             check for check, chip in self.check_chips.items() if chip.isChecked()
+        )
+
+    def get_methods(self) -> tuple[str, ...]:
+        return tuple(
+            method for method, chip in self.method_chips.items() if chip.isChecked()
         )
 
     def set_busy(self, busy: bool):

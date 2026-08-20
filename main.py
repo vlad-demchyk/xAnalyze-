@@ -15,6 +15,8 @@ from PySide6.QtWidgets import (
 
 import config
 import detectors  # noqa: F401 - registers detectors
+from detectors.factory import DetectorFactory
+from detectors.judges import judge_for_provider
 from ui.design_system import TOKENS as T
 from ui.modern_theme import build_modern_qss
 from ui.sidebar import Sidebar
@@ -351,6 +353,7 @@ class MainWindow(QMainWindow):
         self.sidebar.analyze_clicked.connect(self._on_analyze)
         self.sidebar.cancel_clicked.connect(self._on_cancel)
         self.sidebar.settings_clicked.connect(self._on_settings)
+        self.sidebar.account_clicked.connect(self._on_account)
         root.addWidget(self.sidebar)
 
         sep = QFrame()
@@ -424,10 +427,22 @@ class MainWindow(QMainWindow):
         self.sidebar.set_busy(True)
         self.status_label.setText(f"Analyzing: {target}...")
 
+        # Determine detector from method selection
+        methods = self.sidebar.get_methods()
+        if "ai" in methods and "local" in methods:
+            detector_name = "hybrid"
+        elif "ai" in methods:
+            provider = self.settings.llm_provider
+            detector_name = judge_for_provider(provider)
+        else:
+            detector_name = "offline"
+
+        detector_config = self._detector_config(detector_name)
+
         if source == "repo":
             self.worker = RepoAnalysisWorker(
                 files=None, root_dir=target, ignore_patterns=[],
-                detector_name="offline", detector_config={},
+                detector_name=detector_name, detector_config=detector_config,
                 unicode_categories=None, scope="both",
                 settings=self.settings,
             )
@@ -439,7 +454,7 @@ class MainWindow(QMainWindow):
             self.worker = AnalysisWorker(
                 pages=None, root_url=url,
                 depth=self.sidebar.get_depth(),
-                detector_name="offline", detector_config={},
+                detector_name=detector_name, detector_config=detector_config,
                 max_pages=self.settings.max_pages,
                 unicode_categories=None, settings=self.settings,
             )
@@ -455,12 +470,47 @@ class MainWindow(QMainWindow):
                 lambda name: self.status_label.setText(f"Detecting: {name}"))
         self.worker.start()
 
+    def _detector_config(self, detector_name: str) -> dict:
+        resolved = DetectorFactory.resolve(detector_name)
+        if resolved == "hybrid":
+            judge = judge_for_provider(self.settings.llm_provider)
+            return {
+                "categories": (),
+                "judge_name": judge,
+                "judge_config": self._detector_config(judge),
+            }
+        if resolved in ("claude-llm-judge", "claude-official-watermark"):
+            return {"api_key": config.get_anthropic_api_key(), "model": self.settings.claude_model}
+        if resolved == "xformat-llm-judge":
+            return {"base_url": self.settings.xformat_base_url, "endpoints": self.settings.xformat_endpoints}
+        return {}
+
     def _on_cancel(self):
         if self.worker:
             self.worker.requestInterruption()
 
     def _on_settings(self):
-        self.status_label.setText("Settings - TODO")
+        from PySide6.QtWidgets import QDialog
+        from ui.settings_dialog import SettingsDialog
+        dlg = SettingsDialog(self.settings, "uk", parent=self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self.settings = config.Settings.load()
+            self.status_label.setText("Settings updated")
+
+    def _on_account(self):
+        from PySide6.QtWidgets import QDialog
+        from ui.sign_in_dialog import SignInDialog
+        from llm.base import LLMProviderFactory
+        provider = LLMProviderFactory.create(
+            "xformat",
+            base_url=self.settings.xformat_base_url,
+            endpoints=self.settings.xformat_endpoints or {},
+        )
+        dlg = SignInDialog(provider, "uk", parent=self)
+        if dlg.exec() == QDialog.DialogCode.Accepted and dlg.status:
+            self.sidebar.account_label.setText(dlg.status.detail)
+            self.sidebar.account_btn.setText("Sign out")
+            self.status_label.setText(f"Signed in: {dlg.status.detail}")
 
     def _on_web_finished(self, result):
         for span in result.spans:
