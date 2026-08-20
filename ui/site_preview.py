@@ -11,13 +11,33 @@ from __future__ import annotations
 
 import json
 
-_HIGHLIGHT_CSS = (
-    ".__ai_scanner_highlight { outline: 3px solid #ff4444 !important; "
-    "background: rgba(255,68,68,0.25) !important; }"
-)
+#: The default when a caller doesn't pass the design system's own colour
+#: (see `build_highlight_js`'s `color` argument) - close in spirit to
+#: `Palette.error`'s default, so the outline still reads as the same red the
+#: findings list and the code preview use for "found here".
+_DEFAULT_HIGHLIGHT_COLOR = "#e5484d"
 
 
-def build_highlight_js(dom_path: str, opening_tag: str = "") -> str:
+def _highlight_css(color: str) -> str:
+    # rgba(), not color-mix(): the outline colour is whatever hex the caller
+    # hands in, and computing the translucent fill in Python rather than
+    # asking the embedded Chromium to do it keeps this working on whatever
+    # QtWebEngine version happens to be installed.
+    text = color.lstrip("#")
+    if len(text) == 3:
+        text = "".join(ch * 2 for ch in text)
+    try:
+        r, g, b = (int(text[i:i + 2], 16) for i in (0, 2, 4))
+    except ValueError:
+        r, g, b = (229, 72, 77)  # the same fallback as _DEFAULT_HIGHLIGHT_COLOR
+    return (
+        f".__ai_scanner_highlight {{ outline: 3px solid {color} !important; "
+        f"background: rgba({r},{g},{b},0.25) !important; }}"
+    )
+
+
+def build_highlight_js(dom_path: str, opening_tag: str = "",
+                       color: str = _DEFAULT_HIGHLIGHT_COLOR) -> str:
     """Highlight and scroll to one element.
 
     `opening_tag` is a fallback for the case the selector misses. It does miss:
@@ -29,7 +49,7 @@ def build_highlight_js(dom_path: str, opening_tag: str = "") -> str:
     """
     selector_json = json.dumps(dom_path)
     opening_json = json.dumps(opening_tag or "")
-    css_json = json.dumps(_HIGHLIGHT_CSS)
+    css_json = json.dumps(_highlight_css(color))
     return f"""
 (function() {{
     // Runs against whatever is currently loaded in the preview, which may
@@ -53,6 +73,12 @@ def build_highlight_js(dom_path: str, opening_tag: str = "") -> str:
     }} catch (e) {{ /* not a selector this document understands */ }}
     if (!el) {{
         var opening = {opening_json};
+        // Only the opening tag is compared, not the whole snippet: snippets
+        // are truncated for the list ("<div class=\"a\">…</div>"), so a
+        // whole-snippet prefix test failed for exactly the long elements
+        // that needed the fallback most.
+        var cut = opening.indexOf('>');
+        if (cut !== -1) {{ opening = opening.slice(0, cut + 1); }}
         if (opening) {{
             var name = (opening.match(/^<([a-zA-Z][\w:-]*)/) || [])[1];
             if (name) {{

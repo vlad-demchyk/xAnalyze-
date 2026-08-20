@@ -62,14 +62,22 @@ class Choices(unittest.TestCase):
         self.assertEqual(set(window.current_request().checks),
                          {CHECK_ACCESSIBILITY, CHECK_AI_PATTERNS})
 
-    def test_the_detector_is_offered_whenever_copy_is_judged(self):
+    def test_the_account_is_offered_when_a_model_judges_copy(self):
+        """Two conditions, not one. The combo beside the method used to name
+        a detector class and appeared for every copy run; it names the
+        account now, and an offline-only run has no account question. Which
+        engine judges the copy is the method's answer - see
+        `test_method_reaches_the_run.py`."""
+        self.window._ai_available = lambda: True
+        self.window._retranslate_choices()
         self._select_raw(self.window.mode_combo, SOURCE_SITE)
         self._select(self.window.checks_combo, (CHECK_ACCESSIBILITY, CHECK_AI_PATTERNS))
-        self.assertFalse(self.window.detector_combo.isHidden())
-        # The regression this replaces: choosing an audit hid the detector, so
-        # a run that also judged copy had no way to say which engine did it.
+        self._select(self.window.method_combo, (METHOD_LOCAL, METHOD_AI))
+        self.assertFalse(self.window.provider_combo.isHidden())
+        # The regression this replaces: choosing an audit hid the control, so
+        # a run that also judged copy had no way to say who judged it.
         self._select(self.window.checks_combo, (CHECK_ACCESSIBILITY,))
-        self.assertTrue(self.window.detector_combo.isHidden())
+        self.assertTrue(self.window.provider_combo.isHidden())
 
     def test_a_copy_row_is_never_tagged_as_an_audit_row(self):
         self._select_raw(self.window.mode_combo, SOURCE_SITE)

@@ -11,18 +11,39 @@ import json
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QGroupBox, QHBoxLayout,
-    QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton, QSpinBox,
-    QTabWidget, QVBoxLayout, QWidget,
+    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QFrame, QGroupBox,
+    QHBoxLayout, QLabel, QLineEdit, QListWidget, QMessageBox, QPlainTextEdit, QPushButton,
+    QScrollArea, QSpinBox, QTabWidget, QVBoxLayout, QWidget,
 )
 
+import cli_install
 import config
+import suppression
 from i18n.translations import LANGUAGES, t
 from llm import credentials
 from llm.base import LLMAuthError, LLMProviderFactory, LLMUnavailable
+from ui import theme
 
 PROVIDER_ANTHROPIC = "anthropic"
 PROVIDER_XFORMAT = "xformat"
+
+# The suppression tab is not routed through `i18n.translations.t()`: that
+# module belongs to another agent while this feature is being built, and a
+# key with no translation entry would show the raw key on screen. Plain
+# English labels here, same rule `main_window._IGNORE_FINDING_LABEL` follows.
+_SUPPRESSION_LEVELS = (
+    ("fingerprints", "Exact findings",
+     "One exact finding, dismissed once — survives a re-scan, nothing else."),
+    ("phrases", "Phrases",
+     "A word or phrase never flagged again, anywhere."),
+    ("rules", "Rules",
+     "A whole check switched off — a style signal, a character category, "
+     "or an accessibility rule id."),
+    ("paths", "Paths",
+     "A file or URL pattern excluded from analysis entirely."),
+    ("selectors", "Selectors",
+     "A part of the page excluded — a CSS selector."),
+)
 
 
 class SettingsDialog(QDialog):
@@ -31,6 +52,10 @@ class SettingsDialog(QDialog):
         self.settings = settings
         self.lang = lang
         self._xformat_provider = None
+        # Used for the handful of things QSS class selectors don't reach
+        # here: the status colours (success/error are semantic, not literal
+        # hex codes chosen to match one theme) and one indent.
+        self._palette = theme.current_palette(settings.theme)
 
         self.setWindowTitle(t("settings_title", lang))
         self.resize(600, 520)
@@ -40,6 +65,7 @@ class SettingsDialog(QDialog):
         tabs.addTab(self._build_general_tab(), t("settings_tab_general", lang))
         tabs.addTab(self._build_unicode_tab(), t("settings_tab_unicode", lang))
         tabs.addTab(self._build_provider_tab(), t("settings_tab_provider", lang))
+        tabs.addTab(self._build_suppression_tab(), "Suppression")
         tabs.addTab(self._build_advanced_tab(), t("settings_tab_advanced", lang))
         layout.addWidget(tabs)
 
@@ -108,7 +134,7 @@ class SettingsDialog(QDialog):
 
         note = QLabel(t("settings_unicode_note", self.lang))
         note.setWordWrap(True)
-        note.setStyleSheet("color:#888;")
+        note.setProperty("class", theme.CLASS_MUTED)
         layout.addWidget(note)
 
         active = set(self.settings.unicode_categories or [])
@@ -123,7 +149,8 @@ class SettingsDialog(QDialog):
             if key == "typography":
                 sub = QLabel(t("settings_cat_typography_note", self.lang))
                 sub.setWordWrap(True)
-                sub.setStyleSheet("color:#888; font-size: 11px; margin-left: 20px;")
+                sub.setProperty("class", theme.CLASS_MUTED)
+                sub.setStyleSheet(f"margin-left: {self._palette.space_lg + self._palette.space_sm}px;")
                 group_layout.addWidget(sub)
         layout.addWidget(group)
 
@@ -154,7 +181,7 @@ class SettingsDialog(QDialog):
 
         note = QLabel(t("settings_provider_note", self.lang))
         note.setWordWrap(True)
-        note.setStyleSheet("color:#888;")
+        note.setProperty("class", theme.CLASS_MUTED)
         layout.addWidget(note)
 
         # --- Anthropic group ---
@@ -204,19 +231,163 @@ class SettingsDialog(QDialog):
             else t("settings_storage_file", self.lang)
         )
         self.storage_label.setWordWrap(True)
-        self.storage_label.setStyleSheet("color:#888; font-size: 11px;")
+        self.storage_label.setProperty("class", theme.CLASS_MUTED)
         x_layout.addWidget(self.storage_label)
 
         layout.addWidget(self.xformat_group)
         layout.addStretch(1)
         return w
 
+    def _build_suppression_tab(self) -> QWidget:
+        """What is already being ignored, by level, with a way to undo it.
+
+        Edits only the personal list (`Settings.ignore`) — the project's own
+        `.xanalyze-ignore` is a file meant to be committed and reviewed like
+        any other, not rewritten from a settings dialog on someone's machine.
+        It is still shown, read-only, so "what is suppressed" is one honest
+        answer instead of half of it.
+        """
+        # Five list-plus-add-row groups, one per level, add up to well over
+        # this dialog's usual height - every other tab fits inside the
+        # window's original 520px and this one blew straight past it, which
+        # made switching to this tab visibly resize the whole dialog. Scrolled
+        # rather than shrunk: every level is still worth seeing at a glance,
+        # just not all five glued together outside a scroll area.
+        outer = QWidget()
+        outer_layout = QVBoxLayout(outer)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        outer_layout.addWidget(scroll)
+
+        w = QWidget()
+        scroll.setWidget(w)
+        layout = QVBoxLayout(w)
+        note = QLabel(
+            "Findings you've already decided about. Personal entries apply "
+            "to every project; remove one to see that finding again on the "
+            "next scan."
+        )
+        note.setWordWrap(True)
+        note.setProperty("class", theme.CLASS_MUTED)
+        layout.addWidget(note)
+
+        own = suppression.Suppressions.from_dict(self.settings.ignore)
+        self._suppression_lists: dict[str, QListWidget] = {}
+        for key, title, hint in _SUPPRESSION_LEVELS:
+            group = QGroupBox(title)
+            group.setToolTip(hint)
+            group_layout = QVBoxLayout(group)
+
+            listbox = QListWidget()
+            listbox.addItems(getattr(own, key))
+            listbox.setMaximumHeight(90)
+            self._suppression_lists[key] = listbox
+            group_layout.addWidget(listbox)
+
+            row = QHBoxLayout()
+            entry = QComboBox() if key == "rules" else QLineEdit()
+            if isinstance(entry, QComboBox):
+                entry.setEditable(True)
+                for category, ids in suppression.known_rule_ids().items():
+                    for rule_id in ids:
+                        entry.addItem(f"{rule_id}  ({category})", userData=rule_id)
+                entry.setCurrentIndex(-1)
+                entry.lineEdit().setPlaceholderText("rule id")
+            else:
+                entry.setPlaceholderText("add…")
+            add_btn = QPushButton("Add")
+            remove_btn = QPushButton("Remove selected")
+            row.addWidget(entry, stretch=1)
+            row.addWidget(add_btn)
+            row.addWidget(remove_btn)
+            group_layout.addLayout(row)
+
+            def make_add(listbox=listbox, entry=entry):
+                def add() -> None:
+                    if isinstance(entry, QComboBox):
+                        value = (entry.currentData() or entry.currentText()).strip()
+                    else:
+                        value = entry.text().strip()
+                    if not value:
+                        return
+                    existing = [listbox.item(i).text() for i in range(listbox.count())]
+                    if value not in existing:
+                        listbox.addItem(value)
+                    if isinstance(entry, QComboBox):
+                        entry.setCurrentIndex(-1)
+                        entry.clearEditText()
+                    else:
+                        entry.clear()
+                return add
+
+            def make_remove(listbox=listbox):
+                def remove() -> None:
+                    for item in listbox.selectedItems():
+                        listbox.takeItem(listbox.row(item))
+                return remove
+
+            add_btn.clicked.connect(make_add())
+            remove_btn.clicked.connect(make_remove())
+            layout.addWidget(group)
+
+        layout.addWidget(self._build_project_suppression_view())
+        layout.addStretch(1)
+        return outer
+
+    def _project_ignore_root(self) -> str | None:
+        """The folder whose `.xanalyze-ignore` is worth showing, if the
+        window this dialog was opened from has one at the moment."""
+        window = self.parent()
+        for attr in ("repo_path_edit", "file_path_edit"):
+            edit = getattr(window, attr, None)
+            if edit is not None and edit.text().strip():
+                return edit.text().strip()
+        return None
+
+    def _build_project_suppression_view(self) -> QWidget:
+        from pathlib import Path
+
+        group = QGroupBox("Project (.xanalyze-ignore) — read-only here")
+        layout = QVBoxLayout(group)
+        root = self._project_ignore_root()
+        path = None
+        if root:
+            candidate = Path(root)
+            if candidate.is_file():
+                candidate = candidate.parent
+            candidate = candidate / suppression.IGNORE_FILENAME
+            if candidate.is_file():
+                path = candidate
+
+        if path is None:
+            label = QLabel(
+                "No .xanalyze-ignore file for the current source, or none "
+                "chosen yet."
+            )
+            label.setWordWrap(True)
+            label.setProperty("class", theme.CLASS_MUTED)
+            layout.addWidget(label)
+            return group
+
+        project = suppression.Suppressions.parse(path.read_text(encoding="utf-8"))
+        summary = ", ".join(
+            f"{title.lower()}: {len(getattr(project, key))}"
+            for key, title, _hint in _SUPPRESSION_LEVELS
+            if getattr(project, key)
+        ) or "empty"
+        label = QLabel(f"{path}\n{summary}")
+        label.setWordWrap(True)
+        layout.addWidget(label)
+        return group
+
     def _build_advanced_tab(self) -> QWidget:
         w = QWidget()
         layout = QVBoxLayout(w)
         note = QLabel(t("settings_endpoints_note", self.lang))
         note.setWordWrap(True)
-        note.setStyleSheet("color:#888;")
+        note.setProperty("class", theme.CLASS_MUTED)
         layout.addWidget(note)
 
         self.endpoints_edit = QPlainTextEdit()
@@ -231,6 +402,22 @@ class SettingsDialog(QDialog):
         defaults_btn = QPushButton(t("settings_show_defaults", self.lang))
         defaults_btn.clicked.connect(self._show_endpoint_defaults)
         layout.addWidget(defaults_btn)
+
+        # Plain English, not routed through `i18n.translations.t()` — same
+        # rule the Suppression tab follows above: this is a small, technical,
+        # macOS-only action, not part of the shared vocabulary.
+        cli_group = QGroupBox("Command line")
+        cli_layout = QVBoxLayout(cli_group)
+        self.cli_status_label = QLabel()
+        self.cli_status_label.setWordWrap(True)
+        self.cli_status_label.setProperty("class", theme.CLASS_MUTED)
+        cli_layout.addWidget(self.cli_status_label)
+        self.cli_install_btn = QPushButton()
+        self.cli_install_btn.clicked.connect(self._on_cli_install_clicked)
+        cli_layout.addWidget(self.cli_install_btn)
+        layout.addWidget(cli_group)
+        self._refresh_cli_status()
+
         return w
 
     # ---------------------------------------------------------- behaviour
@@ -287,7 +474,9 @@ class SettingsDialog(QDialog):
 
     def _set_status(self, text: str, ok: bool) -> None:
         self.status_label.setText(text)
-        self.status_label.setStyleSheet("color: #2e7d32;" if ok else "color: #c62828;")
+        self.status_label.setStyleSheet(
+            f"color: {self._palette.success_text};" if ok
+            else f"color: {self._palette.error_text};")
 
     def _parse_endpoints(self, silent: bool = False) -> dict:
         raw = self.endpoints_edit.toPlainText().strip()
@@ -310,6 +499,45 @@ class SettingsDialog(QDialog):
             self, "", json.dumps(asdict(XFormatEndpoints()), indent=2, ensure_ascii=False)
         )
 
+    def _refresh_cli_status(self) -> None:
+        """Reflects reality rather than assuming it: re-reads the actual
+        symlink state every time, so a change made from a terminal (or a
+        previous install this same session) is never shown stale."""
+        bundled = cli_install.bundled_cli_path()
+        if bundled is None:
+            self.cli_status_label.setText(
+                "Only available in the packaged macOS app, not this development run.")
+            self.cli_install_btn.setEnabled(False)
+            self.cli_install_btn.setText("Install 'xanalyze' command")
+            return
+
+        self.cli_install_btn.setEnabled(True)
+        target = cli_install.installed_target()
+        if target is None:
+            self.cli_status_label.setText(
+                "Not installed. Adds 'xanalyze' to your PATH, so you can run scans "
+                "and audits from a terminal without opening this window.")
+            self.cli_install_btn.setText("Install 'xanalyze' command")
+            return
+
+        path_note = "" if cli_install.is_dir_on_path(cli_install.USER_BIN_DIR) else (
+            f" Note: {cli_install.USER_BIN_DIR} does not appear to be on your PATH — "
+            "add it in your shell's startup file to use the command.")
+        self.cli_status_label.setText(
+            f"Installed at {cli_install.USER_BIN_DIR / cli_install.CLI_NAME}.{path_note}")
+        self.cli_install_btn.setText("Remove 'xanalyze' command")
+
+    def _on_cli_install_clicked(self) -> None:
+        try:
+            if cli_install.installed_target() is not None:
+                cli_install.uninstall()
+            else:
+                cli_install.install()
+        except cli_install.CliInstallError as exc:
+            QMessageBox.warning(self, "", str(exc))
+            return
+        self._refresh_cli_status()
+
     def _on_accept(self) -> None:
         raw = self.endpoints_edit.toPlainText().strip()
         if raw:
@@ -331,6 +559,11 @@ class SettingsDialog(QDialog):
         self.settings.unicode_categories = [
             key for key, box in self.category_boxes.items() if box.isChecked()
         ]
+        self.settings.ignore = {
+            key: [listbox.item(i).text() for i in range(listbox.count())]
+            for key, listbox in self._suppression_lists.items()
+        }
+
         self.settings.llm_provider = self.provider_combo.currentData()
         self.settings.claude_model = self.model_edit.text().strip() or self.settings.claude_model
         self.settings.xformat_base_url = self.xformat_url_edit.text().strip() or self.settings.xformat_base_url

@@ -13,7 +13,8 @@ from ui.main_window import MainWindow
 
 def main() -> int:
     app = QApplication(sys.argv)
-    app.setApplicationName("AI Content Scanner")
+    app.setApplicationName("XAnalyze")
+    app.setOrganizationName("xFormat")
 
     # Styled before the window is built, so every widget is created with the
     # palette already in place — applying it afterwards makes the window

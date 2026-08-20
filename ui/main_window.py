@@ -19,6 +19,20 @@ import suppression
 import unicode_rules
 from audit import explanations as audit_explanations
 from detectors.factory import DetectorFactory
+from detectors.judges import PROVIDER_ORDER, judge_for_provider
+
+
+def responsive_breakpoints():
+    """The widths the audit runs at, imported lazily.
+
+    Through a function rather than a module-level import because
+    `audit.responsive` pulls in the driver, and the window must stay
+    constructible on a machine where QtWebEngine is missing - the browser
+    pass refuses itself with a sentence there, and a failed import at the
+    top of this file would instead take the whole window down.
+    """
+    from audit.responsive import BREAKPOINTS
+    return BREAKPOINTS
 from file_writer import apply_replacements, build_plans
 from analysis_modes import (
     CHECKS, CHECK_ACCESSIBILITY, CHECK_AI_PATTERNS, METHOD_AI, METHOD_LOCAL,
@@ -47,10 +61,42 @@ from ui.worker import (
 # third column into an inline panel that expands under the clicked list row.
 WIDE_BREAKPOINT = 1000
 
+# Below this narrower width, the preview column (site render or source code)
+# gives way too, leaving only the findings list. Two breakpoints rather than
+# one: a single cutoff made the window jump from three columns straight to a
+# squeezed two, since a column that "stays visible" but no longer fits its
+# own minimum width doesn't read as staying - it reads as broken. Columns
+# now fold one at a time, widest-dependency first: the detail column (which
+# has an inline fallback already) goes first, the preview column (which has
+# no substitute) goes only when there truly isn't room for it.
+MEDIUM_BREAKPOINT = 620
+
 #: Shipped design assets: the mark, in both themes, and the application icon.
 #: Kept in the repository rather than reached for in the xFormat checkout, so
 #: the app is the same whether it runs from source or from a bundle.
 ASSETS = Path(__file__).resolve().parent / "design" / "assets"
+
+#: This window's own tiny trilingual vocabulary for the styled-report button,
+#: kept local rather than added to `i18n/translations.py`: this feature's
+#: task boundary deliberately excludes that module, and three short strings
+#: do not need the shared table's machinery (pluralisation, `t()` lookup) to
+#: stay correct in uk/it/en.
+_STYLED_REPORT_STRINGS = {
+    "uk": dict(button="Стильний звіт", tooltip="Зберегти брендований звіт "
+              "(PDF або HTML) для читання чи друку",
+              done="Звіт збережено: {path}"),
+    "it": dict(button="Report firmato", tooltip="Salva un report firmato "
+              "(PDF o HTML) da leggere o stampare",
+              done="Report salvato: {path}"),
+    "en": dict(button="Styled report", tooltip="Save a branded report "
+              "(PDF or HTML) to read or print",
+              done="Report saved: {path}"),
+}
+
+
+def _styled_report_text(lang: str, key: str, **kwargs) -> str:
+    strings = _STYLED_REPORT_STRINGS.get(lang, _STYLED_REPORT_STRINGS["en"])
+    return strings[key].format(**kwargs)
 
 MODE_WEB = "web"
 MODE_REPO = "repo"
@@ -84,6 +130,23 @@ _SEVERITY_CONFIDENCE = {
     "moderate": Confidence.MEDIUM,
     "minor": Confidence.LOW,
 }
+
+# "Ignore this finding" is not routed through `i18n.translations.t()`: that
+# module is another agent's territory while this feature is being built, and
+# a made-up key would just show up on screen as the raw key. Plain English
+# here, same as the code around it, rather than guessing at a translation
+# that would need to be reconciled later anyway.
+_IGNORE_FINDING_LABEL = "Ignore this finding"
+_SUPPRESSED_NOTE = (
+    "Score lowered: part of this finding was suppressed (a phrase, rule or "
+    "signal you've already dismissed)."
+)
+_IGNORE_FINDING_TOOLTIP = (
+    "Suppress this exact finding at the fingerprint level, so it does not "
+    "reappear on a re-scan. Written to .xanalyze-ignore in the scanned "
+    "folder, or to your personal settings when there is no folder to write "
+    "into (a web scan)."
+)
 
 
 def _ask_account_later(window) -> None:
@@ -171,6 +234,7 @@ class MainWindow(QMainWindow):
         self._expanded_item: QListWidgetItem | None = None
         self._last_selected_key: tuple | None = None
         self.wide_mode: bool | None = None  # forces first resizeEvent to initialize layout
+        self.medium_mode: bool | None = None  # the second, narrower breakpoint; see MEDIUM_BREAKPOINT
         self.repo_ignore_patterns: list[str] = _parse_ignore_text(DEFAULT_IGNORE_PATTERNS)
 
         self.resize(1300, 800)
@@ -324,6 +388,44 @@ class MainWindow(QMainWindow):
         if index >= 0:
             self.method_combo.setCurrentIndex(index)
 
+    #: Which Lucide icon stands for which action. Kept next to the row it
+    #: draws rather than in `ui/icons.py`: the file knows how to render an
+    #: icon, this knows what the buttons mean.
+    _ACTION_ICONS = (
+        ("fix_unicode_btn", "eraser"),
+        ("generate_list_btn", "list"),
+        ("auto_replace_btn", "replace"),
+        ("fix_on_disk_btn", "file-pen"),
+        ("undo_fix_btn", "undo-2"),
+        ("download_btn", "download"),
+    )
+
+    def _apply_action_icons(self) -> None:
+        """Draw the action row as icons in the current theme's ink.
+
+        Re-run on every theme change for the same reason `_repaint_brand` is:
+        the icons are rasterised in one colour, and the colour that reads on
+        a light sheet disappears on a dark one.
+        """
+        from ui import icons as icon_set
+
+        if not icon_set.available():
+            return
+        ratio = self.devicePixelRatioF() or 1.0
+        size = icon_set.DEFAULT_SIZE
+        for attribute, name in self._ACTION_ICONS:
+            button = getattr(self, attribute, None)
+            if button is None:
+                continue
+            drawn = icon_set.icon(name, self.palette_tokens.text, size, ratio)
+            if drawn is None:
+                continue
+            button.setIcon(drawn)
+            button.setIconSize(QSize(size, size))
+            # Cleared only now: until an icon is in hand, the label is the
+            # only thing identifying the button.
+            button.setText("")
+
     def _repaint_brand(self) -> None:
         """Swap the mark when the theme changes: the light logo on a dark
         canvas is invisible, which is the whole reason two files exist."""
@@ -424,16 +526,22 @@ class MainWindow(QMainWindow):
         self.source_controls_stack.addWidget(repo_controls)  # index 1
         self.source_controls_stack.addWidget(file_controls)  # index 2
 
-        self.detector_label = QLabel()
-        self.detector_combo = QComboBox()
-        # Detector display names can be long ("Claude — official watermark API
-        # (not yet published by Anthropic)"). Without this, the combo's
-        # minimum size hint is set to fit its longest item, which alone can
-        # keep the whole window from ever shrinking below ~1300px and would
-        # silently defeat the narrow-window layout below.
-        self.detector_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-        self.detector_combo.setMinimumContentsLength(14)
-        self._populate_detectors()
+        # Which account reads the text, not which detector class to build.
+        # The dropdown used to list backends by name, which made the method
+        # combo beside it decorative: the backend carried the decision, so
+        # "AI" with an offline backend selected ran the offline engine and
+        # said nothing. The method decides *what runs* now, and this decides
+        # *who pays* - see `_detector_for_request`.
+        self.provider_label = QLabel()
+        self.provider_combo = QComboBox()
+        # Provider labels can be long ("Claude Code session"). Without this,
+        # the combo's minimum size hint is set to fit its longest item, which
+        # alone can keep the whole window from ever shrinking below ~1300px
+        # and would silently defeat the narrow-window layout below.
+        self.provider_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.provider_combo.setMinimumContentsLength(14)
+        self.provider_combo.currentIndexChanged.connect(self._on_provider_changed)
+        self._populate_providers()
 
         # Loading every page in a real browser costs seconds per page and is
         # the only way to see what JavaScript rendered, so it is the user's
@@ -481,7 +589,7 @@ class MainWindow(QMainWindow):
         for w in (self.reader_label, self.reader_combo,
                   self.checks_label, self.checks_combo,
                   self.method_label, self.method_combo,
-                  self.detector_label, self.detector_combo,
+                  self.provider_label, self.provider_combo,
                   self.analyze_btn, self.cancel_btn, self.settings_btn):
             controls.addWidget(w)
         # Analyze is the one action the toolbar exists for, so it is the only
@@ -504,7 +612,7 @@ class MainWindow(QMainWindow):
         # the way the web app separates one part of a page from another. A Qt
         # window that paints three regions of one flat sheet reads as a
         # different product, however correct its colours are.
-        col1, col1_layout, self.col1_header = panel()
+        self.col1, col1_layout, self.col1_header = panel()
         col1_layout.setContentsMargins(10, 10, 10, 10)
 
         self.col1_stack = QStackedWidget()
@@ -525,8 +633,30 @@ class MainWindow(QMainWindow):
         self.code_view.setFont(mono)
         self.col1_stack.addWidget(self.code_view)  # index 1: repo
 
+        # The width switcher, above the preview rather than beside it: the
+        # audit now runs at three widths (see `audit/responsive.py`), and a
+        # finding labelled "found at mobile only" is not checkable in a
+        # preview that is always desktop-shaped. These buttons constrain the
+        # preview itself, so the reader sees the layout the finding came from.
+        self.breakpoint_row = QWidget()
+        breakpoint_layout = QHBoxLayout(self.breakpoint_row)
+        breakpoint_layout.setContentsMargins(0, 0, 0, 6)
+        breakpoint_layout.setSpacing(self.palette_tokens.space_sm)
+        self.breakpoint_buttons = {}
+        #: Which width the preview is pinned to, or None for the full column.
+        self._preview_width_name = None
+        for name, width, _height in responsive_breakpoints():
+            button = QPushButton()
+            button.setCheckable(True)
+            button.clicked.connect(
+                lambda _checked=False, chosen=name: self._on_breakpoint_clicked(chosen))
+            breakpoint_layout.addWidget(button)
+            self.breakpoint_buttons[name] = (button, width)
+        breakpoint_layout.addStretch(1)
+        col1_layout.addWidget(self.breakpoint_row)
+
         col1_layout.addWidget(self.col1_stack, stretch=1)
-        self.columns_splitter.addWidget(col1)
+        self.columns_splitter.addWidget(self.col1)
 
         # Column 2: the list of flagged passages (+ repo-mode bulk actions).
         col2, col2_layout, self.flagged_header = panel()
@@ -570,10 +700,16 @@ class MainWindow(QMainWindow):
         self.fix_on_disk_btn.clicked.connect(self._on_fix_on_disk_clicked)
         self.undo_fix_btn = QPushButton()
         self.undo_fix_btn.clicked.connect(self._on_undo_fix_clicked)
-        self.export_report_btn = QPushButton()
-        self.export_report_btn.clicked.connect(self._on_export_report_clicked)
+        # One entry point for two different documents. They stay two
+        # documents - an agent briefing (`cli._write_report`'s markdown/JSON)
+        # and the branded PDF/HTML a person reads - because they are read by
+        # different readers; what was merged is the *button*, since two
+        # exports side by side made the row ask a question ("which of these
+        # two is the report?") before the user had decided to export at all.
+        self.download_btn = QPushButton()
+        self.download_btn.clicked.connect(self._on_download_clicked)
         for b in (self.fix_unicode_btn, self.generate_list_btn, self.auto_replace_btn,
-                  self.fix_on_disk_btn, self.undo_fix_btn, self.export_report_btn):
+                  self.fix_on_disk_btn, self.undo_fix_btn, self.download_btn):
             bulk_layout.addWidget(b)
         col2_layout.addWidget(divider())
         col2_layout.addWidget(self.bulk_actions_row)
@@ -596,18 +732,36 @@ class MainWindow(QMainWindow):
 
         self._apply_mode_visibility()
 
-    def _populate_detectors(self) -> None:
-        self.detector_combo.clear()
-        for name in DetectorFactory.available():
-            try:
-                instance = DetectorFactory.create(name)
-                label = instance.display_name
-            except Exception:  # noqa: BLE001
-                label = name
-            self.detector_combo.addItem(label, userData=name)
-        idx = self.detector_combo.findData(self.settings.default_detector)
-        if idx >= 0:
-            self.detector_combo.setCurrentIndex(idx)
+    def _populate_providers(self) -> None:
+        """Offer every account, including ones not connected yet.
+
+        Not filtered down to what is currently usable: the method combo
+        already refuses the AI pass when nothing can pay for it, and a list
+        that silently loses an entry is a worse answer than one whose entry
+        explains, when picked, what it needs.
+        """
+        self.provider_combo.blockSignals(True)
+        self.provider_combo.clear()
+        for name in PROVIDER_ORDER:
+            self.provider_combo.addItem(t(f"provider_{name}", self.lang), userData=name)
+        idx = self.provider_combo.findData(self.settings.llm_provider)
+        self.provider_combo.setCurrentIndex(max(idx, 0))
+        self.provider_combo.blockSignals(False)
+
+    def _on_provider_changed(self, _idx: int = 0) -> None:
+        """The toolbar and the Settings dialog change one setting, not two.
+
+        Writing it straight through means a provider picked here is the one
+        `ai status`, the rewrite calls and the Settings dialog all report -
+        two places holding two answers to "whose account pays" is how the
+        window came to disagree with the CLI in the first place.
+        """
+        chosen = self.provider_combo.currentData()
+        if chosen and chosen != self.settings.llm_provider:
+            self.settings.llm_provider = chosen
+            self.settings.save()
+            self._account_cache = _UNASKED
+            self._retranslate_choices()
 
     def _retranslate_ui(self) -> None:
         lang = self.lang
@@ -656,7 +810,15 @@ class MainWindow(QMainWindow):
         self.scope_combo.blockSignals(False)
         self.scope_combo.setToolTip(t(f"scope_{self._repo_scope()}_full", lang))
 
-        self.detector_label.setText(t("detector_label", lang))
+        for name, (button, width) in self.breakpoint_buttons.items():
+            button.setText(t(f"breakpoint_{name}", lang))
+            button.setToolTip(t("breakpoint_tooltip", lang,
+                                name=t(f"breakpoint_{name}", lang), width=width))
+        # Refilled, not just relabelled: the entries themselves are words.
+        self._populate_providers()
+        self.provider_label.setText(t("provider_label", lang))
+        self.provider_label.setToolTip(t("provider_label_full", lang))
+        self.provider_combo.setToolTip(t("provider_label_full", lang))
         self.file_path_edit.setPlaceholderText(t("file_path_placeholder", lang))
         self.file_browse_btn.setText(t("browse_button", lang))
         self.reader_label.setText(t("reader_label", lang))
@@ -670,18 +832,61 @@ class MainWindow(QMainWindow):
         self.settings_btn.setText(t("settings_button", lang))
         self.flagged_header.setText(t("flagged_list_header", lang))
         self.col1_header.setText(t("site_preview_header", lang))
-        self.fix_unicode_btn.setText(t("fix_unicode_button", lang))
-        self.fix_unicode_btn.setToolTip(t("fix_unicode_tooltip", lang))
-        self.generate_list_btn.setText(t("generate_list_button", lang))
-        self.auto_replace_btn.setText(t("auto_replace_button", lang))
-        self.fix_on_disk_btn.setText(t("fix_on_disk_button", lang))
-        self.fix_on_disk_btn.setToolTip(t("fix_on_disk_tooltip", lang))
-        self.undo_fix_btn.setText(t("undo_fix_button", lang))
-        self.undo_fix_btn.setToolTip(t("undo_fix_tooltip", lang))
-        self.export_report_btn.setText(t("export_report_button", lang))
-        self.export_report_btn.setToolTip(t("export_report_tooltip", lang))
+        # The action row is icons, and the words move into the tooltips: six
+        # buttons of six different widths read as a heap rather than as a row,
+        # and their labels are long in every language this app speaks. The
+        # label is still set - and then cleared by `_apply_action_icons` only
+        # if an icon was actually found - so a build without the icon files
+        # degrades to the readable version instead of to six blank squares.
+        for button, key, tip in (
+            (self.fix_unicode_btn, "fix_unicode_button", "fix_unicode_tooltip"),
+            (self.generate_list_btn, "generate_list_button", ""),
+            (self.auto_replace_btn, "auto_replace_button", ""),
+            (self.fix_on_disk_btn, "fix_on_disk_button", "fix_on_disk_tooltip"),
+            (self.undo_fix_btn, "undo_fix_button", "undo_fix_tooltip"),
+            (self.download_btn, "download_button", "download_tooltip"),
+        ):
+            label = t(key, lang)
+            button.setText(label)
+            # Tooltip: the long explanation where there is one, the label
+            # itself where there is not - an icon with no tooltip at all is
+            # a button that cannot be identified.
+            button.setToolTip(f"{label} - {t(tip, lang)}" if tip else label)
+        self._apply_action_icons()
         self.status_bar.showMessage(t("status_idle", lang))
         self._reset_detail_panel()
+
+    def _on_breakpoint_clicked(self, chosen: str) -> None:
+        """Show the preview at one width, or back at full width.
+
+        Clicking the pressed button again releases it: the widths are a
+        temporary way of looking at the page, not a mode to get stuck in.
+        """
+        # Decided from what was selected before, not from the button's own
+        # checked state: a checkable button has already toggled itself by the
+        # time this runs when a person clicks it, and has not when the same
+        # action is invoked from anywhere else. Reading the remembered choice
+        # makes both paths agree.
+        release = self._preview_width_name == chosen
+        self._preview_width_name = None if release else chosen
+        for name, (other, _width) in self.breakpoint_buttons.items():
+            other.setChecked(name == self._preview_width_name)
+        width = self.breakpoint_buttons[chosen][1]
+        self._apply_preview_width(None if release else width)
+
+    def _apply_preview_width(self, width) -> None:
+        """Constrain the preview, and say what the page will believe.
+
+        `setMaximumWidth` rather than a fixed size: the column can be
+        narrower than the breakpoint, and forcing the wider number would
+        scroll the whole pane sideways instead of showing a narrow layout.
+        The page reads its own width from the widget, so this is the same
+        thing the audit did at that breakpoint - not a picture of it.
+        """
+        if width is None:
+            self.site_view.setMaximumWidth(16777215)  # Qt's own "no maximum"
+        else:
+            self.site_view.setMaximumWidth(int(width))
 
     def _repaint_preview_background(self) -> None:
         self.site_view.page().setBackgroundColor(QColor(self.palette_tokens.page_bg))
@@ -698,6 +903,7 @@ class MainWindow(QMainWindow):
         self.finding_delegate.set_palette(palette)
         self._repaint_preview_background()
         self._repaint_brand()
+        self._apply_action_icons()
         mono = self.code_view.font()
         mono.setFamily(palette.font_mono)
         self.code_view.setFont(mono)
@@ -749,17 +955,29 @@ class MainWindow(QMainWindow):
         self.settings.ui_language = self.lang
         self.settings.crawl_depth = self.depth_spin.value()
         self.settings.repo_scope = self._repo_scope()
-        detector = self.detector_combo.currentData()
-        if detector:
-            self.settings.default_detector = detector
+        # The method, not a detector name: what to run is the user's choice,
+        # and which class implements it is derived from it (see
+        # `_detector_for_request`).
+        method = self.method_combo.currentData()
+        if method:
+            self.settings.default_method = method
+        provider = self.provider_combo.currentData()
+        if provider:
+            self.settings.llm_provider = provider
         self.settings.save()
 
     def _update_layout_mode(self, force: bool = False) -> None:
         wide = self.width() >= WIDE_BREAKPOINT
-        if not force and wide == self.wide_mode:
+        medium = self.width() >= MEDIUM_BREAKPOINT
+        if not force and wide == self.wide_mode and medium == self.medium_mode:
             return
         self.wide_mode = wide
+        self.medium_mode = medium
         self.col3.setVisible(wide)
+        # The preview column folds only once the detail column already has -
+        # collapsing both together is the jump from three columns to one that
+        # this second breakpoint exists to remove.
+        self.col1.setVisible(medium)
         self._collapse_inline_detail()
         self._reset_detail_panel()
 
@@ -956,7 +1174,17 @@ class MainWindow(QMainWindow):
         if ai_ready:
             method_options.append((t("method_ai", lang), self.choice_key((METHOD_AI,))))
             method_options.append((t("method_both", lang), self.choice_key((METHOD_LOCAL, METHOD_AI))))
+        # First fill of the session restores the stored method; every later
+        # one keeps whatever is selected, which is what `_fill_combo` does on
+        # its own. Split like this because the two cases are different
+        # questions: "what did this user choose last time" and "is the
+        # current choice still on offer".
+        first_fill = self.method_combo.currentData() is None
         self._fill_combo(self.method_combo, method_options)
+        if first_fill:
+            stored = self.method_combo.findData(self.settings.default_method)
+            if stored >= 0:
+                self.method_combo.setCurrentIndex(stored)
         self.method_combo.setEnabled(ai_ready)
         self.method_combo.setToolTip(
             t("method_label_full", lang) if ai_ready
@@ -991,19 +1219,25 @@ class MainWindow(QMainWindow):
         # A single file is previewed as a rendered page, not as source: it is
         # a page, and its markup is what the third column already shows.
         self.col1_stack.setCurrentIndex(1 if is_repo else 0)
+        # The width switcher belongs to the rendered preview. A repository is
+        # previewed as source, which has no layout to look at narrow.
+        self.breakpoint_row.setVisible(not is_repo)
         # The detector belongs to the copy pass, so it follows the question
         # rather than the source. It used to be hidden whenever an audit was
         # selected, which meant that asking both questions at once left no way
         # to say which engine judged the copy.
-        self.detector_label.setVisible(wants_copy)
-        self.detector_combo.setVisible(wants_copy)
+        # ... and only when a model is actually going to read anything:
+        # whose account pays is not a question an offline-only run has.
+        wants_model = METHOD_AI in self._chosen_methods()
+        self.provider_label.setVisible(wants_copy and wants_model)
+        self.provider_combo.setVisible(wants_copy and wants_model)
         # The row is shared, but the two halves never appear together: three
         # buttons rewrite prose, three act on an audit, and offering both at
         # once would mean six buttons of which half do nothing.
         self.fix_unicode_btn.setVisible(wants_copy)
         self.fix_on_disk_btn.setVisible(wants_audit)
         self.undo_fix_btn.setVisible(wants_audit)
-        self.export_report_btn.setVisible(wants_audit)
+        self.download_btn.setVisible(wants_copy or wants_audit)
         # The row itself is always shown — the unicode fix works in both
         # modes — but the two file-writing buttons only apply to a repo.
         self.generate_list_btn.setVisible(is_repo and wants_copy)
@@ -1032,7 +1266,11 @@ class MainWindow(QMainWindow):
             issue.fix_snippet for d in local for issue in d.issues))
         self.fix_on_disk_btn.setEnabled(writable)
         self.undo_fix_btn.setEnabled(bool(fixer.backups_for(documents)))
-        self.export_report_btn.setEnabled(bool(documents))
+        # Not gated on `self.mode == MODE_REPO` like the buttons above: a
+        # styled report is offered for a web-text scan too, so this looks at
+        # both result slots directly rather than reusing `has_flags`.
+        self.download_btn.setEnabled(
+            bool(documents) or bool(self.result and self.result.spans))
 
     def _active_unicode_categories(self):
         if not self.settings.unicode_check_enabled:
@@ -1068,12 +1306,22 @@ class MainWindow(QMainWindow):
         # application (see `_run_browser_pass`), and a run that asks both
         # questions must not render the same site twice. Both passes then take
         # the pages through the same cache the question switch uses.
-        if (request.wants_browser and request.source == SOURCE_SITE
-                and self._reusable_pages() is None):
-            pages = self._render_crawl(request.target)
-            if pages is None:
-                return
-            self._remember_extraction(request, pages=pages)
+        if request.wants_browser and self._reusable_pages() is None:
+            # A file is rendered, not crawled: `requests` does not speak
+            # `file://`, and there is nothing to walk from anyway. Before
+            # this, the browser reading of a *file* reached the audit but
+            # never the copy pass - the copy pass read the file off disk and
+            # returned the unrendered answer without saying it had.
+            if request.source == SOURCE_FILE:
+                pages = self._render_single_file(request.target)
+            elif request.source == SOURCE_SITE:
+                pages = self._render_crawl(request.target)
+            else:
+                pages = None
+            if request.source in (SOURCE_SITE, SOURCE_FILE):
+                if pages is None:
+                    return
+                self._remember_extraction(request, pages=pages)
         # Both questions in one run: the audit goes first because it is the
         # one that fetches, and the copy pass then reads what it brought back.
         self._pending_copy_pass = (request.wants_accessibility
@@ -1108,11 +1356,49 @@ class MainWindow(QMainWindow):
         if self.source == SOURCE_REPO:
             self._start_repo_analysis()
         elif self.source == SOURCE_FILE:
-            self._start_file_copy_analysis()
+            # A rendered file is a page, and is read as one: the DOM the
+            # browser built is not on disk, so the file reader cannot see it.
+            if self._reusable_pages() is not None:
+                self._start_web_analysis(root=_browser_url(
+                    self.file_path_edit.text().strip()))
+            else:
+                self._start_file_copy_analysis()
         else:
             self._start_web_analysis()
 
-    def _detector_config_for(self, detector_name: str) -> dict:
+    def _detector_for_request(self) -> tuple[str, dict]:
+        """The engine the copy pass runs, worked out from the method.
+
+        This is the fix for a silent failure, so it is worth stating what it
+        replaces: the window used to take the engine straight from a
+        dropdown of backend names, and never read the method choice at all.
+        `AnalysisRequest.wants_ai` existed, was normalised, was reported in
+        the status bar - and no code path consulted it. Choosing "AI" with
+        the offline backend still selected ran the offline engine and
+        presented its findings as the answer.
+
+        Now the method decides what runs and the account decides who pays:
+
+            offline only  -> the free local engine
+            AI only       -> the judge for the selected account
+            hybrid        -> both, merged (see `detectors/hybrid.py`)
+
+        The request is the normalised one, so a method that asked for a model
+        with no account behind it has already fallen back to offline here -
+        with a note in the status bar saying so, rather than in silence.
+        """
+        request = self._last_request or self.current_request()
+        judge = judge_for_provider(
+            self.provider_combo.currentData() or self.settings.llm_provider)
+        if request.wants_ai and request.wants_local:
+            name = "hybrid"
+        elif request.wants_ai:
+            name = judge
+        else:
+            name = "offline"
+        return name, self._detector_config_for(name, judge)
+
+    def _detector_config_for(self, detector_name: str, judge_name: str = "") -> dict:
         """Per-detector construction arguments.
 
         Resolved through the factory first, so a legacy name stored in an
@@ -1120,6 +1406,17 @@ class MainWindow(QMainWindow):
         builds ("offline") rather than falling through to no arguments.
         """
         resolved = DetectorFactory.resolve(detector_name)
+        if resolved == "hybrid":
+            # The hybrid owns the character pass through its offline half,
+            # and its judge half is configured exactly like a bare judge -
+            # by asking this same function, so there is one answer to "how
+            # is an xFormat judge built" rather than two.
+            judge = judge_name or judge_for_provider(self.settings.llm_provider)
+            return {
+                "categories": self._active_unicode_categories() or (),
+                "judge_name": judge,
+                "judge_config": self._detector_config_for(judge),
+            }
         if resolved in ("claude-llm-judge", "claude-official-watermark"):
             return {"api_key": config.get_anthropic_api_key(), "model": self.settings.claude_model}
         if resolved == "xformat-llm-judge":
@@ -1144,16 +1441,21 @@ class MainWindow(QMainWindow):
         self.code_view.setPlainText("")
         self._reset_detail_panel()
 
-    def _start_web_analysis(self) -> None:
-        url = self.url_edit.text().strip()
+    def _start_web_analysis(self, root: str = "") -> None:
+        """The copy pass over fetched pages.
+
+        `root` overrides the URL field, for the one case where the pages did
+        not come from that field: a single local file that was rendered in
+        the browser.
+        """
+        url = root or self.url_edit.text().strip()
         if not url:
             QMessageBox.warning(self, "", t("url_label_full", self.lang))
             return
-        if not url.startswith(("http://", "https://")):
+        if not url.startswith(("http://", "https://", "file://")):
             url = "https://" + url
 
-        detector_name = self.detector_combo.currentData()
-        detector_config = self._detector_config_for(detector_name)
+        detector_name, detector_config = self._detector_for_request()
         self._reset_scan_ui()
 
         reused = self._reusable_pages()
@@ -1194,8 +1496,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "", t("no_repo_path", self.lang))
             return
 
-        detector_name = self.detector_combo.currentData()
-        detector_config = self._detector_config_for(detector_name)
+        detector_name, detector_config = self._detector_for_request()
         self._reset_scan_ui()
 
         self.worker = RepoAnalysisWorker(
@@ -1215,6 +1516,74 @@ class MainWindow(QMainWindow):
         self.worker.finished.connect(self._on_worker_thread_finished)
         self._track_worker(self.worker)
         self.worker.start()
+
+    # --------------------------------------------------------- suppression
+
+    def _ignore_scan_root(self) -> str | None:
+        """The folder a fingerprint suppression should be written into, or
+        None when the current source has no folder at all.
+
+        A repository scan has one, obviously; a single file's suppression
+        also goes there, so a second finding in a sibling file lands in the
+        same list instead of starting a second `.xanalyze-ignore` next to it.
+        A site has no folder on this machine - see `_add_fingerprint_suppression`.
+        """
+        if self.source == SOURCE_REPO:
+            path = self.repo_path_edit.text().strip()
+            return path or None
+        if self.source == SOURCE_FILE:
+            path = self.file_path_edit.text().strip()
+            return str(Path(path).parent) if path else None
+        return None
+
+    def _add_fingerprint_suppression(self, value: str) -> None:
+        """Record "ignore this exact finding", in whichever list applies.
+
+        The project's `.xanalyze-ignore` when the source is a folder or a
+        file on disk - that is the shared, committed list `suppression.py`
+        documents. A personal, cross-project setting otherwise, since a page
+        fetched over the network has no folder to hold a project file in.
+        """
+        root = self._ignore_scan_root()
+        if root:
+            suppression.add_fingerprint_to_ignore_file(root, value)
+            return
+        fingerprints = list((self.settings.ignore or {}).get("fingerprints") or [])
+        if value not in fingerprints:
+            fingerprints.append(value)
+            ignore = dict(self.settings.ignore or {})
+            ignore["fingerprints"] = fingerprints
+            self.settings.ignore = ignore
+            self.settings.save()
+
+    def _on_ignore_span_clicked(self, span: TextSpan, block) -> None:
+        """"Ignore this finding": suppress it and drop it from the list
+        immediately, with an honest recount - not a re-run of the scan."""
+        self._add_fingerprint_suppression(suppression.span_fingerprint(span, block))
+        if self.result is not None:
+            self.result.spans = [s for s in self.result.spans if s is not span]
+        self._collapse_inline_detail()
+        self._reset_detail_panel()
+        self._populate_flagged_list()
+        self._update_repo_buttons_enabled()
+
+    def _on_ignore_issue_clicked(self, issue) -> None:
+        """The audit counterpart of `_on_ignore_span_clicked`."""
+        self._add_fingerprint_suppression(suppression.issue_fingerprint(issue))
+        if self.audit_result is not None:
+            for document in self.audit_result.documents:
+                if issue in document.issues:
+                    document.issues = [i for i in document.issues if i is not issue]
+        self._collapse_inline_detail()
+        self._reset_detail_panel()
+        self._populate_flagged_list()
+        self._update_audit_buttons_enabled()
+
+    def _build_ignore_button(self, on_click) -> QPushButton:
+        button = QPushButton(_IGNORE_FINDING_LABEL)
+        button.setToolTip(_IGNORE_FINDING_TOOLTIP)
+        button.clicked.connect(on_click)
+        return button
 
     # ------------------------------------------------------------------ audit
 
@@ -1325,6 +1694,37 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, t("reader_browser", self.lang), str(exc))
             return None
 
+    def _render_single_file(self, path: str):
+        """The DOM a browser builds for one local file, as one page.
+
+        Returns None when the user should be told rather than handed a
+        quietly worse reading - the same contract as `_render_crawl`.
+        """
+        from audit import driver
+        from crawler import page_from_html
+
+        if not path:
+            QMessageBox.warning(self, "", t("no_file_path", self.lang))
+            return None
+        usable, reason = driver.available()
+        if not usable:
+            QMessageBox.information(self, t("reader_browser", self.lang), reason)
+            return None
+        address = _browser_url(path)
+        self.status_bar.showMessage(
+            t("status_browser_pass", self.lang, url=address))
+        try:
+            with driver.html_renderer() as render:
+                html = render(address) or ""
+        except Exception as exc:  # noqa: BLE001 - see `_render_crawl`
+            QMessageBox.warning(self, t("reader_browser", self.lang), str(exc))
+            return None
+        if not html:
+            QMessageBox.warning(self, t("reader_browser", self.lang),
+                                t("reader_browser_empty", self.lang))
+            return None
+        return [page_from_html(html, address)]
+
     def _run_browser_pass(self) -> None:
         """Re-audit each page in a real browser, on this thread.
 
@@ -1354,16 +1754,31 @@ class MainWindow(QMainWindow):
             # on disk; a page off the network never may.
             allow_local_files=self.mode == MODE_FILE,
         )
-        runner = driver.BrowserAuditRunner(options)
+        # Every width, not just the one this screen happens to be: the point
+        # of asking a browser at all is to see what a visitor sees, and a
+        # visitor on a phone is shown a different document. The merge keeps
+        # the list the same length - a finding present at several widths is
+        # one row that records them - so this costs time, not noise. See
+        # `audit/responsive.py`.
+        from dataclasses import replace
+
+        from audit import responsive
+
+        sizes = responsive.BREAKPOINTS
+        runner = driver.BrowserAuditRunner(
+            replace(options, viewport=(sizes[0][1], sizes[0][2])))
         try:
             for document in targets:
-                self.status_bar.showMessage(
-                    t("status_browser_pass", self.lang, url=document.source))
-                page_audit = runner.audit(_browser_url(document.source))
+                self.status_bar.showMessage(t("status_browser_pass_widths",
+                                              self.lang, url=document.source,
+                                              n=len(sizes)))
+                page_audit = responsive.audit_responsive(
+                    _browser_url(document.source), sizes, options, runner=runner)
                 if page_audit.error:
                     continue
                 document.issues = browser_mod.deduplicate(
-                    list(document.issues) + list(page_audit.issues))
+                    list(document.issues) + list(page_audit.issues),
+                    markup=getattr(page_audit, "html", "") or "")
         finally:
             runner.close()
 
@@ -1441,6 +1856,41 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, t("undo_fix_button", self.lang), message)
         self._reaudit_after_fix()
 
+    def _on_download_clicked(self) -> None:
+        """Ask which report, then write it.
+
+        The question is only asked when there is a choice: with only an audit
+        or only a text scan in hand one of the two documents cannot be built,
+        and offering it would be a dialog whose second option is an error
+        message waiting to happen.
+        """
+        has_audit = bool(self.audit_result and self.audit_result.documents)
+        has_text = bool(self.result and self.result.spans)
+        if not has_audit and not has_text:
+            return
+        if not has_audit:
+            self._on_styled_report_clicked()
+            return
+
+        box = QMessageBox(self)
+        box.setWindowTitle(t("download_button", self.lang))
+        box.setText(t("download_which", self.lang))
+        styled = box.addButton(_styled_report_text(self.lang, "button"),
+                               QMessageBox.ButtonRole.AcceptRole)
+        agent = box.addButton(t("export_report_button", self.lang),
+                              QMessageBox.ButtonRole.AcceptRole)
+        # The briefing is the technical one, so the reader-facing document is
+        # the default: it is what someone who clicked "Download" without a
+        # further thought most likely meant.
+        box.setDefaultButton(styled)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is styled:
+            self._on_styled_report_clicked()
+        elif clicked is agent:
+            self._on_export_report_clicked()
+
     def _on_export_report_clicked(self) -> None:
         """Save a briefing another tool - or a coding agent - can act on."""
         if self.audit_result is None:
@@ -1461,6 +1911,44 @@ class MainWindow(QMainWindow):
             return
         QMessageBox.information(self, t("export_report_button", self.lang),
                                 t("export_report_done", self.lang, path=path))
+
+    def _on_styled_report_clicked(self) -> None:
+        """Save the branded, print-ready report - the same findings the
+        list already shows, laid out as a document instead of a list.
+
+        Independent of `_on_export_report_clicked`: that one always reads
+        `self.audit_result` and writes the agent briefing; this one builds
+        from whichever result(s) this run actually has, text or audit or
+        both (a "both questions" run merges the two into one document, its
+        audit findings first - same order `_populate_flagged_list` uses).
+        """
+        has_text = bool(self.result and self.result.spans)
+        has_audit = bool(self.audit_result and self.audit_result.documents)
+        if not has_text and not has_audit:
+            return
+        path, _filter = QFileDialog.getSaveFileName(
+            self, _styled_report_text(self.lang, "button"), "scan-report.pdf",
+            "PDF (*.pdf);;HTML (*.html)")
+        if not path:
+            return
+
+        from report.export import write_styled_report
+        from report.model import from_accessibility, from_text_analysis
+
+        model = from_accessibility(self.audit_result, lang=self.lang) if has_audit else None
+        if has_text:
+            text_model = from_text_analysis(self.result, drafts=self.drafts)
+            if model is None:
+                model = text_model
+            else:
+                model.findings.extend(text_model.findings)
+        try:
+            write_styled_report(path, model, self.lang)
+        except (OSError, RuntimeError) as exc:
+            QMessageBox.warning(self, _styled_report_text(self.lang, "button"), str(exc))
+            return
+        QMessageBox.information(self, _styled_report_text(self.lang, "button"),
+                                _styled_report_text(self.lang, "done", path=path))
 
     def _report_fix_outcome(self, outcome, written_by_model) -> None:
         lines = [t("fix_done", self.lang, applied=len(outcome.applied),
@@ -1596,12 +2084,53 @@ class MainWindow(QMainWindow):
             # text scan has always had.
             self._toggle_audit_detail(self.flagged_list.currentItem(), issue)
 
+    #: Elements a finding can name that cannot be pointed at on screen.
+    #: `<head>` has no rendered box, and outlining `<html>` outlines
+    #: everything, which points at nothing.
+    _UNSHOWABLE_ELEMENTS = ("head", "html")
+
+    @staticmethod
+    def _element_of(snippet: str) -> str:
+        """The element name a snippet opens with, or "".
+
+        Findings about the document as a whole carry no selector - they are
+        about an element that is missing, so there is nothing to select - but
+        they do say which container they were raised against (`<body>…</body>`),
+        and that is enough to point at.
+        """
+        import re
+        match = re.match(r"\s*<([a-zA-Z][\w:-]*)", snippet or "")
+        return match.group(1).lower() if match else ""
+
+    def _audit_target(self, issue) -> str:
+        """The CSS selector this finding can be shown at, or "" if none can.
+
+        Written as its own function because the answer is not "issue.selector":
+        five of the eight findings a plain page produces (no h1, no canonical,
+        no meta description, no Open Graph, no structured data) have an empty
+        selector and no line, since what they report is something *absent*.
+        Clicking those used to do nothing at all - no highlight, no message,
+        no reason given - which is what "some findings are not clickable"
+        turned out to mean.
+        """
+        if issue.selector:
+            return issue.selector
+        element = self._element_of(issue.snippet)
+        if not element or element in self._UNSHOWABLE_ELEMENTS:
+            return ""
+        return element
+
     def _show_audit_issue_in_page(self, issue) -> None:
         address = _browser_url(issue.source)
+        target = self._audit_target(issue)
         # Held until the page reports itself loaded: highlighting a document
         # that is still arriving finds nothing and leaves no trace of trying.
-        self._pending_highlight_dom_path = issue.selector or ""
+        self._pending_highlight_dom_path = target
         self._pending_highlight_tag = issue.snippet or ""
+        if not target:
+            # Said rather than left silent: the finding is about the document,
+            # and a click that quietly does nothing reads as a broken row.
+            self.status_bar.showMessage(t("audit_document_level", self.lang))
         if self.current_preview_url != address:
             self.current_preview_url = address
             self.site_view.setUrl(QUrl(address))
@@ -1609,22 +2138,30 @@ class MainWindow(QMainWindow):
             self._run_pending_highlight()
 
     def _show_audit_issue_in_code(self, issue) -> None:
-        """A repository finding lives on a line of a file, so show that line."""
+        """A repository finding lives on a line of a file, so show that line -
+        and when it has no line, show the file anyway.
+
+        The early return that used to stand here made every document-level
+        finding in repository mode do nothing when clicked, including the case
+        where the file was not even open in the preview yet.
+        """
         from pathlib import Path
 
         from ui.code_preview import highlight_line
 
-        if not issue.line:
-            return
         try:
             text = Path(issue.source).read_text(encoding="utf-8", errors="replace")
-        except OSError:
+        except OSError as exc:
+            self.status_bar.showMessage(str(exc))
             return
         if self.current_preview_path != issue.source:
             self.current_preview_path = issue.source
             self.code_view.setPlainText(text)
         self.col1_stack.setCurrentIndex(1)
-        highlight_line(self.code_view, issue.line)
+        if issue.line:
+            highlight_line(self.code_view, issue.line, self._highlight_color())
+        else:
+            self.status_bar.showMessage(t("audit_document_level", self.lang))
 
     def _toggle_audit_detail(self, item, issue) -> None:
         """Expand the finding under its row, or collapse it if already open."""
@@ -1734,6 +2271,15 @@ class MainWindow(QMainWindow):
         if actions is not None:
             body.addWidget(divider())
             body.addWidget(actions)
+
+        body.addWidget(divider())
+        ignore_row = QWidget()
+        ignore_layout = QHBoxLayout(ignore_row)
+        ignore_layout.setContentsMargins(14, 10, 14, 12)
+        ignore_layout.addStretch(1)
+        ignore_layout.addWidget(
+            self._build_ignore_button(lambda: self._on_ignore_issue_clicked(issue)))
+        body.addWidget(ignore_row)
         return container
 
     def _evidence(self, label_text: str, markup: str) -> QWidget:
@@ -1926,6 +2472,25 @@ class MainWindow(QMainWindow):
     def _is_character_span(span: TextSpan) -> bool:
         return (span.details or {}).get("source") == "characters"
 
+    @staticmethod
+    def _copy_key(span: TextSpan, block) -> tuple:
+        """What makes two findings in two files the same finding: the flagged
+        text and what it becomes. Not the file, which is the thing that
+        varies, and not the offsets, which differ between a source file and
+        its compiled twin."""
+        return (block.text[span.start:span.end], span.replacement,
+                (span.details or {}).get("source", span.detector_name))
+
+    def _copy_counts(self, spans, blocks_by_id) -> dict:
+        counts: dict = {}
+        for span in spans:
+            block = blocks_by_id.get(span.block_id)
+            if block is None:
+                continue
+            key = self._copy_key(span, block)
+            counts[key] = counts.get(key, 0) + 1
+        return counts
+
     def _span_label(self, span: TextSpan, block) -> str:
         """One line describing a flagged span.
 
@@ -1976,10 +2541,21 @@ class MainWindow(QMainWindow):
         self.results_stack.setCurrentIndex(0)
         blocks_by_id = {b.block_id: b for b in self.result.blocks()}
         item_to_reselect = None
+        # Copies of one file - source, compiled output, deployed folder -
+        # produce the same defect once each. They stay in `self.result.spans`
+        # because each is a real file a fix has to edit; what the list shows
+        # is one row per distinct text, with the rest counted on it. See
+        # `duplicates.py`.
+        copies = self._copy_counts(flagged, blocks_by_id)
+        shown_keys: set = set()
         for span in flagged:
             block = blocks_by_id.get(span.block_id)
             if block is None:
                 continue
+            copy_key = self._copy_key(span, block)
+            if copy_key in shown_keys:
+                continue
+            shown_keys.add(copy_key)
             key = (span.block_id, span.start, span.end)
             item = QListWidgetItem()
             # The row is painted by FindingDelegate rather than rendered from
@@ -1987,7 +2563,11 @@ class MainWindow(QMainWindow):
             # pill instead of "[high · 0.95]" typed into the label. The plain
             # text is still set, because that is what keyboard search,
             # accessibility tooling and a copied selection read.
-            item.setText(self._span_label(span, block))
+            label = self._span_label(span, block)
+            extra = copies.get(copy_key, 1) - 1
+            if extra:
+                label += "   ·   " + t("finding_copies", self.lang, n=extra)
+            item.setText(label)
             item.setData(ROW_ROLE, RowData(
                 badge=f"{t('confidence_' + span.confidence.value, self.lang)} {span.score:.2f}",
                 confidence=span.confidence,
@@ -2034,10 +2614,13 @@ class MainWindow(QMainWindow):
         if blocks:
             units = (len(self.result.pages) if isinstance(self.result, AnalysisResult)
                      else len(self.result.files))
-            self.empty_state.show_message(
-                t("empty_clean_title", self.lang),
-                t("empty_clean_body", self.lang, blocks=blocks, pages=units),
-            )
+            body = t("empty_clean_body", self.lang, blocks=blocks, pages=units)
+            # A clean result from a truncated walk is not a clean result. The
+            # sentence goes here rather than only in the status bar because
+            # this pane is what a reader is looking at when they conclude the
+            # repository is fine.
+            body += self._truncation_notice()
+            self.empty_state.show_message(t("empty_clean_title", self.lang), body)
             return
 
         if isinstance(self.result, RepoAnalysisResult):
@@ -2051,6 +2634,16 @@ class MainWindow(QMainWindow):
             t("empty_no_text_title", self.lang),
             self._crawl_diagnosis(),
         )
+
+    def _truncation_notice(self) -> str:
+        """The sentence a partial walk owes the reader, or "" when it read
+        everything. Empty string rather than None so it can be concatenated
+        without a branch at every call site."""
+        walk = getattr(self.result, "diagnostics", None)
+        if walk is None or not getattr(walk, "truncated", False):
+            return ""
+        return "\n\n" + t("scan_truncated", self.lang, limit=walk.limit,
+                           files=walk.files_read)
 
     def _crawl_diagnosis(self) -> str:
         """Per-page reasons the crawl produced no text.
@@ -2111,11 +2704,22 @@ class MainWindow(QMainWindow):
     def _on_preview_loaded(self, _ok: bool) -> None:
         self._run_pending_highlight()
 
+    def _highlight_color(self) -> QColor:
+        """The one red used everywhere something is pointed at: the HIGH
+        confidence badge, the code preview's highlight, and the site
+        preview's outline. Derived from the palette rather than each of the
+        three carrying its own hard-coded hex, so a token change moves all
+        three together instead of two of the three."""
+        color = QColor(self.palette_tokens.error)
+        color.setAlpha(70)
+        return color
+
     def _run_pending_highlight(self) -> None:
         if self._pending_highlight_dom_path:
             self.site_view.page().runJavaScript(build_highlight_js(
                 self._pending_highlight_dom_path,
-                getattr(self, "_pending_highlight_tag", "")))
+                getattr(self, "_pending_highlight_tag", ""),
+                color=self.palette_tokens.error))
 
     def _load_code_preview_and_highlight(self, block: CodeBlock) -> None:
         if not self.result:
@@ -2126,7 +2730,7 @@ class MainWindow(QMainWindow):
         if self.current_preview_path != block.file_path:
             self.current_preview_path = block.file_path
             self.code_view.setPlainText(file_result.raw_text)
-        highlight_range(self.code_view, block.start, block.end)
+        highlight_range(self.code_view, block.start, block.end, self._highlight_color())
 
     # ------------------------------------------------------------- column 3
 
@@ -2164,7 +2768,11 @@ class MainWindow(QMainWindow):
             self._expanded_item.setSizeHint(QSize())
 
         header = QLabel(item.text())
-        header.setStyleSheet("font-weight: bold;")
+        # The same class the panel titles use, not an ad-hoc bold: an inline
+        # expansion is standing in for the third column's own title, and
+        # inventing a second "this is a heading" style for it is exactly the
+        # kind of small divergence that adds up to "nothing quite matches".
+        header.setProperty("class", theme.CLASS_HEADING)
         header.setWordWrap(True)
         wrapper = QWidget()
         wrapper_layout = QVBoxLayout(wrapper)
@@ -2211,6 +2819,16 @@ class MainWindow(QMainWindow):
         why_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         layout.addWidget(why_label)
 
+        # `suppression.py` already lowers the score and drops the reasons the
+        # user ruled out before this panel ever sees the span
+        # (`details["suppressed"]`); what was missing was saying so here -
+        # otherwise a lowered score with no visible cause reads as the
+        # detector being unsure, not as a decision the user already made.
+        if (span.details or {}).get("suppressed"):
+            note = muted(_SUPPRESSED_NOTE)
+            note.setProperty("class", theme.CLASS_MUTED)
+            layout.addWidget(note)
+
         edit_box = QTextEdit()
         edit_box.setPlainText(self.drafts.get(key, original))
         edit_box.setPlaceholderText(t("replace_placeholder", lang))
@@ -2243,9 +2861,12 @@ class MainWindow(QMainWindow):
         save_btn.setProperty("class", theme.CLASS_PRIMARY)
         analyze_btn = QPushButton(t("detail_analyze_button", lang))
         refactor_btn = QPushButton(t("detail_refactor_button", lang))
+        ignore_btn = self._build_ignore_button(
+            lambda: self._on_ignore_span_clicked(span, block))
         btn_row.addWidget(save_btn)
         btn_row.addWidget(analyze_btn)
         btn_row.addWidget(refactor_btn)
+        btn_row.addWidget(ignore_btn)
         layout.addLayout(btn_row)
 
         note = muted(t("replace_note", lang) if not is_repo_block else "")
@@ -2273,8 +2894,7 @@ class MainWindow(QMainWindow):
                     item.setText("✎ " + current)
 
     def _run_additional_analysis(self, block, span: TextSpan) -> None:
-        detector_name = self.detector_combo.currentData()
-        detector_config = self._detector_config_for(detector_name)
+        detector_name, detector_config = self._detector_for_request()
         self.status_bar.showMessage(t("detail_analyzing", self.lang))
 
         worker = SingleBlockWorker(block, detector_name, detector_config)
@@ -2467,7 +3087,7 @@ class MainWindow(QMainWindow):
         reply = QMessageBox.question(self, "", t("export_list_prompt", self.lang))
         if reply != QMessageBox.StandardButton.Yes:
             return
-        path, _ = QFileDialog.getSaveFileName(self, "", "ai-content-scanner-review.md", "Markdown (*.md)")
+        path, _ = QFileDialog.getSaveFileName(self, "", "xanalyze-review.md", "Markdown (*.md)")
         if not path:
             return
         self._export_list_to_file(path)

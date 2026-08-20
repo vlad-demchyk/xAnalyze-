@@ -199,6 +199,31 @@ class Suppressions:
         return not any((self.phrases, self.rules, self.paths, self.selectors,
                         self.fingerprints))
 
+    # --------------------------------------------------------------- writing
+
+    def render(self) -> str:
+        """The inverse of `parse`: back into the section format on disk.
+
+        Round-trips through `parse` losslessly for content (comments are the
+        one thing not preserved - there is nowhere to put them back once the
+        file has been read into a dataclass).
+        """
+        sections = (
+            ("fingerprints", self.fingerprints),
+            ("phrases", self.phrases),
+            ("rules", self.rules),
+            ("paths", self.paths),
+            ("selectors", self.selectors),
+        )
+        lines: list = []
+        for name, values in sections:
+            if not values:
+                continue
+            lines.append(f"[{name}]")
+            lines.extend(values)
+            lines.append("")
+        return "\n".join(lines).rstrip() + "\n" if lines else ""
+
 
 def _ignore_files(root: str | None):
     """The project's ignore file, if the scanned folder has one.
@@ -239,6 +264,28 @@ def span_fingerprint(span, block) -> str:
 
 def issue_fingerprint(issue) -> str:
     return fingerprint(issue.source, issue.snippet or issue.selector, issue.rule_id)
+
+
+def add_fingerprint_to_ignore_file(root: str, value: str) -> Path:
+    """Append one "ignore this exact finding" line to the project's ignore
+    file, creating it if it does not exist yet.
+
+    Read-modify-write through `parse`/`render` rather than a raw text append,
+    so a fingerprint added next to a file that already has a `[rules]` or
+    `[phrases]` section lands in the right one instead of at the end under
+    whatever section happened to be last. Idempotent: the same finding
+    dismissed twice is still one line.
+    """
+    path = Path(root)
+    if path.is_file():
+        path = path.parent
+    ignore_path = path / IGNORE_FILENAME
+    existing = (Suppressions.parse(ignore_path.read_text(encoding="utf-8"))
+                if ignore_path.is_file() else Suppressions())
+    if value not in existing.fingerprints:
+        existing.fingerprints.append(value)
+    ignore_path.write_text(existing.render(), encoding="utf-8")
+    return ignore_path
 
 
 # ----------------------------------------------------------------- filtering

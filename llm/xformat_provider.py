@@ -27,18 +27,24 @@ source (`xformat-backend/api/src/`):
 Three things about this backend shape are worth knowing, because each one
 caused a bug in the first version:
 
-**The refresh token lives in a cookie.** The web app never sees it. A
-desktop client has no browser cookie jar that survives a restart, so the
-`requests.Session` cookie is read out after login and stored like any other
-secret, then replayed two ways on refresh: in the session's cookie jar
-*and* in the request body. The backend accepts either (the body fallback
-exists for the native apps for exactly this reason), and sending both means
-one implementation covers a cookie that was rotated and a cookie that was
-never received.
+**The refresh token lives in a cookie, and only in a cookie.** The web app
+never sees it, and - verified live on 2026-08-19 - neither `login` nor
+`refresh` puts it in the response body: the only carrier is `Set-Cookie`.
+A desktop client has no browser cookie jar that survives a restart, so the
+cookie is read out of each response and stored like any other secret, then
+replayed two ways on refresh: in the session's cookie jar *and* in the
+request body. The backend accepts either (the body fallback exists for the
+native apps for exactly this reason), and sending both means one
+implementation covers a cookie that was rotated and a cookie that was never
+received.
 
-**Refresh rotates.** Supabase issues a new refresh token on every refresh
-and invalidates the old one, so the stored copy must be replaced after each
-call or the next refresh fails with a token that was already spent.
+**Refresh rotates, and the old token is spent immediately.** Replaying one
+answers 401 `Invalid Refresh Token: Already Used`, so the stored copy must
+be replaced after every call. It must be read from the response that issued
+it rather than from the jar: the jar can hold two cookies of this name at
+once - the primed one on the API host at path `/`, and the server's on
+`.xformat.net` at path `/api/auth` - and asking such a jar for one value
+raises. That is what kept a spent token stored in the first version.
 
 **The access token has two clocks.** Supabase issues it for about an hour,
 but this API only accepts it for the first 15 minutes
@@ -162,6 +168,12 @@ class XFormatProvider(LLMProvider):
         self.timeout = timeout
         self.verify_tls = verify_tls
         self._session = None
+        #: The refresh cookie from the most recent response, if that response
+        #: set one. Read from the response rather than from the jar because a
+        #: jar can hold two cookies of this name at once - the one primed from
+        #: the keychain and the one the server just issued - and the one that
+        #: matters is always the newer.
+        self._issued_refresh_token: str | None = None
         self._access_token: str | None = credentials.load_secret(ACCESS_TOKEN_KEY)
         self._refresh_token: str | None = credentials.load_secret(REFRESH_TOKEN_KEY)
         # Unknown until the next login or refresh: a token restored from the
@@ -192,13 +204,34 @@ class XFormatProvider(LLMProvider):
 
     def _prime_refresh_cookie(self) -> None:
         """Put the stored refresh token back in the cookie jar, so a refresh
-        works the same way it does in a browser."""
+        works the same way it does in a browser.
+
+        Every older copy is cleared first. The backend sets this cookie on
+        `.xformat.net` with path `/api/auth`, and a copy primed here lands on
+        the API host with path `/`; both match a refresh request, so leaving
+        the old one in place means the jar carries two cookies of the same
+        name and reading it back becomes ambiguous.
+        """
         from urllib.parse import urlparse
         domain = urlparse(self.base_url).hostname or ""
+        self._clear_refresh_cookies()
         try:
             self._session.cookies.set(REFRESH_COOKIE, self._refresh_token, domain=domain)
         except Exception:  # noqa: BLE001 - a cookie jar that refuses is not fatal;
             pass          # the body fallback below still carries the token.
+
+    def _clear_refresh_cookies(self) -> None:
+        """Drop every copy of the refresh cookie, whatever domain or path it
+        was set on."""
+        session = self._session
+        if session is None:
+            return
+        stale = [(c.domain, c.path) for c in session.cookies if c.name == REFRESH_COOKIE]
+        for domain, path in stale:
+            try:
+                session.cookies.clear(domain, path, REFRESH_COOKIE)
+            except KeyError:
+                pass
 
     def _url(self, path: str) -> str:
         return f"{self.base_url}{path}"
@@ -216,6 +249,9 @@ class XFormatProvider(LLMProvider):
             )
         except Exception as exc:  # noqa: BLE001 - requests raises a family of errors
             raise LLMUnavailable(f"Could not reach {self.base_url}: {exc}") from exc
+        # Read before the response is turned into an exception: a 401 from
+        # refresh clears the cookie, and that is a fact worth recording too.
+        self._issued_refresh_token = resp.cookies.get(REFRESH_COOKIE) or None
         return self._handle_response(resp, auth_error_message)
 
     def _post(self, path: str, payload: dict, authed: bool,
@@ -235,6 +271,10 @@ class XFormatProvider(LLMProvider):
         except ValueError:
             body = {}
         code = body.get("error") if isinstance(body.get("error"), str) else None
+        # The backend writes a human sentence next to the code. Preferring it
+        # over a generic line means a limit this client has never heard of
+        # still arrives at the user as an instruction rather than as a number.
+        detail = body.get("message") if isinstance(body.get("message"), str) else None
 
         if code in _APP_ERRORS:
             # Raised for any status: the message is the actionable part, and a
@@ -245,20 +285,30 @@ class XFormatProvider(LLMProvider):
             raise LLMAuthError(
                 _AUTH_ERRORS.get(code)
                 or auth_error_message
+                or detail
                 or "xFormat rejected the session (signed out or expired)."
             )
         if resp.status_code == 402:
             raise LLMUnavailable(
                 _QUOTA_ERRORS.get(code)
+                or detail
                 or "The xFormat subscription is inactive or out of budget."
             )
         if resp.status_code == 429:
-            raise LLMUnavailable("xFormat rate limit reached — try again shortly.")
+            # Not every 429 is "wait a moment". A weekly allowance that is used
+            # up resets next week, and telling someone to try again shortly
+            # sends them back into the same wall every few minutes.
+            raise LLMUnavailable(
+                _RATE_ERRORS.get(code)
+                or detail
+                or "xFormat rate limit reached — try again shortly."
+            )
         if resp.status_code == 503 and code:
             raise LLMUnavailable(f"xFormat is temporarily unable to serve this ({code}).")
         if resp.status_code >= 400:
-            detail = code or (resp.text or "")[:300]
-            raise LLMUnavailable(f"xFormat error {resp.status_code}: {detail}")
+            raise LLMUnavailable(
+                f"xFormat error {resp.status_code}: "
+                f"{detail or code or (resp.text or '')[:300]}")
         if not body:
             raise LLMUnavailable(
                 f"xFormat returned a non-JSON response ({resp.status_code}). "
@@ -294,13 +344,27 @@ class XFormatProvider(LLMProvider):
         return self.auth_status()
 
     def _cookie_refresh_token(self) -> str | None:
+        """The refresh token the backend last issued.
+
+        The response's own cookies come first. Reading the session jar instead
+        is what the first version did, and it silently kept a spent token:
+        `refresh` answers with no `refreshToken` in the body and a fresh cookie
+        on `.xformat.net` path `/api/auth`, while the copy primed from the
+        keychain sits on the API host at path `/`. Two cookies of one name make
+        `jar.get()` raise, the exception was swallowed, and the stale token
+        stayed stored - so the next run started with a token the backend had
+        already marked used, and the session died on restart rather than at
+        sign-out. Confirmed against the live API on 2026-08-19: replaying a
+        spent token answers 401 `Invalid Refresh Token: Already Used`.
+        """
+        if self._issued_refresh_token:
+            return self._issued_refresh_token
         session = self._session
         if session is None:
             return None
-        try:
-            return session.cookies.get(REFRESH_COOKIE)
-        except Exception:  # noqa: BLE001 - duplicate cookies across domains
-            return None
+        values = [c.value for c in session.cookies
+                  if c.name == REFRESH_COOKIE and c.value]
+        return values[-1] if values else None
 
     def sign_out(self) -> None:
         """Revoke server-side first, then forget locally.
@@ -315,11 +379,18 @@ class XFormatProvider(LLMProvider):
                 pass  # already invalid, or offline — local sign-out proceeds
         self._access_token = None
         self._refresh_token = None
+        self._issued_refresh_token = None
         self._access_expires_at = 0.0
         if self._session is not None:
             self._session.cookies.clear()
         for key in (ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, ACCOUNT_EMAIL_KEY):
             credentials.delete_secret(key)
+
+    def _forget_refresh_token(self) -> None:
+        self._refresh_token = None
+        self._issued_refresh_token = None
+        self._clear_refresh_cookies()
+        credentials.delete_secret(REFRESH_TOKEN_KEY)
 
     def _store_tokens(self, access: str, refresh: str | None, expires_at) -> None:
         self._access_token = access
@@ -351,7 +422,16 @@ class XFormatProvider(LLMProvider):
             payload[ep.refresh_token_field] = self._refresh_token
         try:
             data = self._post(ep.refresh_path, payload, authed=False)
-        except (LLMUnavailable, LLMAuthError):
+        except LLMAuthError:
+            # The backend refuses this token and will refuse it again: refresh
+            # tokens are single-use here. Forgetting it is what makes the next
+            # status check say "signed out" instead of retrying a dead token
+            # for the life of the install.
+            self._forget_refresh_token()
+            return False
+        except LLMUnavailable:
+            # Offline or a backend fault says nothing about the token, so it
+            # is kept.
             return False
         access = _dig(data, ep.access_token_field)
         if not access:
@@ -512,6 +592,20 @@ _AUTH_ERRORS = {
     "missing_refresh_token": "The xFormat session expired — sign in again from Settings.",
     "refresh_failed": "The xFormat session could not be renewed — sign in again from Settings.",
 }
+#: 429 codes. Confirmed live on 2026-08-19: a free account answers
+#: `weekly_limit_exceeded` to `/api/ai/cleanup`, which is a plan limit wearing
+#: the status code of a rate limit.
+_RATE_ERRORS = {
+    "weekly_limit_exceeded": (
+        "This xFormat plan's weekly AI allowance is used up. It resets next "
+        "week; a higher plan raises the limit. The offline engine keeps working."
+    ),
+    "daily_limit_exceeded": (
+        "This xFormat plan's daily AI allowance is used up. It resets tomorrow; "
+        "the offline engine keeps working."
+    ),
+}
+
 _QUOTA_ERRORS = {
     "budget_exceeded": "The xFormat plan's budget for this period is used up.",
     "insufficient_credits": "Not enough xFormat credits left for this request.",

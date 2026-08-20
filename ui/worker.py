@@ -9,7 +9,10 @@ import suppression
 from crawler import CrawlConfig, crawl
 from detectors.base import DetectorUnavailable
 from detectors.factory import DetectorFactory
-from models import AnalysisResult, CodeBlock, FileResult, PageResult, RepoAnalysisResult, TextBlock, TextSpan
+from models import (
+    AnalysisResult, CodeBlock, FileResult, PageResult, RepoAnalysisResult,
+    ScanDiagnostics, TextBlock, TextSpan,
+)
 from repo_scanner import ScanConfig, scan_file, scan_repo
 
 
@@ -34,13 +37,16 @@ def run_unicode_pass(blocks, categories, selected_detector: str = "") -> list:
     character defects vs. probabilistic style) and costs nothing, so it is
     worth running whichever paid backend the user picked.
 
-    It is skipped when the selected detector is the offline one, which
-    already contains this pass — running it again there produced every
-    character finding twice. `categories` falsy disables it entirely.
+    It is skipped when the selected detector already contains this pass (the
+    offline one, and the hybrid one that wraps it) — running it again there
+    produced every character finding twice. Asked of the detector class
+    rather than of its name, so a third such backend cannot be added without
+    this staying true. `categories` falsy disables it entirely.
     """
     if not categories:
         return []
-    if DetectorFactory.resolve(selected_detector) == "offline":
+    detector_cls = DetectorFactory.lookup(selected_detector)
+    if getattr(detector_cls, "includes_character_pass", False):
         return []
     detector = DetectorFactory.create(
         "offline", categories=tuple(categories), include_style=False
@@ -182,6 +188,7 @@ class RepoAnalysisWorker(QThread):
 
             from pathlib import Path
 
+            walk = ScanDiagnostics()
             if self.files is not None:
                 files: list[FileResult] = self.files
             elif Path(self.root_dir).is_file():
@@ -194,7 +201,13 @@ class RepoAnalysisWorker(QThread):
             else:
                 config = ScanConfig(ignore_patterns=self.ignore_patterns,
                                     scope=self.scope)
-                files = scan_repo(self.root_dir, config, progress_cb=progress_cb)
+                # The walk's own account of itself. Without it the window
+                # could not tell "read 1732 files, nothing crossed the
+                # threshold" from "stopped at the cap after 500" - and it
+                # used to do the second while showing the first.
+                walk = ScanDiagnostics()
+                files = scan_repo(self.root_dir, config, progress_cb=progress_cb,
+                                  diagnostics=walk)
             if self._cancelled:
                 return
 
@@ -206,7 +219,8 @@ class RepoAnalysisWorker(QThread):
 
             self.detecting.emit(detector.display_name)
 
-            result = RepoAnalysisResult(root_dir=self.root_dir, files=files)
+            result = RepoAnalysisResult(root_dir=self.root_dir, files=files,
+                                        diagnostics=walk)
             all_blocks = result.blocks()
             try:
                 result.spans = detector.analyze_blocks(all_blocks)

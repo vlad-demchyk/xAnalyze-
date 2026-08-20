@@ -16,13 +16,19 @@ import json
 import os
 from pathlib import Path
 
-SERVICE_NAME = "ai-content-scanner"
+import config
+
+SERVICE_NAME = "xanalyze"
+# Pre-rename service/dir name. `load_secret` falls back to this so a token
+# saved before the rename doesn't become invisible; see its docstring.
+OLD_SERVICE_NAME = "ai-content-scanner"
 
 
 def _fallback_path() -> Path:
     base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
     d = Path(base) / SERVICE_NAME
     d.mkdir(parents=True, exist_ok=True)
+    config.migrate_legacy_file(Path(base) / OLD_SERVICE_NAME, d, "credentials.json")
     return d / "credentials.json"
 
 
@@ -102,6 +108,34 @@ def load_secret(account: str) -> str | None:
                 return value
         except Exception:  # noqa: BLE001 - a locked keychain shouldn't crash the app
             pass
+        # Nothing under the new service name. Before concluding there's no
+        # secret at all, check whether it's sitting under the pre-rename
+        # service name — otherwise renaming SERVICE_NAME would silently
+        # strand every previously-saved token (xFormat access/refresh,
+        # an Anthropic key) in the keychain: still there, but unreachable
+        # since nothing looks it up under the old name any more.
+        #
+        # Migrated eagerly rather than left in place: once copied under the
+        # new name it's a duplicate the user never asked to keep, and an
+        # orphaned "ai-content-scanner" keychain entry is just confusing
+        # clutter with no code left pointing at it. Only removed after the
+        # copy under the new name actually succeeds, so a failure here never
+        # loses the only copy of the secret.
+        try:
+            old_value = kr.get_password(OLD_SERVICE_NAME, account)
+        except Exception:  # noqa: BLE001
+            old_value = None
+        if old_value is not None:
+            try:
+                kr.set_password(SERVICE_NAME, account, old_value)
+            except Exception:  # noqa: BLE001
+                pass
+            else:
+                try:
+                    kr.delete_password(OLD_SERVICE_NAME, account)
+                except Exception:  # noqa: BLE001 - stale copy left behind is harmless
+                    pass
+            return old_value
     # Also checked when a keyring exists: a secret may have been written to
     # the file earlier, before a backend became available.
     return _file_load(account)

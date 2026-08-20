@@ -67,9 +67,9 @@ class FindingDelegate(QStyledItemDelegate):
     def _badge_colors(self, confidence: Confidence) -> tuple:
         p = self.palette_
         if confidence == Confidence.HIGH:
-            return QColor(p.error), QColor("#ffffff")
+            return QColor(p.error_strong), QColor(p.on_error)
         if confidence == Confidence.MEDIUM:
-            return QColor(p.amber), QColor("#141416")
+            return QColor(p.amber), QColor(p.on_amber)
         return QColor(p.bg_muted), QColor(p.text_muted)
 
     def sizeHint(self, option, index) -> QSize:  # noqa: N802 - Qt override

@@ -1,4 +1,4 @@
-# AI Content Scanner
+# XAnalyze
 
 Finds text that reads as machine-written — and characters that no keyboard
 produces — in Ukrainian, Italian, and English.

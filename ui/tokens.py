@@ -188,9 +188,12 @@ def px(value: str | None, fallback: int) -> int:
 def _darken(value: str, amount: float) -> str:
     """A hex colour, `amount` of the way towards black.
 
-    Used for one thing only - the hover state of an accent fill - because a
-    hover that is a *different* colour rather than the same one pressed a
-    little reads as a different control.
+    Two uses, and both are the same idea: a value the design system does not
+    declare, derived from one it does, rather than a second brand colour
+    invented beside the first. The hover state of an accent fill (a hover
+    that is a *different* colour reads as a different control), and the
+    status hues one step down where the brand value cannot reach AA contrast
+    (see `Palette.error_strong`).
     """
     text = (value or "").strip()
     if not text.startswith("#") or len(text) not in (4, 7):
@@ -244,6 +247,27 @@ class Palette:
     success: str = "#17a06d"
     error: str = "#e5484d"
     amber: str = "#f59e0b"
+    #: Ink on the two status fills above. Deliberately the *same* in both
+    #: themes, unlike `on_accent`: `error` and `amber` are themselves the same
+    #: red and the same amber on a light sheet and a dark one, so the text that
+    #: sits on them must not flip with the theme - following the theme here is
+    #: how a badge ends up with near-black text on a mid red. Declared as
+    #: tokens rather than typed into the two places that paint a badge (the
+    #: style sheet and the list delegate), which is where they were before.
+    on_error: str = "#ffffff"
+    on_amber: str = "#141416"
+    #: The status hues, one step darker, for the two jobs the brand values
+    #: cannot do at AA contrast. Measured, not guessed (see
+    #: `tests/test_palette_contrast.py`): white on `#e5484d` is 3.9:1 and the
+    #: badge text is 12px bold, which is not "large text"; and `#17a06d` as a
+    #: word on a white sheet is 3.3:1. Both clear 4.5:1 one step down.
+    #: `error_strong` fills the badge in both themes - the ink on it is white
+    #: either way, so the fill must not follow the theme. `error_text` and
+    #: `success_text` are words on a surface, so they *do*: on the dark sheet
+    #: the base hues already pass and darkening them would undo that.
+    error_strong: str = "#d24246"
+    error_text: str = "#d24246"
+    success_text: str = "#13865b"
     scrollbar: str = "#cfcdc7"
     scrollbar_hover: str = "#b4b2ab"
 
@@ -296,6 +320,13 @@ class Palette:
             success=color("--success", defaults.success),
             error=color("--error", defaults.error),
             amber=color("--amber", defaults.amber),
+            error_strong=_darken(color("--error", defaults.error), 0.10),
+            # Words, not fills: on the dark sheet the brand hues already
+            # clear 4.5:1, and darkening them there would take that away.
+            error_text=(color("--error", defaults.error) if name == "dark"
+                        else _darken(color("--error", defaults.error), 0.10)),
+            success_text=(color("--success", defaults.success) if name == "dark"
+                          else _darken(color("--success", defaults.success), 0.17)),
             scrollbar=color("--sb-thumb", defaults.scrollbar),
             scrollbar_hover=color("--sb-thumb-hover", defaults.scrollbar_hover),
             font=first_font_family(tokens.get("--font"), defaults.font),

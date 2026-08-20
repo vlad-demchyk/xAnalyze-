@@ -8,10 +8,14 @@ from __future__ import annotations
 LANGUAGES = {"uk": "Українська", "it": "Italiano", "en": "English"}
 
 _STRINGS: dict[str, dict[str, str]] = {
+    # Window title only (OS title bar / dock / taskbar) — the in-app header
+    # already shows the "XAnalyze" wordmark on its own (see main_window's
+    # brand_name label), so this needs the name plus what the app does,
+    # not the bare name again.
     "app_title": {
-        "uk": "Сканер AI-контенту",
-        "it": "Scanner di contenuti IA",
-        "en": "AI Content Scanner",
+        "uk": "XAnalyze — сканер ознак ШІ в тексті",
+        "it": "XAnalyze — scanner di contenuti IA",
+        "en": "XAnalyze — AI content scanner",
     },
     "url_label": {
         "uk": "URL:",
@@ -42,6 +46,34 @@ _STRINGS: dict[str, dict[str, str]] = {
         "uk": "Детектор:",
         "it": "Rilevatore:",
         "en": "Detector:",
+    },
+    # The window no longer asks which detector class to build - it asks which
+    # account reads the text, and works the detector out from that plus the
+    # method. See `MainWindow._detector_for_request`.
+    "provider_label": {
+        "uk": "Модель:",
+        "it": "Modello:",
+        "en": "Model:",
+    },
+    "provider_label_full": {
+        "uk": "Чий акаунт читає текст і платить за прохід моделі.",
+        "it": "Quale account legge il testo e paga il passaggio del modello.",
+        "en": "Whose account reads the text and pays for the model pass.",
+    },
+    "provider_anthropic": {
+        "uk": "Anthropic (свій ключ)",
+        "it": "Anthropic (chiave propria)",
+        "en": "Anthropic (own key)",
+    },
+    "provider_xformat": {
+        "uk": "Акаунт xFormat",
+        "it": "Account xFormat",
+        "en": "xFormat account",
+    },
+    "provider_claude-code": {
+        "uk": "Сесія Claude Code",
+        "it": "Sessione Claude Code",
+        "en": "Claude Code session",
     },
     "ui_language_label": {
         "uk": "Мова:",
@@ -269,12 +301,14 @@ _STRINGS: dict[str, dict[str, str]] = {
         "uk": "Метод:", "it": "Metodo:", "en": "Method:",
     },
     "method_label_full": {
-        "uk": "Хто оцінює: локальний двигун без мережі, модель через ключ або "
-              "акаунт xFormat, або обидва разом.",
-        "it": "Chi valuta: il motore locale senza rete, un modello tramite "
-              "chiave o account xFormat, o entrambi.",
-        "en": "Who judges: the offline engine with no network, a model "
-              "through a key or an xFormat account, or both.",
+        "uk": "Хто оцінює: локальний двигун без мережі, лише модель, або "
+              "гібрид - локальний прохід, який модель перевіряє й доповнює.",
+        "it": "Chi valuta: il motore locale senza rete, solo il modello, o "
+              "l'ibrido - il passaggio locale che il modello verifica ed "
+              "estende.",
+        "en": "Who judges: the offline engine with no network, the model "
+              "alone, or the hybrid - the offline pass, checked and extended "
+              "by the model.",
     },
     "method_local": {
         "uk": "Локальний двигун", "it": "Motore locale", "en": "Offline engine",
@@ -282,8 +316,14 @@ _STRINGS: dict[str, dict[str, str]] = {
     "method_ai": {
         "uk": "AI", "it": "AI", "en": "AI",
     },
+    # "Hybrid", not "both": the two engines no longer run side by side with
+    # two lists of findings - the model checks what the offline pass found
+    # and adds what it did not, and one merged list comes back. See
+    # `detectors/hybrid.py`.
     "method_both": {
-        "uk": "Локальний і AI", "it": "Locale e AI", "en": "Offline and AI",
+        "uk": "Гібрид: локальний і AI",
+        "it": "Ibrido: locale e AI",
+        "en": "Hybrid: offline and AI",
     },
     "method_ai_unavailable": {
         "uk": "Для AI потрібен ключ або вхід у акаунт xFormat. Прогін іде "
@@ -320,6 +360,34 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Riporta i file allo stato precedente alla prima correzione.",
         "en": "Put the files back the way they were before the first "
               "correction.",
+    },
+    # One button for two documents; the type is asked at click time. See
+    # `MainWindow._on_download_clicked` for why they were not merged into one
+    # document as well.
+    "reader_browser_empty": {
+        "uk": "Браузер відкрив документ, але не побудував жодної розмітки. "
+              "Прогін не робився: порожня відповідь не є чистим результатом.",
+        "it": "Il browser ha aperto il documento ma non ha costruito alcun "
+              "markup. L'analisi non è stata eseguita: una risposta vuota non "
+              "è un risultato pulito.",
+        "en": "The browser opened the document but built no markup at all. "
+              "Nothing was analysed: an empty answer is not a clean result.",
+    },
+    "download_button": {
+        "uk": "Завантажити", "it": "Scarica", "en": "Download",
+    },
+    "download_tooltip": {
+        "uk": "Зберегти звіт: або документ для читання й друку, або брифінг "
+              "для агента. Тип запитається після натискання.",
+        "it": "Salva un report: il documento da leggere e stampare, oppure il "
+              "briefing per l'agente. Il tipo viene chiesto dopo il clic.",
+        "en": "Save a report: either the document to read and print, or the "
+              "briefing for an agent. The type is asked after the click.",
+    },
+    "download_which": {
+        "uk": "Який звіт зберегти?",
+        "it": "Quale report salvare?",
+        "en": "Which report do you want?",
     },
     "export_report_button": {
         "uk": "Звіт для агента", "it": "Report per l'agente",
@@ -942,6 +1010,30 @@ _STRINGS: dict[str, dict[str, str]] = {
         "uk": "Оцінка моделі ({detector})",
         "it": "Giudizio del modello ({detector})",
         "en": "Model's judgement ({detector})",
+    },
+    # The hybrid run's third case: one passage that both engines flagged.
+    # Given its own title because "the model said" and "the offline signals
+    # said" are two kinds of evidence, and a reader deciding whether to
+    # rewrite a sentence is entitled to know both were present.
+    "why_agreement_title": {
+        "uk": "Обидва двигуни позначили цей фрагмент",
+        "it": "Entrambi i motori hanno segnalato questo passaggio",
+        "en": "Both engines flagged this passage",
+    },
+    "why_agreement_caveat": {
+        "uk": "Збіг двох двигунів не є доказом: локальні сигнали слабкі за "
+              "побудовою, а оцінка моделі лишається думкою.",
+        "it": "L'accordo tra i due motori non è una prova: i segnali locali "
+              "sono deboli per costruzione e il giudizio del modello resta "
+              "un'opinione.",
+        "en": "Two engines agreeing is not proof: the offline signals are "
+              "weak by construction, and the model's judgement stays an "
+              "opinion.",
+    },
+    "why_agreement_model": {
+        "uk": "Модель: {reason}",
+        "it": "Modello: {reason}",
+        "en": "The model: {reason}",
     },
     "why_model_caveat": {
         "uk": "Це думка моделі, а не водяний знак і не доказ походження тексту.",
@@ -1682,9 +1774,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Too many resources block the first paint",
     },
     "a11y_perf_render_blocking_found": {
-        "uk": "У <head> знайдено {count} блокувальних файлів при розумній межі {budget}.",
-        "it": "Nel <head> ci sono {count} file bloccanti, il limite ragionevole è {budget}.",
-        "en": "Found {count} blocking files in <head> against a sensible budget of {budget}.",
+        "uk": "У <head> знайдено {count} {files_noun} при розумній межі {budget}.",
+        "it": "Nel <head> ci sono {count} {files_noun}, il limite ragionevole è {budget}.",
+        "en": "Found {count} {files_noun} in <head> against a sensible budget of {budget}.",
     },
     "a11y_perf_render_blocking_why": {
         "uk": "Скрипт без async чи defer і звичайний файл стилів зупиняють розбір документа: браузер не малює жодного пікселя, доки не завантажить і не виконає кожен з них. Тобто час до першого слова на екрані дорівнює сумі найповільніших запитів, і на мобільному зв'язку це секунди білого екрана при цілком робочому сайті.",
@@ -1782,9 +1874,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "No connection hints for third-party hosts",
     },
     "a11y_perf_preconnect_found": {
-        "uk": "Сторінка звертається до {count} чужих доменів без preconnect чи dns-prefetch: {hosts}.",
-        "it": "La pagina contatta {count} domini esterni senza preconnect o dns-prefetch: {hosts}.",
-        "en": "The page reaches {count} external hosts with no preconnect or dns-prefetch: {hosts}.",
+        "uk": "Сторінка звертається до {count} {domains_noun} без preconnect чи dns-prefetch: {hosts}.",
+        "it": "La pagina contatta {count} {domains_noun} senza preconnect o dns-prefetch: {hosts}.",
+        "en": "The page reaches {count} {domains_noun} with no preconnect or dns-prefetch: {hosts}.",
     },
     "a11y_perf_preconnect_why": {
         "uk": "Перш ніж завантажити перший байт з чужого домену, браузер має знайти адресу в DNS, встановити з'єднання і домовитись про шифрування. Це три послідовні подорожі мережею, і на мобільному зв'язку разом вони дають кількасот мілісекунд ще до початку завантаження - і так для кожного домену окремо.",
@@ -1856,6 +1948,83 @@ _STRINGS: dict[str, dict[str, str]] = {
         "uk": "Додайте rel=\"noopener noreferrer\" до кожного посилання з target=\"_blank\". Заразом подумайте, чи потрібна нова вкладка взагалі: рішення відкривати її замість людини забирає в неї кнопку «назад».",
         "it": "Aggiungi rel=\"noopener noreferrer\" a ogni link con target=\"_blank\". Già che ci sei, valuta se la nuova scheda serva davvero: deciderla al posto della persona le toglie il pulsante «indietro».",
         "en": "Add rel=\"noopener noreferrer\" to every link with target=\"_blank\". While you are there, consider whether the new tab is needed at all: deciding it on someone's behalf takes their back button away.",
+    },
+    # Shown when a finding is about the document rather than about an element
+    # in it: nothing on screen can be outlined, and saying so beats a click
+    # that appears to do nothing.
+    # Width names, and the two sentences that report them. Words rather than
+    # pixel counts: "1440" is a number the reader has to interpret, "desktop"
+    # is the thing they were already thinking about.
+    "breakpoint_tooltip": {
+        "uk": "Показати прев'ю на ширині {name} ({width} px) - тій самій, на "
+              "якій браузерний прохід шукав знахідки",
+        "it": "Mostra l'anteprima alla larghezza {name} ({width} px), la "
+              "stessa a cui il passaggio nel browser ha cercato",
+        "en": "Show the preview at the {name} width ({width} px) - the same "
+              "one the browser pass looked at",
+    },
+    "status_browser_pass_widths": {
+        "uk": "Браузерний прохід на {n} ширинах: {url}",
+        "it": "Passaggio nel browser a {n} larghezze: {url}",
+        "en": "Browser pass at {n} widths: {url}",
+    },
+    # Said whenever a repository walk stopped at its cap. The one thing a
+    # partial result must never do is look like a complete one.
+    "finding_copies": {
+        "uk": "ще у {n} файлах", "it": "in altri {n} file",
+        "en": "in {n} more file(s)",
+    },
+    "scan_truncated": {
+        "uk": "Прочитано лише {files} файлів: спрацювало обмеження в {limit}. "
+              "Усе за цією межею не переглядалось, тож це не висновок про "
+              "весь репозиторій.",
+        "it": "Letti solo {files} file: è scattato il limite di {limit}. "
+              "Tutto ciò che sta oltre non è stato esaminato, quindi questa "
+              "non è una conclusione sull'intero repository.",
+        "en": "Only {files} files were read: the {limit}-file limit stopped "
+              "the walk. Nothing past it was examined, so this is not a "
+              "statement about the whole repository.",
+    },
+    "breakpoint_desktop": {"uk": "десктоп", "it": "desktop", "en": "desktop"},
+    "breakpoint_tablet": {"uk": "планшет", "it": "tablet", "en": "tablet"},
+    "breakpoint_mobile": {"uk": "мобільний", "it": "mobile", "en": "mobile"},
+    "a11y_breakpoint_only": {
+        "uk": "Знайдено лише на одній ширині: {breakpoints}.",
+        "it": "Trovato a una sola larghezza: {breakpoints}.",
+        "en": "Found at one width only: {breakpoints}.",
+    },
+    "a11y_breakpoint_seen": {
+        "uk": "Знайдено на ширинах: {breakpoints}.",
+        "it": "Trovato alle larghezze: {breakpoints}.",
+        "en": "Found at these widths: {breakpoints}.",
+    },
+    "audit_document_level": {
+        "uk": "Ця знахідка стосується документа загалом, окремого елемента для підсвітки немає.",
+        "it": "Questa segnalazione riguarda il documento nel suo insieme: non c'è un elemento da evidenziare.",
+        "en": "This finding is about the document as a whole - there is no single element to highlight.",
+    },
+    "a11y_bp_ai_markup_artifact_title": {
+        "uk": "Слід генератора в розмітці",
+        "it": "Traccia del generatore nel markup",
+        "en": "Generator trace left in the markup",
+    },
+    # The artifacts are listed as the markup tokens themselves rather than
+    # described in words: a developer reading `class="claude-..."` already
+    # knows what it is, and a translated noun for it would add nothing.
+    "a11y_bp_ai_markup_artifact_found": {
+        "uk": "Елемент <{element}> має {names} з назвою постачальника ({vendor}).",
+        "it": "L'elemento <{element}> ha {names} con il nome del fornitore ({vendor}).",
+        "en": "The <{element}> element carries {names}, named after a vendor ({vendor}).",
+    },
+    "a11y_bp_ai_markup_artifact_why": {
+        "uk": "Такі імена класів і data-атрибути пишуть інтерфейси чатів, а не ваш шаблон: вони потрапляють у сторінку разом із вставленою відповіддю. Це факт про походження розмітки, а не про авторство тексту - і це не водяний знак: офіційний знак Anthropic живе у виборі слів і перевіряється лише ключем, якого немає ні в кого поза Anthropic. Клас із таким словом може належати й вашому власному коду, тому це слабкий за наслідками, але точний за фактом сигнал.",
+        "it": "Questi nomi di classe e attributi data li scrivono le interfacce di chat, non il tuo template: finiscono nella pagina insieme alla risposta incollata. È un fatto sull'origine del markup, non sull'autore del testo - e non è una filigrana: il marchio ufficiale di Anthropic vive nella scelta delle parole e si verifica solo con una chiave che nessuno ha fuori da Anthropic. Una classe con quella parola può appartenere anche al tuo codice, quindi il segnale è debole per conseguenze ma esatto come fatto.",
+        "en": "Class names and data attributes like these are written by chat interfaces, not by your template: they arrive in the page along with a pasted answer. It is a fact about where the markup came from, not about who wrote the words - and it is not a watermark: Anthropic's official mark lives in word choice and can only be verified with a key nobody outside Anthropic holds. A class with that word in it can equally belong to your own code, which is why this is weak in consequence and exact in fact.",
+    },
+    "a11y_bp_ai_markup_artifact_fix": {
+        "uk": "Приберіть саме цей клас або атрибут, а не елемент: вміст лишається, зникає тільки слід. Якщо назва належить вашому власному коду, додайте її у винятки, щоб не бачити цю знахідку щоразу.",
+        "it": "Rimuovi proprio quella classe o quell'attributo, non l'elemento: il contenuto resta, sparisce solo la traccia. Se il nome appartiene al tuo codice, aggiungilo alle eccezioni per non rivedere questa segnalazione ogni volta.",
+        "en": "Remove that class token or attribute, not the element: the content stays, only the trace goes. If the name belongs to your own code, add it to the exceptions so the finding stops coming back.",
     },
     "a11y_bp_charset_title": {
         "uk": "Кодування сторінки не оголошено",
@@ -2224,9 +2393,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Rule {rule} failed",
     },
     "a11y_summary": {
-        "uk": "Критичних {critical}, серйозних {serious}, помірних {moderate}, дрібних {minor} на {documents} документах",
-        "it": "Critici {critical}, seri {serious}, moderati {moderate}, minori {minor} su {documents} documenti",
-        "en": "{critical} critical, {serious} serious, {moderate} moderate, {minor} minor across {documents} documents",
+        "uk": "Критичних {critical}, серйозних {serious}, помірних {moderate}, дрібних {minor} на {documents} {documents_noun}",
+        "it": "Critici {critical}, seri {serious}, moderati {moderate}, minori {minor} su {documents} {documents_noun}",
+        "en": "{critical} critical, {serious} serious, {moderate} moderate, {minor} minor across {documents} {documents_noun}",
     },
     "severity_critical": {"uk": "критично", "it": "critico", "en": "critical"},
     "severity_serious": {"uk": "серйозно", "it": "serio", "en": "serious"},
@@ -2241,3 +2410,29 @@ def t(key: str, lang: str = "uk", **kwargs) -> str:
         return key
     template = entry.get(lang) or entry.get("en") or key
     return template.format(**kwargs) if kwargs else template
+
+
+def plural(n: int, lang: str, one: str, few: str, many: str | None = None) -> str:
+    """The noun form that agrees with `n`, in whichever of the three
+    languages the interface is showing.
+
+    Ukrainian needs all three forms - "1 документ", "2 документи",
+    "5 документів" - and the well-known exception that 11-14 take the
+    "many" form even though they end in 1-4 (`11 документів`, not
+    `11 документ`). Italian and English only distinguish one from the rest,
+    so `few` is what they use whenever `n != 1`; `many` exists only for the
+    languages that need a third form; a caller that also has no need for a
+    third form (a case where "few" and "many" are the same word, such as
+    `на 2 документах` and `на 5 документах`) can simply pass the same string
+    as both, and the entire calculation still runs.
+    """
+    if lang != "uk":
+        return one if n == 1 else few
+    many = many if many is not None else few
+    if n % 100 in (11, 12, 13, 14):
+        return many
+    if n % 10 == 1:
+        return one
+    if n % 10 in (2, 3, 4):
+        return few
+    return many

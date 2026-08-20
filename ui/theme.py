@@ -143,12 +143,12 @@ QLabel[class="{CLASS_BADGE_LOW}"] {{
     font-weight: 600;
 }}
 QLabel[class="{CLASS_BADGE_HIGH}"] {{
-    background-color: {c(p.error)};
-    color: #ffffff;
+    background-color: {c(p.error_strong)};
+    color: {c(p.on_error)};
 }}
 QLabel[class="{CLASS_BADGE_MEDIUM}"] {{
     background-color: {c(p.amber)};
-    color: #141416;
+    color: {c(p.on_amber)};
 }}
 QLabel[class="{CLASS_BADGE_LOW}"] {{
     background-color: {c(p.bg_muted)};
