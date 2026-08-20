@@ -608,6 +608,11 @@ def cmd_fullscan(args) -> int:
             audit_result = audit.analyze_files(repo_files, target)
 
     if audit_result:
+        # Run browser pass if requested
+        if getattr(args, "browser", False):
+            suppressions = suppression.Suppressions.load(
+                _settings_for_ignore(args), _ignore_root(args))
+            _run_browser_pass(audit_result, suppressions, args)
         for doc in audit_result.documents:
             audit_issues.extend(doc.issues)
 
@@ -2002,6 +2007,10 @@ def build_parser() -> argparse.ArgumentParser:
                             help="uk | it | en; language of reports")
     p_fullscan.add_argument("--browser", action="store_true",
                             help="also load pages in a real browser")
+    p_fullscan.add_argument("--breakpoints", nargs="?", const="all", default=None,
+                            metavar="NAMES",
+                            help="with --browser: audit at several widths "
+                                 "(desktop 1440, tablet 834, mobile 390)")
     p_fullscan.set_defaults(func=cmd_fullscan)
 
     p_clean = sub.add_parser("clean", help="filter text from stdin to stdout")
