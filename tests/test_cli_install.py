@@ -1,0 +1,149 @@
+"""`cli_install`'s symlink/quarantine logic, entirely on a scratch directory.
+
+Every test passes an explicit `link_dir` under a `tempfile.TemporaryDirectory`
+and a `source` under the same scratch tree — never `cli_install.USER_BIN_DIR`
+or `cli_install.SYSTEM_BIN_DIR` — so nothing here can touch this machine's
+real `~/.local/bin` or `/usr/local/bin`. The admin-elevated path is exercised
+only against a mocked `subprocess.run`, since it would otherwise pop a real
+macOS password dialog.
+"""
+from __future__ import annotations
+
+import os
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import cli_install
+
+
+class _ScratchCase(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.base = Path(self._tmp.name)
+        self.link_dir = self.base / "bin"
+        self.source = self.base / "xanalyze-cli"
+        self.source.write_text("#!/bin/sh\necho fake cli\n", encoding="utf-8")
+        os.chmod(self.source, 0o755)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+
+class BundledCliPath(unittest.TestCase):
+    def test_none_when_not_frozen(self):
+        with mock.patch.object(sys, "frozen", False, create=True):
+            self.assertIsNone(cli_install.bundled_cli_path())
+
+    def test_the_running_executables_own_path_when_frozen(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fake_executable = Path(tmp).resolve() / "XAnalyze"
+            fake_executable.write_text("stub", encoding="utf-8")
+            with mock.patch.object(sys, "frozen", True, create=True), \
+                 mock.patch.object(sys, "executable", str(fake_executable)):
+                self.assertEqual(cli_install.bundled_cli_path(), fake_executable)
+
+
+class IsDirOnPath(unittest.TestCase):
+    def test_a_directory_present_in_path_is_reported_as_such(self):
+        with mock.patch.dict(os.environ, {"PATH": f"/usr/bin{os.pathsep}/opt/here"}):
+            self.assertTrue(cli_install.is_dir_on_path(Path("/opt/here")))
+
+    def test_a_directory_absent_from_path_is_reported_as_such(self):
+        with mock.patch.dict(os.environ, {"PATH": "/usr/bin"}):
+            self.assertFalse(cli_install.is_dir_on_path(Path("/opt/nowhere")))
+
+
+class InstallAndUninstall(_ScratchCase):
+    def test_install_creates_a_symlink_to_the_source(self):
+        target = cli_install.install(source=self.source, link_dir=self.link_dir)
+        self.assertEqual(target, self.link_dir / cli_install.CLI_NAME)
+        self.assertTrue(target.is_symlink())
+        self.assertEqual(Path(os.readlink(target)), self.source)
+
+    def test_install_clears_the_quarantine_flag(self):
+        # A fresh temp file has no quarantine attribute; the point of this
+        # test is that clearing a *missing* attribute is not treated as a
+        # failure -- install must still succeed.
+        target = cli_install.install(source=self.source, link_dir=self.link_dir)
+        self.assertTrue(target.exists())
+
+    def test_install_replaces_a_pre_existing_symlink(self):
+        other_source = self.base / "other-cli"
+        other_source.write_text("stub", encoding="utf-8")
+        cli_install.install(source=other_source, link_dir=self.link_dir)
+        target = cli_install.install(source=self.source, link_dir=self.link_dir)
+        self.assertEqual(Path(os.readlink(target)), self.source)
+
+    def test_install_raises_when_the_source_is_missing(self):
+        missing = self.base / "nope"
+        with self.assertRaises(cli_install.CliInstallError):
+            cli_install.install(source=missing, link_dir=self.link_dir)
+
+    def test_install_with_no_source_and_not_frozen_raises(self):
+        with mock.patch.object(sys, "frozen", False, create=True):
+            with self.assertRaises(cli_install.CliInstallError):
+                cli_install.install(link_dir=self.link_dir)
+
+    def test_uninstall_removes_the_symlink_and_reports_it_removed(self):
+        cli_install.install(source=self.source, link_dir=self.link_dir)
+        removed = cli_install.uninstall(link_dir=self.link_dir)
+        self.assertTrue(removed)
+        self.assertFalse((self.link_dir / cli_install.CLI_NAME).exists())
+
+    def test_uninstall_when_nothing_installed_reports_nothing_removed(self):
+        self.assertFalse(cli_install.uninstall(link_dir=self.link_dir))
+
+    def test_installed_target_reflects_current_symlink(self):
+        self.assertIsNone(cli_install.installed_target(link_dir=self.link_dir))
+        cli_install.install(source=self.source, link_dir=self.link_dir)
+        self.assertEqual(cli_install.installed_target(link_dir=self.link_dir), self.source)
+
+
+class AdminElevatedPath(_ScratchCase):
+    """The `/usr/local/bin` path, with `subprocess.run` mocked so no real
+    macOS password dialog appears during the test suite."""
+
+    def test_install_with_admin_shells_out_instead_of_symlinking_directly(self):
+        with mock.patch("cli_install.subprocess.run") as run:
+            run.return_value = mock.Mock(returncode=0, stderr="")
+            target = cli_install.install(source=self.source, link_dir=self.link_dir,
+                                         use_admin=True)
+        self.assertEqual(target, self.link_dir / cli_install.CLI_NAME)
+        # Not actually created on disk -- the mocked call never really ran
+        # `ln -sf`, which is exactly the point: no real elevation happened.
+        self.assertFalse(target.exists())
+        admin_calls = [c for c in run.call_args_list
+                      if "administrator privileges" in c.args[0][-1]]
+        self.assertEqual(len(admin_calls), 1)
+
+    def test_install_with_admin_raises_when_the_prompt_is_cancelled(self):
+        with mock.patch("cli_install.subprocess.run") as run:
+            run.side_effect = [
+                mock.Mock(returncode=1, stderr="No such xattr: com.apple.quarantine"),
+                mock.Mock(returncode=1, stderr="User canceled."),
+            ]
+            with self.assertRaises(cli_install.CliInstallError):
+                cli_install.install(source=self.source, link_dir=self.link_dir,
+                                    use_admin=True)
+
+    def test_uninstall_with_admin_shells_out(self):
+        with mock.patch("cli_install.subprocess.run") as run:
+            run.return_value = mock.Mock(returncode=0, stderr="")
+            # uninstall() with use_admin checks existence first via Path, not
+            # a shell call, so create the symlink locally to make it "exist".
+            (self.link_dir).mkdir(parents=True)
+            (self.link_dir / cli_install.CLI_NAME).symlink_to(self.source)
+            removed = cli_install.uninstall(link_dir=self.link_dir, use_admin=True)
+        self.assertTrue(removed)
+        admin_calls = [c for c in run.call_args_list
+                      if "administrator privileges" in c.args[0][-1]]
+        self.assertEqual(len(admin_calls), 1)
+
+
+if __name__ == "__main__":
+    unittest.main()

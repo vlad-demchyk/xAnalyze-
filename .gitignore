@@ -13,3 +13,10 @@ __pycache__/
 # holds an Anthropic key when the user typed one into Settings.
 settings.json
 .xanalyze-ignore
+
+# Test-account credentials for the live e2e run. The file says of itself that
+# it is ignored by git; it was not, and `git add -A` would have committed a
+# working subscription login. Checked with `git check-ignore` on 2026-08-20.
+.env
+.env.*
+!.env.example

@@ -23,6 +23,12 @@ only" branch to maintain.
 runtime by scanning entry points, which a frozen app has none of, so the macOS
 backend has to be imported by name or the app silently falls back to a
 plain-text credential file.
+
+**The entry point is `app_entry.py`, not `main.py`.** One frozen executable
+serves both the GUI and the `xanalyze` CLI command (installed via a button in
+Settings, see `cli_install.py`), told apart at runtime by the name it was
+invoked as (see `app_entry.py`'s docstring for why this beats building two
+executables and merging them with PyInstaller's `MERGE()`).
 """
 import shutil
 from pathlib import Path
@@ -53,7 +59,7 @@ hiddenimports = [
 ]
 
 analysis = Analysis(
-    [str(ROOT / "main.py")],
+    [str(ROOT / "app_entry.py")],
     pathex=[str(ROOT)],
     binaries=[],
     datas=datas,
