@@ -532,6 +532,9 @@ def cmd_fullscan(args) -> int:
     Combines scan (AI patterns, characters) and audit (accessibility, SEO,
     performance, best practices) into one command. Saves styled report and
     agent briefing, outputs JSON for agent consumption.
+
+    Reports are auto-saved to ~/Desktop unless --styled-report/--report
+    specify a different path.
     """
     import audit
     from audit.explanations import summary_line
@@ -539,6 +542,16 @@ def cmd_fullscan(args) -> int:
     lang = args.language or "en"
     target = args.target
     is_url = target.startswith(("http://", "https://")) or args.url
+
+    # Auto-generate report paths on Desktop if not specified
+    desktop = Path.home() / "Desktop"
+    timestamp = __import__("datetime").datetime.now().strftime("%Y-%m-%d-%H%M")
+    target_name = Path(target).stem if not is_url else target.replace("https://", "").replace("http://", "").replace("/", "_")[:30]
+
+    if not getattr(args, "styled_report", None):
+        args.styled_report = str(desktop / f"xanalyze-{target_name}-{timestamp}.pdf")
+    if not getattr(args, "report", None):
+        args.report = str(desktop / f"xanalyze-{target_name}-{timestamp}.md")
 
     # Validate target
     if not is_url:
