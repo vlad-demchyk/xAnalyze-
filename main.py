@@ -59,26 +59,41 @@ class FindingRow(QWidget):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(T.space_4, T.space_2, T.space_4, T.space_2)
+        layout.setContentsMargins(T.space_3, T.space_2, T.space_3, T.space_2)
         layout.setSpacing(T.space_3)
 
         self.badge = SeverityBadge(severity)
         layout.addWidget(self.badge, alignment=Qt.AlignmentFlag.AlignTop)
 
-        self.text_label = QLabel(text)
+        # Parse text to extract [tag] parts
+        self.text_label = QLabel()
         self.text_label.setWordWrap(True)
-        self.text_label.setStyleSheet(f"color: {T.text_primary}; font-size: {T.font_size_sm}px;")
+        self._set_styled_text(text)
         layout.addWidget(self.text_label, stretch=1)
 
-        self.setStyleSheet(f"""
-            QWidget {{
+        self.setStyleSheet("""
+            QWidget {
                 background: transparent;
-                border-radius: {T.radius_md}px;
-            }}
-            QWidget:hover {{
-                background-color: {T.bg_hover};
-            }}
+            }
+            QWidget:hover {
+                background-color: rgba(255, 255, 255, 0.03);
+            }
         """)
+
+    def _set_styled_text(self, text: str):
+        """Style [tag] parts as inline badges."""
+        import re
+        # Find [tag] patterns and style them
+        parts = re.split(r'(\[[\w-]+\])', text)
+        styled = ""
+        for part in parts:
+            if part.startswith('[') and part.endswith(']'):
+                tag = part[1:-1]
+                styled += f'<span style="background-color: {T.bg_active}; color: {T.text_secondary}; border-radius: 3px; padding: 1px 4px; font-size: 10px; font-weight: 600;">{tag}</span> '
+            else:
+                styled += part
+        self.text_label.setText(f'<span style="color: {T.text_primary}; font-size: {T.font_size_sm}px;">{styled}</span>')
+        self.text_label.setTextFormat(Qt.TextFormat.RichText)
 
 
 class FindingsList(QWidget):
@@ -92,7 +107,7 @@ class FindingsList(QWidget):
             }}
         """)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(1, 1, 1, 1)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
         header = QWidget()
@@ -129,20 +144,21 @@ class FindingsList(QWidget):
                 background-color: {T.bg_surface};
                 border: none;
                 outline: none;
-                padding: {T.space_2}px;
+                padding: {T.space_2}px {T.space_3}px;
             }}
             QListWidget::item {{
-                padding: {T.space_1}px 0;
+                padding: 0;
                 margin: 0 0 {T.space_1}px 0;
                 border: none;
                 background: transparent;
-                border-radius: {T.radius_md}px;
             }}
             QListWidget::item:selected {{
                 background-color: {T.accent_muted};
+                border-radius: {T.radius_md}px;
             }}
             QListWidget::item:hover:!selected {{
-                background-color: {T.bg_hover};
+                background-color: rgba(255, 255, 255, 0.03);
+                border-radius: {T.radius_md}px;
             }}
         """)
         layout.addWidget(self.list)
@@ -213,8 +229,7 @@ class DetailPanel(QWidget):
         self.source_badge = QLabel()
         self.source_badge.setStyleSheet(f"""
             QLabel {{
-                background-color: {T.bg_elevated};
-                border: 1px solid {T.border_default};
+                background-color: {T.bg_active};
                 border-radius: {T.radius_sm}px;
                 padding: 2px {T.space_2}px;
                 color: {T.text_secondary};
@@ -474,8 +489,13 @@ class MainWindow(QMainWindow):
         self.sidebar.set_busy(True)
         self.status_label.setText(f"Analyzing: {target}...")
 
-        # Determine detector from method selection
+        # Get checks and methods
+        checks = self.sidebar.get_checks()
         methods = self.sidebar.get_methods()
+        wants_copy = "ai-patterns" in checks
+        wants_audit = "accessibility" in checks
+
+        # Determine detector from method selection
         if "ai" in methods and "local" in methods:
             detector_name = "hybrid"
         elif "ai" in methods:
@@ -495,7 +515,6 @@ class MainWindow(QMainWindow):
             )
             self.worker.finished_ok.connect(self._on_repo_finished)
         elif source == "file":
-            # Single file - use repo worker with the file path
             self.worker = RepoAnalysisWorker(
                 files=None, root_dir=target, ignore_patterns=[],
                 detector_name=detector_name, detector_config=detector_config,
