@@ -17,6 +17,8 @@ import config
 import explanations
 import suppression
 import unicode_rules
+from ui.app_state import AppState
+from ui.view_model import MainViewModel
 from audit import explanations as audit_explanations
 from detectors.factory import DetectorFactory
 from detectors.judges import PROVIDER_ORDER, judge_for_provider
@@ -237,17 +239,124 @@ class MainWindow(QMainWindow):
         self.medium_mode: bool | None = None  # the second, narrower breakpoint; see MEDIUM_BREAKPOINT
         self.repo_ignore_patterns: list[str] = _parse_ignore_text(DEFAULT_IGNORE_PATTERNS)
 
+        # -- MVVM: centralized state and business logic --
+        self.app_state = AppState(self)
+        self.view_model = MainViewModel(self.app_state, self.settings, self)
+        self.view_model.repo_ignore_patterns = self.repo_ignore_patterns
+
         self.resize(1300, 800)
         icon = ASSETS / "app-icon.png"
         if icon.is_file():
             self.setWindowIcon(QIcon(str(icon)))
         self._build_ui()
         self._retranslate_ui()
+        self._wire_app_state()
         self._update_layout_mode(force=True)
         _ask_account_later(self)
 
     # ------------------------------------------------------------------ UI
 
+    def _wire_app_state(self) -> None:
+        """Connect toolbar combos to AppState and subscribe to changes.
+
+        This is the MVVM wiring: combos write to AppState, AppState
+        validates and normalises, then signals flow back to update the UI.
+        """
+        # -- combos -> AppState --
+        self.mode_combo.currentIndexChanged.connect(self._on_mode_to_state)
+        self.reader_combo.currentIndexChanged.connect(self._on_reader_to_state)
+        self.checks_combo.currentIndexChanged.connect(self._on_checks_to_state)
+        self.method_combo.currentIndexChanged.connect(self._on_method_to_state)
+        self.provider_combo.currentIndexChanged.connect(self._on_provider_to_state)
+
+        # -- AppState -> UI updates --
+        self.app_state.any_changed.connect(self._apply_mode_visibility)
+        self.app_state.any_changed.connect(self._sync_source_from_state)
+
+        # -- ViewModel -> UI updates --
+        self.view_model.busy_changed.connect(self._on_busy_changed)
+        self.view_model.buttons_changed.connect(self._update_repo_buttons_enabled)
+        self.view_model.error.connect(self._on_vm_error)
+        self.view_model.status_message.connect(self.status_bar.showMessage)
+        self.view_model.web_result_ready.connect(self._on_vm_web_result)
+        self.view_model.repo_result_ready.connect(self._on_vm_repo_result)
+        self.view_model.audit_result_ready.connect(self._on_vm_audit_result)
+        self.view_model.rewrite_ready.connect(self._on_rewrite_finished)
+
+    def _on_mode_to_state(self, _idx: int) -> None:
+        data = self.mode_combo.currentData()
+        if data:
+            self.app_state.set_source(data)
+
+    def _on_reader_to_state(self, _idx: int) -> None:
+        data = self.reader_combo.currentData()
+        if data:
+            self.app_state.set_readers(self._decode_choice(data, (READER_CODE,)))
+
+    def _on_checks_to_state(self, _idx: int) -> None:
+        data = self.checks_combo.currentData()
+        if data:
+            self.app_state.set_checks(self._decode_choice(data, CHECKS))
+
+    def _on_method_to_state(self, _idx: int) -> None:
+        data = self.method_combo.currentData()
+        if data:
+            self.app_state.set_methods(self._decode_choice(data, (METHOD_LOCAL,)))
+
+    def _on_provider_to_state(self, _idx: int) -> None:
+        data = self.provider_combo.currentData()
+        if data:
+            self.app_state.set_provider(data)
+
+    def _sync_source_from_state(self) -> None:
+        """Keep the legacy self.source in sync during the transition."""
+        self.source = self.app_state.source
+
+    def _on_busy_changed(self, busy: bool) -> None:
+        self.analyze_btn.setEnabled(not busy)
+        self.cancel_btn.setEnabled(busy)
+
+    def _on_vm_error(self, message: str) -> None:
+        QMessageBox.warning(self, "", message)
+
+    def _on_vm_web_result(self, result) -> None:
+        """ViewModel finished a web scan - update the UI."""
+        self.result = result
+        self._populate_flagged_list()
+        n_flags = sum(1 for s in result.spans if s.confidence != Confidence.LOW)
+        self.status_bar.showMessage(
+            t("status_done", self.lang, pages=len(result.pages),
+              blocks=len(result.blocks()), flags=n_flags))
+        self._update_repo_buttons_enabled()
+
+    def _on_vm_repo_result(self, result) -> None:
+        """ViewModel finished a repo scan - update the UI."""
+        self.result = result
+        self._populate_flagged_list()
+        n_flags = sum(1 for s in result.spans if s.confidence != Confidence.LOW)
+        self.status_bar.showMessage(
+            t("status_done", self.lang, pages=len(result.files),
+              blocks=len(result.blocks()), flags=n_flags))
+        self._update_repo_buttons_enabled()
+
+    def _on_vm_audit_result(self, result) -> None:
+        """ViewModel finished an audit - update the UI."""
+        self.audit_result = result
+        self._populate_audit_list()
+        first = next((d for d in result.documents if not d.error), None)
+        if first is not None:
+            address = _browser_url(first.source)
+            self.current_preview_url = address
+            self.site_view.setUrl(QUrl(address))
+        self._update_audit_buttons_enabled()
+        self.status_bar.showMessage(
+            audit_explanations.summary_line(result, self.lang))
+
+    def _on_rewrite_finished(self, drafts: dict) -> None:
+        """ViewModel finished bulk rewrite - update drafts and refresh list."""
+        for key, text in drafts.items():
+            self.drafts[key] = text
+        self._populate_flagged_list()
 
     def _build_brand_header(self) -> QWidget:
         """The mark, the name, and the one line that says what the app does."""
@@ -939,14 +1048,12 @@ class MainWindow(QMainWindow):
             self._active_workers.remove(worker)
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        self.view_model.shutdown()
         for worker in list(self._active_workers):
             if hasattr(worker, "cancel"):
                 worker.cancel()
         for worker in list(self._active_workers):
             if worker.isRunning():
-                # Workers check their cancel flag between units of work, but
-                # one may be blocked in an in-flight HTTP/API call; give it a
-                # bounded grace period rather than hanging the close.
                 worker.wait(5000)
         self._persist_settings()
         super().closeEvent(event)
@@ -1291,45 +1398,28 @@ class MainWindow(QMainWindow):
                 if (s.details or {}).get("source") == "characters"]
 
     def _on_analyze_clicked(self) -> None:
-        request = self.current_request()
-        if not request.target:
-            QMessageBox.warning(self, "", self._missing_target_message())
-            return
-        # An adjusted request is stated, not silently substituted: the user
-        # asked for something this source cannot do, and the honest answer is
-        # what ran instead.
-        for note in request.notes:
-            self.status_bar.showMessage(self._note_message(note))
-        self._last_request = request
-        # A browser reading is done here, before either pass starts, for two
-        # reasons: QtWebEngine is usable only from the thread that owns the
-        # application (see `_run_browser_pass`), and a run that asks both
-        # questions must not render the same site twice. Both passes then take
-        # the pages through the same cache the question switch uses.
-        if request.wants_browser and self._reusable_pages() is None:
-            # A file is rendered, not crawled: `requests` does not speak
-            # `file://`, and there is nothing to walk from anyway. Before
-            # this, the browser reading of a *file* reached the audit but
-            # never the copy pass - the copy pass read the file off disk and
-            # returned the unrendered answer without saying it had.
-            if request.source == SOURCE_FILE:
-                pages = self._render_single_file(request.target)
-            elif request.source == SOURCE_SITE:
-                pages = self._render_crawl(request.target)
-            else:
-                pages = None
-            if request.source in (SOURCE_SITE, SOURCE_FILE):
-                if pages is None:
-                    return
-                self._remember_extraction(request, pages=pages)
-        # Both questions in one run: the audit goes first because it is the
-        # one that fetches, and the copy pass then reads what it brought back.
-        self._pending_copy_pass = (request.wants_accessibility
-                                   and request.wants_ai_patterns)
-        if request.wants_accessibility:
-            self._start_audit()
-        else:
-            self._start_copy_pass()
+        self._sync_state_from_ui()
+        self._reset_scan_ui()
+        self._save_settings_from_combos()
+        error = self.view_model.analyze()
+        if error and error != "browser_failed":
+            QMessageBox.warning(self, "", error)
+
+    def _sync_state_from_ui(self) -> None:
+        """Push current widget values into AppState before an action."""
+        self.app_state.set_target(self._current_target())
+        self.app_state.set_depth(self.depth_spin.value())
+
+    def _save_settings_from_combos(self) -> None:
+        """Persist combo selections to settings."""
+        self.settings.crawl_depth = self.depth_spin.value()
+        method = self.method_combo.currentData()
+        if method:
+            self.settings.default_method = method
+        provider = self.provider_combo.currentData()
+        if provider:
+            self.settings.llm_provider = provider
+        self.settings.save()
 
     def _missing_target_message(self) -> str:
         if self.source == SOURCE_REPO:
@@ -2419,11 +2509,7 @@ class MainWindow(QMainWindow):
             self.repo_ignore_patterns = _parse_ignore_text(editor.toPlainText())
 
     def _on_cancel_clicked(self) -> None:
-        # Cancel everything in flight, not just the scan — a bulk rewrite can
-        # be dozens of billable API calls and needs to be stoppable too.
-        for worker in list(self._active_workers):
-            if hasattr(worker, "cancel"):
-                worker.cancel()
+        self.view_model.cancel()
         self.cancel_btn.setEnabled(False)
 
     def _on_crawling(self, url: str, depth: int) -> None:
