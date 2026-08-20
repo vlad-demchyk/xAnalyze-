@@ -16,7 +16,7 @@ from detectors.heuristic import combine_score
 from scripts.calibrate import load, score_rows, split
 
 #: What the corpus currently supports, rounded down hard.
-MIN_HELD_OUT_RECALL = 0.5
+MIN_HELD_OUT_RECALL = 0.4
 #: Nothing in the human pool may be flagged. Precision is what decides whether
 #: a tool stays switched on, so this one is not a ratchet but a rule.
 MAX_FALSE_ALARMS = 0

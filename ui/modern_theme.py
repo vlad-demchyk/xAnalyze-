@@ -38,7 +38,7 @@ QLabel {{
 /* ── Sidebar ── */
 QWidget[class="sidebar"] {{
     background-color: {t.bg_surface};
-    border-right: 1px solid {t.border_default};
+    border-right: 1px solid {t.border_strong};
 }}
 
 QWidget[class="sidebar-section"] {{

@@ -31,6 +31,7 @@ class DesignTokens:
     border_default: str = "#30363d"
     border_subtle: str = "#21262d"
     border_active: str = "#58a6ff"
+    border_strong: str = "#444c56"  # more visible border
 
     # -- Status colors --
     critical: str = "#f85149"
