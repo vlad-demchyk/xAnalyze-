@@ -31,6 +31,7 @@ Desktop and headless analyzer: AI-generated text detection, non-keyboard charact
   - [Browser Pass](#browser-pass)
 - [Detectors](#detectors)
 - [Reports](#reports)
+- [For AI Agents](#for-ai-agents)
 - [GUI](#gui)
 - [Configuration](#configuration)
 - [Uninstall](#uninstall)
@@ -418,6 +419,37 @@ curl -X POST http://localhost:8765/judge \
   -d '{"text": "It is worth noting that this comprehensive solution..."}'
 ```
 
+**LLM Judge Options:**
+
+| Detector | Command | API Key |
+|---|---|---|
+| Agent (default) | `xanalyze fullscan URL --agent` | Not needed |
+| Claude API | `xanalyze fullscan URL --detector claude-llm-judge` | `ANTHROPIC_API_KEY` |
+| xFormat | `xanalyze fullscan URL --detector xformat-llm-judge` | xFormat login |
+| Claude Code | `xanalyze fullscan URL --detector claude-code-llm-judge` | Claude Code session |
+| Hybrid | `xanalyze fullscan URL --detector hybrid` | Optional |
+
+**Full examples:**
+```bash
+# Agent as judge (no API key)
+xanalyze fullscan https://example.com --agent
+
+# Claude API judge
+xanalyze fullscan https://example.com --detector claude-llm-judge
+
+# xFormat subscription judge
+xanalyze fullscan https://example.com --detector xformat-llm-judge
+
+# Claude Code session judge
+xanalyze fullscan https://example.com --detector claude-code-llm-judge
+
+# Hybrid: offline + judge
+xanalyze fullscan https://example.com --detector hybrid
+
+# Agent with custom port
+xanalyze fullscan https://example.com --agent --agent-port 9000
+```
+
 ---
 
 ## Detection Methods
@@ -683,6 +715,243 @@ Output structure:
   }
 }
 ```
+
+---
+
+## For AI Agents
+
+This section describes how to use xanalyze from an AI agent (Claude, ChatGPT, Copilot, etc.) to analyze websites and codebases.
+
+### Quick Reference
+
+```bash
+# Full scan of a website (everything automatic)
+xanalyze fullscan https://example.com
+
+# Full scan of a repository
+xanalyze fullscan ./my-project
+
+# Quick accessibility check
+xanalyze audit https://example.com --browser --json
+
+# Scan code for AI patterns
+xanalyze scan ./src --json
+
+# Fix non-keyboard characters
+xanalyze fix ./src
+```
+
+### Common Tasks
+
+#### 1. Analyze a Website (Full Scan)
+
+```bash
+xanalyze fullscan https://example.com
+```
+
+**What it does:**
+- Crawls the website (with browser rendering for SPA)
+- Runs accessibility audit (49 rules)
+- Runs SEO audit
+- Runs performance audit
+- Checks for AI-generated text patterns
+- Checks for non-keyboard characters
+- Generates JSON output + PDF report + agent briefing
+
+**Output:** JSON to stdout, reports saved to `~/Desktop`
+
+#### 2. Analyze a Codebase
+
+```bash
+xanalyze fullscan ./my-project
+```
+
+**What it does:**
+- Scans all markup files (HTML, JSX, TSX, Vue, Svelte, etc.)
+- Scans locale files (JSON, YAML)
+- Scans backend files (Python, PHP, Ruby, Go, Java, C#)
+- Checks for AI-generated text in copy and comments
+- Checks for non-keyboard characters
+- Runs accessibility audit on HTML files
+
+#### 3. Quick Accessibility Check
+
+```bash
+xanalyze audit https://example.com --browser --json
+```
+
+**What it does:**
+- Loads page in real browser (handles SPA)
+- Runs axe-core + HTML_CodeSniffer
+- Checks keyboard focus, contrast, ARIA
+- Returns JSON with all issues
+
+#### 4. Check Specific Category
+
+```bash
+# Only accessibility issues
+xanalyze audit https://example.com --category accessibility --json
+
+# Only SEO issues
+xanalyze audit https://example.com --category seo --json
+
+# Only performance issues
+xanalyze audit https://example.com --category performance --json
+```
+
+#### 5. Scan for AI Patterns Only
+
+```bash
+xanalyze scan ./src --json
+```
+
+**What it does:**
+- Scans files for cliché phrases, structural patterns
+- Checks for non-keyboard characters (zero-width, homoglyphs)
+- Returns findings with scores and explanations
+
+#### 6. Fix Issues Automatically
+
+```bash
+# Fix non-keyboard characters
+xanalyze fix ./src
+
+# Auto-fix accessibility issues (where possible)
+xanalyze audit ./src --fix
+```
+
+#### 7. Compare Detectors
+
+```bash
+xanalyze compare ./src --json
+```
+
+**What it does:**
+- Runs multiple detectors on same files
+- Compares results
+- Shows which detector finds what
+
+### Agent Workflow Examples
+
+#### Example 1: Audit and Fix a Website
+
+```bash
+# Step 1: Full scan
+xanalyze fullscan https://example.com --json > scan.json
+
+# Step 2: Review findings
+cat scan.json | jq '.audit.counts'
+
+# Step 3: Get detailed issues
+cat scan.json | jq '.audit.issues[] | select(.severity == "critical" or .severity == "serious")'
+
+# Step 4: Generate fix suggestions
+xanalyze audit https://example.com --browser --report fixes.md
+```
+
+#### Example 2: Scan and Clean a Codebase
+
+```bash
+# Step 1: Scan for issues
+xanalyze scan ./src --json > scan.json
+
+# Step 2: Check what was found
+cat scan.json | jq '.counts'
+
+# Step 3: Fix non-keyboard characters
+xanalyze fix ./src
+
+# Step 4: Verify fixes
+xanalyze scan ./src --json | jq '.counts'
+```
+
+#### Example 3: CI/CD Integration
+
+```bash
+# In CI pipeline - fail on critical issues
+xanalyze fullscan https://staging.example.com --check --json
+
+# Exit code 0 = no critical/serious issues
+# Exit code 1 = critical/serious issues found
+```
+
+### JSON Output Structure
+
+```json
+{
+  "target": "https://example.com",
+  "is_url": true,
+  "language": "en",
+  "scan": {
+    "findings": [
+      {
+        "source": "style",
+        "score": 0.85,
+        "confidence": "high",
+        "explanation": "cliché: unlock the potential; style-uniformity=0.72",
+        "details": {
+          "signals": {"uniformity": 0.72, "repetition": 0.45, "dashes": 0.3},
+          "cliches": ["unlock the potential"],
+          "language": "en"
+        }
+      }
+    ],
+    "counts": {"total": 5, "style": 3, "characters": 2}
+  },
+  "audit": {
+    "counts": {"critical": 0, "serious": 2, "moderate": 5, "minor": 3},
+    "issues": [
+      {
+        "rule": "image-alt",
+        "category": "accessibility",
+        "severity": "critical",
+        "selector": "html > body > main > img",
+        "snippet": "<img src=\"hero.jpg\">",
+        "fix_snippet": "<img src=\"hero.jpg\" alt=\"\">"
+      }
+    ]
+  },
+  "summary": {
+    "total_findings": 15,
+    "ai_patterns": 3,
+    "characters": 2,
+    "accessibility": 5,
+    "seo": 3,
+    "performance": 1,
+    "best_practices": 1
+  }
+}
+```
+
+### Severity Levels
+
+| Level | Meaning | Action |
+|---|---|---|
+| `critical` | Blocks users completely | Fix immediately |
+| `serious` | Content lost or unusable | Fix soon |
+| `moderate` | Harder to use | Fix when possible |
+| `minor` | Smell, may be intentional | Consider fixing |
+
+### Exit Codes
+
+| Code | Meaning |
+|---|---|
+| 0 | Success, no critical/serious issues (with `--check`) |
+| 1 | Critical/serious issues found (with `--check`) |
+| 2 | Error (invalid arguments, file not found, etc.) |
+
+### Tips for Agents
+
+1. **Always use `--json`** for machine-readable output
+2. **Use `--check`** in CI/CD to fail on critical issues
+3. **Use `fullscan`** for comprehensive analysis
+4. **Use `audit --browser`** for SPA/React/Vue sites
+5. **Use `scan`** for quick AI pattern check
+6. **Use `fix`** to auto-correct non-keyboard characters
+7. **Parse `summary`** for quick overview
+8. **Parse `audit.issues`** for detailed findings
+9. **Check `fix_snippet`** for suggested corrections
+10. **Use `--language`** for localized reports
 
 ---
 

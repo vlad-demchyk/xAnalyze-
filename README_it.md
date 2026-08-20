@@ -31,6 +31,7 @@ Desktop e headless analyzer: rilevamento di testi generati da AI, caratteri non 
   - [Passaggio browser](#passaggio-browser)
 - [Detector](#detector)
 - [Report](#report)
+- [Per agenti AI](#per-agenti-ai)
 - [GUI](#gui)
 - [Configurazione](#configurazione)
 - [Disinstallazione](#disinstallazione)
@@ -408,6 +409,37 @@ L'agente:
 - `POST /judge` — Valuta il testo per pattern AI
 - `GET /health` — Controllo salute
 - `GET /detectors` — Elenco dei detector disponibili
+
+**Opzioni LLM Judge:**
+
+| Detector | Comando | Chiave API |
+|---|---|---|
+| Agente (predefinito) | `xanalyze fullscan URL --agent` | Non necessaria |
+| Claude API | `xanalyze fullscan URL --detector claude-llm-judge` | `ANTHROPIC_API_KEY` |
+| xFormat | `xanalyze fullscan URL --detector xformat-llm-judge` | Login xFormat |
+| Claude Code | `xanalyze fullscan URL --detector claude-code-llm-judge` | Sessione Claude Code |
+| Hybrid | `xanalyze fullscan URL --detector hybrid` | Opzionale |
+
+**Esempi:**
+```bash
+# Agente come giudice (senza chiave API)
+xanalyze fullscan https://example.com --agent
+
+# Giudice Claude API
+xanalyze fullscan https://example.com --detector claude-llm-judge
+
+# Giudice abbonamento xFormat
+xanalyze fullscan https://example.com --detector xformat-llm-judge
+
+# Giudice sessione Claude Code
+xanalyze fullscan https://example.com --detector claude-code-llm-judge
+
+# Hybrid: offline + giudice
+xanalyze fullscan https://example.com --detector hybrid
+
+# Agente con porta personalizzata
+xanalyze fullscan https://example.com --agent --agent-port 9000
+```
 
 ---
 

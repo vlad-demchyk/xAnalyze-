@@ -31,6 +31,7 @@
   - [Браузерний прохід](#браузерний-прохід)
 - [Детектори](#детектори)
 - [Звіти](#звіти)
+- [Для AI агентів](#для-ai-агентів)
 - [GUI](#gui)
 - [Конфігурація](#конфігурація)
 - [Видалення](#видалення)
@@ -411,6 +412,37 @@ xanalyze serve --host 0.0.0.0
 - `GET /health` — Перевірка здоров'я
 - `GET /detectors` — Список доступних детекторів
 
+**Опції LLM Judge:**
+
+| Детектор | Команда | API ключ |
+|---|---|---|
+| Агент (за замовчуванням) | `xanalyze fullscan URL --agent` | Не потрібен |
+| Claude API | `xanalyze fullscan URL --detector claude-llm-judge` | `ANTHROPIC_API_KEY` |
+| xFormat | `xanalyze fullscan URL --detector xformat-llm-judge` | xFormat login |
+| Claude Code | `xanalyze fullscan URL --detector claude-code-llm-judge` | Claude Code сесія |
+| Hybrid | `xanalyze fullscan URL --detector hybrid` | Опціонально |
+
+**Приклади:**
+```bash
+# Агент як суддя (без API ключа)
+xanalyze fullscan https://example.com --agent
+
+# Claude API суддя
+xanalyze fullscan https://example.com --detector claude-llm-judge
+
+# xFormat підписка суддя
+xanalyze fullscan https://example.com --detector xformat-llm-judge
+
+# Claude Code сесія суддя
+xanalyze fullscan https://example.com --detector claude-code-llm-judge
+
+# Hybrid: offline + суддя
+xanalyze fullscan https://example.com --detector hybrid
+
+# Агент з власним портом
+xanalyze fullscan https://example.com --agent --agent-port 9000
+```
+
 ---
 
 ## Методи детекції
@@ -676,6 +708,243 @@ xanalyze fullscan https://example.com --json
   }
 }
 ```
+
+---
+
+## Для AI агентів
+
+Цей розділ описує як використовувати xanalyze з AI агента (Claude, ChatGPT, Copilot тощо) для аналізу сайтів та кодових баз.
+
+### Швидка довідка
+
+```bash
+# Повне сканування сайту (все автоматично)
+xanalyze fullscan https://example.com
+
+# Повне сканування репозиторію
+xanalyze fullscan ./my-project
+
+# Швидка перевірка доступності
+xanalyze audit https://example.com --browser --json
+
+# Сканування коду на AI-патерни
+xanalyze scan ./src --json
+
+# Виправлення символів без клавіатури
+xanalyze fix ./src
+```
+
+### Типові задачі
+
+#### 1. Аналіз сайту (повне сканування)
+
+```bash
+xanalyze fullscan https://example.com
+```
+
+**Що робить:**
+- Кравлить сайт (з браузерним рендерингом для SPA)
+- Запускає аудит доступності (49 правил)
+- Запускає аудит SEO
+- Запускає аудит продуктивності
+- Перевіряє AI-згенеровані текстові патерни
+- Перевіряє символи без клавіатури
+- Генерує JSON вивід + PDF звіт + брифінг для агента
+
+**Вивід:** JSON в stdout, звіти зберігаються в `~/Desktop`
+
+#### 2. Аналіз кодової бази
+
+```bash
+xanalyze fullscan ./my-project
+```
+
+**Що робить:**
+- Сканує всі markup файли (HTML, JSX, TSX, Vue, Svelte тощо)
+- Сканує locale файли (JSON, YAML)
+- Сканує backend файли (Python, PHP, Ruby, Go, Java, C#)
+- Перевіряє AI-згенерований текст в копії та коментарях
+- Перевіряє символи без клавіатури
+- Запускає аудит доступності на HTML файлах
+
+#### 3. Швидка перевірка доступності
+
+```bash
+xanalyze audit https://example.com --browser --json
+```
+
+**Що робить:**
+- Завантажує сторінку в реальному браузері (обробляє SPA)
+- Запускає axe-core + HTML_CodeSniffer
+- Перевіряє клавіатурний фокус, контраст, ARIA
+- Повертає JSON з усіма проблемами
+
+#### 4. Перевірка конкретної категорії
+
+```bash
+# Тільки проблеми доступності
+xanalyze audit https://example.com --category accessibility --json
+
+# Тільки проблеми SEO
+xanalyze audit https://example.com --category seo --json
+
+# Тільки проблеми продуктивності
+xanalyze audit https://example.com --category performance --json
+```
+
+#### 5. Сканування на AI-патерни
+
+```bash
+xanalyze scan ./src --json
+```
+
+**Що робить:**
+- Сканує файли на кліше-фрази, структурні патерни
+- Перевіряє символи без клавіатури (zero-width, homoglyphs)
+- Повертає знахідки з оцінками та поясненнями
+
+#### 6. Автоматичне виправлення
+
+```bash
+# Виправити символи без клавіатури
+xanalyze fix ./src
+
+# Авто-виправлення проблем доступності (де можливо)
+xanalyze audit ./src --fix
+```
+
+#### 7. Порівняння детекторів
+
+```bash
+xanalyze compare ./src --json
+```
+
+**Що робить:**
+- Запускає кілька детекторів на одних файлах
+- Порівнює результати
+- Показує який детектор що знаходить
+
+### Приклади робочих процесів агента
+
+#### Приклад 1: Аудит та виправлення сайту
+
+```bash
+# Крок 1: Повне сканування
+xanalyze fullscan https://example.com --json > scan.json
+
+# Крок 2: Переглянути знахідки
+cat scan.json | jq '.audit.counts'
+
+# Крок 3: Отримати детальні проблеми
+cat scan.json | jq '.audit.issues[] | select(.severity == "critical" or .severity == "serious")'
+
+# Крок 4: Згенерувати пропозиції виправлень
+xanalyze audit https://example.com --browser --report fixes.md
+```
+
+#### Приклад 2: Сканування та очищення кодової бази
+
+```bash
+# Крок 1: Сканувати на проблеми
+xanalyze scan ./src --json > scan.json
+
+# Крок 2: Перевірити що знайдено
+cat scan.json | jq '.counts'
+
+# Крок 3: Виправити символи без клавіатури
+xanalyze fix ./src
+
+# Крок 4: Перевірити виправлення
+xanalyze scan ./src --json | jq '.counts'
+```
+
+#### Приклад 3: CI/CD інтеграція
+
+```bash
+# В CI пайплайні — помилка при критичних проблемах
+xanalyze fullscan https://staging.example.com --check --json
+
+# Код виходу 0 = немає критичних/серйозних проблем
+# Код виходу 1 = знайдено критичні/серйозні проблеми
+```
+
+### Структура JSON виводу
+
+```json
+{
+  "target": "https://example.com",
+  "is_url": true,
+  "language": "en",
+  "scan": {
+    "findings": [
+      {
+        "source": "style",
+        "score": 0.85,
+        "confidence": "high",
+        "explanation": "cliché: unlock the potential; style-uniformity=0.72",
+        "details": {
+          "signals": {"uniformity": 0.72, "repetition": 0.45, "dashes": 0.3},
+          "cliches": ["unlock the potential"],
+          "language": "en"
+        }
+      }
+    ],
+    "counts": {"total": 5, "style": 3, "characters": 2}
+  },
+  "audit": {
+    "counts": {"critical": 0, "serious": 2, "moderate": 5, "minor": 3},
+    "issues": [
+      {
+        "rule": "image-alt",
+        "category": "accessibility",
+        "severity": "critical",
+        "selector": "html > body > main > img",
+        "snippet": "<img src=\"hero.jpg\">",
+        "fix_snippet": "<img src=\"hero.jpg\" alt=\"\">"
+      }
+    ]
+  },
+  "summary": {
+    "total_findings": 15,
+    "ai_patterns": 3,
+    "characters": 2,
+    "accessibility": 5,
+    "seo": 3,
+    "performance": 1,
+    "best_practices": 1
+  }
+}
+```
+
+### Рівні серйозності
+
+| Рівень | Значення | Дія |
+|---|---|---|
+| `critical` | Повністю блокує користувачів | Виправити негайно |
+| `serious` | Контент втрачений або непридатний | Виправити скоро |
+| `moderate` | Важче використовувати | Виправити коли можливо |
+| `minor` | Запах, може бути навмисним | Розглянути виправлення |
+
+### Коди виходу
+
+| Код | Значення |
+|---|---|
+| 0 | Успіх, немає критичних/серйозних проблем (з `--check`) |
+| 1 | Знайдено критичні/серйозні проблеми (з `--check`) |
+| 2 | Помилка (неправильні аргументи, файл не знайдено тощо) |
+
+### Поради для агентів
+
+1. **Завжди використовуйте `--json`** для машинозчитуваного виводу
+2. **Використовуйте `--check`** в CI/CD для помилки при критичних проблемах
+3. **Використовуйте `fullscan`** для комплексного аналізу
+4. **Використовуйте `audit --browser`** для SPA/React/Vue сайтів
+5. **Використовуйте `scan`** для швидкої перевірки AI-патернів
+6. **Використовуйте `fix`** для авто-виправлення символів без клавіатури
+7. **Парсуйте `summary`** для швидкого огляду
+8. **Парсуйте `audit.issues`** для детальних знахідок
+9. **Перевіряйте `fix_snippet`** для запропонованих виправлень
+10. **Використовуйте `--language`** для локалізованих звітів
 
 ---
 
