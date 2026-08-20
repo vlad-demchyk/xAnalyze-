@@ -16,6 +16,9 @@ ROOT = Path(SPECPATH).resolve().parent
 
 datas = [
     (str(ROOT / "corpus" / "labelled.jsonl"), "corpus"),
+    (str(ROOT / "audit" / "vendor" / "axe.min.js"), "audit/vendor"),
+    (str(ROOT / "audit" / "vendor" / "HTMLCS.js"), "audit/vendor"),
+    (str(ROOT / "audit" / "vendor" / "axe-LICENSE.txt"), "audit/vendor"),
 ]
 
 hiddenimports = [
@@ -33,13 +36,11 @@ analysis = Analysis(
     hookspath=[],
     runtime_hooks=[],
     excludes=[
-        "PySide6", "PySide6.QtQuick3D", "PySide6.QtCharts",
+        "PySide6.QtQuick3D", "PySide6.QtCharts",
         "PySide6.QtDataVisualization", "PySide6.Qt3DCore",
         "PySide6.Qt3DRender", "PySide6.QtMultimediaWidgets",
         "PySide6.QtBluetooth", "PySide6.QtNfc", "PySide6.QtSerialPort",
         "PySide6.QtTest", "PySide6.QtDesigner", "tkinter",
-        "PySide6.QtWebEngine", "PySide6.QtWebEngineCore",
-        "PySide6.QtWebEngineWidgets",
     ],
     noarchive=False,
 )
