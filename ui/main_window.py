@@ -984,18 +984,26 @@ class MainWindow(QMainWindow):
         self._apply_preview_width(None if release else width)
 
     def _apply_preview_width(self, width) -> None:
-        """Constrain the preview, and say what the page will believe.
+        """Constrain the preview to simulate a viewport width.
 
-        `setMaximumWidth` rather than a fixed size: the column can be
-        narrower than the breakpoint, and forcing the wider number would
-        scroll the whole pane sideways instead of showing a narrow layout.
-        The page reads its own width from the widget, so this is the same
-        thing the audit did at that breakpoint - not a picture of it.
+        Uses resize() like the audit driver does, not setMaximumWidth:
+        the browser's CSS media queries respond to the actual widget size,
+        and setMaximumWidth only constrains the container without changing
+        the viewport that window.innerWidth reads.
         """
         if width is None:
             self.site_view.setMaximumWidth(16777215)  # Qt's own "no maximum"
+            self.site_view.setMinimumWidth(0)
         else:
+            # Find the matching height for this breakpoint
+            height = 900  # default
+            for name, bp_width, bp_height in responsive_breakpoints():
+                if bp_width == width:
+                    height = bp_height
+                    break
+            self.site_view.setMinimumWidth(int(width))
             self.site_view.setMaximumWidth(int(width))
+            self.site_view.resize(int(width), int(height))
 
     def _repaint_preview_background(self) -> None:
         self.site_view.page().setBackgroundColor(QColor(self.palette_tokens.page_bg))
