@@ -20,7 +20,8 @@ from analysis_modes import (
 )
 from repo_scanner import SCOPE_BOTH, SCOPE_CONTENT, SCOPE_TECHNICAL
 from i18n.translations import t
-from ui.tokens import Palette, current_palette
+from ui.tokens import Palette
+from ui.theme import current_palette
 
 # Default palette for inline styling. Updated when theme changes.
 T: Palette = current_palette("dark")

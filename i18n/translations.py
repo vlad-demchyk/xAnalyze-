@@ -1629,6 +1629,66 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Scurisci il testo o schiarisci lo sfondo finché il rapporto non è almeno 4.5:1 per il testo normale e 3:1 per quello grande (da 24px, o 19px in grassetto).",
         "en": "Darken the text or lighten the background until the ratio is at least 4.5:1 for body text and 3:1 for large text (24px and up, or 19px bold).",
     },
+    "a11y_viewport_fixed_width_title": {
+        "uk": "Елемент зафіксований шириною, що ширша за телефон",
+        "it": "Elemento bloccato a una larghezza più ampia dello schermo del telefono",
+        "en": "An element is pinned to a width wider than a phone",
+    },
+    "a11y_viewport_fixed_width_found": {
+        "uk": "Знайдено оголошення width: {width_px}px при ширині екрана телефону близько {mobile_viewport}px.",
+        "it": "Trovata una dichiarazione width: {width_px}px con uno schermo telefonico di circa {mobile_viewport}px.",
+        "en": "Found a width declaration of {width_px}px against a phone viewport of about {mobile_viewport}px.",
+    },
+    "a11y_viewport_fixed_width_why": {
+        "uk": "Фіксована ширина у сотні пікселів означає, що на телефоні елемент виходить за екран, і сторінку доводиться гортати вбік, читаючи текст шматками. WCAG 1.4.10 вимагає, щоб уміст перебудовувався без горизонтальної прокрутки - заміна width на max-width лишає широкий макет на великому екрані і дозволяє стиснення на малому.",
+        "it": "Una larghezza fissa di centinaia di pixel fa sì che su telefono l'elemento esca dallo schermo e la pagina vada fatta scorrere di lato per leggere il testo a pezzi. La WCAG 1.4.10 richiede che il contenuto si riorganizzi senza scorrimento orizzontale: sostituire width con max-width mantiene il layout largo sul grande schermo e permette la compressione su quello piccolo.",
+        "en": "A fixed width of hundreds of pixels means that on a phone the element runs off the screen and the page has to be scrolled sideways to read text in fragments. WCAG 1.4.10 requires content to reflow without horizontal scrolling - swapping width for max-width keeps the wide layout on large screens while allowing it to shrink on small ones.",
+    },
+    "a11y_viewport_fixed_width_fix": {
+        "uk": "Замініть width на max-width для цього значення, або задайте ширину у відсотках чи через flex/grid, якщо фіксовані пікселі не потрібні за задумом.",
+        "it": "Sostituisci width con max-width per questo valore, oppure imposta la larghezza in percentuale o tramite flex/grid se i pixel fissi non sono necessari al progetto.",
+        "en": "Replace width with max-width for this value, or size the element in percentages or via flex/grid if fixed pixels are not part of the design.",
+    },
+    "a11y_viewport_tiny_font_title": {
+        "uk": "Розмір шрифту менший за читабельний",
+        "it": "Dimensione del font inferiore alla soglia leggibile",
+        "en": "Font size below the readable threshold",
+    },
+    "a11y_viewport_tiny_font_found": {
+        "uk": "Знайдено font-size {font_px}px при рекомендованому мінімумі {minimum_recommended}px.",
+        "it": "Trovato font-size {font_px}px contro un minimo consigliato di {minimum_recommended}px.",
+        "en": "Found font-size {font_px}px against a recommended minimum of {minimum_recommended}px.",
+    },
+    "a11y_viewport_tiny_font_why": {
+        "uk": "Шрифт менший за 10px на телефоні не читається без жесту збільшення, а користувачі старшого віку просто відкладають таку сторінку. Браузерний мінімум не рятує: він застосовується не скрізь, а зум всієї сторінки ламає макет. WCAG 1.4.4 вимагає, щоб текст масштабувався до 200% без втрати умісту.",
+        "it": "Un font sotto i 10px su telefono non si legge senza gesti di zoom, e gli utenti meno giovani semplicemente abbandonano la pagina. Il minimo del browser non basta: non si applica ovunque e lo zoom dell'intera pagina rompe il layout. La WCAG 1.4.4 richiede che il testo sia ridimensionabile fino al 200% senza perdita di contenuto.",
+        "en": "Text under 10px on a phone cannot be read without pinch-zooming, and older users simply put such a page down. The browser's minimum size does not save you: it does not apply everywhere, and full-page zoom breaks the layout. WCAG 1.4.4 requires text to resize up to 200% without loss of content.",
+    },
+    "a11y_viewport_tiny_font_fix": {
+        "uk": "Підніміть розмір щонайменше до 10-12px; справжній дрібний текст (юридичні примітки, підписи) робіть читабельним, а не формально присутнім.",
+        "it": "Porta la dimensione ad almeno 10-12px; il testo volutamente piccolo (note legali, didascalie) deve restare leggibile, non solo formalmente presente.",
+        "en": "Raise the size to at least 10-12px; deliberately small text (legal notes, captions) should stay readable, not merely present.",
+    },
+    "a11y_viewport_touch_target_title": {
+        "uk": "Кнопка чи посилання завмалі для пальця",
+        "it": "Pulsante o link troppo piccolo per un dito",
+        "en": "A button or link is too small for a finger",
+    },
+    "a11y_viewport_touch_target_found": {
+        "uk": "Знайдено інтерактивний елемент із оголошеними розмірами {declared} при мінімумі WCAG {wcag_minimum}px (рекомендовано близько {recommended}px).",
+        "it": "Trovato un elemento interattivo con dimensioni dichiarate {declared} contro un minimo WCAG di {wcag_minimum}px (consigliati circa {recommended}px).",
+        "en": "Found an interactive element with declared sizes of {declared} against the WCAG minimum of {wcag_minimum}px (about {recommended}px recommended).",
+    },
+    "a11y_viewport_touch_target_why": {
+        "uk": "Ціль у 20 пікселів промахується пальцем особливо в дорозі: поруч стоїть сусідня ціль, і натискання потрапляє не туди. Стандарт 2.5.8 задає межу 24px, але мобільні платформи радять близько 44px, бо реальний палець ширше за курсор.",
+        "it": "Un bersaglio di 20 pixel viene mancato col dito soprattutto in movimento: il bersaglio vicino è adiacente e il tocco finisce nel posto sbagliato. Lo standard 2.5.8 fissa il minimo a 24px, ma le piattaforme mobili consigliano circa 44px, perché un dito reale è più largo di un cursore.",
+        "en": "A 20-pixel target gets missed by a finger especially on the move: neighbouring targets sit close together and taps land on the wrong one. Standard 2.5.8 sets the floor at 24px, but mobile platforms recommend around 44px because a real finger is wider than a cursor.",
+    },
+    "a11y_viewport_touch_target_fix": {
+        "uk": "Збільшіть саму ціль або додайте прозорий відступ навколо (padding), щоб загальна область дотику була щонайменше 24px, а краще 44px.",
+        "it": "Ingrandisci il bersaglio stesso oppure aggiungi un margine trasparente intorno (padding) affinché l'area totale di tocco sia almeno 24px, meglio ancora 44px.",
+        "en": "Enlarge the target itself or add transparent spacing around it (padding) so the total touch area is at least 24px, better still 44px.",
+    },
     # ---------------------------------------------------------------- SEO
     "a11y_seo_title_length_title": {
         "uk": "Заголовок сторінки поза робочою довжиною",

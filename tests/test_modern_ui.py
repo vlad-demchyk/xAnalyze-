@@ -8,10 +8,10 @@ try:
     from PySide6.QtWidgets import QApplication, QDialog
     from main import (
         MainWindow, FindingsList, DetailPanel, PreviewPanel,
-        FindingRow, SeverityBadge, build_modern_qss,
+        FindingRow, SeverityBadge,
     )
     from ui.sidebar import Sidebar
-    from ui.design_system import TOKENS as T
+    from ui.theme import build_qss, current_palette
     from analysis_modes import (
         SOURCE_SITE, SOURCE_REPO, SOURCE_FILE,
         CHECK_ACCESSIBILITY, CHECK_AI_PATTERNS,
@@ -426,20 +426,24 @@ class TestTheme(unittest.TestCase):
         cls.app = QApplication.instance() or QApplication([])
 
     def test_qss_builds(self):
-        qss = build_modern_qss()
+        palette = current_palette("dark")
+        qss = build_qss(palette)
         self.assertGreater(len(qss), 0)
 
     def test_qss_contains_dark_colors(self):
-        qss = build_modern_qss()
-        self.assertIn(T.bg_base, qss)
-        self.assertIn(T.bg_surface, qss)
+        palette = current_palette("dark")
+        qss = build_qss(palette)
+        self.assertIn(palette.bg_base, qss)
+        self.assertIn(palette.text_primary, qss)
 
     def test_qss_contains_accent(self):
-        qss = build_modern_qss()
-        self.assertIn(T.accent, qss)
+        palette = current_palette("dark")
+        qss = build_qss(palette)
+        self.assertIn(palette.accent, qss)
 
     def test_theme_applies(self):
-        qss = build_modern_qss()
+        palette = current_palette("dark")
+        qss = build_qss(palette)
         self.app.setStyleSheet(qss)
         # Should not raise
 

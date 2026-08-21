@@ -44,7 +44,7 @@ class XAnalyzeApp(App):
         color: $text-muted;
         margin: 1 0 0 0;
     }
-    #scan-form, #audit-form, #fullscan-form, #settings-view, #reports-view, #update-view {
+    #scan-form, #audit-form, #fullscan-form, #settings-view, #reports-view, #update-view, #uninstall-view {
         width: 70;
         height: auto;
         max-height: 90%;
@@ -64,7 +64,7 @@ class XAnalyzeApp(App):
         color: $text-muted;
         text-style: italic;
     }
-    #report-status, #scan-status, #audit-status, #fullscan-status, #update-status {
+    #report-status, #scan-status, #audit-status, #fullscan-status, #update-status, #uninstall-status {
         color: $warning;
     }
     """
@@ -84,6 +84,7 @@ class XAnalyzeApp(App):
         from tui.screens.settings import SettingsScreen
         from tui.screens.reports import ReportsScreen
         from tui.screens.update import UpdateScreen
+        from tui.screens.uninstall import UninstallScreen
 
         self.install_screen(MainMenuScreen(), name="main")
         self.install_screen(ScanScreen(), name="scan")
@@ -92,6 +93,7 @@ class XAnalyzeApp(App):
         self.install_screen(SettingsScreen(), name="settings")
         self.install_screen(ReportsScreen(), name="reports")
         self.install_screen(UpdateScreen(), name="update")
+        self.install_screen(UninstallScreen(), name="uninstall")
         self.push_screen("main")
 
 

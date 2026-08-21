@@ -1,0 +1,264 @@
+"""Scan pipeline helpers shared by the CLI commands.
+
+Everything between "the user gave me paths" and "here are finding dicts"
+lives here: ignore rules, the walk over files, detector construction and
+the analysis pass that turns spans into the plain-dict findings both the
+JSON and the human output print.
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import config
+import suppression
+import unicode_rules
+from detectors.factory import DetectorFactory
+from detectors.judges import JUDGE_ALIASES, JUDGE_NAMES, judge_for_provider
+from models import Confidence, ScanDiagnostics
+from repo_scanner import (
+    DEFAULT_IGNORE_PATTERNS,
+    ScanConfig,
+    _parse_ignore_text,
+    scan_file,
+    scan_repo,
+)
+
+# `fix` may only apply findings whose correction is fixed by a rule. That is
+# now a property of the *pass* that produced a finding, not of a detector
+# name: the character pass runs both standalone and inside the merged
+# offline detector, so its findings arrive under more than one detector name
+# but always carry this source stamp (see detectors/offline.py).
+CHARACTER_SOURCE = "characters"
+
+#: The name that runs both engines over the same text and merges the result.
+#: Spelled here as well as in the factory because `--detector hybrid` needs
+#: the provider resolved for the judge half, exactly like a bare judge does.
+HYBRID_NAME = "hybrid"
+
+
+def _build_ignore_list(args) -> list:
+    """Build the ignore pattern list from args and defaults.
+
+    Single source of truth for the ignore logic used by scan, audit,
+    fullscan, and reaudit.
+    """
+    use_defaults = getattr(args, "use_default_excludes", True)
+    ignore = _parse_ignore_text(DEFAULT_IGNORE_PATTERNS) if use_defaults else []
+    ignore += list(getattr(args, "exclude", None) or [])
+    return ignore
+
+
+def _build_scan_config(args, extensions=None) -> "ScanConfig":
+    """Build a ScanConfig from args.
+
+    Single source of truth for scan configuration used by scan, audit,
+    fullscan, and reaudit.
+    """
+    if extensions is None and getattr(args, "ext", None):
+        extensions = tuple(e if e.startswith(".") else "." + e for e in args.ext)
+    return ScanConfig(
+        extensions=extensions,
+        ignore_patterns=_build_ignore_list(args),
+        max_files=getattr(args, "max_files", 5000),
+        scope=getattr(args, "scope", "content"),
+    )
+
+
+def _collect_files(paths: list[str], args, missing_out=None,
+                   diagnostics_out=None) -> list:
+    """Turn the given paths into FileResults. A directory is walked with the
+    exclusion rules; a file named directly is always scanned.
+
+    `diagnostics_out`, if given, collects one `ScanDiagnostics` per walked
+    directory, so the caller can say what was read rather than only what was
+    found. A file named directly needs none: naming it is the answer.
+    """
+    cfg = _build_scan_config(args)
+    scope = getattr(args, "scope", "content")
+
+    results = []
+    #: Paths that do not exist, collected so the caller can fail rather than
+    #: report a clean scan of nothing. A mistyped path is a pipeline pass
+    #: otherwise, which is the worst kind of wrong answer.
+    missing: list = []
+    for raw in paths:
+        p = Path(raw)
+        if p.is_dir():
+            walk = ScanDiagnostics()
+            results.extend(scan_repo(str(p), cfg, diagnostics=walk))
+            if diagnostics_out is not None:
+                diagnostics_out.append((str(p), walk))
+        elif p.exists():
+            results.append(scan_file(str(p), scope))
+        else:
+            print(f"path not found: {raw}", file=sys.stderr)
+            missing.append(raw)
+    if missing_out is not None:
+        missing_out.extend(missing)
+    return results
+
+
+def _create_detector(args):
+    """Build the detector `--detector` asked for, billed where it belongs.
+
+    `scan` used to build it by name alone, which meant the name carried the
+    billing decision: `claude-llm-judge` and only it, paid for with an
+    `ANTHROPIC_API_KEY` from the environment. `audit --ai` had already stopped
+    working that way - it asks `rewriter` which account is in play, so inside
+    a Claude Code session it uses that session. The two commands disagreed on
+    the same machine, and the disagreement showed up as an error message about
+    a key the user did not need.
+    """
+    import rewriter
+
+    name = args.detector
+    provider = getattr(args, "provider", None)
+
+    def resolved_judge() -> str:
+        settings = config.Settings.load()
+        return judge_for_provider(rewriter.effective_provider_name(
+            settings, force=provider, allow_auto=True))
+
+    if name == HYBRID_NAME:
+        # The hybrid runs the offline pass itself, so only its judge half
+        # needs an account - resolved the same way a bare judge is, which is
+        # what keeps `--provider` meaning one thing across both.
+        judge = resolved_judge()
+        judge_config = ({"api_key": config.get_anthropic_api_key()}
+                        if judge == "claude-llm-judge" else {})
+        return DetectorFactory.create(
+            name, judge_name=judge, judge_config=judge_config)
+
+    if name in JUDGE_NAMES and (provider or name in JUDGE_ALIASES):
+        name = resolved_judge()
+
+    if name == "claude-llm-judge":
+        # The key can live in the keychain as well as the environment; reading
+        # only the environment made a key entered in Settings invisible here.
+        return DetectorFactory.create(name, api_key=config.get_anthropic_api_key())
+    return DetectorFactory.create(name)
+
+
+def _categories(args) -> tuple[str, ...]:
+    if args.categories:
+        chosen = tuple(c.strip() for c in args.categories.split(",") if c.strip())
+        unknown = [c for c in chosen if c not in unicode_rules.ALL_CATEGORIES]
+        if unknown:
+            raise SystemExit(
+                f"unknown category: {', '.join(unknown)}. "
+                f"Valid: {', '.join(unicode_rules.ALL_CATEGORIES)}"
+            )
+        return chosen
+    if args.no_typography:
+        return unicode_rules.HARD_CATEGORIES
+    return unicode_rules.ALL_CATEGORIES
+
+
+def _settings_for_ignore(args):
+    """The user's own suppression list, unless --no-ignore was passed.
+
+    Loaded lazily and defensively: the CLI must keep working in a container
+    with no config directory, which is exactly where it runs in CI.
+    """
+    if getattr(args, "no_ignore", False):
+        return None
+    try:
+        return config.Settings.load()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _ignore_root(args) -> str | None:
+    if getattr(args, "no_ignore", False):
+        return None
+    paths = getattr(args, "paths", None) or []
+    if paths:
+        return paths[0]
+    return getattr(args, "target", None)
+
+
+def _report_detector_errors(spans) -> int:
+    """Say, once, what the detector could not judge. Returns how many blocks."""
+    failures = [s for s in spans if (s.details or {}).get("error")]
+    if not failures:
+        return 0
+    reasons = []
+    for span in failures:
+        reason = span.details["error"]
+        if reason not in reasons:
+            reasons.append(reason)
+    print(f"# {len(failures)} block(s) were not judged by "
+          f"{failures[0].detector_name}:", file=sys.stderr)
+    for reason in reasons[:3]:
+        print(f"#   {reason}", file=sys.stderr)
+    if len(reasons) > 3:
+        print(f"#   ... and {len(reasons) - 3} other error(s)", file=sys.stderr)
+    return len(failures)
+
+
+def _analyze(file_results, args, unjudged_out: list | None = None):
+    """Return (findings, blocks_by_id). Findings are plain dicts so the JSON
+    output and the human output share one shape."""
+    blocks = [b for f in file_results for b in f.blocks]
+    blocks_by_id = {b.block_id: b for b in blocks}
+    spans = []
+
+    categories = _categories(args)
+    # The offline detector holds both free passes. Style analysis is opt-in
+    # here (it is reported, never auto-applied), so the two are requested
+    # independently rather than as two detectors.
+    wants_style = DetectorFactory.resolve(args.detector or "none") == "offline"
+    if not args.no_unicode or wants_style:
+        offline = DetectorFactory.create(
+            "offline",
+            categories=categories if not args.no_unicode else (),
+            include_style=wants_style,
+        )
+        spans.extend(s for s in offline.analyze_blocks(blocks)
+                     if s.confidence != Confidence.LOW
+                     or (s.details or {}).get("source") == CHARACTER_SOURCE)
+    if args.detector and args.detector != "none" and not wants_style:
+        detector = _create_detector(args)
+        judged = detector.analyze_blocks(blocks)
+        # Blocks the detector could not read at all. Reported rather than
+        # filtered away with the weak findings: an exhausted plan or a dead
+        # key would otherwise print "No findings", which reads as a clean
+        # result and is the one answer a failed run must never give.
+        failed = _report_detector_errors(judged)
+        if failed and unjudged_out is not None:
+            unjudged_out.append(failed)
+        spans.extend(s for s in judged
+                     if s.confidence != Confidence.LOW
+                     and not (s.details or {}).get("error"))
+
+    # Applied before anything is reported, so a suppressed finding never
+    # reaches --json, the exit code, or `fix`. The project's own
+    # `.xanalyze-ignore` is read from the first scanned path.
+    spans = suppression.filter_spans(
+        spans, blocks_by_id,
+        suppression.Suppressions.load(_settings_for_ignore(args), _ignore_root(args)),
+    )
+
+    findings = []
+    for span in spans:
+        block = blocks_by_id.get(span.block_id)
+        if block is None:
+            continue
+        findings.append({
+            "file": block.file_path,
+            "line": block.line_number,
+            "offset": block.start + span.start,
+            "end_offset": block.start + span.end,
+            "detector": span.detector_name,
+            "source": (span.details or {}).get("source", ""),
+            "confidence": span.confidence.value,
+            "score": round(span.score, 3),
+            "text": block.text[span.start:span.end],
+            "replacement": span.replacement,
+            "explanation": span.explanation,
+            "_span": span,
+            "_block": block,
+        })
+    findings.sort(key=lambda f: (f["file"], f["offset"]))
+    return findings, blocks_by_id

@@ -17,8 +17,7 @@ import config
 import detectors  # noqa: F401 - registers detectors
 from detectors.factory import DetectorFactory
 from detectors.judges import judge_for_provider
-from ui.tokens import current_palette
-from ui.theme import apply_theme
+from ui.theme import apply_theme, current_palette
 
 # Default palette for inline styling
 T = current_palette("dark")

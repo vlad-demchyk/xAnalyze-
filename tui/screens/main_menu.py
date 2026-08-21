@@ -20,6 +20,7 @@ class MainMenuScreen(Screen):
         ("4", "reports", "Reports"),
         ("5", "settings", "Settings"),
         ("6", "update", "Update"),
+        ("7", "uninstall", "Uninstall"),
     ]
 
     def compose(self) -> ComposeResult:
@@ -34,6 +35,7 @@ class MainMenuScreen(Screen):
             yield Button("4  Reports — view previous analyses", id="reports", classes="menu-item")
             yield Button("5  Settings — configuration", id="settings", classes="menu-item")
             yield Button("6  Update — check for new version", id="update", classes="menu-item")
+            yield Button("7  Uninstall — remove from this machine", id="uninstall", classes="menu-item")
             yield Static("")
             yield Button("Q  Quit", id="quit", classes="menu-item")
 
@@ -51,6 +53,8 @@ class MainMenuScreen(Screen):
             self.app.push_screen("settings")
         elif action == "update":
             self.app.push_screen("update")
+        elif action == "uninstall":
+            self.app.push_screen("uninstall")
         elif action == "quit":
             self.app.exit()
 
@@ -71,3 +75,6 @@ class MainMenuScreen(Screen):
 
     def action_update(self) -> None:
         self.app.push_screen("update")
+
+    def action_uninstall(self) -> None:
+        self.app.push_screen("uninstall")

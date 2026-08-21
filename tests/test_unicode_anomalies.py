@@ -74,5 +74,48 @@ class TestUnicodeAnomalyDetector(unittest.TestCase):
             self.assertLessEqual(span.score, 1.0)
 
 
+class TestHomoglyphs(unittest.TestCase):
+    """Mixed-alphabet words are the invisible attack; they must be caught
+    per word, and a lone look-alike letter must be reported without a
+    deterministic replacement."""
+
+    def _homoglyph_spans(self, text: str, lang: str = "en"):
+        block = _make_block(text, lang)
+        return [s for s in UnicodeAnomalyDetector().analyze_block(block)
+                if "omoglyph" in s.details.get("description", "")
+                or s.details.get("category") == "homoglyph"
+                or s.category == "homoglyph"]
+
+    def test_cyrillic_a_inside_english_word(self):
+        spans = self._homoglyph_spans("Login to pаypal.com and verify")
+        self.assertGreater(len(spans), 0, "Cyrillic а inside paypal must be caught")
+
+    def test_latin_a_inside_ukrainian_word(self):
+        spans = self._homoglyph_spans("Це укрaїнський текст", "uk")
+        self.assertGreater(len(spans), 0, "Latin a inside укрaїнський must be caught")
+
+    def test_lone_cyrillic_letter_in_english_text(self):
+        """The case that per-word judging cannot see: one wrong letter
+        standing alone."""
+        spans = self._homoglyph_spans("This text has Cyrillic а instead of Latin a")
+        self.assertGreater(len(spans), 0, "Lone Cyrillic а in English text must be caught")
+        self.assertIsNone(spans[0].replacement,
+                          "Lone look-alike is report-only, not auto-fixed")
+
+    def test_brand_single_letter_not_autocorrected(self):
+        """A legitimate Latin X in Ukrainian prose may be flagged for review,
+        but --fix must never rewrite it to Cyrillic Х silently."""
+        spans = self._homoglyph_spans("Купуйте товар brand X на сайті", "uk")
+        for span in spans:
+            self.assertIsNone(span.replacement)
+
+    def test_clean_texts_stay_silent(self):
+        for text, lang in (("Plain English text with no foreign letters", "en"),
+                           ("Use Docker та Kubernetes для деплою", "uk"),
+                           ("Привіт, «світ»!", "uk")):
+            with self.subTest(text=text):
+                self.assertEqual(self._homoglyph_spans(text, lang), [])
+
+
 if __name__ == "__main__":
     unittest.main()

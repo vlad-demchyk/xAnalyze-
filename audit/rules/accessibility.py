@@ -531,6 +531,147 @@ class InlineContrast(AccessibilityRule):
         return issues
 
 
+def _style_sources(document) -> list:
+    """Every (element, css_text) pair holding style declarations: inline
+    `style` attributes plus the contents of <style> blocks. Stylesheet
+    files need the browser pass; these two cover what the markup ships."""
+    pairs = [(tag, tag.get("style") or "") for tag in document.find_all(style=True)]
+    for block in document.find_all("style"):
+        pairs.append((block, block.get_text() or ""))
+    return pairs
+
+
+def _strip_small_screen_media(css: str) -> str:
+    """Drop @media blocks scoped to narrow screens (`max-width` up to
+    900px): those declarations exist to FIX phone layouts, and reporting
+    them as hazards would punish exactly the right fix."""
+    out = []
+    pos = 0
+    while True:
+        start = css.find("@media", pos)
+        if start == -1:
+            out.append(css[pos:])
+            break
+        out.append(css[pos:start])
+        brace = css.find("{", start)
+        if brace == -1:
+            break
+        depth = 1
+        end = brace + 1
+        while end < len(css) and depth:
+            if css[end] == "{":
+                depth += 1
+            elif css[end] == "}":
+                depth -= 1
+            end += 1
+        block = css[start:end]
+        limit = re.search(r"max-width\s*:\s*(\d+)px", block)
+        if limit and int(limit.group(1)) <= 900:
+            pass  # mobile-scoped: ignore its declarations
+        else:
+            out.append(block)
+        pos = end
+    return "".join(out)
+
+
+class FixedPixelWidth(AccessibilityRule):
+    id = "viewport-fixed-width"
+    severity = MODERATE
+    confidence = NEEDS_BROWSER
+    wcag = ("1.4.10",)
+
+    #: Anchored so `max-width` / `min-width` never match: those are the fix,
+    #: not the bug.
+    _WIDTH_RE = re.compile(r"(?:^|;|\{)\s*width\s*:\s*(\d+(?:\.\d+)?)px",
+                           re.IGNORECASE)
+
+    def check(self, document, context) -> list:
+        issues = []
+        for tag, css in _style_sources(document):
+            css = _strip_small_screen_media(css)
+            for found in self._WIDTH_RE.finditer(css):
+                px = float(found.group(1))
+                if px < 600:
+                    continue  # fits a 390px phone with margin for chrome
+                selector, line = context.locate(tag)
+                issues.append(Issue(
+                    rule_id=self.id, severity=self.severity, selector=selector,
+                    line=line, snippet=snippet_of(tag)[:160], source=context.source,
+                    confidence=self.confidence,
+                    details={"width_px": int(px),
+                             "mobile_viewport": 390},
+                    fix_snippet=_with_attribute(
+                        tag, "style",
+                        self._WIDTH_RE.sub(f"max-width: {int(px)}px",
+                                           css, count=1)) if tag.has_attr("style") else None,
+                ))
+        return issues
+
+
+class TinyFont(AccessibilityRule):
+    id = "viewport-tiny-font"
+    severity = SERIOUS
+    confidence = NEEDS_BROWSER
+    wcag = ("1.4.4",)
+
+    _FONT_RE = re.compile(
+        r"(?:^|;|\{)\s*font-size\s*:\s*(\d+(?:\.\d+)?)(px|pt|rem|em)",
+        re.IGNORECASE)
+    _PX_PER_UNIT = {"px": 1.0, "pt": 4.0 / 3.0, "rem": 16.0, "em": 16.0}
+
+    def check(self, document, context) -> list:
+        issues = []
+        for tag, css in _style_sources(document):
+            css = _strip_small_screen_media(css)
+            for found in self._FONT_RE.finditer(css):
+                value = float(found.group(1)) * self._PX_PER_UNIT[
+                    found.group(2).lower()]
+                if value >= 10:
+                    continue
+                selector, line = context.locate(tag)
+                issues.append(Issue(
+                    rule_id=self.id, severity=self.severity, selector=selector,
+                    line=line, snippet=snippet_of(tag)[:160], source=context.source,
+                    confidence=self.confidence,
+                    details={"font_px": round(value, 1),
+                             "minimum_recommended": 10},
+                ))
+        return issues
+
+
+class SmallTouchTarget(AccessibilityRule):
+    id = "viewport-touch-target"
+    severity = MINOR
+    confidence = NEEDS_BROWSER
+    wcag = ("2.5.8",)
+
+    _SIZE_RE = re.compile(
+        r"(?:^|;)\s*(width|height)\s*:\s*(\d+(?:\.\d+)?)px", re.IGNORECASE)
+    _MINIMUM_PX = 24
+
+    def check(self, document, context) -> list:
+        issues = []
+        for name in _INTERACTIVE:
+            for tag in document.find_all(name, style=True):
+                sizes = {m.group(1).lower(): float(m.group(2))
+                         for m in self._SIZE_RE.finditer(tag.get("style") or "")}
+                too_small = {axis: px for axis, px in sizes.items()
+                             if px < self._MINIMUM_PX}
+                if not too_small:
+                    continue
+                selector, line = context.locate(tag)
+                issues.append(Issue(
+                    rule_id=self.id, severity=self.severity, selector=selector,
+                    line=line, snippet=snippet_of(tag), source=context.source,
+                    confidence=self.confidence,
+                    details={"declared": ", ".join(f"{axis}={int(px)}px"
+                                                   for axis, px in sorted(too_small.items())),
+                             "wcag_minimum": self._MINIMUM_PX,
+                             "recommended": 44},
+                ))
+        return issues
+
+
 # ------------------------------------------------------------------ helpers
 
 #: Attributes whose presence is the whole meaning; writing `autoplay=""` in
@@ -1024,6 +1165,7 @@ for _rule in (
     DocumentTitle, HeadingOrder, MissingH1, PositiveTabindex, DuplicateIds,
     BrokenAriaReference, ButtonWithoutType, MediaWithoutCaptions, AutoplayingMedia,
     TableStructure, ViewportZoomBlocked, InlineContrast,
+    FixedPixelWidth, TinyFont, SmallTouchTarget,
     LandmarkRegions, SkipLink, FormErrorMessage, TableScope,
     HreflangLinks, BreadcrumbMarkup, ImageModernFormat,
     LanguageChange, AbbreviationExpansion,

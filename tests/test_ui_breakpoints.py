@@ -29,12 +29,27 @@ class Breakpoints(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
+    def _drag_to(self, window: MainWindow, width: int) -> None:
+        """Shrink stepwise like a user dragging the window edge.
+
+        Each step fires resizeEvent, folds the column whose breakpoint was
+        crossed and lowers the window's minimum width, so the next smaller
+        size becomes reachable - something a single jump-resize never achieves
+        because Qt clamps it against the not-yet-folded layout.
+        """
+        current = window.width()
+        while current > width:
+            current = max(width, current - 250)
+            window.resize(current, 800)
+            self.app.processEvents()
+
     def _window_at(self, width: int) -> MainWindow:
         window = MainWindow()
         window.show()
         self.app.processEvents()
-        window.resize(width, 800)
+        window.resize(WIDE_BREAKPOINT + 400, 800)
         self.app.processEvents()
+        self._drag_to(window, width)
         return window
 
     def test_the_two_breakpoints_are_ordered(self):
@@ -61,8 +76,9 @@ class Breakpoints(unittest.TestCase):
         from PySide6.QtWidgets import QListWidgetItem
         item = QListWidgetItem("x")
         window._expanded_item = item
-        window.resize(MEDIUM_BREAKPOINT - 100, 800)
-        self.app.processEvents()
+        # Drag down through the wide breakpoint, then across the medium one,
+        # mirroring how a real resize travels.
+        self._drag_to(window, MEDIUM_BREAKPOINT - 100)
         self.assertIsNone(window._expanded_item)
 
 

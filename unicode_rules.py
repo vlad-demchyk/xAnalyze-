@@ -204,9 +204,15 @@ def _find_homoglyphs(text: str) -> list[Anomaly]:
     """Report letters written in a different alphabet from the rest of
     their own word. Judged per word, so a Ukrainian sentence containing an
     English brand name is fine — only a word that mixes alphabets inside
-    itself is reported."""
+    itself is reported.
+
+    A one-letter word cannot mix anything, yet a lone Cyrillic `а` sitting in
+    English prose is exactly what a homoglyph attack looks like. Those are
+    judged against the dominant script of the whole text instead.
+    """
     out: list[Anomaly] = []
-    for match in _WORD_RE.finditer(text):
+    words = list(_WORD_RE.finditer(text))
+    for match in words:
         word = match.group(0)
         if len(word) < 2:
             continue
@@ -236,6 +242,41 @@ def _find_homoglyphs(text: str) -> list[Anomaly]:
                 description=(
                     f"U+{ord(ch):04X} {_char_name(ch)} inside a "
                     f"{majority} word ({word!r}) -> {replacement!r}"
+                ),
+            ))
+
+    # Lone letters: only meaningful against the text's dominant script.
+    overall: dict[str, int] = {}
+    for ch in text:
+        script = _script_of(ch)
+        if script:
+            overall[script] = overall.get(script, 0) + 1
+    if len(overall) >= 2:
+        majority = max(overall, key=lambda s: overall[s])
+        for match in words:
+            word = match.group(0)
+            if len(word) != 1:
+                continue
+            script = _script_of(word)
+            if script is None or script == majority:
+                continue
+            replacement = None
+            if majority == "latin":
+                replacement = CYRILLIC_TO_LATIN.get(word) or GREEK_TO_LATIN.get(word)
+            elif majority == "cyrillic":
+                replacement = LATIN_TO_CYRILLIC.get(word)
+            if not replacement:
+                continue
+            out.append(Anomaly(
+                start=match.start(), end=match.end(), original=word,
+                # No replacement: a lone look-alike may well be intentional
+                # (a brand letter, a size, a variable), so this one is
+                # reported for review rather than handed to --fix.
+                replacement=None, category=CAT_HOMOGLYPH,
+                description=(
+                    f"U+{ord(word):04X} {_char_name(word)} alone in "
+                    f"{majority} text -> looks like {replacement!r}; "
+                    f"review manually"
                 ),
             ))
     return out

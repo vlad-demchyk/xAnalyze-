@@ -53,7 +53,10 @@ class RealPaths(unittest.TestCase):
                 + '"></head><body><h1>Heading</h1>'
                 '<p>Copy that ships to a reader.</p></body></html>',
                 encoding="utf-8")
-            done = _cli("audit", str(page), "--check")
+            done = _cli("audit", str(page), "--check", "--no-browser")
+            # --no-browser keeps this a test of the exit-code contract for
+            # markup alone; the automatic browser pass would rightly flag
+            # this synthetic page (no viewport meta) as imperfect.
             self.assertEqual(done.returncode, EXIT_OK, done.stdout[-400:])
 
 
