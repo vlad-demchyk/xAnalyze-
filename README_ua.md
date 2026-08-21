@@ -588,6 +588,7 @@ score = 1 - remaining
 | `claude-llm-judge` | LLM | Платно | Будь-яка | Anthropic Claude API |
 | `xformat-llm-judge` | LLM | Платно | Будь-яка | Підписка xFormat |
 | `claude-code-llm-judge` | LLM | Платно | Будь-яка | Claude Code API |
+| `agent-llm-judge` | LLM | Безкоштовно | uk, it, en | Агент як judge (офлайн fallback) |
 | `hybrid` | Змішаний | Платно | uk, it, en | Спочатку offline, потім LLM розширює |
 | `none` | — | Безкоштовно | — | Пропустити детекцію контенту |
 
@@ -777,36 +778,47 @@ xanalyze compare ./src --json
 xanalyze fullscan https://example.com --agent
 
 # Власний порт
-xanalyze fullscan https://example.com --agent --agent-port 9000
+### Agent-as-Judge (без API ключа)
+
+Сам агент виступає як LLM judge. Два режими:
+
+**Простий — валідація офлайн знахідок:**
+```bash
+# Крок 1: офлайн скан → кандидати
+xanalyze agent-scan ./src --json > candidates.json
+
+# Крок 2: агент оцінює кандидатів
+echo '[{"block_id":"...","score":0.8,"reason":"AI кліше"}]' | \
+  xanalyze agent-judge ./src --judgments -
 ```
 
-**Як це працює:**
-1. `--agent` запускає локальний HTTP сервер на порту 8765
-2. Агент надсилає текст на `POST /judge`
-3. Сервер повертає оцінку (0-1) ймовірності AI
-4. Сервер автоматично зупиняється після завершення сканування
-
-**Endpoints:**
-- `POST /judge` — Оцінити текст на AI-патерни
-- `GET /health` — Перевірка здоров'я
-- `GET /detectors` — Список доступних детекторів
-
-**Приклад curl:**
+**Повний — гібридний аналіз (агент читає все):**
 ```bash
-curl -X POST http://localhost:8765/judge \
-  -H 'Content-Type: application/json' \
-  -d '{"text": "Варто зазначити, що це комплексне рішення..."}'
+# Крок 1: офлайн скан + всі блоки для агента
+xanalyze agent-scan ./src --full --json > scan.json
+
+# Крок 2: агент оцінює кандидатів І самостійно читає блоки
+
+# Крок 3: об'єднання з hybrid логікою
+cat agent_output.json | xanalyze agent-judge ./src --judgments -
+```
+
+**Fullscan з агентом:**
+```bash
+xanalyze fullscan ./repo --agent --json
+# Виводить: audit + офлайн кандидати + правила детекції + інструкції
 ```
 
 **Опції LLM Judge:**
 
 | Детектор | Команда | API ключ |
 |---|---|---|
-| Агент (за замовчуванням) | `xanalyze fullscan URL --agent` | Не потрібен |
-| Claude API | `xanalyze fullscan URL --detector claude-llm-judge` | `ANTHROPIC_API_KEY` |
-| xFormat | `xanalyze fullscan URL --detector xformat-llm-judge` | xFormat login |
-| Claude Code | `xanalyze fullscan URL --detector claude-code-llm-judge` | Claude Code сесія |
-| Hybrid | `xanalyze fullscan URL --detector hybrid` | Опціонально |
+| Агент (валідація) | `xanalyze agent-scan ./src --json` | Не потрібен |
+| Агент (повний гібрид) | `xanalyze agent-scan ./src --full --json` | Не потрібен |
+| Claude API | `xanalyze scan ./src --detector claude-llm-judge` | `ANTHROPIC_API_KEY` |
+| xFormat | `xanalyze scan ./src --detector xformat-llm-judge` | xFormat login |
+| Claude Code | `xanalyze scan ./src --detector claude-code-llm-judge` | Claude Code сесія |
+| Hybrid | `xanalyze scan ./src --detector hybrid` | Опціонально |
 
 ### Приклади робочих процесів агента
 

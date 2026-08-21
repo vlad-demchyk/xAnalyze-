@@ -1,17 +1,25 @@
-"""Agent-as-judge detector: the CLI agent itself acts as the LLM judge.
+"""Agent-as-judge detector: offline heuristic fallback.
 
-When running in agent mode (e.g., from Claude Code, Cursor, or any coding
-agent), this detector sends the text to the agent for judgment instead of
-requiring an API key. The agent analyzes the text and returns a score.
+For the REAL agent-as-judge workflow (where the agent's LLM judges text),
+use the two-step CLI workflow instead:
 
-This is the third option alongside:
-1. claude-llm-judge (Anthropic API key)
-2. xformat-llm-judge (xFormat subscription)
-3. agent-llm-judge (the agent itself)
+    # Step 1: scan → candidate blocks as JSON
+    xanalyze agent-scan ./src --json > candidates.json
 
-Usage:
-    xanalyze scan ./src --detector agent-llm-judge
-    xanalyze fullscan https://example.com --detector agent-llm-judge
+    # Step 2: agent judges each candidate (the agent reads candidates,
+    # examines each block, and writes judgments)
+
+    # Step 3: merge agent's judgments with offline scan → final report
+    xanalyze agent-scan ./src | xanalyze agent-judge ./src --judgments -
+
+This detector is a FALLBACK that runs offline heuristics when called
+directly (e.g., `--detector agent-llm-judge`). It does NOT call any LLM.
+The name is kept for backward compatibility with existing scripts.
+
+The three judge options:
+1. claude-llm-judge      — Anthropic API key, real LLM call
+2. xformat-llm-judge     — xFormat subscription, real LLM call
+3. agent-scan + agent-judge — the agent itself judges (no API key needed)
 """
 from __future__ import annotations
 

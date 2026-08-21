@@ -397,7 +397,7 @@ def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
     session = requests.Session()
     session.headers.update({"User-Agent": USER_AGENT})
 
-    while queue and len(results) < config.max_pages:
+    while queue and (config.max_pages == 0 or len(results) < config.max_pages):
         url, depth = queue.popleft()
         if url in visited:
             continue

@@ -592,6 +592,7 @@ A finding seen at multiple widths becomes one row recording where it was seen. A
 | `claude-llm-judge` | LLM | Paid | Any | Anthropic Claude API |
 | `xformat-llm-judge` | LLM | Paid | Any | xFormat subscription |
 | `claude-code-llm-judge` | LLM | Paid | Any | Claude Code API |
+| `agent-llm-judge` | LLM | Free | uk, it, en | Agent-as-judge (offline fallback) |
 | `hybrid` | Mixed | Paid | uk, it, en | Offline first, then LLM extends |
 | `none` | — | Free | — | Skip content detection |
 
@@ -777,27 +778,47 @@ xanalyze fullscan https://example.com --agent --agent-port 9000
 3. Server returns a score (0-1) indicating AI likelihood
 4. Server stops automatically after scan completes
 
-**Endpoints:**
-- `POST /judge` — Judge text for AI patterns
-- `GET /health` — Health check
-- `GET /detectors` — List available detectors
+### Agent-as-Judge (No API Key)
 
-**Example curl:**
+The agent itself acts as the LLM judge. Two modes:
+
+**Simple — validate offline findings:**
 ```bash
-curl -X POST http://localhost:8765/judge \
-  -H 'Content-Type: application/json' \
-  -d '{"text": "It is worth noting that this comprehensive solution..."}'
+# Step 1: offline scan → candidates
+xanalyze agent-scan ./src --json > candidates.json
+
+# Step 2: agent judges candidates, pipes back
+echo '[{"block_id":"...","score":0.8,"reason":"AI cliché"}]' | \
+  xanalyze agent-judge ./src --judgments -
+```
+
+**Full — hybrid analysis (agent reads everything):**
+```bash
+# Step 1: offline scan + all blocks for agent
+xanalyze agent-scan ./src --full --json > scan.json
+
+# Step 2: agent judges candidates AND reads blocks independently
+
+# Step 3: merge with hybrid logic
+cat agent_output.json | xanalyze agent-judge ./src --judgments -
+```
+
+**Fullscan with agent:**
+```bash
+xanalyze fullscan ./repo --agent --json
+# Outputs: audit + offline candidates + detection rules + instructions
 ```
 
 **LLM Judge Options:**
 
 | Detector | Command | API Key |
 |---|---|---|
-| Agent (default) | `xanalyze fullscan URL --agent` | Not needed |
-| Claude API | `xanalyze fullscan URL --detector claude-llm-judge` | `ANTHROPIC_API_KEY` |
-| xFormat | `xanalyze fullscan URL --detector xformat-llm-judge` | xFormat login |
-| Claude Code | `xanalyze fullscan URL --detector claude-code-llm-judge` | Claude Code session |
-| Hybrid | `xanalyze fullscan URL --detector hybrid` | Optional |
+| Agent (validate) | `xanalyze agent-scan ./src --json` | Not needed |
+| Agent (full hybrid) | `xanalyze agent-scan ./src --full --json` | Not needed |
+| Claude API | `xanalyze scan ./src --detector claude-llm-judge` | `ANTHROPIC_API_KEY` |
+| xFormat | `xanalyze scan ./src --detector xformat-llm-judge` | xFormat login |
+| Claude Code | `xanalyze scan ./src --detector claude-code-llm-judge` | Claude Code session |
+| Hybrid | `xanalyze scan ./src --detector hybrid` | Optional |
 
 ### Command Reference with User Requests
 

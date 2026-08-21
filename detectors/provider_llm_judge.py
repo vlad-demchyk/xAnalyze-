@@ -30,6 +30,9 @@ JSON_INSTRUCTION = (
     "\n\nRespond with ONLY JSON, no prose, in exactly this shape:\n"
     '{"results": [{"block_index": 0, "flags": '
     '[{"quote": "...", "score": 0.8, "reason": "..."}]}]}'
+    "\n\nUse ALL detection rules from the system prompt: statistical signals "
+    "(uniformity, repetition, dash density), structural patterns, and cliché "
+    "phrases. Do NOT dismiss dash density as typography."
 )
 
 

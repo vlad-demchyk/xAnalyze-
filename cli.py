@@ -32,7 +32,7 @@ from audit.base import CATEGORIES
 from detectors.factory import DetectorFactory
 from file_writer import ReplacementPlan, apply_replacements
 from lang_detect import guess_language
-from models import Confidence, RepoAnalysisResult, ScanDiagnostics
+from models import Confidence, RepoAnalysisResult, ScanDiagnostics, score_to_confidence
 from repo_scanner import DEFAULT_EXTENSIONS, DEFAULT_IGNORE_PATTERNS, ScanConfig, _parse_ignore_text, scan_file, scan_repo
 
 # `fix` may only apply findings whose correction is fixed by a rule. That is
@@ -537,18 +537,18 @@ def cmd_fullscan(args) -> int:
     responsive breakpoints (desktop, tablet, mobile). Reports are auto-saved
     to ~/Desktop unless --styled-report/--report specify a different path.
 
-    With --agent: starts a local HTTP server for agent-as-judge, allowing
-    the agent to judge text without an API key.
+    With --agent: runs offline scan and outputs candidate blocks for the
+    agent to judge with its own LLM (no API key needed). The agent reads
+    the candidates, judges them, and pipes judgments to `agent-judge`.
 
     Usage:
       xanalyze fullscan https://example.com           # full scan with browser
       xanalyze fullscan ./repo                        # repo scan (no browser)
       xanalyze fullscan https://example.com --breakpoints desktop  # desktop only
-      xanalyze fullscan https://example.com --agent   # with agent judge server
+      xanalyze fullscan ./repo --agent                # agent judges AI patterns
     """
     import audit
     from audit.explanations import summary_line
-    import threading
 
     lang = args.language or "en"
     target = args.target
@@ -567,84 +567,8 @@ def cmd_fullscan(args) -> int:
     if not getattr(args, "report", None):
         args.report = str(desktop / f"xanalyze-{target_name}-{timestamp}.md")
 
-    # --- Agent judge server ---
-    agent_server = None
-    agent_port = getattr(args, "agent_port", 8765)
-    if getattr(args, "agent", False):
-        # Start agent judge server in background
-        from http.server import HTTPServer, BaseHTTPRequestHandler
-        import json as json_mod
-
-        class AgentJudgeHandler(BaseHTTPRequestHandler):
-            def do_POST(self):
-                if self.path == "/judge":
-                    content_length = int(self.headers.get("Content-Length", 0))
-                    body = self.rfile.read(content_length)
-                    try:
-                        data = json_mod.loads(body)
-                        text = data.get("text", "")
-                        language = data.get("language", "en")
-
-                        if not text.strip():
-                            self._respond(400, {"error": "No text provided"})
-                            return
-
-                        from detectors.factory import DetectorFactory
-                        from models import TextBlock
-
-                        detector = DetectorFactory.create("agent-llm-judge")
-                        block = TextBlock(
-                            block_id="serve",
-                            page_url="http://localhost",
-                            dom_path="",
-                            text=text,
-                            language_hint=language,
-                        )
-                        spans = detector.analyze_block(block)
-
-                        if spans:
-                            span = spans[0]
-                            self._respond(200, {
-                                "score": round(span.score, 3),
-                                "confidence": span.confidence.value,
-                                "explanation": span.explanation,
-                                "details": span.details,
-                            })
-                        else:
-                            self._respond(200, {
-                                "score": 0.0,
-                                "confidence": "low",
-                                "explanation": "No AI patterns detected",
-                            })
-                    except Exception as e:
-                        self._respond(500, {"error": str(e)})
-                else:
-                    self._respond(404, {"error": "Not found"})
-
-            def do_GET(self):
-                if self.path == "/health":
-                    self._respond(200, {"status": "ok"})
-                else:
-                    self._respond(404, {"error": "Not found"})
-
-            def _respond(self, status, data):
-                self.send_response(status)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.end_headers()
-                self.wfile.write(json_mod.dumps(data).encode())
-
-            def log_message(self, format, *args):
-                pass
-
-        try:
-            agent_server = HTTPServer(("localhost", agent_port), AgentJudgeHandler)
-            server_thread = threading.Thread(target=agent_server.serve_forever, daemon=True)
-            server_thread.start()
-            print(f"# Agent judge server started on port {agent_port}", file=sys.stderr)
-            print(f"# POST http://localhost:{agent_port}/judge", file=sys.stderr)
-        except Exception as e:
-            print(f"# Warning: Could not start agent server: {e}", file=sys.stderr)
+    # --- Agent mode: run offline scan and output candidates ---
+    agent_mode = getattr(args, "agent", False)
 
     # Validate target
     if not is_url and not is_page_file:
@@ -655,6 +579,7 @@ def cmd_fullscan(args) -> int:
     # --- Phase 1: AI patterns scan (for local files/repos) ---
     scan_findings = []
     scan_result = None
+    agent_candidates = []
     if not is_url:
         # Build scan args
         class ScanArgs:
@@ -678,17 +603,47 @@ def cmd_fullscan(args) -> int:
 
         files = _collect_files(ScanArgs.paths, ScanArgs)
         if files:
-            scan_findings, _ = _analyze(files, ScanArgs)
-            # Clean findings for JSON serialization (remove _span, _block)
-            clean_findings = [_public(f) for f in scan_findings]
-            scan_result = {
-                "findings": clean_findings,
-                "counts": {
-                    "total": len(clean_findings),
-                    "style": len([f for f in clean_findings if f.get("source") == "style"]),
-                    "characters": len([f for f in clean_findings if f.get("source") == "characters"]),
-                },
-            }
+            if agent_mode:
+                # Agent mode: run offline scan, collect candidates for LLM judgment
+                from detectors.offline import OfflineDetector
+                blocks = [b for f in files for b in f.blocks]
+                offline = DetectorFactory.create("offline", include_style=True)
+                spans = offline.analyze_blocks(blocks)
+                blocks_by_id = {b.block_id: b for b in blocks}
+                seen = set()
+                for span in spans:
+                    if span.score < 0.25 or (span.details or {}).get("error"):
+                        continue
+                    if span.block_id not in seen:
+                        seen.add(span.block_id)
+                        block = blocks_by_id.get(span.block_id)
+                        if block:
+                            agent_candidates.append({
+                                "block_id": span.block_id,
+                                "file": block.file_path,
+                                "line": block.line_number,
+                                "text": block.text,
+                                "language": block.language_hint or "en",
+                                "offline_score": round(span.score, 3),
+                                "offline_explanation": span.explanation,
+                            })
+                scan_result = {
+                    "findings": [],
+                    "counts": {"total": 0, "style": 0, "characters": 0},
+                    "agent_mode": True,
+                    "candidates_count": len(agent_candidates),
+                }
+            else:
+                scan_findings, _ = _analyze(files, ScanArgs)
+                clean_findings = [_public(f) for f in scan_findings]
+                scan_result = {
+                    "findings": clean_findings,
+                    "counts": {
+                        "total": len(clean_findings),
+                        "style": len([f for f in clean_findings if f.get("source") == "style"]),
+                        "characters": len([f for f in clean_findings if f.get("source") == "characters"]),
+                    },
+                }
 
     # --- Phase 2: Accessibility audit ---
     audit_result = None
@@ -702,7 +657,7 @@ def cmd_fullscan(args) -> int:
         config = CrawlConfig(max_depth=args.depth, max_pages=args.max_pages,
                              render_mode=RENDER_AUTO)
         pages = _crawl_maybe_rendering(target, config)
-        
+
         # Check if SPA pages were detected but not rendered
         spa_pages = [p for p in pages if EMPTY_JS_RENDERED in (p.diagnostics.reasons or [])]
         rendered_pages = [p for p in pages if "rendered" in (p.diagnostics.reasons or [])]
@@ -711,7 +666,36 @@ def cmd_fullscan(args) -> int:
             print(f"# Pages may appear empty. Install PySide6 + QtWebEngine for full support.", file=sys.stderr)
         elif spa_pages and rendered_pages:
             print(f"# SPA: {len(rendered_pages)} page(s) rendered via browser, {len(spa_pages)} failed.", file=sys.stderr)
-        
+
+        # Agent mode: extract candidates from crawled pages
+        if agent_mode and pages:
+            from detectors.offline import OfflineDetector
+            offline = DetectorFactory.create("offline", include_style=True)
+            seen = set()
+            for page in pages:
+                for block in page.blocks:
+                    spans = offline.analyze_block(block)
+                    for span in spans:
+                        if span.score < 0.25 or (span.details or {}).get("error"):
+                            continue
+                        if span.block_id not in seen:
+                            seen.add(span.block_id)
+                            agent_candidates.append({
+                                "block_id": span.block_id,
+                                "file": page.url,
+                                "line": 0,
+                                "text": block.text,
+                                "language": block.language_hint or "en",
+                                "offline_score": round(span.score, 3),
+                                "offline_explanation": span.explanation,
+                            })
+            scan_result = {
+                "findings": [],
+                "counts": {"total": 0, "style": 0, "characters": 0},
+                "agent_mode": True,
+                "candidates_count": len(agent_candidates),
+            }
+
         audit_result = audit.analyze_pages(pages, target)
     elif is_page_file:
         audit_result = audit.analyze_page_file(target)
@@ -771,6 +755,19 @@ def cmd_fullscan(args) -> int:
         },
     }
 
+    if agent_mode and agent_candidates:
+        combined["agent_candidates"] = agent_candidates
+        combined["detection_rules"] = _agent_detection_rules()
+        combined["agent_instruction"] = (
+            "You are an AI text judge. Use the detection_rules to evaluate "
+            "each candidate. Consider ALL signals: statistical (uniformity, "
+            "repetition, dash density), structural patterns, and cliché phrases. "
+            "Do NOT dismiss dash density as 'typography' — it IS an AI signal. "
+            "For each candidate return block_id, score (0.0=human, 1.0=AI), "
+            "and a one-sentence reason. Then pipe judgments to: "
+            "xanalyze agent-judge " + target + " --judgments -"
+        )
+
     # --- Phase 4: Save reports ---
     if getattr(args, "styled_report", None):
         from report.export import write_styled_report
@@ -803,11 +800,6 @@ def cmd_fullscan(args) -> int:
 
     # --- Phase 5: Output (always JSON for agent) ---
     print(json.dumps(combined, indent=2, ensure_ascii=False))
-
-    # Stop agent server if started
-    if agent_server:
-        agent_server.shutdown()
-        print(f"# Agent judge server stopped", file=sys.stderr)
 
     if args.check:
         critical = combined['audit']['counts']['critical']
@@ -1841,115 +1833,479 @@ def cmd_ai_rewrite(args) -> int:
     return EXIT_OK
 
 
-def cmd_serve(args) -> int:
-    """Start local HTTP server for agent-as-judge.
+def _agent_detection_rules() -> dict:
+    """All AI detection rules the system knows, for the agent LLM judge."""
+    return {
+        "statistical_signals": {
+            "uniformity": {
+                "weight": 0.40,
+                "description": "Sentence length variation (burstiness). Human writing varies a lot; AI is uniform.",
+                "score_meaning": "0.0 = bursty (human), 1.0 = uniform (AI-like)",
+                "threshold": "Below 3 sentences: not measured"
+            },
+            "repetition": {
+                "weight": 0.35,
+                "description": "Lexical diversity (type-token ratio). AI repeats words more.",
+                "score_meaning": "0.0 = diverse (human), 1.0 = repetitive (AI-like)",
+                "threshold": "Below 20 words: not measured"
+            },
+            "dash_density": {
+                "weight": 0.25,
+                "description": "Em/en-dash usage density. AI overuses em dashes as commas/parentheses.",
+                "score_meaning": "0.3 dashes/100w = normal human, >2/100w = heavy AI-like",
+                "note": "This IS a real AI signal. Do NOT dismiss it as 'just typography'."
+            }
+        },
+        "structural_patterns": {
+            "en": [
+                "not just X but Y",
+                "it's not about X, it's about Y",
+                "no X. no Y. just Z.",
+                "whether you're X or Y",
+                "take your X to the next level"
+            ],
+            "uk": [
+                "не просто X а Y",
+                "справа не в X справа в Y",
+                "чи ви X чи Y",
+                "це не просто про X; це про Y",
+                "жодних X. жодних Y. лише Z.",
+                "вивести X на новий рівень"
+            ],
+            "it": [
+                "non solo X ma anche Y",
+                "non si tratta di X si tratta di Y",
+                "che tu sia X o Y",
+                "niente X. niente Y. solo Z.",
+                "portare X a un nuovo livello"
+            ]
+        },
+        "cliche_phrases": {
+            "description": "Phrases AI reaches for far more than humans. Strong phrases (with space) weight 0.30, weak (single word) weight 0.10.",
+            "en_strong": [
+                "it's important to note", "it is worth mentioning", "it should be noted that",
+                "in today's fast-paced world", "in today's digital age", "in the era of",
+                "in a world where", "furthermore,", "moreover,", "additionally,",
+                "in conclusion", "to summarize", "let's dive in", "let's explore",
+                "unlock the potential", "seamless experience", "look no further",
+                "elevate your", "unleash the power", "game-changer",
+                "comprehensive solution", "all-in-one solution", "intuitive interface",
+                "in just a few clicks", "join thousands of", "satisfied users",
+                "streamline your workflow", "bridges the gap between"
+            ],
+            "en_weak": [
+                "delve", "underscore", "pivotal", "realm", "harness", "illuminate",
+                "facilitate", "refine", "bolster", "streamline", "revolutionize",
+                "innovative", "transformative", "seamless", "scalable", "comprehensive",
+                "robust", "stellar", "exceptional", "unparalleled", "dynamic",
+                "intricate", "nuanced", "holistic", "paramount", "testament", "tapestry"
+            ],
+            "uk_strong": [
+                "у сучасному світі", "варто зазначити", "важливо підкреслити",
+                "зануримося", "розкрити потенціал", "на завершення", "підсумовуючи",
+                "комплексне рішення", "все в одному", "інтуїтивний інтерфейс",
+                "у кілька кліків", "за кілька хвилин", "все, що вам потрібно",
+                "задоволених користувачів", "розкрийте повний потенціал"
+            ],
+            "it_strong": [
+                "nel mondo di oggi", "è importante sottolineare", "vale la pena notare",
+                "in conclusione", "soluzione completa", "tutto in uno",
+                "interfaccia intuitiva", "in pochi clic", "utenti soddisfatti",
+                "sblocca il pieno potenziale", "ottimizza il tuo flusso di lavoro"
+            ]
+        },
+        "scoring_formula": {
+            "description": "Evidence combines with diminishing returns. Base = weighted average of measured signals. Then each cliché/structural hit reduces remaining room.",
+            "base": "0.40*uniformity + 0.35*repetition + 0.25*dashes (renormalized if any is None)",
+            "cliches": "Each strong phrase reduces remaining by 30%, each weak word by 10%",
+            "structural": "Each structural hit reduces remaining by 25%",
+            "reporting_threshold": "Without at least one concrete marker (cliché or structural), score capped at 0.32"
+        },
+        "important_notes": [
+            "Em dash density IS a real AI signal, not just typography",
+            "Short phrases without spaces (single words) are weak signals",
+            "Phrases with spaces are strong signals",
+            "Statistical signals alone (uniformity, diversity, dashes) without cliché/structural markers are capped at 0.32",
+            "Technical code/docstrings are almost never AI-generated",
+            "Marketing copy, landing pages, onboarding text are prime AI targets"
+        ]
+    }
 
-    The agent can send text to this server and get back a score.
-    This allows the agent to act as the LLM judge without an API key.
 
-    Endpoints:
-        POST /judge - Judge text for AI patterns
-        GET /health - Health check
-        GET /detectors - List available detectors
+def cmd_agent_scan(args) -> int:
+    """Offline scan that outputs candidate blocks for an agent to judge.
+
+    Runs the free offline detector (heuristic + unicode anomalies) and
+    outputs every block that scored >= threshold as JSON. The agent
+    (opencode, Claude Code, Cursor) reads this, judges each block with
+    its own LLM, and pipes the judgments to `xanalyze agent-judge`.
+
+    With --full: also outputs all blocks for the agent to read and judge
+    independently (hybrid mode). The agent judges both offline candidates
+    AND reads raw blocks to find patterns the offline detector missed.
+
+    No API key, no registration, no network call — the agent IS the judge.
     """
-    from http.server import HTTPServer, BaseHTTPRequestHandler
-    import json
+    walked: list = []
+    files = _collect_files(args.paths, args, diagnostics_out=walked)
 
-    class JudgeHandler(BaseHTTPRequestHandler):
-        def do_POST(self):
-            if self.path == "/judge":
-                content_length = int(self.headers.get("Content-Length", 0))
-                body = self.rfile.read(content_length)
-                try:
-                    data = json.loads(body)
-                    text = data.get("text", "")
-                    language = data.get("language", "en")
+    categories = _categories(args)
+    offline = DetectorFactory.create(
+        "offline",
+        categories=categories if not args.no_unicode else (),
+        include_style=True,
+    )
 
-                    if not text.strip():
-                        self._respond(400, {"error": "No text provided"})
-                        return
+    blocks = [b for f in files for b in f.blocks]
+    spans = offline.analyze_blocks(blocks)
 
-                    # Use agent-llm-judge detector
-                    from detectors.factory import DetectorFactory
-                    from models import TextBlock
+    threshold = getattr(args, "threshold", 0.25)
+    full_mode = getattr(args, "full", False)
+    candidates = []
+    seen_blocks = set()
+    for span in spans:
+        if span.score < threshold:
+            continue
+        if (span.details or {}).get("error"):
+            continue
+        block_id = span.block_id
+        block = next((b for b in blocks if b.block_id == block_id), None)
+        if block is None:
+            continue
+        if block_id not in seen_blocks:
+            seen_blocks.add(block_id)
+            candidates.append({
+                "block_id": block_id,
+                "file": block.file_path,
+                "line": block.line_number,
+                "text": block.text,
+                "language": block.language_hint or "en",
+                "offline_score": round(span.score, 3),
+                "offline_explanation": span.explanation,
+                "offline_details": span.details,
+            })
 
-                    detector = DetectorFactory.create("agent-llm-judge")
-                    block = TextBlock(
-                        block_id="serve",
-                        page_url="http://localhost",
-                        dom_path="",
-                        text=text,
-                        language_hint=language,
-                    )
-                    spans = detector.analyze_block(block)
+    payload = {
+        "candidates": candidates,
+        "total_blocks": len(blocks),
+        "total_candidates": len(candidates),
+        "threshold": threshold,
+        "mode": "full" if full_mode else "candidates-only",
+        "detection_rules": _agent_detection_rules(),
+    }
 
-                    if spans:
-                        span = spans[0]
-                        self._respond(200, {
-                            "score": round(span.score, 3),
-                            "confidence": span.confidence.value,
-                            "explanation": span.explanation,
-                            "details": span.details,
-                        })
-                    else:
-                        self._respond(200, {
-                            "score": 0.0,
-                            "confidence": "low",
-                            "explanation": "No AI patterns detected",
-                        })
+    if full_mode:
+        # Output ALL blocks for the agent to read independently
+        all_blocks = []
+        for block in blocks:
+            all_blocks.append({
+                "block_id": block.block_id,
+                "file": block.file_path,
+                "line": block.line_number,
+                "text": block.text,
+                "language": block.language_hint or "en",
+            })
+        payload["blocks"] = all_blocks
+        payload["instruction"] = (
+            "HYBRID MODE: You have two tasks.\n"
+            "1. JUDGE CANDIDATES: Evaluate each candidate in 'candidates' using "
+            "detection_rules. For each return block_id, score, reason.\n"
+            "2. READ BLOCKS: Read every block in 'blocks' independently. Find "
+            "AI-generated passages the offline detector MISSED. For each finding "
+            "return block_id, quote (verbatim from text), score, reason.\n"
+            "Use ALL detection rules: statistical signals, structural patterns, "
+            "cliché phrases. Do NOT dismiss dash density as typography.\n"
+            "IMPORTANT: Pass the 'blocks' array through unchanged in your output.\n"
+            "Output JSON: {\"judgments\": [...], \"agent_findings\": [...], "
+            "\"blocks\": [...]}"
+        )
+    else:
+        payload["instruction"] = (
+            "You are an AI text judge. Use the detection_rules above to evaluate "
+            "each candidate. Consider ALL signals: statistical (uniformity, "
+            "repetition, dash density), structural patterns, and cliché phrases. "
+            "Do NOT dismiss dash density as 'typography' — it IS an AI signal. "
+            "For each candidate return block_id, score (0.0=human, 1.0=AI), "
+            "and a one-sentence reason referencing which rules fired. "
+            "Output JSON: [{\"block_id\": \"...\", \"score\": 0.8, "
+            "\"reason\": \"...\"}]"
+        )
 
-                except json.JSONDecodeError:
-                    self._respond(400, {"error": "Invalid JSON"})
-                except Exception as e:
-                    self._respond(500, {"error": str(e)})
-            else:
-                self._respond(404, {"error": "Not found"})
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return EXIT_OK
 
-        def do_GET(self):
-            if self.path == "/health":
-                self._respond(200, {"status": "ok", "version": "0.1.0"})
-            elif self.path == "/detectors":
-                from detectors.factory import DetectorFactory
-                self._respond(200, {
-                    "detectors": DetectorFactory.available(),
-                })
-            else:
-                self._respond(404, {"error": "Not found"})
 
-        def _respond(self, status: int, data: dict):
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.end_headers()
-            self.wfile.write(json.dumps(data, ensure_ascii=False).encode())
+def cmd_agent_judge(args) -> int:
+    """Combine offline scan with agent's LLM judgments into a final report.
 
-        def log_message(self, format, *args):
-            # Suppress default logging
-            pass
+    Two input modes:
 
-    host = args.host
-    port = args.port
+    SIMPLE (default): Reads judgments from --judgments or stdin:
+        [{"block_id": "...", "score": 0.8, "reason": "..."}]
+        Merges offline scores with agent judgments.
 
-    print(f"Starting XAnalyze agent judge server on {host}:{port}", file=sys.stderr)
-    print(f"Endpoints:", file=sys.stderr)
-    print(f"  POST /judge - Judge text for AI patterns", file=sys.stderr)
-    print(f"  GET  /health - Health check", file=sys.stderr)
-    print(f"  GET  /detectors - List available detectors", file=sys.stderr)
-    print(f"", file=sys.stderr)
-    print(f"Example:", file=sys.stderr)
-    print(f"  curl -X POST http://{host}:{port}/judge \\", file=sys.stderr)
-    print(f"    -H 'Content-Type: application/json' \\", file=sys.stderr)
-    print(f"    -d '{{\"text\": \"It is worth noting...\"}}'", file=sys.stderr)
+    HYBRID (--hybrid): Reads a dict with both judgments and agent_findings:
+        {"judgments": [...], "agent_findings": [...]}
+        agent_findings are the agent's independent analysis of raw blocks.
+        Merges using hybrid logic: agreement / offline-only / model-only.
+    """
+    import_file = getattr(args, "judgments", None)
+    if import_file and import_file != "-":
+        with open(import_file) as f:
+            raw = f.read()
+    else:
+        raw = sys.stdin.read()
 
     try:
-        server = HTTPServer((host, port), JudgeHandler)
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print("\\nServer stopped.", file=sys.stderr)
-        return EXIT_OK
-    except Exception as e:
-        print(f"Server error: {e}", file=sys.stderr)
+        input_data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        print(f"error: invalid JSON in input: {exc}", file=sys.stderr)
         return EXIT_ERROR
+
+    # Parse input: simple (list) or hybrid (dict with judgments + agent_findings)
+    hybrid_mode = getattr(args, "hybrid", False)
+    judgments_list = []
+    agent_findings_list = []
+    pipeline_blocks = []  # blocks from agent-scan pipeline (stable block_ids)
+
+    if isinstance(input_data, dict):
+        judgments_list = input_data.get("judgments", [])
+        agent_findings_list = input_data.get("agent_findings", [])
+        pipeline_blocks = input_data.get("blocks", [])
+        if agent_findings_list:
+            hybrid_mode = True
+    elif isinstance(input_data, list):
+        judgments_list = input_data
+
+    judgments = {j["block_id"]: j for j in judgments_list if "block_id" in j}
+
+    walked: list = []
+    files = _collect_files(args.paths, args, diagnostics_out=walked)
+    blocks = [b for f in files for b in f.blocks]
+    blocks_by_id = {b.block_id: b for b in blocks}
+
+    # If pipeline blocks are provided, use them for stable block_ids
+    # and build a mapping from file+line to pipeline block_id
+    pipeline_block_map = {}  # (file, line) -> pipeline block_id
+    if pipeline_blocks:
+        for pb in pipeline_blocks:
+            bid = pb.get("block_id", "")
+            if bid:
+                key = (pb.get("file", ""), pb.get("line", 0))
+                pipeline_block_map[key] = bid
+                # Also index by block_id for direct lookup
+                if bid not in blocks_by_id:
+                    class _PipelineBlock:
+                        def __init__(self, data):
+                            self.block_id = data["block_id"]
+                            self.file_path = data.get("file", "")
+                            self.line_number = data.get("line", 0)
+                            self.text = data.get("text", "")
+                            self.language_hint = data.get("language")
+                            self.start = 0
+                    blocks_by_id[bid] = _PipelineBlock(pb)
+
+    categories = _categories(args)
+    offline = DetectorFactory.create(
+        "offline",
+        categories=categories if not args.no_unicode else (),
+        include_style=True,
+    )
+    offline_spans = offline.analyze_blocks(blocks)
+
+    # Remap offline spans to use pipeline block_ids
+    if pipeline_blocks:
+        for span in offline_spans:
+            block = blocks_by_id.get(span.block_id)
+            if block:
+                key = (block.file_path, block.line_number)
+                if key in pipeline_block_map:
+                    span.block_id = pipeline_block_map[key]
+
+    # --- Build findings ---
+    findings = []
+
+    if hybrid_mode:
+        # HYBRID MERGE: offline + agent judgments + agent independent findings
+        # Agreement = both found it, offline-only, model-only
+        AGREE_BOTH = "both"
+        AGREE_OFFLINE_ONLY = "offline-only"
+        AGREE_MODEL_ONLY = "model-only"
+
+        # Index agent findings by block_id
+        agent_by_block: dict[str, list] = {}
+        for af in agent_findings_list:
+            bid = af.get("block_id", "")
+            agent_by_block.setdefault(bid, []).append(af)
+
+        # Build block index from agent findings' file/line info
+        # (block_ids from agent-scan may differ from re-scanned ones)
+        agent_block_index: dict[str, object] = {}
+        for af in agent_findings_list:
+            bid = af.get("block_id", "")
+            if bid and bid not in agent_block_index:
+                # Try to find in re-scanned blocks
+                block = blocks_by_id.get(bid)
+                if block:
+                    agent_block_index[bid] = block
+
+        # Process offline spans
+        for span in offline_spans:
+            block = blocks_by_id.get(span.block_id)
+            if block is None:
+                continue
+
+            # Check if agent also judged this block (via judgments)
+            judgment = judgments.get(span.block_id)
+            # Check if agent found something independently in this block
+            agent_hits = agent_by_block.get(span.block_id, [])
+
+            is_offline_style = (
+                (span.details or {}).get("source") == "style"
+                and span.confidence != Confidence.LOW
+            )
+
+            if is_offline_style:
+                # Find overlapping agent findings
+                overlapping = []
+                for af in agent_hits:
+                    af_start = af.get("start", 0)
+                    af_end = af.get("end", len(block.text))
+                    if span.start < af_end and af_start < span.end:
+                        overlapping.append(af)
+
+                if judgment is not None or overlapping:
+                    # Agreement: offline + agent both found it
+                    agent_score = float(judgment.get("score", 0)) if judgment else 0
+                    agent_reason = judgment.get("reason", "") if judgment else ""
+                    for af in overlapping:
+                        agent_score = max(agent_score, float(af.get("score", 0)))
+                        if af.get("reason"):
+                            agent_reason = af["reason"]
+
+                    merged_score = max(span.score, agent_score)
+                    explanation = (
+                        f"[{AGREE_BOTH}] agent: {agent_reason} "
+                        f"(score={agent_score:.2f}); "
+                        f"offline: {span.explanation}"
+                    )
+                    source = "agent+offline"
+                else:
+                    # Offline-only
+                    merged_score = span.score
+                    explanation = f"[{AGREE_OFFLINE_ONLY}] {span.explanation}"
+                    source = "offline"
+            else:
+                # Character findings — keep as-is
+                merged_score = span.score
+                explanation = span.explanation
+                source = (span.details or {}).get("source", "characters")
+
+            if merged_score < 0.33 and source != "characters":
+                continue
+
+            findings.append({
+                "file": block.file_path,
+                "line": block.line_number,
+                "offset": block.start + span.start,
+                "end_offset": block.start + span.end,
+                "detector": "agent-llm-judge",
+                "source": source,
+                "confidence": score_to_confidence(merged_score).value,
+                "score": round(merged_score, 3),
+                "text": block.text[span.start:span.end],
+                "replacement": span.replacement,
+                "explanation": explanation,
+            })
+
+        # Agent-only findings (not overlapping with any offline span)
+        offline_block_ids = {s.block_id for s in offline_spans
+                            if (s.details or {}).get("source") == "style"
+                            and s.confidence != Confidence.LOW}
+        for af in agent_findings_list:
+            bid = af.get("block_id", "")
+            block = blocks_by_id.get(bid)
+            if block is None:
+                continue
+            # Skip if offline already covered this block with overlap
+            af_start = af.get("start", 0)
+            af_end = af.get("end", len(block.text))
+            already_covered = False
+            for span in offline_spans:
+                if span.block_id == bid and span.start < af_end and af_start < span.end:
+                    already_covered = True
+                    break
+            if already_covered:
+                continue
+
+            agent_score = float(af.get("score", 0))
+            if agent_score < 0.33:
+                continue
+
+            findings.append({
+                "file": block.file_path,
+                "line": block.line_number,
+                "offset": block.start + af_start,
+                "end_offset": block.start + af_end,
+                "detector": "agent-llm-judge",
+                "source": "agent-only",
+                "confidence": score_to_confidence(agent_score).value,
+                "score": round(agent_score, 3),
+                "text": block.text[af_start:af_end],
+                "replacement": None,
+                "explanation": f"[{AGREE_MODEL_ONLY}] {af.get('reason', 'Agent detected AI pattern')}",
+            })
+
+    else:
+        # SIMPLE MERGE: offline + agent judgments (current behavior)
+        for span in offline_spans:
+            block = blocks_by_id.get(span.block_id)
+            if block is None:
+                continue
+
+            judgment = judgments.get(span.block_id)
+            if judgment is not None:
+                agent_score = float(judgment.get("score", 0))
+                agent_reason = judgment.get("reason", "")
+                merged_score = max(span.score, agent_score)
+                explanation = (
+                    f"agent: {agent_reason} (score={agent_score:.2f}); "
+                    f"offline: {span.explanation}"
+                )
+                source = "agent+offline"
+            else:
+                merged_score = span.score
+                explanation = span.explanation
+                source = (span.details or {}).get("source", "offline")
+
+            if merged_score < 0.33:
+                continue
+
+            findings.append({
+                "file": block.file_path,
+                "line": block.line_number,
+                "offset": block.start + span.start,
+                "end_offset": block.start + span.end,
+                "detector": "agent-llm-judge",
+                "source": source,
+                "confidence": score_to_confidence(merged_score).value,
+                "score": round(merged_score, 3),
+                "text": block.text[span.start:span.end],
+                "replacement": span.replacement,
+                "explanation": explanation,
+            })
+
+    findings.sort(key=lambda f: (f["file"], f["offset"]))
+
+    if args.json:
+        _print_json(findings, walked=walked)
+    else:
+        _print_human(findings, walked=walked)
+
+    if findings:
+        return EXIT_FINDINGS
+    return EXIT_OK
+
 
 
 # ------------------------------------------------------------------ parser
@@ -1981,7 +2337,9 @@ def build_parser() -> argparse.ArgumentParser:
                                 "account --provider names) | hybrid (offline "
                                 "first, then a model checks and extends it) | "
                                 "claude-llm-judge | xformat-llm-judge | "
-                                "claude-code-llm-judge | none")
+                                "claude-code-llm-judge | agent-llm-judge "
+                                "(offline fallback; for real LLM judgment use "
+                                "'agent-scan' + 'agent-judge' workflow) | none")
             p.add_argument("--provider", default=None,
                            choices=["anthropic", "xformat", "claude-code"],
                            help="which account pays for --detector llm-judge; "
@@ -2195,10 +2553,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="URL to crawl, a directory to scan, or one .html file")
     p_fullscan.add_argument("--url", action="store_true",
                             help="treat target as URL even without scheme")
-    p_fullscan.add_argument("--depth", type=int, default=0,
-                            help="crawl depth for URLs (default 0)")
-    p_fullscan.add_argument("--max-pages", type=int, default=30,
-                            help="max pages to crawl (default 30)")
+    p_fullscan.add_argument("--depth", type=int, default=2,
+                            help="crawl depth for URLs (default 2: target + 2 levels)")
+    p_fullscan.add_argument("--max-pages", type=int, default=0,
+                            help="max pages to crawl (default 0: unlimited, same-domain only)")
     p_fullscan.add_argument("--max-files", type=int, default=5000,
                             help="max files to scan (default 5000)")
     p_fullscan.add_argument("--ext", nargs="*", default=None,
@@ -2229,10 +2587,9 @@ def build_parser() -> argparse.ArgumentParser:
                                  "all (default), desktop, tablet, mobile, "
                                  "or comma-separated subset (e.g. desktop,mobile)")
     p_fullscan.add_argument("--agent", action="store_true",
-                            help="start agent judge server and use it for "
-                                 "AI pattern detection (no API key needed)")
-    p_fullscan.add_argument("--agent-port", type=int, default=8765,
-                            help="port for agent judge server (default: 8765)")
+                            help="run offline scan and output candidate blocks "
+                                 "for agent to judge with its own LLM "
+                                 "(no API key needed)")
     p_fullscan.add_argument("--json", action="store_true",
                             help="machine-readable JSON output for agent")
     p_fullscan.set_defaults(func=cmd_fullscan)
@@ -2243,14 +2600,30 @@ def build_parser() -> argparse.ArgumentParser:
                          help="override language detection")
     p_clean.set_defaults(func=cmd_clean)
 
-    p_serve = sub.add_parser(
-        "serve",
-        help="start local HTTP server for agent-as-judge")
-    p_serve.add_argument("--port", type=int, default=8765,
-                         help="port to listen on (default: 8765)")
-    p_serve.add_argument("--host", default="localhost",
-                         help="host to bind to (default: localhost)")
-    p_serve.set_defaults(func=cmd_serve)
+    p_agent_scan = sub.add_parser(
+        "agent-scan",
+        help="offline scan → candidate blocks as JSON for agent to judge")
+    common(p_agent_scan)
+    p_agent_scan.add_argument(
+        "--threshold", type=float, default=0.25,
+        help="minimum offline score to include as candidate (default: 0.25)")
+    p_agent_scan.add_argument(
+        "--full", action="store_true",
+        help="hybrid mode: also output all blocks for agent to read "
+             "independently (agent judges candidates AND reads raw content)")
+    p_agent_scan.set_defaults(func=cmd_agent_scan)
+
+    p_agent_judge = sub.add_parser(
+        "agent-judge",
+        help="merge agent's LLM judgments with offline scan → final report")
+    common(p_agent_judge)
+    p_agent_judge.add_argument(
+        "--judgments", default=None, metavar="PATH",
+        help="JSON file with agent's judgments (default: read stdin)")
+    p_agent_judge.add_argument(
+        "--hybrid", action="store_true",
+        help="hybrid merge: input contains both judgments and agent_findings")
+    p_agent_judge.set_defaults(func=cmd_agent_judge)
 
     return parser
 
