@@ -18,6 +18,10 @@ Instead: one binary, exposed under a second name via a symlink
 not the name of the file the symlink resolves to - the same mechanism `git`
 uses for `git-<subcommand>` and BusyBox uses for its applets - so the two
 roles are told apart with no extra process, no extra copy, no extraction.
+
+When invoked as ``xanalyze`` with no subcommand, launches the interactive
+TUI (terminal interface). With a subcommand, runs the CLI. As
+``XAnalyze``, launches the GUI.
 """
 from __future__ import annotations
 
@@ -31,9 +35,16 @@ _CLI_INVOCATION_NAME = "xanalyze"
 
 
 def run() -> int:
-    if Path(sys.argv[0]).name == _CLI_INVOCATION_NAME:
+    invoked_as = Path(sys.argv[0]).name
+
+    if invoked_as == _CLI_INVOCATION_NAME:
+        # No subcommand → interactive TUI
+        if len(sys.argv) == 1:
+            from tui.app import run_tui
+            return run_tui()
         import cli
         return cli.main(sys.argv[1:])
+
     import main as gui_main
     return gui_main.main()
 

@@ -5,6 +5,7 @@ anthropic>=0.40
 pathspec>=0.12
 numpy>=1.24
 sentence-transformers>=2.2
+textual>=0.40
 # Optional but recommended: stores xformat.net tokens and your Anthropic key
 # in the OS keychain instead of a local file. See llm/credentials.py.
 keyring>=25.0

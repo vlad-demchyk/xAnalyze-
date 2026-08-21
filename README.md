@@ -40,6 +40,7 @@ Desktop and headless analyzer: AI-generated text detection, non-keyboard charact
   - [Command Reference](#command-reference-with-user-requests)
   - [Workflow Examples](#workflow-examples)
 - [GUI](#gui)
+- [TUI (Terminal Interface)](#tui-terminal-interface)
 - [Configuration](#configuration)
 - [Uninstall](#uninstall)
 - [Requirements](#requirements)
@@ -55,7 +56,7 @@ Desktop and headless analyzer: AI-generated text detection, non-keyboard charact
 - **Full Scan** — combined AI patterns + accessibility in one command with automatic browser rendering
 - **Styled Reports** — branded PDF/HTML for humans
 - **Agent Briefings** — markdown/JSON for coding agents
-- **CLI + GUI** — one binary, two interfaces
+- **CLI + GUI + TUI** — one binary, three interfaces
 - **Responsive Audit** — test at desktop, tablet, and mobile widths
 - **Browser Rendering** — real Chromium for client-side rendered sites (React, Vue, Next.js)
 
@@ -1061,6 +1062,27 @@ The desktop app provides the same functionality with a visual interface:
 6. **Findings Panel** — Clickable list with severity badges
 7. **Detail Panel** — Full description, code snippet, fix suggestion
 8. **Preview Panel** — Page preview with highlighted issues
+
+---
+
+## TUI (Terminal Interface)
+
+When you run `xanalyze` with no arguments, an interactive terminal interface launches:
+
+```bash
+xanalyze          # launch TUI
+python cli.py     # same, from source
+```
+
+The TUI provides:
+- **Scan** — configure and run AI pattern detection
+- **Audit** — configure and run accessibility/SEO/performance audit
+- **Full Scan** — combined analysis in one run
+- **Reports** — view previous analysis results
+- **Settings** — inspect current configuration
+- **Update** — check for new versions
+
+Navigate with arrow keys or number shortcuts (1-6). Press `q` or `Esc` to quit.
 
 ---
 

@@ -2503,7 +2503,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version", action="version",
         version=f"xanalyze {config.APP_VERSION}")
-    sub = parser.add_subparsers(dest="command", required=True)
+    sub = parser.add_subparsers(dest="command", required=False)
 
     def common(p, with_paths=True):
         if with_paths:
@@ -2821,6 +2821,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
+
+    # No subcommand → launch interactive TUI
+    if args.command is None:
+        from tui.app import run_tui
+        return run_tui()
 
     # Background update check (once per day, unless suppressed).
     # Skipped for the `update` command itself — that already checks.

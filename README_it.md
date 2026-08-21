@@ -36,6 +36,7 @@ Desktop e headless analyzer: rilevamento di testi generati da AI, caratteri non 
 - [Report](#report)
 - [Per agenti AI](#per-agenti-ai)
 - [GUI](#gui)
+- [TUI (Interfaccia terminale)](#tui-interfaccia-terminale)
 - [Configurazione](#configurazione)
 - [Disinstallazione](#disinstallazione)
 - [Requisiti](#requisiti)
@@ -51,7 +52,7 @@ Desktop e headless analyzer: rilevamento di testi generati da AI, caratteri non 
 - **Scansione completa** — pattern AI + accessibilità in un comando con rendering browser automatico
 - **Report stilizzati** — PDF/HTML brandizzati per persone
 - **Briefing per agenti** — markdown/JSON per coding agent
-- **CLI + GUI** — un binario, due interfacce
+- **CLI + GUI + TUI** — un binario, tre interfacce
 - **Audit responsive** — test a larghezza desktop, tablet e mobile
 - **Rendering browser** — Chromium reale per siti renderizzati lato client (React, Vue, Next.js)
 
@@ -982,6 +983,27 @@ L'app desktop fornisce la stessa funzionalità con un'interfaccia visiva:
 6. **Pannello scoperte** — Lista cliccabile con badge gravità
 7. **Pannello dettagli** — Descrizione completa, frammento codice, suggerimento correzione
 8. **Pannello anteprima** — Anteprima pagina con problemi evidenziati
+
+---
+
+## TUI (Interfaccia terminale)
+
+Quando si esegue `xanalyze` senza argomenti, si avvia un'interfaccia terminale interattiva:
+
+```bash
+xanalyze          # avvia TUI
+python cli.py     # stesso, da source
+```
+
+Il TUI fornisce:
+- **Scan** — configura ed esegui il rilevamento pattern AI
+- **Audit** — configura ed esegui audit accessibilità/SEO/performance
+- **Full Scan** — analisi combinata in un'esecuzione
+- **Reports** — visualizza risultati analisi precedenti
+- **Settings** — ispeziona la configurazione corrente
+- **Update** — controlla nuove versioni
+
+Navigazione con frecce o scorciatoie (1-6). `q` o `Esc` per uscire.
 
 ---
 
