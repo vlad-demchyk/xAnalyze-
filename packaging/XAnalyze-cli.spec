@@ -11,7 +11,7 @@ QtWebEngine needs to be on disk as separate files to work.
 import shutil
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
 ROOT = Path(SPECPATH).resolve().parent
 DIST = ROOT / "dist"
@@ -21,12 +21,15 @@ datas = [
     (str(ROOT / "audit" / "vendor" / "axe.min.js"), "audit/vendor"),
     (str(ROOT / "audit" / "vendor" / "HTMLCS.js"), "audit/vendor"),
     (str(ROOT / "audit" / "vendor" / "axe-LICENSE.txt"), "audit/vendor"),
+    *collect_data_files("textual"),
 ]
 
 hiddenimports = [
     *collect_submodules("detectors"),
     *collect_submodules("audit"),
     *collect_submodules("llm"),
+    *collect_submodules("tui"),
+    *collect_submodules("textual"),
     "keyring.backends.macOS",
     "keyring.backends.fail",
 ]

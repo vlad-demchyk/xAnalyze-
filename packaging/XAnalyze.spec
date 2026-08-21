@@ -33,7 +33,7 @@ executables and merging them with PyInstaller's `MERGE()`).
 import shutil
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
 ROOT = Path(SPECPATH).resolve().parent
 #: Where PyInstaller writes the build. Needed by the post-build repair below.
@@ -45,6 +45,7 @@ datas = [
     (str(ROOT / "audit" / "vendor" / "HTMLCS.js"), "audit/vendor"),
     (str(ROOT / "audit" / "vendor" / "axe-LICENSE.txt"), "audit/vendor"),
     (str(ROOT / "ui" / "design" / "assets"), "ui/design/assets"),
+    *collect_data_files("textual"),
 ]
 
 hiddenimports = [
@@ -54,6 +55,8 @@ hiddenimports = [
     *collect_submodules("detectors"),
     *collect_submodules("audit"),
     *collect_submodules("llm"),
+    *collect_submodules("tui"),
+    *collect_submodules("textual"),
     "keyring.backends.macOS",
     "keyring.backends.fail",
 ]
