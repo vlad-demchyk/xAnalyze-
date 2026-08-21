@@ -12,6 +12,7 @@ __pycache__/
 # The user's own settings and API keys live here. Never committed: the file
 # holds an Anthropic key when the user typed one into Settings.
 settings.json
+.xanalyze/
 .xanalyze-ignore
 
 # Test-account credentials for the live e2e run. The file says of itself that

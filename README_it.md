@@ -22,6 +22,8 @@ Desktop e headless analyzer: rilevamento di testi generati da AI, caratteri non 
   - [clean](#clean---filtro-testo)
   - [agent-scan](#agent-scan---scansione-offline-per-agente)
   - [agent-judge](#agent-judge---unione-giudizi-agente)
+  - [update](#update---aggiornamento-automatico)
+- [Flag globali](#flag-globali)
 - [Metodi di rilevamento](#metodi-di-rilevamento)
   - [Rilevamento pattern AI](#rilevamento-pattern-ai)
   - [Caratteri non da tastiera](#caratteri-non-da-tastiera)
@@ -397,6 +399,30 @@ xanalyze agent-scan ./src --json | xanalyze agent-judge ./src --judgments -
 # Unione ibrida: l'agente ha valutato + trovato indipendentemente
 xanalyze agent-scan ./src --full --json | xanalyze agent-judge ./src --judgments -
 ```
+
+---
+
+### `update` - Aggiornamento automatico
+
+Controlla GitHub Releases per una versione più recente e sostituisce il binario CLI sul posto.
+
+```bash
+# Controlla e installa aggiornamento
+xanalyze update
+```
+
+Quando si esegue da source (`python cli.py`), mostra il link di download invece di sostituire.
+
+**Controllo automatico aggiornamenti:** Ogni comando CLI controlla gli aggiornamenti una volta al giorno (non bloccante, stampa una riga su stderr se esiste una versione più recente). Disattivare con `--no-update-check`.
+
+---
+
+## Flag globali
+
+| Flag | Descrizione |
+|---|---|
+| `--no-update-check` | Salva il controllo automatico giornaliero della versione |
+| `--version` | Stampa la versione ed esci |
 
 ---
 

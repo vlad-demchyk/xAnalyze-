@@ -2203,6 +2203,18 @@ def cmd_agent_scan(args) -> int:
     return EXIT_OK
 
 
+def cmd_update(args) -> int:
+    """Self-update the CLI binary from the latest GitHub Release.
+
+    Checks the configured GitHub repository for a newer version,
+    downloads the platform-appropriate CLI asset, and replaces the
+    running binary in place.  When running from source, prints the
+    download link instead.
+    """
+    import updater
+    return updater.do_update()
+
+
 def cmd_agent_judge(args) -> int:
     """Combine offline scan with agent's LLM judgments into a final report.
 
@@ -2485,6 +2497,12 @@ def build_parser() -> argparse.ArgumentParser:
                     "flag AI-sounding copy) in web pages' source files. "
                     "Designed to run after an LLM coding agent.",
     )
+    parser.add_argument(
+        "--no-update-check", action="store_true", default=False,
+        help="skip the automatic daily check for a newer version")
+    parser.add_argument(
+        "--version", action="version",
+        version=f"xanalyze {config.APP_VERSION}")
     sub = parser.add_subparsers(dest="command", required=True)
 
     def common(p, with_paths=True):
@@ -2762,6 +2780,11 @@ def build_parser() -> argparse.ArgumentParser:
                             help="machine-readable JSON output for agent")
     p_fullscan.set_defaults(func=cmd_fullscan)
 
+    p_update = sub.add_parser(
+        "update",
+        help="self-update the CLI binary from the latest GitHub Release")
+    p_update.set_defaults(func=cmd_update)
+
     p_clean = sub.add_parser("clean", help="filter text from stdin to stdout")
     common(p_clean, with_paths=False)
     p_clean.add_argument("--language", default=None, choices=["uk", "it", "en"],
@@ -2798,6 +2821,18 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
+
+    # Background update check (once per day, unless suppressed).
+    # Skipped for the `update` command itself — that already checks.
+    if not getattr(args, "no_update_check", False) and args.command != "update":
+        try:
+            import updater
+            new = updater.check_for_update(quiet=True)
+            if new:
+                updater.print_update_hint(new)
+        except Exception:  # noqa: BLE001
+            pass  # never let the check break the real command
+
     try:
         return args.func(args)
     except SystemExit:

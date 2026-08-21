@@ -22,6 +22,8 @@ Desktop and headless analyzer: AI-generated text detection, non-keyboard charact
   - [clean](#clean---filter-text)
   - [agent-scan](#agent-scan---offline-scan-for-agent)
   - [agent-judge](#agent-judge---merge-agent-judgments)
+  - [update](#update---self-update)
+- [Global Flags](#global-flags)
 - [Detection Methods](#detection-methods)
   - [AI Pattern Detection](#ai-pattern-detection)
   - [Non-keyboard Characters](#non-keyboard-characters)
@@ -402,6 +404,30 @@ xanalyze agent-scan ./src --json | xanalyze agent-judge ./src --judgments -
 # Hybrid merge: agent judged + found independently
 xanalyze agent-scan ./src --full --json | xanalyze agent-judge ./src --judgments -
 ```
+
+---
+
+### `update` - Self-Update
+
+Checks GitHub Releases for a newer version and replaces the CLI binary in place.
+
+```bash
+# Check and install update
+xanalyze update
+```
+
+When running from source (`python cli.py`), prints the download link instead of replacing.
+
+**Automatic update check:** Every CLI command checks for updates once a day (non-blocking, prints a one-line hint to stderr if a newer version exists). Suppress with `--no-update-check`.
+
+---
+
+## Global Flags
+
+| Flag | Description |
+|---|---|
+| `--no-update-check` | Skip the automatic daily version check |
+| `--version` | Print version and exit |
 
 ---
 

@@ -112,8 +112,8 @@ app = BUNDLE(
     info_plist={
         "CFBundleName": "XAnalyze",
         "CFBundleDisplayName": "XAnalyze",
-        "CFBundleShortVersionString": "0.1.0",
-        "CFBundleVersion": "0.1.0",
+        "CFBundleShortVersionString": "0.6.0",
+        "CFBundleVersion": "0.6.0",
         # Retina: without this the whole UI renders at 1x and looks blurred.
         "NSHighResolutionCapable": True,
         # The app reaches arbitrary sites the user types in, so it needs
