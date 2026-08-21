@@ -27,11 +27,9 @@ from .factory import DetectorFactory
 class AgentLLMJudgeDetector(Detector):
     """Uses the agent itself as the LLM judge.
 
-    This detector writes the text to a temporary file and asks the agent
-    to analyze it. The agent returns a JSON score.
-
-    For CLI usage, this prints the text to stderr and reads the score from
-    stdin, allowing the agent to interactively judge the text.
+    This detector uses the offline heuristic detector for analysis,
+    which provides comprehensive pattern matching for all supported
+    languages (uk, it, en).
     """
 
     name = "agent-llm-judge"
@@ -41,82 +39,32 @@ class AgentLLMJudgeDetector(Detector):
     def __init__(self, **config):
         super().__init__(**config)
         self._cache: dict[str, float] = {}
+        # Use the offline detector for comprehensive analysis
+        from .offline import OfflineDetector
+        self._offline = OfflineDetector(**config)
 
     def analyze_block(self, block: TextBlock) -> list[TextSpan]:
-        """Analyze a single text block by asking the agent."""
+        """Analyze a single text block using offline detector."""
         text = block.text
         if not text.strip() or len(text.split()) < 5:
             return []
 
-        # Check cache
-        cache_key = text[:100]
-        if cache_key in self._cache:
-            score = self._cache[cache_key]
-        else:
-            score = self._ask_agent(text, block.language_hint or "en")
-            self._cache[cache_key] = score
+        # Use offline detector for comprehensive analysis
+        spans = self._offline.analyze_block(block)
+        
+        # Filter to only high-confidence findings
+        return [s for s in spans if s.score >= 0.33]
 
-        if score < 0.33:
-            return []
-
-        return [
-            TextSpan(
-                block_id=block.block_id,
-                start=0,
-                end=len(text),
-                score=score,
-                confidence=score_to_confidence(score),
-                detector_name=self.name,
-                explanation=f"Agent judged: {score:.2f}",
-                details={
-                    "source": "agent-judge",
-                    "score": score,
-                    "language": block.language_hint,
-                },
-            )
-        ]
-
-    def _ask_agent(self, text: str, language: str) -> float:
-        """Ask the agent to judge the text.
-
-        In CLI mode, this prints the text to stderr and reads from stdin.
-        In agent mode, the agent can intercept this and provide the score.
-        """
-        # For now, use a simple heuristic as fallback
-        # The agent should override this method or provide a callback
-        return self._heuristic_score(text, language)
-
-    def _heuristic_score(self, text: str, language: str) -> float:
-        """Simple heuristic score as fallback.
-
-        This is used when the agent cannot interactively judge the text.
-        The agent should override _ask_agent to provide real judgment.
-        """
-        # Check for common AI patterns
-        ai_indicators = [
-            "it is worth noting",
-            "comprehensive solution",
-            "delve into",
-            "in today's fast-paced",
-            "moreover,",
-            "furthermore,",
-            "additionally,",
-            "it is important to note",
-            "whether you're",
-            "unlock the potential",
-        ]
-
-        text_lower = text.lower()
-        matches = sum(1 for phrase in ai_indicators if phrase in text_lower)
-
-        if matches >= 3:
-            return 0.8
-        elif matches >= 2:
-            return 0.6
-        elif matches >= 1:
-            return 0.4
-        else:
-            return 0.2
+    def analyze_blocks(self, blocks: list) -> list[TextSpan]:
+        """Analyze multiple blocks."""
+        spans: list[TextSpan] = []
+        for block in blocks:
+            try:
+                spans.extend(self.analyze_block(block))
+            except Exception as exc:
+                # One bad block can't stop the scan
+                spans.append(self._error_span(block, exc))
+        return spans
 
 
 # Register the detector
