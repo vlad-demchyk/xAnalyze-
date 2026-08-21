@@ -116,8 +116,9 @@ The TUI provides a menu-driven interface with:
 - **Reports** — view previous analysis results
 - **Settings** — inspect configuration
 - **Update** — check for new versions
+- **Uninstall** — remove XAnalyze from this machine
 
-Navigate with arrow keys or number shortcuts (1-6). Press `q` or `Esc` to go back/quit.
+Navigate with arrow keys or number shortcuts (1-7). Press `q` or `Esc` to go back/quit.
 
 ### CLI Commands
 
@@ -136,6 +137,9 @@ xanalyze fix ./src
 
 # Check for updates
 xanalyze update
+
+# Remove XAnalyze from this machine
+xanalyze uninstall
 
 # Show version
 xanalyze --version
@@ -473,6 +477,25 @@ xanalyze update
 When running from source (`python cli.py`), prints the download link instead of replacing.
 
 **Automatic update check:** Every CLI command checks for updates once a day (non-blocking, prints a one-line hint to stderr if a newer version exists). Suppress with `--no-update-check`.
+
+---
+
+### `uninstall` - Remove XAnalyze
+
+Removes everything the app put on this machine: the `xanalyze` command on PATH, `/Applications/XAnalyze.app` when present, the config directory (`~/.config/xanalyze`, plus the pre-rename `~/.config/ai-content-scanner`) and saved keychain entries.
+
+```bash
+# Interactive: list what was found, ask before removing
+xanalyze uninstall
+
+# Remove without asking
+xanalyze uninstall --yes
+
+# Only list what would be removed
+xanalyze uninstall --dry-run
+```
+
+Never touched: `.xanalyze/` run-history folders and `.xanalyze-ignore` files inside your repositories, `.bak` backups, and reports already written to your Desktop.
 
 ---
 
