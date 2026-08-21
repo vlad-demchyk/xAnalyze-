@@ -1206,28 +1206,35 @@ def _write_report(result, args, lang: str, fix_outcome=None, ai_findings=None) -
         "fixed": len(fix_outcome.applied) if fix_outcome else 0,
     }
 
-    # AI pattern statistics
+    # AI pattern statistics (only style findings, not typography/characters)
     ai_stats = {}
     if ai_findings:
-        ai_stats = {
-            "total": len(ai_findings),
-            "high": len([f for f in ai_findings if f.get("confidence") == "high"]),
-            "medium": len([f for f in ai_findings if f.get("confidence") == "medium"]),
-            "low": len([f for f in ai_findings if f.get("confidence") == "low"]),
-            "files": len({f.get("file", "") for f in ai_findings}),
-            "top_patterns": [],
-        }
-        # Top AI patterns by score
-        sorted_findings = sorted(ai_findings, key=lambda f: f.get("score", 0), reverse=True)
-        for f in sorted_findings[:10]:
-            ai_stats["top_patterns"].append({
-                "text": f.get("text", "")[:100],
-                "score": f.get("score", 0),
-                "confidence": f.get("confidence", ""),
-                "explanation": f.get("explanation", "")[:120],
-                "file": f.get("file", ""),
-                "line": f.get("line", 0),
-            })
+        # Filter to only style-based findings (not typography/characters)
+        style_findings = [
+            f for f in ai_findings
+            if "typography" not in f.get("explanation", "").lower()
+            and "characters" not in f.get("source", "").lower()
+        ]
+        if style_findings:
+            ai_stats = {
+                "total": len(style_findings),
+                "high": len([f for f in style_findings if f.get("confidence") == "high"]),
+                "medium": len([f for f in style_findings if f.get("confidence") == "medium"]),
+                "low": len([f for f in style_findings if f.get("confidence") == "low"]),
+                "files": len({f.get("file", "") for f in style_findings}),
+                "top_patterns": [],
+            }
+            # Top AI patterns by score
+            sorted_findings = sorted(style_findings, key=lambda f: f.get("score", 0), reverse=True)
+            for f in sorted_findings[:10]:
+                ai_stats["top_patterns"].append({
+                    "text": f.get("text", "")[:100],
+                    "score": f.get("score", 0),
+                    "confidence": f.get("confidence", ""),
+                    "explanation": f.get("explanation", "")[:120],
+                    "file": f.get("file", ""),
+                    "line": f.get("line", 0),
+                })
 
     payload = {
         "generated": entry["at"],
