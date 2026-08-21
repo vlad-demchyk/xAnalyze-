@@ -118,6 +118,7 @@ class CrawlConfig:
     max_depth: int = 1
     max_pages: int = 30
     timeout: float = 10.0
+    render_timeout: float = 30.0
     same_domain_only: bool = True
     render_mode: str = RENDER_NEVER
 
@@ -439,9 +440,19 @@ def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
         if render is not None and _should_render(config.render_mode, diagnostics):
             rendered = ""
             try:
-                rendered = render(url) or ""
-            except Exception as exc:  # noqa: BLE001 - a failed render is a
-                # diagnosis, not a crashed crawl: the fetched reading stands.
+                import signal
+
+                def _timeout_handler(signum, frame):
+                    raise TimeoutError(f"render timed out after {config.render_timeout}s")
+
+                old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+                signal.setitimer(signal.ITIMER_REAL, config.render_timeout)
+                try:
+                    rendered = render(url) or ""
+                finally:
+                    signal.setitimer(signal.ITIMER_REAL, 0)
+                    signal.signal(signal.SIGALRM, old_handler)
+            except (TimeoutError, Exception) as exc:  # noqa: BLE001
                 diagnostics.render_error = str(exc)
             if rendered:
                 html = rendered
