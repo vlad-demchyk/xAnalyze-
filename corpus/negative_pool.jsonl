@@ -1,0 +1,292 @@
+{"text": "OK", "label": "human", "language": "en", "source": "UI button", "register": "button label"}
+{"text": "Cancel", "label": "human", "language": "en", "source": "UI button", "register": "button label"}
+{"text": "Save", "label": "human", "language": "en", "source": "UI button", "register": "button label"}
+{"text": "Delete", "label": "human", "language": "en", "source": "UI button", "register": "button label"}
+{"text": "Submit", "label": "human", "language": "en", "source": "UI button", "register": "button label"}
+{"text": "Close", "label": "human", "language": "en", "source": "UI button", "register": "button label"}
+{"text": "Back", "label": "human", "language": "en", "source": "UI button", "register": "button label"}
+{"text": "Next", "label": "human", "language": "en", "source": "UI button", "register": "button label"}
+{"text": "Previous", "label": "human", "language": "en", "source": "UI button", "register": "button label"}
+{"text": "Search", "label": "human", "language": "en", "source": "UI button", "register": "button label"}
+{"text": "Filter", "label": "human", "language": "en", "source": "UI button", "register": "button label"}
+{"text": "Sort", "label": "human", "language": "en", "source": "UI button", "register": "button label"}
+{"text": "Refresh", "label": "human", "language": "en", "source": "UI button", "register": "button label"}
+{"text": "Reload", "label": "human", "language": "en", "source": "UI button", "register": "button label"}
+{"text": "Loading...", "label": "human", "language": "en", "source": "UI status", "register": "status message"}
+{"text": "Please wait...", "label": "human", "language": "en", "source": "UI status", "register": "status message"}
+{"text": "No results found", "label": "human", "language": "en", "source": "UI empty state", "register": "empty state"}
+{"text": "Something went wrong", "label": "human", "language": "en", "source": "UI error", "register": "error message"}
+{"text": "Try again", "label": "human", "language": "en", "source": "UI error", "register": "error message"}
+{"text": "Page not found", "label": "human", "language": "en", "source": "UI error", "register": "error message"}
+{"text": "Access denied", "label": "human", "language": "en", "source": "UI error", "register": "error message"}
+{"text": "Session expired", "label": "human", "language": "en", "source": "UI error", "register": "error message"}
+{"text": "Sign in", "label": "human", "language": "en", "source": "UI auth", "register": "auth label"}
+{"text": "Sign out", "label": "human", "language": "en", "source": "UI auth", "register": "auth label"}
+{"text": "Log in", "label": "human", "language": "en", "source": "UI auth", "register": "auth label"}
+{"text": "Log out", "label": "human", "language": "en", "source": "UI auth", "register": "auth label"}
+{"text": "Register", "label": "human", "language": "en", "source": "UI auth", "register": "auth label"}
+{"text": "Sign up", "label": "human", "language": "en", "source": "UI auth", "register": "auth label"}
+{"text": "Forgot password?", "label": "human", "language": "en", "source": "UI auth", "register": "auth label"}
+{"text": "Reset password", "label": "human", "language": "en", "source": "UI auth", "register": "auth label"}
+{"text": "Email", "label": "human", "language": "en", "source": "UI form", "register": "form label"}
+{"text": "Password", "label": "human", "language": "en", "source": "UI form", "register": "form label"}
+{"text": "Name", "label": "human", "language": "en", "source": "UI form", "register": "form label"}
+{"text": "Phone", "label": "human", "language": "en", "source": "UI form", "register": "form label"}
+{"text": "Address", "label": "human", "language": "en", "source": "UI form", "register": "form label"}
+{"text": "City", "label": "human", "language": "en", "source": "UI form", "register": "form label"}
+{"text": "Country", "label": "human", "language": "en", "source": "UI form", "register": "form label"}
+{"text": "Zip code", "label": "human", "language": "en", "source": "UI form", "register": "form label"}
+{"text": "Required", "label": "human", "language": "en", "source": "UI form", "register": "form validation"}
+{"text": "Invalid email", "label": "human", "language": "en", "source": "UI form", "register": "form validation"}
+{"text": "Password too short", "label": "human", "language": "en", "source": "UI form", "register": "form validation"}
+{"text": "Passwords don't match", "label": "human", "language": "en", "source": "UI form", "register": "form validation"}
+{"text": "Home", "label": "human", "language": "en", "source": "UI navigation", "register": "nav label"}
+{"text": "About", "label": "human", "language": "en", "source": "UI navigation", "register": "nav label"}
+{"text": "Contact", "label": "human", "language": "en", "source": "UI navigation", "register": "nav label"}
+{"text": "Help", "label": "human", "language": "en", "source": "UI navigation", "register": "nav label"}
+{"text": "Settings", "label": "human", "language": "en", "source": "UI navigation", "register": "nav label"}
+{"text": "Profile", "label": "human", "language": "en", "source": "UI navigation", "register": "nav label"}
+{"text": "Dashboard", "label": "human", "language": "en", "source": "UI navigation", "register": "nav label"}
+{"text": "Notifications", "label": "human", "language": "en", "source": "UI navigation", "register": "nav label"}
+{"text": "Messages", "label": "human", "language": "en", "source": "UI navigation", "register": "nav label"}
+{"text": "Users", "label": "human", "language": "en", "source": "UI navigation", "register": "nav label"}
+{"text": "Products", "label": "human", "language": "en", "source": "UI navigation", "register": "nav label"}
+{"text": "Orders", "label": "human", "language": "en", "source": "UI navigation", "register": "nav label"}
+{"text": "Reports", "label": "human", "language": "en", "source": "UI navigation", "register": "nav label"}
+{"text": "Analytics", "label": "human", "language": "en", "source": "UI navigation", "register": "nav label"}
+{"text": "Support", "label": "human", "language": "en", "source": "UI navigation", "register": "nav label"}
+{"text": "Docs", "label": "human", "language": "en", "source": "UI navigation", "register": "nav label"}
+{"text": "Documentation", "label": "human", "language": "en", "source": "UI navigation", "register": "nav label"}
+{"text": "API", "label": "human", "language": "en", "source": "UI navigation", "register": "nav label"}
+{"text": "Blog", "label": "human", "language": "en", "source": "UI navigation", "register": "nav label"}
+{"text": "Pricing", "label": "human", "language": "en", "source": "UI navigation", "register": "nav label"}
+{"text": "Features", "label": "human", "language": "en", "source": "UI navigation", "register": "nav label"}
+{"text": "Download", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Upload", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Import", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Export", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Copy", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Paste", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Cut", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Undo", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Redo", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Select all", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Deselect all", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Expand", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Collapse", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Show more", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Show less", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "View all", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Edit", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Remove", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Add", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Create", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Update", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Confirm", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Apply", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Reset", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Clear", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Done", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Finish", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Start", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Stop", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Pause", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Resume", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Retry", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Skip", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Continue", "label": "human", "language": "en", "source": "UI action", "register": "action label"}
+{"text": "Back to top", "label": "human", "language": "en", "source": "UI navigation", "register": "nav label"}
+{"text": "Go back", "label": "human", "language": "en", "source": "UI navigation", "register": "nav label"}
+{"text": "Go to dashboard", "label": "human", "language": "en", "source": "UI navigation", "register": "nav label"}
+{"text": "Go to settings", "label": "human", "language": "en", "source": "UI navigation", "register": "nav label"}
+{"text": "Go to profile", "label": "human", "language": "en", "source": "UI navigation", "register": "nav label"}
+{"text": "OK", "label": "human", "language": "uk", "source": "UI button", "register": "button label"}
+{"text": "Скасувати", "label": "human", "language": "uk", "source": "UI button", "register": "button label"}
+{"text": "Зберегти", "label": "human", "language": "uk", "source": "UI button", "register": "button label"}
+{"text": "Видалити", "label": "human", "language": "uk", "source": "UI button", "register": "button label"}
+{"text": "Надіслати", "label": "human", "language": "uk", "source": "UI button", "register": "button label"}
+{"text": "Закрити", "label": "human", "language": "uk", "source": "UI button", "register": "button label"}
+{"text": "Назад", "label": "human", "language": "uk", "source": "UI button", "register": "button label"}
+{"text": "Далі", "label": "human", "language": "uk", "source": "UI button", "register": "button label"}
+{"text": "Попередній", "label": "human", "language": "uk", "source": "UI button", "register": "button label"}
+{"text": "Пошук", "label": "human", "language": "uk", "source": "UI button", "register": "button label"}
+{"text": "Фільтр", "label": "human", "language": "uk", "source": "UI button", "register": "button label"}
+{"text": "Сортування", "label": "human", "language": "uk", "source": "UI button", "register": "button label"}
+{"text": "Оновити", "label": "human", "language": "uk", "source": "UI button", "register": "button label"}
+{"text": "Завантаження...", "label": "human", "language": "uk", "source": "UI status", "register": "status message"}
+{"text": "Зачекайте...", "label": "human", "language": "uk", "source": "UI status", "register": "status message"}
+{"text": "Нічого не знайдено", "label": "human", "language": "uk", "source": "UI empty state", "register": "empty state"}
+{"text": "Щось пішло не так", "label": "human", "language": "uk", "source": "UI error", "register": "error message"}
+{"text": "Спробуйте ще раз", "label": "human", "language": "uk", "source": "UI error", "register": "error message"}
+{"text": "Сторінку не знайдено", "label": "human", "language": "uk", "source": "UI error", "register": "error message"}
+{"text": "Доступ заборонено", "label": "human", "language": "uk", "source": "UI error", "register": "error message"}
+{"text": "Сесія закінчилася", "label": "human", "language": "uk", "source": "UI error", "register": "error message"}
+{"text": "Увійти", "label": "human", "language": "uk", "source": "UI auth", "register": "auth label"}
+{"text": "Вийти", "label": "human", "language": "uk", "source": "UI auth", "register": "auth label"}
+{"text": "Зареєструватися", "label": "human", "language": "uk", "source": "UI auth", "register": "auth label"}
+{"text": "Забули пароль?", "label": "human", "language": "uk", "source": "UI auth", "register": "auth label"}
+{"text": "Скинути пароль", "label": "human", "language": "uk", "source": "UI auth", "register": "auth label"}
+{"text": "Електронна пошта", "label": "human", "language": "uk", "source": "UI form", "register": "form label"}
+{"text": "Пароль", "label": "human", "language": "uk", "source": "UI form", "register": "form label"}
+{"text": "Ім'я", "label": "human", "language": "uk", "source": "UI form", "register": "form label"}
+{"text": "Телефон", "label": "human", "language": "uk", "source": "UI form", "register": "form label"}
+{"text": "Адреса", "label": "human", "language": "uk", "source": "UI form", "register": "form label"}
+{"text": "Місто", "label": "human", "language": "uk", "source": "UI form", "register": "form label"}
+{"text": "Країна", "label": "human", "language": "uk", "source": "UI form", "register": "form label"}
+{"text": "Поштовий індекс", "label": "human", "language": "uk", "source": "UI form", "register": "form label"}
+{"text": "Обов'язкове поле", "label": "human", "language": "uk", "source": "UI form", "register": "form validation"}
+{"text": "Невірна електронна пошта", "label": "human", "language": "uk", "source": "UI form", "register": "form validation"}
+{"text": "Пароль занадто короткий", "label": "human", "language": "uk", "source": "UI form", "register": "form validation"}
+{"text": "Паролі не збігаються", "label": "human", "language": "uk", "source": "UI form", "register": "form validation"}
+{"text": "Головна", "label": "human", "language": "uk", "source": "UI navigation", "register": "nav label"}
+{"text": "Про нас", "label": "human", "language": "uk", "source": "UI navigation", "register": "nav label"}
+{"text": "Контакти", "label": "human", "language": "uk", "source": "UI navigation", "register": "nav label"}
+{"text": "Допомога", "label": "human", "language": "uk", "source": "UI navigation", "register": "nav label"}
+{"text": "Налаштування", "label": "human", "language": "uk", "source": "UI navigation", "register": "nav label"}
+{"text": "Профіль", "label": "human", "language": "uk", "source": "UI navigation", "register": "nav label"}
+{"text": "Панель керування", "label": "human", "language": "uk", "source": "UI navigation", "register": "nav label"}
+{"text": "Сповіщення", "label": "human", "language": "uk", "source": "UI navigation", "register": "nav label"}
+{"text": "Повідомлення", "label": "human", "language": "uk", "source": "UI navigation", "register": "nav label"}
+{"text": "Користувачі", "label": "human", "language": "uk", "source": "UI navigation", "register": "nav label"}
+{"text": "Продукти", "label": "human", "language": "uk", "source": "UI navigation", "register": "nav label"}
+{"text": "Замовлення", "label": "human", "language": "uk", "source": "UI navigation", "register": "nav label"}
+{"text": "Звіти", "label": "human", "language": "uk", "source": "UI navigation", "register": "nav label"}
+{"text": "Аналітика", "label": "human", "language": "uk", "source": "UI navigation", "register": "nav label"}
+{"text": "Підтримка", "label": "human", "language": "uk", "source": "UI navigation", "register": "nav label"}
+{"text": "Документація", "label": "human", "language": "uk", "source": "UI navigation", "register": "nav label"}
+{"text": "Блог", "label": "human", "language": "uk", "source": "UI navigation", "register": "nav label"}
+{"text": "Ціни", "label": "human", "language": "uk", "source": "UI navigation", "register": "nav label"}
+{"text": "Функції", "label": "human", "language": "uk", "source": "UI navigation", "register": "nav label"}
+{"text": "Завантажити", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Вивантажити", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Імпортувати", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Експортувати", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Копіювати", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Вставити", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Вирізати", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Скасувати дію", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Повторити", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Вибрати все", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Зняти виділення", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Розгорнути", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Згорнути", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Показати більше", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Показати менше", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Переглянути все", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Редагувати", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Видалити", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Додати", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Створити", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Оновити", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Підтвердити", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Застосувати", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Скинути", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Очистити", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Готово", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Завершити", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Почати", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Зупинити", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Пауза", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Продовжити", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Повторити спробу", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Пропустити", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Далі", "label": "human", "language": "uk", "source": "UI action", "register": "action label"}
+{"text": "Нагору", "label": "human", "language": "uk", "source": "UI navigation", "register": "nav label"}
+{"text": "Повернутися", "label": "human", "language": "uk", "source": "UI navigation", "register": "nav label"}
+{"text": "На головну", "label": "human", "language": "uk", "source": "UI navigation", "register": "nav label"}
+{"text": "OK", "label": "human", "language": "it", "source": "UI button", "register": "button label"}
+{"text": "Annulla", "label": "human", "language": "it", "source": "UI button", "register": "button label"}
+{"text": "Salva", "label": "human", "language": "it", "source": "UI button", "register": "button label"}
+{"text": "Elimina", "label": "human", "language": "it", "source": "UI button", "register": "button label"}
+{"text": "Invia", "label": "human", "language": "it", "source": "UI button", "register": "button label"}
+{"text": "Chiudi", "label": "human", "language": "it", "source": "UI button", "register": "button label"}
+{"text": "Indietro", "label": "human", "language": "it", "source": "UI button", "register": "button label"}
+{"text": "Avanti", "label": "human", "language": "it", "source": "UI button", "register": "button label"}
+{"text": "Precedente", "label": "human", "language": "it", "source": "UI button", "register": "button label"}
+{"text": "Cerca", "label": "human", "language": "it", "source": "UI button", "register": "button label"}
+{"text": "Filtra", "label": "human", "language": "it", "source": "UI button", "register": "button label"}
+{"text": "Ordina", "label": "human", "language": "it", "source": "UI button", "register": "button label"}
+{"text": "Aggiorna", "label": "human", "language": "it", "source": "UI button", "register": "button label"}
+{"text": "Caricamento...", "label": "human", "language": "it", "source": "UI status", "register": "status message"}
+{"text": "Attendere...", "label": "human", "language": "it", "source": "UI status", "register": "status message"}
+{"text": "Nessun risultato", "label": "human", "language": "it", "source": "UI empty state", "register": "empty state"}
+{"text": "Qualcosa è andato storto", "label": "human", "language": "it", "source": "UI error", "register": "error message"}
+{"text": "Riprova", "label": "human", "language": "it", "source": "UI error", "register": "error message"}
+{"text": "Pagina non trovata", "label": "human", "language": "it", "source": "UI error", "register": "error message"}
+{"text": "Accesso negato", "label": "human", "language": "it", "source": "UI error", "register": "error message"}
+{"text": "Sessione scaduta", "label": "human", "language": "it", "source": "UI error", "register": "error message"}
+{"text": "Accedi", "label": "human", "language": "it", "source": "UI auth", "register": "auth label"}
+{"text": "Esci", "label": "human", "language": "it", "source": "UI auth", "register": "auth label"}
+{"text": "Registrati", "label": "human", "language": "it", "source": "UI auth", "register": "auth label"}
+{"text": "Password dimenticata?", "label": "human", "language": "it", "source": "UI auth", "register": "auth label"}
+{"text": "Reimposta password", "label": "human", "language": "it", "source": "UI auth", "register": "auth label"}
+{"text": "Email", "label": "human", "language": "it", "source": "UI form", "register": "form label"}
+{"text": "Password", "label": "human", "language": "it", "source": "UI form", "register": "form label"}
+{"text": "Nome", "label": "human", "language": "it", "source": "UI form", "register": "form label"}
+{"text": "Telefono", "label": "human", "language": "it", "source": "UI form", "register": "form label"}
+{"text": "Indirizzo", "label": "human", "language": "it", "source": "UI form", "register": "form label"}
+{"text": "Città", "label": "human", "language": "it", "source": "UI form", "register": "form label"}
+{"text": "Paese", "label": "human", "language": "it", "source": "UI form", "register": "form label"}
+{"text": "Codice postale", "label": "human", "language": "it", "source": "UI form", "register": "form label"}
+{"text": "Obbligatorio", "label": "human", "language": "it", "source": "UI form", "register": "form validation"}
+{"text": "Email non valida", "label": "human", "language": "it", "source": "UI form", "register": "form validation"}
+{"text": "Password troppo corta", "label": "human", "language": "it", "source": "UI form", "register": "form validation"}
+{"text": "Le password non corrispondono", "label": "human", "language": "it", "source": "UI form", "register": "form validation"}
+{"text": "Home", "label": "human", "language": "it", "source": "UI navigation", "register": "nav label"}
+{"text": "Chi siamo", "label": "human", "language": "it", "source": "UI navigation", "register": "nav label"}
+{"text": "Contatti", "label": "human", "language": "it", "source": "UI navigation", "register": "nav label"}
+{"text": "Aiuto", "label": "human", "language": "it", "source": "UI navigation", "register": "nav label"}
+{"text": "Impostazioni", "label": "human", "language": "it", "source": "UI navigation", "register": "nav label"}
+{"text": "Profilo", "label": "human", "language": "it", "source": "UI navigation", "register": "nav label"}
+{"text": "Dashboard", "label": "human", "language": "it", "source": "UI navigation", "register": "nav label"}
+{"text": "Notifiche", "label": "human", "language": "it", "source": "UI navigation", "register": "nav label"}
+{"text": "Messaggi", "label": "human", "language": "it", "source": "UI navigation", "register": "nav label"}
+{"text": "Utenti", "label": "human", "language": "it", "source": "UI navigation", "register": "nav label"}
+{"text": "Prodotti", "label": "human", "language": "it", "source": "UI navigation", "register": "nav label"}
+{"text": "Ordini", "label": "human", "language": "it", "source": "UI navigation", "register": "nav label"}
+{"text": "Report", "label": "human", "language": "it", "source": "UI navigation", "register": "nav label"}
+{"text": "Analisi", "label": "human", "language": "it", "source": "UI navigation", "register": "nav label"}
+{"text": "Supporto", "label": "human", "language": "it", "source": "UI navigation", "register": "nav label"}
+{"text": "Documentazione", "label": "human", "language": "it", "source": "UI navigation", "register": "nav label"}
+{"text": "Blog", "label": "human", "language": "it", "source": "UI navigation", "register": "nav label"}
+{"text": "Prezzi", "label": "human", "language": "it", "source": "UI navigation", "register": "nav label"}
+{"text": "Funzionalità", "label": "human", "language": "it", "source": "UI navigation", "register": "nav label"}
+{"text": "Scarica", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Carica", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Importa", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Esporta", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Copia", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Incolla", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Taglia", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Annulla", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Ripristina", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Seleziona tutto", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Deseleziona tutto", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Espandi", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Comprimi", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Mostra di più", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Mostra di meno", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Vedi tutto", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Modifica", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Rimuovi", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Aggiungi", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Crea", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Aggiorna", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Conferma", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Applica", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Reimposta", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Pulisci", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Fatto", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Fine", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Inizia", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Ferma", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Pausa", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Riprendi", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Riprova", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Salta", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Continua", "label": "human", "language": "it", "source": "UI action", "register": "action label"}
+{"text": "Torna su", "label": "human", "language": "it", "source": "UI navigation", "register": "nav label"}
+{"text": "Torna indietro", "label": "human", "language": "it", "source": "UI navigation", "register": "nav label"}
+{"text": "Vai alla dashboard", "label": "human", "language": "it", "source": "UI navigation", "register": "nav label"}
+{"text": "Vai alle impostazioni", "label": "human", "language": "it", "source": "UI navigation", "register": "nav label"}
+{"text": "Vai al profilo", "label": "human", "language": "it", "source": "UI navigation", "register": "nav label"}

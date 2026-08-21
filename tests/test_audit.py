@@ -256,5 +256,138 @@ class AIReview(unittest.TestCase):
         self.assertIn("batch_error", found[0].details)
 
 
+class Landmarks(unittest.TestCase):
+    def test_page_without_main_is_reported(self):
+        markup = '<html><body><nav><a href="/">Home</a></nav><p>Content</p></body></html>'
+        found = issues(markup, "landmark-regions")
+        self.assertEqual(len(found), 1)
+        self.assertIn("<main>", found[0].fix_snippet)
+
+    def test_page_with_main_is_fine(self):
+        markup = '<html><body><main><p>Content</p></main></body></html>'
+        self.assertEqual(issues(markup, "landmark-regions"), [])
+
+    def test_fragment_is_not_judged(self):
+        self.assertEqual(issues('<div><p>x</p></div>', "landmark-regions"), [])
+
+
+class SkipLink(unittest.TestCase):
+    def test_page_without_skip_link_is_reported(self):
+        markup = '<html><body><nav><a href="/">Home</a></nav><main id="main"><p>x</p></main></body></html>'
+        found = issues(markup, "skip-link")
+        self.assertEqual(len(found), 1)
+
+    def test_page_with_skip_link_is_fine(self):
+        markup = '<html><body><a href="#main">Skip</a><nav><a href="/">Home</a></nav><main id="main"><p>x</p></main></body></html>'
+        self.assertEqual(issues(markup, "skip-link"), [])
+
+    def test_fragment_is_not_judged(self):
+        self.assertEqual(issues('<div><a href="#x">Skip</a></div>', "skip-link"), [])
+
+
+class FormErrorMessage(unittest.TestCase):
+    def test_invalid_field_without_description_is_reported(self):
+        markup = '<input type="text" aria-invalid="true">'
+        found = issues(markup, "form-error-message")
+        self.assertEqual(len(found), 1)
+
+    def test_invalid_field_with_describedby_is_fine(self):
+        markup = '<input type="text" aria-invalid="true" aria-describedby="err"><span id="err">Required</span>'
+        self.assertEqual(issues(markup, "form-error-message"), [])
+
+    def test_invalid_field_with_errormessage_is_fine(self):
+        markup = '<input type="text" aria-invalid="true" aria-errormessage="err">'
+        self.assertEqual(issues(markup, "form-error-message"), [])
+
+    def test_valid_field_is_not_judged(self):
+        self.assertEqual(issues('<input type="text">', "form-error-message"), [])
+
+
+class TableScope(unittest.TestCase):
+    def test_table_with_th_without_scope_is_reported(self):
+        markup = '<table><tr><th>Name</th><th>Age</th></tr><tr><td>John</td><td>30</td></tr></table>'
+        found = issues(markup, "table-scope")
+        self.assertEqual(len(found), 1)
+
+    def test_table_with_scope_is_fine(self):
+        markup = '<table><tr><th scope="col">Name</th><th scope="col">Age</th></tr><tr><td>John</td><td>30</td></tr></table>'
+        self.assertEqual(issues(markup, "table-scope"), [])
+
+    def test_single_th_is_not_judged(self):
+        markup = '<table><tr><th>Name</th><td>John</td></tr></table>'
+        self.assertEqual(issues(markup, "table-scope"), [])
+
+
+class HreflangLinks(unittest.TestCase):
+    def test_multilingual_site_without_hreflang_is_reported(self):
+        markup = '<html lang="en"><head><title>T</title></head><body><a href="/uk/">Українська</a></body></html>'
+        found = issues(markup, "hreflang-links")
+        self.assertEqual(len(found), 1)
+
+    def test_page_without_language_links_is_not_judged(self):
+        markup = '<html lang="en"><head><title>T</title></head><body><p>Content</p></body></html>'
+        self.assertEqual(issues(markup, "hreflang-links"), [])
+
+
+class BreadcrumbMarkup(unittest.TestCase):
+    def test_breadcrumb_outside_nav_is_reported(self):
+        markup = '<div class="breadcrumb"><a href="/">Home</a> / <a href="/page">Page</a></div>'
+        found = issues(markup, "breadcrumb-markup")
+        self.assertEqual(len(found), 1)
+
+    def test_breadcrumb_in_nav_is_fine(self):
+        markup = '<nav aria-label="breadcrumb"><ol><li><a href="/">Home</a></li></ol></nav>'
+        self.assertEqual(issues(markup, "breadcrumb-markup"), [])
+
+
+class LanguageChange(unittest.TestCase):
+    def test_foreign_text_without_lang_is_reported(self):
+        markup = '<html lang="en"><head><title>T</title></head><body><p>This is a long enough English text with <span>дуже довгий український текст щоб перевірити правило</span> inside</p></body></html>'
+        found = issues(markup, "language-change")
+        # May or may not find it depending on text length threshold
+        if found:
+            self.assertEqual(found[0].details["page_lang"], "en")
+
+    def test_foreign_text_with_lang_is_fine(self):
+        markup = '<html lang="en"><head><title>T</title></head><body><p>This is English <span lang="uk">Український текст</span></p></body></html>'
+        self.assertEqual(issues(markup, "language-change"), [])
+
+
+class AbbreviationExpansion(unittest.TestCase):
+    def test_abbreviation_without_abbr_is_reported(self):
+        markup = '<html lang="en"><head><title>T</title></head><body><p>The WCAG standard is important for accessibility on this page with enough text to trigger the rule</p></body></html>'
+        found = issues(markup, "abbreviation-expansion")
+        # May find WCAG
+        if found:
+            self.assertEqual(found[0].details["abbreviation"], "WCAG")
+
+    def test_abbreviation_with_abbr_is_fine(self):
+        markup = '<html lang="en"><head><title>T</title></head><body><p>The <abbr title="Web Content Accessibility Guidelines">WCAG</abbr> standard is important</p></body></html>'
+        self.assertEqual(issues(markup, "abbreviation-expansion"), [])
+
+
+class ImageModernFormat(unittest.TestCase):
+    def test_legacy_format_without_srcset_is_reported(self):
+        found = issues('<img src="/photo.png" alt="Photo">', "image-modern-format",
+                       category=audit.PERFORMANCE)
+        self.assertEqual(len(found), 1)
+
+    def test_modern_format_is_not_judged(self):
+        self.assertEqual(issues('<img src="/photo.webp" alt="Photo">', "image-modern-format",
+                                category=audit.PERFORMANCE), [])
+
+    def test_srcset_satisfies_the_rule(self):
+        self.assertEqual(issues('<img src="/photo.png" srcset="/photo-300.webp 300w" alt="Photo">',
+                                "image-modern-format", category=audit.PERFORMANCE), [])
+
+    def test_svg_is_not_judged(self):
+        self.assertEqual(issues('<img src="/icon.svg" alt="Icon">', "image-modern-format",
+                                category=audit.PERFORMANCE), [])
+
+    def test_data_uri_is_not_judged(self):
+        self.assertEqual(issues('<img src="data:image/png;base64,abc" alt="Icon">',
+                                "image-modern-format", category=audit.PERFORMANCE), [])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -385,62 +385,6 @@ xanalyze serve --host 0.0.0.0
 
 ---
 
-## Integrazione con agenti
-
-**Per agenti LLM (Claude, ChatGPT, Cursor, ecc.):**
-
-Chiedi: "Esegui una scansione completa con AI su https://example.com"
-
-L'agente:
-1. Esegue `xanalyze fullscan https://example.com --agent`
-2. Ottiene i risultati JSON
-3. Analizza i risultati
-4. Genera un report
-
-**Non serve una chiave API** — l'agente stesso funge da giudice.
-
-**Come funziona:**
-1. Il flag `--agent` avvia un server HTTP locale sulla porta 8765
-2. L'agente invia testo a `POST /judge`
-3. Il server restituisce un punteggio (0-1) di probabilità AI
-4. Il server si arresta automaticamente dopo il completamento
-
-**Endpoints:**
-- `POST /judge` — Valuta il testo per pattern AI
-- `GET /health` — Controllo salute
-- `GET /detectors` — Elenco dei detector disponibili
-
-**Opzioni LLM Judge:**
-
-| Detector | Comando | Chiave API |
-|---|---|---|
-| Agente (predefinito) | `xanalyze fullscan URL --agent` | Non necessaria |
-| Claude API | `xanalyze fullscan URL --detector claude-llm-judge` | `ANTHROPIC_API_KEY` |
-| xFormat | `xanalyze fullscan URL --detector xformat-llm-judge` | Login xFormat |
-| Claude Code | `xanalyze fullscan URL --detector claude-code-llm-judge` | Sessione Claude Code |
-| Hybrid | `xanalyze fullscan URL --detector hybrid` | Opzionale |
-
-**Esempi:**
-```bash
-# Agente come giudice (senza chiave API)
-xanalyze fullscan https://example.com --agent
-
-# Giudice Claude API
-xanalyze fullscan https://example.com --detector claude-llm-judge
-
-# Giudice abbonamento xFormat
-xanalyze fullscan https://example.com --detector xformat-llm-judge
-
-# Giudice sessione Claude Code
-xanalyze fullscan https://example.com --detector claude-code-llm-judge
-
-# Hybrid: offline + giudice
-xanalyze fullscan https://example.com --detector hybrid
-
-# Agente con porta personalizzata
-xanalyze fullscan https://example.com --agent --agent-port 9000
-```
-
 ---
 
 ## Metodi di rilevamento
@@ -706,6 +650,283 @@ Struttura output:
   }
 }
 ```
+
+---
+
+## Per agenti AI
+
+Questa sezione descrive come usare xanalyze da un agente AI (Claude, ChatGPT, Copilot, ecc.) per analizzare siti web e codebase.
+
+### Riferimento rapido
+
+```bash
+# Scansione completa di un sito (tutto automatico)
+xanalyze fullscan https://example.com
+
+# Scansione completa di un repository
+xanalyze fullscan ./my-project
+
+# Controllo rapido accessibilità
+xanalyze audit https://example.com --browser --json
+
+# Scansione codice per pattern AI
+xanalyze scan ./src --json
+
+# Correzione caratteri non da tastiera
+xanalyze fix ./src
+```
+
+### Task comuni
+
+#### 1. Analizzare un sito (scansione completa)
+
+```bash
+xanalyze fullscan https://example.com
+```
+
+**Cosa fa:**
+- Crawla il sito (con rendering browser per SPA)
+- Esegue audit accessibilità (49 regole)
+- Esegue audit SEO
+- Esegue audit performance
+- Controlla pattern di testo generato da AI
+- Controlla caratteri non da tastiera
+- Genera output JSON + report PDF + briefing agente
+
+**Output:** JSON su stdout, report salvati in `~/Desktop`
+
+#### 2. Analizzare un codebase
+
+```bash
+xanalyze fullscan ./my-project
+```
+
+**Cosa fa:**
+- Scansiona tutti i file markup (HTML, JSX, TSX, Vue, Svelte, ecc.)
+- Scansiona file locale (JSON, YAML)
+- Scansiona file backend (Python, PHP, Ruby, Go, Java, C#)
+- Controlla testo generato da AI in copia e commenti
+- Controlla caratteri non da tastiera
+- Esegue audit accessibilità su file HTML
+
+#### 3. Controllo rapido accessibilità
+
+```bash
+xanalyze audit https://example.com --browser --json
+```
+
+**Cosa fa:**
+- Carica la pagina in un browser reale (gestisce SPA)
+- Esegue axe-core + HTML_CodeSniffer
+- Controlla focus tastiera, contrasto, ARIA
+- Restituisce JSON con tutti i problemi
+
+#### 4. Controllare categoria specifica
+
+```bash
+# Solo problemi di accessibilità
+xanalyze audit https://example.com --category accessibility --json
+
+# Solo problemi SEO
+xanalyze audit https://example.com --category seo --json
+
+# Solo problemi di performance
+xanalyze audit https://example.com --category performance --json
+```
+
+#### 5. Scansionare per pattern AI
+
+```bash
+xanalyze scan ./src --json
+```
+
+**Cosa fa:**
+- Scansiona file per frasi cliché, pattern strutturali
+- Controlla caratteri non da tastiera (zero-width, omoglifi)
+- Restituisce risultati con punteggi e spiegazioni
+
+#### 6. Correzione automatica
+
+```bash
+# Correggi caratteri non da tastiera
+xanalyze fix ./src
+
+# Auto-correzione problemi accessibilità (dove possibile)
+xanalyze audit ./src --fix
+```
+
+#### 7. Confronta detector
+
+```bash
+xanalyze compare ./src --json
+```
+
+**Cosa fa:**
+- Esegue diversi detector sugli stessi file
+- Confronta i risultati
+- Mostra quale detector trova cosa
+
+### Modalità agente-comme-giudice
+
+Quando l'agente stesso deve giudicare il testo (non serve chiave API):
+
+```bash
+# Avvia con agente-comme-giudice
+xanalyze fullscan https://example.com --agent
+
+# Porta personalizzata
+xanalyze fullscan https://example.com --agent --agent-port 9000
+```
+
+**Come funziona:**
+1. `--agent` avvia un server HTTP locale sulla porta 8765
+2. L'agente invia testo a `POST /judge`
+3. Il server restituisce un punteggio (0-1) di probabilità AI
+4. Il server si arresta automaticamente dopo il completamento
+
+**Endpoints:**
+- `POST /judge` — Valuta il testo per pattern AI
+- `GET /health` — Controllo salute
+- `GET /detectors` — Elenco dei detector disponibili
+
+**Esempio curl:**
+```bash
+curl -X POST http://localhost:8765/judge \
+  -H 'Content-Type: application/json' \
+  -d '{"text": "Vale la pena notare che questa soluzione completa..."}'
+```
+
+**Opzioni LLM Judge:**
+
+| Detector | Comando | Chiave API |
+|---|---|---|
+| Agente (predefinito) | `xanalyze fullscan URL --agent` | Non necessaria |
+| Claude API | `xanalyze fullscan URL --detector claude-llm-judge` | `ANTHROPIC_API_KEY` |
+| xFormat | `xanalyze fullscan URL --detector xformat-llm-judge` | Login xFormat |
+| Claude Code | `xanalyze fullscan URL --detector claude-code-llm-judge` | Sessione Claude Code |
+| Hybrid | `xanalyze fullscan URL --detector hybrid` | Opzionale |
+
+### Esempi di workflow agente
+
+#### Esempio 1: Audit e correzione sito
+
+```bash
+# Passo 1: Scansione completa
+xanalyze fullscan https://example.com --json > scan.json
+
+# Passo 2: Rivedi risultati
+cat scan.json | jq '.audit.counts'
+
+# Passo 3: Ottieni problemi dettagliati
+cat scan.json | jq '.audit.issues[] | select(.severity == "critical" or .severity == "serious")'
+
+# Passo 4: Genera suggerimenti correzione
+xanalyze audit https://example.com --browser --report fixes.md
+```
+
+#### Esempio 2: Scansione e pulizia codebase
+
+```bash
+# Passo 1: Scansiona per problemi
+xanalyze scan ./src --json > scan.json
+
+# Passo 2: Controlla cosa è stato trovato
+cat scan.json | jq '.counts'
+
+# Passo 3: Correggi caratteri non da tastiera
+xanalyze fix ./src
+
+# Passo 4: Verifica correzioni
+xanalyze scan ./src --json | jq '.counts'
+```
+
+#### Esempio 3: Integrazione CI/CD
+
+```bash
+# In pipeline CI - fallisci su problemi critici
+xanalyze fullscan https://staging.example.com --check --json
+
+# Codice uscita 0 = nessun problema critico/grave
+# Codice uscita 1 = problemi critici/gravi trovati
+```
+
+### Struttura output JSON
+
+```json
+{
+  "target": "https://example.com",
+  "is_url": true,
+  "language": "it",
+  "scan": {
+    "findings": [
+      {
+        "source": "style",
+        "score": 0.85,
+        "confidence": "high",
+        "explanation": "cliché: unlock the potential; style-uniformity=0.72",
+        "details": {
+          "signals": {"uniformity": 0.72, "repetition": 0.45, "dashes": 0.3},
+          "cliches": ["unlock the potential"],
+          "language": "it"
+        }
+      }
+    ],
+    "counts": {"total": 5, "style": 3, "characters": 2}
+  },
+  "audit": {
+    "counts": {"critical": 0, "serious": 2, "moderate": 5, "minor": 3},
+    "issues": [
+      {
+        "rule": "image-alt",
+        "category": "accessibility",
+        "severity": "critical",
+        "selector": "html > body > main > img",
+        "snippet": "<img src=\"hero.jpg\">",
+        "fix_snippet": "<img src=\"hero.jpg\" alt=\"\">"
+      }
+    ]
+  },
+  "summary": {
+    "total_findings": 15,
+    "ai_patterns": 3,
+    "characters": 2,
+    "accessibility": 5,
+    "seo": 3,
+    "performance": 1,
+    "best_practices": 1
+  }
+}
+```
+
+### Livelli di gravità
+
+| Livello | Significato | Azione |
+|---|---|---|
+| `critical` | Blocca completamente gli utenti | Correggere immediatamente |
+| `serious` | Contenuto perso o inutilizzabile | Correggere presto |
+| `moderate` | Più difficile da usare | Correggere quando possibile |
+| `minor` | Odore, può essere intenzionale | Considerare correzione |
+
+### Codici di uscita
+
+| Codice | Significato |
+|---|---|
+| 0 | Successo, nessun problema critico/grave (con `--check`) |
+| 1 | Problemi critici/gravi trovati (con `--check`) |
+| 2 | Errore (argomenti non validi, file non trovato, ecc.) |
+
+### Suggerimenti per agenti
+
+1. **Usa sempre `--json`** per output machine-readable
+2. **Usa `--check`** in CI/CD per fallire su problemi critici
+3. **Usa `fullscan`** per analisi completa
+4. **Usa `audit --browser`** per siti SPA/React/Vue
+5. **Usa `scan`** per controllo rapido pattern AI
+6. **Usa `fix`** per auto-correzione caratteri non da tastiera
+7. **Parsa `summary`** per panoramica rapida
+8. **Parsa `audit.issues`** per risultati dettagliati
+9. **Controlla `fix_snippet`** per correzioni suggerite
+10. **Usa `--language`** per report localizzati
 
 ---
 

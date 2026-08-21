@@ -868,6 +868,157 @@ class ImageModernFormat(AccessibilityRule):
         return issues
 
 
+class LanguageChange(AccessibilityRule):
+    """Inline foreign text should declare its language.
+
+    When a passage in a different language appears within a page, screen
+    readers need a `lang` attribute on the surrounding element to switch
+    pronunciation. Without it, Ukrainian text inside an English page is
+    read with English phonetics, which is unintelligible.
+    """
+    id = "language-change"
+    severity = MINOR
+    wcag = ("3.1.2",)
+
+    # Common inline elements that might wrap foreign text
+    _INLINE_TAGS = {"span", "em", "strong", "a", "b", "i", "u", "mark", "small", "cite", "q"}
+
+    def check(self, document, context) -> list:
+        if document.find("html") is None:
+            return []
+        page_lang = ""
+        html_tag = document.find("html")
+        if html_tag:
+            page_lang = (html_tag.get("lang") or "").strip().lower()[:2]
+        if not page_lang:
+            return []  # Already reported by html-lang rule
+
+        issues = []
+        # Look for elements with lang attribute different from page lang
+        for tag in document.find_all(attrs={"lang": True}):
+            if tag.name == "html":
+                continue
+            element_lang = (tag.get("lang") or "").strip().lower()[:2]
+            if element_lang and element_lang != page_lang:
+                # This is correct usage - no issue
+                continue
+
+        # Look for text that might be in a different language but has no lang
+        # This is a heuristic: check for common non-Latin/Cyrillic patterns
+        # when page is Latin, or vice versa
+        import unicodedata
+
+        def _script_of(text):
+            """Dominant script of a text string."""
+            scripts = {}
+            for ch in text:
+                if ch.isalpha():
+                    try:
+                        name = unicodedata.name(ch, "")
+                        if "CYRILLIC" in name:
+                            scripts["cyrillic"] = scripts.get("cyrillic", 0) + 1
+                        elif "LATIN" in name:
+                            scripts["latin"] = scripts.get("latin", 0) + 1
+                        elif "GREEK" in name:
+                            scripts["greek"] = scripts.get("greek", 0) + 1
+                        elif "ARABIC" in name:
+                            scripts["arabic"] = scripts.get("arabic", 0) + 1
+                        elif "CJK" in name or "HIRAGANA" in name or "KATAKANA" in name:
+                            scripts["cjk"] = scripts.get("cjk", 0) + 1
+                    except ValueError:
+                        pass
+            if not scripts:
+                return ""
+            return max(scripts, key=scripts.get)
+
+        _SCRIPT_TO_LANG = {
+            "cyrillic": ("uk", "ru", "bg", "sr"),
+            "greek": ("el",),
+            "arabic": ("ar", "fa", "ur"),
+            "cjk": ("zh", "ja", "ko"),
+        }
+
+        page_script = "latin" if page_lang in ("en", "it", "de", "fr", "es", "pl", "pt") else "cyrillic" if page_lang in ("uk", "ru") else ""
+
+        if not page_script:
+            return []
+
+        for tag in document.find_all(self._INLINE_TAGS):
+            # Skip if already has lang
+            if tag.get("lang"):
+                continue
+            # Skip if parent has lang
+            parent_with_lang = tag.find_parent(attrs={"lang": True})
+            if parent_with_lang:
+                continue
+            text = _text_of(tag)
+            if len(text) < 10:  # Too short to judge
+                continue
+            script = _script_of(text)
+            if script and script != page_script and script in _SCRIPT_TO_LANG:
+                selector, line = context.locate(tag)
+                issues.append(Issue(
+                    rule_id=self.id, severity=self.severity,
+                    selector=selector, line=line,
+                    snippet=snippet_of(tag), source=context.source,
+                    details={"page_lang": page_lang, "detected_script": script,
+                             "suggested_lang": _SCRIPT_TO_LANG[script][0]},
+                    fix_snippet=f'<span lang="{_SCRIPT_TO_LANG[script][0]}">{text[:60]}</span>',
+                ))
+        return issues
+
+
+class AbbreviationExpansion(AccessibilityRule):
+    """Abbreviations should use <abbr> with title.
+
+    Screen readers cannot pronounce abbreviations correctly without
+    expansion. The <abbr> element with a title attribute provides the
+    full form, which screen readers can announce on first encounter.
+    """
+    id = "abbreviation-expansion"
+    severity = MINOR
+    wcag = ("3.1.4",)
+
+    # Common abbreviations that should be expanded
+    _COMMON_ABBREVS = {
+        "WCAG", "HTML", "CSS", "JS", "API", "URL", "SEO", "UX", "UI",
+        "FAQ", "CEO", "CTO", "CFO", "HR", "PR", "R&D", "B2B", "B2C",
+        "SaaS", "PaaS", "IaaS", "CRM", "ERP", "CMS", "CDN", "DNS",
+        "SSL", "TLS", "HTTP", "HTTPS", "FTP", "SSH", "SQL", "REST",
+        "GraphQL", "JSON", "XML", "YAML", "CSV", "PDF", "PNG", "JPG",
+        "SVG", "GIF", "WebP", "AVIF", "WOFF", "TTF", "EOT",
+    }
+
+    def check(self, document, context) -> list:
+        issues = []
+        # Find text nodes that contain abbreviations
+        for tag in document.find_all(string=True):
+            if tag.parent.name in ("script", "style", "code", "pre", "abbr"):
+                continue
+            text = str(tag)
+            for abbrev in self._COMMON_ABBREVS:
+                if abbrev in text:
+                    # Check if this abbreviation is already in an <abbr>
+                    parent = tag.parent
+                    if parent and parent.name == "abbr":
+                        continue
+                    # Check if parent already has an <abbr> child with this text
+                    if parent and parent.find("abbr", string=lambda s: s and abbrev in s):
+                        continue
+                    # Only report once per page per abbreviation
+                    selector, line = context.locate(parent) if parent else ("", None)
+                    issues.append(Issue(
+                        rule_id=self.id, severity=self.severity,
+                        selector=selector, line=line,
+                        snippet=f"...{abbrev}...",
+                        source=context.source,
+                        details={"abbreviation": abbrev},
+                        fix_snippet=f'<abbr title="Full form">{abbrev}</abbr>',
+                    ))
+                    break  # One finding per element
+        return issues
+
+
 for _rule in (
     ImageAlt, ImageAltIsFilename, ControlName, VagueLinkText, DocumentLanguage,
     DocumentTitle, HeadingOrder, MissingH1, PositiveTabindex, DuplicateIds,
@@ -875,5 +1026,6 @@ for _rule in (
     TableStructure, ViewportZoomBlocked, InlineContrast,
     LandmarkRegions, SkipLink, FormErrorMessage, TableScope,
     HreflangLinks, BreadcrumbMarkup, ImageModernFormat,
+    LanguageChange, AbbreviationExpansion,
 ):
     RuleRegistry.register(_rule)

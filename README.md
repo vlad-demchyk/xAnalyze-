@@ -32,6 +32,10 @@ Desktop and headless analyzer: AI-generated text detection, non-keyboard charact
 - [Detectors](#detectors)
 - [Reports](#reports)
 - [For AI Agents](#for-ai-agents)
+  - [How Users Ask](#how-users-ask)
+  - [Agent-as-Judge Mode](#agent-as-judge-mode)
+  - [Command Reference](#command-reference-with-user-requests)
+  - [Workflow Examples](#workflow-examples)
 - [GUI](#gui)
 - [Configuration](#configuration)
 - [Uninstall](#uninstall)
@@ -387,69 +391,6 @@ xanalyze serve --host 0.0.0.0
 
 ---
 
-## Agent Integration
-
-**For LLM agents (Claude, ChatGPT, Cursor, etc.):**
-
-Just ask: "Run a full scan with AI on https://example.com"
-
-The agent will:
-1. Run `xanalyze fullscan https://example.com --agent`
-2. Get the JSON results
-3. Analyze findings
-4. Generate a report
-
-**No API key needed** — the agent itself acts as the judge.
-
-**How it works:**
-1. `--agent` flag starts a local HTTP server on port 8765
-2. Agent sends text to `POST /judge` endpoint
-3. Server returns a score (0-1) indicating AI likelihood
-4. Server stops automatically after scan completes
-
-**Endpoints:**
-- `POST /judge` — Judge text for AI patterns
-- `GET /health` — Health check
-- `GET /detectors` — List available detectors
-
-**Example curl:**
-```bash
-curl -X POST http://localhost:8765/judge \
-  -H 'Content-Type: application/json' \
-  -d '{"text": "It is worth noting that this comprehensive solution..."}'
-```
-
-**LLM Judge Options:**
-
-| Detector | Command | API Key |
-|---|---|---|
-| Agent (default) | `xanalyze fullscan URL --agent` | Not needed |
-| Claude API | `xanalyze fullscan URL --detector claude-llm-judge` | `ANTHROPIC_API_KEY` |
-| xFormat | `xanalyze fullscan URL --detector xformat-llm-judge` | xFormat login |
-| Claude Code | `xanalyze fullscan URL --detector claude-code-llm-judge` | Claude Code session |
-| Hybrid | `xanalyze fullscan URL --detector hybrid` | Optional |
-
-**Full examples:**
-```bash
-# Agent as judge (no API key)
-xanalyze fullscan https://example.com --agent
-
-# Claude API judge
-xanalyze fullscan https://example.com --detector claude-llm-judge
-
-# xFormat subscription judge
-xanalyze fullscan https://example.com --detector xformat-llm-judge
-
-# Claude Code session judge
-xanalyze fullscan https://example.com --detector claude-code-llm-judge
-
-# Hybrid: offline + judge
-xanalyze fullscan https://example.com --detector hybrid
-
-# Agent with custom port
-xanalyze fullscan https://example.com --agent --agent-port 9000
-```
-
 ---
 
 ## Detection Methods
@@ -722,157 +663,269 @@ Output structure:
 
 This section describes how to use xanalyze from an AI agent (Claude, ChatGPT, Copilot, etc.) to analyze websites and codebases.
 
-### Quick Reference
+### How Users Ask
+
+Users ask agents in natural language. Here's how each request maps to a command:
+
+#### fullscan — Full Analysis
+
+| User says | Agent runs |
+|---|---|
+| "Scan my website for accessibility issues" | `xanalyze fullscan https://example.com` |
+| "Check https://xformat.net for problems" | `xanalyze fullscan https://xformat.net` |
+| "Analyze my codebase for AI-generated text" | `xanalyze fullscan ./my-project` |
+| "Run a full audit on this site" | `xanalyze fullscan https://example.com` |
+| "Is my site accessible?" | `xanalyze fullscan https://example.com` |
+| "Check my landing page for SEO" | `xanalyze fullscan https://example.com` |
+| "Scan my React app" | `xanalyze fullscan https://myapp.com` |
+| "Audit this Next.js site" | `xanalyze fullscan https://mysite.com` |
+| "Check mobile responsiveness" | `xanalyze fullscan https://example.com --breakpoints mobile` |
+| "Desktop only check" | `xanalyze fullscan https://example.com --breakpoints desktop` |
+| "Scan in Ukrainian" | `xanalyze fullscan https://example.com --language uk` |
+
+#### audit — Accessibility/SEO/Performance
+
+| User says | Agent runs |
+|---|---|
+| "Check accessibility of this page" | `xanalyze audit https://example.com --browser` |
+| "Audit SEO on my site" | `xanalyze audit https://example.com --category seo` |
+| "Check performance issues" | `xanalyze audit https://example.com --category performance` |
+| "Is my site WCAG compliant?" | `xanalyze audit https://example.com --browser` |
+| "Check this HTML file" | `xanalyze audit ./page.html --browser` |
+| "Audit my repo for a11y" | `xanalyze audit ./src` |
+| "Fix accessibility issues" | `xanalyze audit ./src --fix` |
+| "Check with AI analysis" | `xanalyze audit https://example.com --ai` |
+
+#### scan — AI Pattern Detection
+
+| User says | Agent runs |
+|---|---|
+| "Check if my text sounds AI-generated" | `xanalyze scan ./src` |
+| "Scan for clichés in my copy" | `xanalyze scan ./src --detector offline` |
+| "Check comments for AI patterns" | `xanalyze scan ./src --scope technical` |
+| "Scan only user-facing text" | `xanalyze scan ./src --scope content` |
+| "Find non-keyboard characters" | `xanalyze scan ./src` |
+| "Check for zero-width spaces" | `xanalyze scan ./src --categories invisible` |
+| "Scan with AI detector" | `xanalyze scan ./src --detector llm-judge` |
+| "Incremental scan (changed files only)" | `xanalyze scan ./src --incremental` |
+
+#### fix — Apply Fixes
+
+| User says | Agent runs |
+|---|---|
+| "Fix non-keyboard characters" | `xanalyze fix ./src` |
+| "Clean up smart quotes" | `xanalyze fix ./src` |
+| "Replace zero-width spaces" | `xanalyze fix ./src` |
+| "Fix typography in my files" | `xanalyze fix ./src` |
+
+#### undo — Revert Fixes
+
+| User says | Agent runs |
+|---|---|
+| "Undo the fixes" | `xanalyze undo ./src` |
+| "Revert changes" | `xanalyze undo ./src` |
+| "Put files back" | `xanalyze undo ./src` |
+
+#### compare — Compare Detectors
+
+| User says | Agent runs |
+|---|---|
+| "Compare different detectors" | `xanalyze compare ./src` |
+| "Which detector is best?" | `xanalyze compare ./src` |
+| "Test offline vs AI detector" | `xanalyze compare ./src` |
+
+#### cache — Manage Cache
+
+| User says | Agent runs |
+|---|---|
+| "Show cache stats" | `xanalyze cache stats` |
+| "Clear the cache" | `xanalyze cache clear` |
+| "Where is the cache?" | `xanalyze cache path` |
+
+#### ai — AI Operations
+
+| User says | Agent runs |
+|---|---|
+| "Check my AI account status" | `xanalyze ai status` |
+| "Sign in to xFormat" | `xanalyze ai login` |
+| "Sign out" | `xanalyze ai logout` |
+| "Rewrite this text" | `xanalyze ai rewrite "text"` |
+| "Make this sound human" | `xanalyze ai rewrite "text" --language en` |
+
+#### clean — Filter Text
+
+| User says | Agent runs |
+|---|---|
+| "Clean this text" | `echo "text" \| xanalyze clean` |
+| "Fix characters in stdin" | `cat file.txt \| xanalyze clean` |
+
+### Agent-as-Judge Mode
+
+When the agent itself should judge text (no API key needed):
 
 ```bash
-# Full scan of a website (everything automatic)
+# Start with agent-as-judge
+xanalyze fullscan https://example.com --agent
+
+# Custom port
+xanalyze fullscan https://example.com --agent --agent-port 9000
+```
+
+**How it works:**
+1. `--agent` starts a local HTTP server on port 8765
+2. Agent sends text to `POST /judge`
+3. Server returns a score (0-1) indicating AI likelihood
+4. Server stops automatically after scan completes
+
+**Endpoints:**
+- `POST /judge` — Judge text for AI patterns
+- `GET /health` — Health check
+- `GET /detectors` — List available detectors
+
+**Example curl:**
+```bash
+curl -X POST http://localhost:8765/judge \
+  -H 'Content-Type: application/json' \
+  -d '{"text": "It is worth noting that this comprehensive solution..."}'
+```
+
+**LLM Judge Options:**
+
+| Detector | Command | API Key |
+|---|---|---|
+| Agent (default) | `xanalyze fullscan URL --agent` | Not needed |
+| Claude API | `xanalyze fullscan URL --detector claude-llm-judge` | `ANTHROPIC_API_KEY` |
+| xFormat | `xanalyze fullscan URL --detector xformat-llm-judge` | xFormat login |
+| Claude Code | `xanalyze fullscan URL --detector claude-code-llm-judge` | Claude Code session |
+| Hybrid | `xanalyze fullscan URL --detector hybrid` | Optional |
+
+### Command Reference with User Requests
+
+#### `fullscan` — "Scan my site"
+
+```bash
+# User: "Scan my website for all issues"
 xanalyze fullscan https://example.com
 
-# Full scan of a repository
+# User: "Check my site, desktop only"
+xanalyze fullscan https://example.com --breakpoints desktop
+
+# User: "Scan with 2 levels deep"
+xanalyze fullscan https://example.com --depth 2
+
+# User: "Scan my codebase"
 xanalyze fullscan ./my-project
 
-# Quick accessibility check
-xanalyze audit https://example.com --browser --json
+# User: "Generate PDF report"
+xanalyze fullscan https://example.com --styled-report report.pdf
 
-# Scan code for AI patterns
-xanalyze scan ./src --json
-
-# Fix non-keyboard characters
-xanalyze fix ./src
+# User: "Scan in Italian"
+xanalyze fullscan https://example.com --language it
 ```
 
-### Common Tasks
+**Output:** JSON to stdout, PDF + MD reports to `~/Desktop`
 
-#### 1. Analyze a Website (Full Scan)
-
-```bash
-xanalyze fullscan https://example.com
-```
-
-**What it does:**
-- Crawls the website (with browser rendering for SPA)
-- Runs accessibility audit (49 rules)
-- Runs SEO audit
-- Runs performance audit
-- Checks for AI-generated text patterns
-- Checks for non-keyboard characters
-- Generates JSON output + PDF report + agent briefing
-
-**Output:** JSON to stdout, reports saved to `~/Desktop`
-
-#### 2. Analyze a Codebase
+#### `audit` — "Check accessibility"
 
 ```bash
-xanalyze fullscan ./my-project
-```
+# User: "Is my site accessible?"
+xanalyze audit https://example.com --browser
 
-**What it does:**
-- Scans all markup files (HTML, JSX, TSX, Vue, Svelte, etc.)
-- Scans locale files (JSON, YAML)
-- Scans backend files (Python, PHP, Ruby, Go, Java, C#)
-- Checks for AI-generated text in copy and comments
-- Checks for non-keyboard characters
-- Runs accessibility audit on HTML files
-
-#### 3. Quick Accessibility Check
-
-```bash
-xanalyze audit https://example.com --browser --json
-```
-
-**What it does:**
-- Loads page in real browser (handles SPA)
-- Runs axe-core + HTML_CodeSniffer
-- Checks keyboard focus, contrast, ARIA
-- Returns JSON with all issues
-
-#### 4. Check Specific Category
-
-```bash
-# Only accessibility issues
-xanalyze audit https://example.com --category accessibility --json
-
-# Only SEO issues
+# User: "Check SEO only"
 xanalyze audit https://example.com --category seo --json
 
-# Only performance issues
-xanalyze audit https://example.com --category performance --json
+# User: "Audit this HTML file"
+xanalyze audit ./page.html --browser
+
+# User: "Fix what you can"
+xanalyze audit ./src --fix
+
+# User: "Check with AI analysis"
+xanalyze audit https://example.com --ai --json
 ```
 
-#### 5. Scan for AI Patterns Only
+#### `scan` — "Check for AI text"
 
 ```bash
+# User: "Does my copy sound AI-generated?"
 xanalyze scan ./src --json
+
+# User: "Check only comments"
+xanalyze scan ./src --scope technical --json
+
+# User: "Use AI detector"
+xanalyze scan ./src --detector llm-judge --json
+
+# User: "Check for zero-width characters"
+xanalyze scan ./src --categories invisible --json
 ```
 
-**What it does:**
-- Scans files for cliché phrases, structural patterns
-- Checks for non-keyboard characters (zero-width, homoglyphs)
-- Returns findings with scores and explanations
-
-#### 6. Fix Issues Automatically
+#### `fix` — "Fix the issues"
 
 ```bash
-# Fix non-keyboard characters
+# User: "Fix non-keyboard characters"
 xanalyze fix ./src
 
-# Auto-fix accessibility issues (where possible)
-xanalyze audit ./src --fix
+# User: "Clean up my files"
+xanalyze fix ./src
 ```
 
-#### 7. Compare Detectors
+#### `undo` — "Revert changes"
 
 ```bash
-xanalyze compare ./src --json
+# User: "Undo the fixes"
+xanalyze undo ./src
 ```
 
-**What it does:**
-- Runs multiple detectors on same files
-- Compares results
-- Shows which detector finds what
+### Workflow Examples
 
-### Agent Workflow Examples
-
-#### Example 1: Audit and Fix a Website
+#### Example 1: "Audit my website and tell me what to fix"
 
 ```bash
 # Step 1: Full scan
 xanalyze fullscan https://example.com --json > scan.json
 
-# Step 2: Review findings
-cat scan.json | jq '.audit.counts'
+# Step 2: Show critical issues
+cat scan.json | jq '.audit.issues[] | select(.severity == "critical")'
 
-# Step 3: Get detailed issues
-cat scan.json | jq '.audit.issues[] | select(.severity == "critical" or .severity == "serious")'
-
-# Step 4: Generate fix suggestions
-xanalyze audit https://example.com --browser --report fixes.md
+# Step 3: Show fix suggestions
+cat scan.json | jq '.audit.issues[] | {rule, snippet, fix_snippet}'
 ```
 
-#### Example 2: Scan and Clean a Codebase
+#### Example 2: "Check my codebase for AI patterns and fix them"
 
 ```bash
-# Step 1: Scan for issues
+# Step 1: Scan
 xanalyze scan ./src --json > scan.json
 
-# Step 2: Check what was found
-cat scan.json | jq '.counts'
+# Step 2: Show findings
+cat scan.json | jq '.findings[] | {score, explanation}'
 
-# Step 3: Fix non-keyboard characters
+# Step 3: Fix characters
 xanalyze fix ./src
 
-# Step 4: Verify fixes
+# Step 4: Verify
 xanalyze scan ./src --json | jq '.counts'
 ```
 
-#### Example 3: CI/CD Integration
+#### Example 3: "Is my React app accessible on mobile?"
 
 ```bash
-# In CI pipeline - fail on critical issues
-xanalyze fullscan https://staging.example.com --check --json
+# Step 1: Full scan with mobile breakpoint
+xanalyze fullscan https://myapp.com --breakpoints mobile --json
 
-# Exit code 0 = no critical/serious issues
-# Exit code 1 = critical/serious issues found
+# Step 2: Show mobile-specific issues
+# (issues with "breakpoints": ["mobile"] in details)
+```
+
+#### Example 4: "Check SEO and generate a report"
+
+```bash
+# Step 1: Audit SEO
+xanalyze audit https://example.com --category seo --json
+
+# Step 2: Generate styled report
+xanalyze audit https://example.com --category seo --styled-report seo-report.pdf
 ```
 
 ### JSON Output Structure
@@ -925,12 +978,12 @@ xanalyze fullscan https://staging.example.com --check --json
 
 ### Severity Levels
 
-| Level | Meaning | Action |
-|---|---|---|
-| `critical` | Blocks users completely | Fix immediately |
-| `serious` | Content lost or unusable | Fix soon |
-| `moderate` | Harder to use | Fix when possible |
-| `minor` | Smell, may be intentional | Consider fixing |
+| Level | Meaning | User says | Action |
+|---|---|---|---|
+| `critical` | Blocks users completely | "This is broken" | Fix immediately |
+| `serious` | Content lost or unusable | "This doesn't work" | Fix soon |
+| `moderate` | Harder to use | "This is annoying" | Fix when possible |
+| `minor` | Smell, may be intentional | "This could be better" | Consider fixing |
 
 ### Exit Codes
 

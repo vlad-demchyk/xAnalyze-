@@ -116,8 +116,8 @@ TYPOGRAPHY_CHARS = {
 # Guillemets are the standard quotation marks in Ukrainian and are common
 # in Italian, so they're only treated as an anomaly in English text.
 LANGUAGE_EXEMPT = {
-    "uk": {"«", "»", "’"},  # « » plus the Ukrainian apostrophe
-    "it": {"«", "»"},
+    "uk": {"«", "»", "'", "—", "–"},  # « » plus Ukrainian apostrophe, em/en dash
+    "it": {"«", "»", "—", "–"},  # « » plus em/en dash (Italian typography)
     "en": set(),
 }
 

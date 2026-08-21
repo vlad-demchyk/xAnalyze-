@@ -387,62 +387,6 @@ xanalyze serve --host 0.0.0.0
 
 ---
 
-## Інтеграція з агентами
-
-**Для LLM агентів (Claude, ChatGPT, Cursor тощо):**
-
-Просто попросіть: "Зроби повний скан з AI на https://example.com"
-
-Агент:
-1. Запустить `xanalyze fullscan https://example.com --agent`
-2. Отримає JSON результати
-3. Проаналізує знахідки
-4. Згенерує звіт
-
-**Не потрібен API ключ** — сам агент виступає суддею.
-
-**Як це працює:**
-1. Прапор `--agent` запускає локальний HTTP сервер на порту 8765
-2. Агент надсилає текст на `POST /judge`
-3. Сервер повертає оцінку (0-1) ймовірності AI
-4. Сервер автоматично зупиняється після завершення сканування
-
-**Endpoints:**
-- `POST /judge` — Оцінити текст на AI-патерни
-- `GET /health` — Перевірка здоров'я
-- `GET /detectors` — Список доступних детекторів
-
-**Опції LLM Judge:**
-
-| Детектор | Команда | API ключ |
-|---|---|---|
-| Агент (за замовчуванням) | `xanalyze fullscan URL --agent` | Не потрібен |
-| Claude API | `xanalyze fullscan URL --detector claude-llm-judge` | `ANTHROPIC_API_KEY` |
-| xFormat | `xanalyze fullscan URL --detector xformat-llm-judge` | xFormat login |
-| Claude Code | `xanalyze fullscan URL --detector claude-code-llm-judge` | Claude Code сесія |
-| Hybrid | `xanalyze fullscan URL --detector hybrid` | Опціонально |
-
-**Приклади:**
-```bash
-# Агент як суддя (без API ключа)
-xanalyze fullscan https://example.com --agent
-
-# Claude API суддя
-xanalyze fullscan https://example.com --detector claude-llm-judge
-
-# xFormat підписка суддя
-xanalyze fullscan https://example.com --detector xformat-llm-judge
-
-# Claude Code сесія суддя
-xanalyze fullscan https://example.com --detector claude-code-llm-judge
-
-# Hybrid: offline + суддя
-xanalyze fullscan https://example.com --detector hybrid
-
-# Агент з власним портом
-xanalyze fullscan https://example.com --agent --agent-port 9000
-```
-
 ---
 
 ## Методи детекції
@@ -823,6 +767,46 @@ xanalyze compare ./src --json
 - Запускає кілька детекторів на одних файлах
 - Порівнює результати
 - Показує який детектор що знаходить
+
+### Режим агент-як-суддя
+
+Коли сам агент повинен оцінювати текст (не потрібен API ключ):
+
+```bash
+# Запуск з агентом-як-суддею
+xanalyze fullscan https://example.com --agent
+
+# Власний порт
+xanalyze fullscan https://example.com --agent --agent-port 9000
+```
+
+**Як це працює:**
+1. `--agent` запускає локальний HTTP сервер на порту 8765
+2. Агент надсилає текст на `POST /judge`
+3. Сервер повертає оцінку (0-1) ймовірності AI
+4. Сервер автоматично зупиняється після завершення сканування
+
+**Endpoints:**
+- `POST /judge` — Оцінити текст на AI-патерни
+- `GET /health` — Перевірка здоров'я
+- `GET /detectors` — Список доступних детекторів
+
+**Приклад curl:**
+```bash
+curl -X POST http://localhost:8765/judge \
+  -H 'Content-Type: application/json' \
+  -d '{"text": "Варто зазначити, що це комплексне рішення..."}'
+```
+
+**Опції LLM Judge:**
+
+| Детектор | Команда | API ключ |
+|---|---|---|
+| Агент (за замовчуванням) | `xanalyze fullscan URL --agent` | Не потрібен |
+| Claude API | `xanalyze fullscan URL --detector claude-llm-judge` | `ANTHROPIC_API_KEY` |
+| xFormat | `xanalyze fullscan URL --detector xformat-llm-judge` | xFormat login |
+| Claude Code | `xanalyze fullscan URL --detector claude-code-llm-judge` | Claude Code сесія |
+| Hybrid | `xanalyze fullscan URL --detector hybrid` | Опціонально |
 
 ### Приклади робочих процесів агента
 

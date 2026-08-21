@@ -2400,6 +2400,188 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Try again; if it repeats, the page is probably overriding "
               "something the check relies on.",
     },
+    # --- нові правила accessibility (2026-08-20) ---
+    "a11y_landmark_regions_title": {
+        "uk": "Сторінка без основної області (landmark)",
+        "it": "Pagina senza area principale (landmark)",
+        "en": "Page without main landmark region",
+    },
+    "a11y_landmark_regions_found": {
+        "uk": "На сторінці немає <main> або ARIA-ролі main. Знайдені області: {found}.",
+        "it": "La pagina non ha <main> né un ruolo ARIA main. Aree trovate: {found}.",
+        "en": "The page has no <main> or ARIA role main. Found regions: {found}.",
+    },
+    "a11y_landmark_regions_why": {
+        "uk": "Програма читання з екрана не має способу перейти до основного вмісту: користувач змушений табулювати через всю навігацію на кожній сторінці. Landmark-області - це те, як незряча людина «бачить» структуру сторінки.",
+        "it": "Lo screen reader non ha un modo per saltare al contenuto principale: l'utente deve tabulare attraverso tutta la navigazione su ogni pagina. Le aree landmark sono il modo in cui una persona non vedente «vede» la struttura della pagina.",
+        "en": "A screen reader has no way to jump to the main content: the user must tab through the entire navigation on every page. Landmark regions are how a blind person «sees» the page structure.",
+    },
+    "a11y_landmark_regions_fix": {
+        "uk": "Обгорніть основний вміст сторінки у <main>. Навігацію обгорніть у <nav>, шапку у <header>, підвал у <footer>. Це не змінює вигляд, але дає програмі читання карту сторінки.",
+        "it": "Racchiudi il contenuto principale in <main>. Avvolgi la navigazione in <nav>, l'intestazione in <header>, il piè di pagina in <footer>. Non cambia l'aspetto ma dà allo screen reader una mappa della pagina.",
+        "en": "Wrap the main content in <main>. Wrap navigation in <nav>, the header in <header>, the footer in <footer>. This does not change the look but gives the screen reader a map of the page.",
+    },
+    "a11y_skip_link_title": {
+        "uk": "Немає посилання «перейти до вмісту»",
+        "it": "Manca il link «vai al contenuto»",
+        "en": "No «skip to content» link",
+    },
+    "a11y_skip_link_found": {
+        "uk": "Перші 10 посилань на сторінці не ведуть до якоря на основному вмісті.",
+        "it": "I primi 10 link sulla pagina non portano a un'ancora sul contenuto principale.",
+        "en": "The first 10 links on the page do not point to an anchor on the main content.",
+    },
+    "a11y_skip_link_why": {
+        "uk": "Клавіатурний користувач на кожній сторінці змушений проходити через всю навігацію, перш ніж дістатися до вмісту. Це 10-20 натискань Tab на кожному переході, і для людини з обмеженою моторикою це реальна перешкода.",
+        "it": "Un utente da tastiera è costretto a passare attraverso tutta la navigazione prima di raggiungere il contenuto su ogni pagina. Sono 10-20 pressioni di Tab a ogni transizione, e per chi ha limitazioni motorie è un ostacolo reale.",
+        "en": "A keyboard user must tab through the entire navigation before reaching the content on every page. That is 10-20 Tab presses per transition, and for someone with limited motor ability it is a real barrier.",
+    },
+    "a11y_skip_link_fix": {
+        "uk": "Додайте першим елементом у <body> посилання <a href=\"#main\" class=\"skip-link\">Перейти до вмісту</a>, яке веде до id основного блоку. Воно може бути прихованим і з'являтися лише при фокусі (Tab).",
+        "it": "Aggiungi come primo elemento in <body> un link <a href=\"#main\" class=\"skip-link\">Vai al contenuto</a> che punta all'id del blocco principale. Può essere nascosto e comparire solo al focus (Tab).",
+        "en": "Add as the first element in <body> a link <a href=\"#main\" class=\"skip-link\">Skip to content</a> pointing to the main block's id. It can be hidden and appear only on focus (Tab).",
+    },
+    "a11y_form_error_message_title": {
+        "uk": "Поле з помилкою без опису помилки",
+        "it": "Campo con errore senza descrizione dell'errore",
+        "en": "Field with error but no error description",
+    },
+    "a11y_form_error_message_found": {
+        "uk": "Поле <{element}> має aria-invalid=\"true\", але не має aria-describedby або aria-errormessage.",
+        "it": "Il campo <{element}> ha aria-invalid=\"true\" ma non ha aria-describedby né aria-errormessage.",
+        "en": "The <{element}> field has aria-invalid=\"true\" but no aria-describedby or aria-errormessage.",
+    },
+    "a11y_form_error_message_why": {
+        "uk": "Програма читання з екрана оголосить «неправильне поле», але не скаже що саме не так. Користувач знає що помилився, але не знає як виправити, і змушений вгадувати або просити допомоги зрячої людини.",
+        "it": "Lo screen reader annuncerà «campo non valido» ma non dirà cosa c'è di sbagliato. L'utente sa di aver sbagliato ma non come correggere, e deve indovinare o chiedere aiuto a una persona vedente.",
+        "en": "A screen reader will announce «invalid field» but will not say what is wrong. The user knows they made a mistake but not how to fix it, and must either guess or ask a sighted person for help.",
+    },
+    "a11y_form_error_message_fix": {
+        "uk": "Додайте до поля aria-describedby=\"error-id\", де error-id - id елемента з текстом помилки. Або використовуйте aria-errormessage=\"error-id\" для явного зв'язку.",
+        "it": "Aggiungi al campo aria-describedby=\"error-id\", dove error-id è l'id dell'elemento con il testo dell'errore. Oppure usa aria-errormessage=\"error-id\" per un collegamento esplicito.",
+        "en": "Add to the field aria-describedby=\"error-id\" where error-id is the id of the element with the error text. Or use aria-errormessage=\"error-id\" for an explicit link.",
+    },
+    "a11y_table_scope_title": {
+        "uk": "Заголовки таблиці без атрибута scope",
+        "it": "Intestazioni di tabella senza attributo scope",
+        "en": "Table headers without scope attribute",
+    },
+    "a11y_table_scope_found": {
+        "uk": "Таблиця має {th_count} заголовків <th>, але жоден не має scope. {rows} рядків.",
+        "it": "La tabella ha {th_count} intestazioni <th> ma nessuna ha scope. {rows} righe.",
+        "en": "The table has {th_count} <th> headers but none has scope. {rows} rows.",
+    },
+    "a11y_table_scope_why": {
+        "uk": "Без scope програма читання з екрана не знає чи заголовок стовпця, чи рядка. У складній таблиці це означає, що користувач чує значення «42» без розуміння до якого стовпця воно належить.",
+        "it": "Senza scope lo screen reader non sa se l'intestazione è di colonna o di riga. In una tabella complessa significa che l'utente sente il valore «42» senza sapere a quale colonna appartiene.",
+        "en": "Without scope a screen reader does not know if the header is for a column or a row. In a complex table this means the user hears the value «42» without knowing which column it belongs to.",
+    },
+    "a11y_table_scope_fix": {
+        "uk": "Додайте до заголовків стовпців scope=\"col\", до заголовків рядків - scope=\"row\". Це одна мить і миттєво робить таблицю зрозумілою для програми читання.",
+        "it": "Aggiungi alle intestazioni di colonna scope=\"col\" e alle intestazioni di riga scope=\"row\". È un attimo e rende la tabella immediatamente comprensibile allo screen reader.",
+        "en": "Add scope=\"col\" to column headers and scope=\"row\" to row headers. It takes a moment and instantly makes the table understandable to a screen reader.",
+    },
+    "a11y_hreflang_links_title": {
+        "uk": "Мультимовний сайт без hreflang",
+        "it": "Sito multilingua senza hreflang",
+        "en": "Multilingual site without hreflang",
+    },
+    "a11y_hreflang_links_found": {
+        "uk": "Сторінка має мову {lang} і посилання на іншомовні версії, але немає hreflang-тегів у <head>.",
+        "it": "La pagina ha la lingua {lang} e link a versioni in altre lingue, ma non ci sono tag hreflang nel <head>.",
+        "en": "The page has language {lang} and links to other-language versions, but no hreflang tags in <head>.",
+    },
+    "a11y_hreflang_links_why": {
+        "uk": "Пошуковик не знає яка версія сторінки для якої мови, тому може показати українську сторінку італійському користувачу або навпаки. Це псує досвід і знижує рейтинг у локальному пошуку.",
+        "it": "Il motore di ricerca non sa quale versione della pagina è per quale lingua, quindi può mostrare la pagina ucraina a un utente italiano o viceversa. Questo rovina l'esperienza e abbassa il ranking nella ricerca locale.",
+        "en": "The search engine does not know which version of the page is for which language, so it may show the Ukrainian page to an Italian user or vice versa. This ruins the experience and lowers local search ranking.",
+    },
+    "a11y_hreflang_links_fix": {
+        "uk": "Додайте у <head> посилання <link rel=\"alternate\" hreflang=\"uk\" href=\"...\" /> для кожної мовної версії. Також додайте hreflang=\"x-default\" для версії за замовчуванням.",
+        "it": "Aggiungi nel <head> i link <link rel=\"alternate\" hreflang=\"uk\" href=\"...\" /> per ogni versione linguistica. Aggiungi anche hreflang=\"x-default\" per la versione predefinita.",
+        "en": "Add to <head> links <link rel=\"alternate\" hreflang=\"uk\" href=\"...\" /> for each language version. Also add hreflang=\"x-default\" for the default version.",
+    },
+    "a11y_breadcrumb_markup_title": {
+        "uk": "Хлібні крихти поза семантикою",
+        "it": "Breadcrumb fuori dalla semantica",
+        "en": "Breadcrumb outside semantic markup",
+    },
+    "a11y_breadcrumb_markup_found": {
+        "uk": "Елемент з класом «breadcrumb» або «breadcrumbs» не обгорнутий у <nav>.",
+        "it": "L'elemento con classe «breadcrumb» o «breadcrumbs» non è racchiuso in <nav>.",
+        "en": "An element with class «breadcrumb» or «breadcrumbs» is not wrapped in <nav>.",
+    },
+    "a11y_breadcrumb_markup_why": {
+        "uk": "Програма читання з екрана не розпізнає цей блок як навігацію, тому не пропонує його як landmark і не оголошує його призначення. Користувач бачить список посилань, але не знає що це шлях по сайту.",
+        "it": "Lo screen reader non riconosce questo blocco come navigazione, quindi non lo offre come landmark e non ne annuncia lo scopo. L'utente vede un elenco di link ma non sa che è un percorso nel sito.",
+        "en": "A screen reader does not recognise this block as navigation, so it does not offer it as a landmark and does not announce its purpose. The user sees a list of links but does not know it is a path through the site.",
+    },
+    "a11y_breadcrumb_markup_fix": {
+        "uk": "Обгорніть хлібні крихти у <nav aria-label=\"breadcrumb\"> зі списком <ol>. Це не змінює вигляд, але дає програмі читання розуміння що це таке.",
+        "it": "Racchiudi il breadcrumb in <nav aria-label=\"breadcrumb\"> con una lista <ol>. Non cambia l'aspetto ma dà allo screen reader la comprensione di cosa sia.",
+        "en": "Wrap the breadcrumb in <nav aria-label=\"breadcrumb\"> with an <ol> list. This does not change the look but gives the screen reader understanding of what it is.",
+    },
+    "a11y_language_change_title": {
+        "uk": "Іншомовний текст без атрибута мови",
+        "it": "Testo in altra lingua senza attributo lingua",
+        "en": "Foreign-language text without language attribute",
+    },
+    "a11y_language_change_found": {
+        "uk": "Текст іншою мовою ({detected_script}) всередині сторінки мовою {page_lang} не має атрибута lang.",
+        "it": "Testo in un'altra lingua ({detected_script}) dentro una pagina in {page_lang} non ha l'attributo lang.",
+        "en": "Text in another language ({detected_script}) inside a {page_lang} page has no lang attribute.",
+    },
+    "a11y_language_change_why": {
+        "uk": "Програма читання з екрана вимовляє іншомовний текст з вимовою мови сторінки. Українське слово «привіт» в англійській сторінці буде прочитане як набір англійських літер, і навпаки. Це робить текст незрозумілим.",
+        "it": "Lo screen reader pronuncia il testo straniero con la pronuncia della lingua della pagina. La parola ucraina «привіт» in una pagina inglese verrà letta come un insieme di lettere inglesi, e viceversa. Questo rende il testo incomprensibile.",
+        "en": "A screen reader pronounces foreign text with the page language's pronunciation. The Ukrainian word «привіт» in an English page will be read as a sequence of English letters, and vice versa. This makes the text unintelligible.",
+    },
+    "a11y_language_change_fix": {
+        "uk": "Додайте до елемента з іншомовним текстом атрибут lang=\"{suggested_lang}\". Наприклад: <span lang=\"uk\">Привіт</span>.",
+        "it": "Aggiungi all'elemento con il testo straniero l'attributo lang=\"{suggested_lang}\". Ad esempio: <span lang=\"uk\">Привіт</span>.",
+        "en": "Add to the element with foreign text the attribute lang=\"{suggested_lang}\". For example: <span lang=\"uk\">Привіт</span>.",
+    },
+    "a11y_abbreviation_expansion_title": {
+        "uk": "Абревіатура без розшифровки",
+        "it": "Abbreviazione senza espansione",
+        "en": "Abbreviation without expansion",
+    },
+    "a11y_abbreviation_expansion_found": {
+        "uk": "Абревіатура «{abbreviation}» не обгорнута у <abbr> з атрибутом title.",
+        "it": "L'abbreviazione «{abbreviation}» non è racchiusa in <abbr> con attributo title.",
+        "en": "The abbreviation «{abbreviation}» is not wrapped in <abbr> with a title attribute.",
+    },
+    "a11y_abbreviation_expansion_why": {
+        "uk": "Програма читання з екрана не може правильно вимовити абревіатуру без розшифровки. «WCAG» буде прочитане як «вкаг» або «дабл-ю-сі-е-джі», і жоден варіант не дає зрозуміти що це за стандарт.",
+        "it": "Lo screen reader non può pronunciare correttamente un'abbreviazione senza espansione. «WCAG» verrà letto come «вкаг» o «doppio-vu-ci-a-gi», e nessuna delle due opzioni fa capire che standard sia.",
+        "en": "A screen reader cannot pronounce an abbreviation correctly without expansion. «WCAG» will be read as «вкаг» or «double-u-see-ay-gee», and neither option makes clear what standard it is.",
+    },
+    "a11y_abbreviation_expansion_fix": {
+        "uk": "Обгорніть абревіатуру у <abbr title=\"Повна назва\">{abbreviation}</abbr>. При першому використанні на сторінці краще написати повну назву з абревіатурою в дужках.",
+        "it": "Racchiudi l'abbreviazione in <abbr title=\"Nome completo\">{abbreviation}</abbr>. Al primo uso nella pagina è meglio scrivere il nome completo con l'abbreviazione tra parentesi.",
+        "en": "Wrap the abbreviation in <abbr title=\"Full name\">{abbreviation}</abbr>. On first use on the page it is better to write the full name with the abbreviation in parentheses.",
+    },
+    # --- нові правила performance (2026-08-20) ---
+    "a11y_image_modern_format_title": {
+        "uk": "Зображення у застарілому форматі",
+        "it": "Immagine in formato obsoleto",
+        "en": "Image in legacy format",
+    },
+    "a11y_image_modern_format_found": {
+        "uk": "Зображення <img src=\"{src}\"> у форматі PNG/JPG без srcset.",
+        "it": "L'immagine <img src=\"{src}\"> è in formato PNG/JPG senza srcset.",
+        "en": "The image <img src=\"{src}\"> is in PNG/JPG format without srcset.",
+    },
+    "a11y_image_modern_format_why": {
+        "uk": "WebP і AVIF стискають зображення на 25-50% краще за PNG/JPG при тій самій якості. Без srcset браузер не може обрати оптимальний розмір для пристрою, тому мобільний телефон завантажує зображення для десктопу.",
+        "it": "WebP e AVIF comprimono le immagini del 25-50% meglio di PNG/JPG alla stessa qualità. Senza srcset il browser non può scegliere la dimensione ottimale per il dispositivo, quindi un telefono scarica l'immagine per desktop.",
+        "en": "WebP and AVIF compress images 25-50% better than PNG/JPG at the same quality. Without srcset the browser cannot choose the optimal size for the device, so a phone downloads the desktop image.",
+    },
+    "a11y_image_modern_format_fix": {
+        "uk": "Конвертуйте зображення у WebP або AVIF і додайте srcset з кількома розмірами. Сучасні інструменти збірки роблять це автоматично.",
+        "it": "Converti le immagini in WebP o AVIF e aggiungi srcset con più dimensioni. Gli strumenti di build moderni lo fanno automaticamente.",
+        "en": "Convert images to WebP or AVIF and add srcset with multiple sizes. Modern build tools do this automatically.",
+    },
     "a11y_needs_browser": {
         "uk": "Часткова перевірка: без запуску браузера видно лише те, що є в самій розмітці. Решту треба звірити на живій сторінці.",
         "it": "Verifica parziale: senza eseguire un browser si vede solo ciò che è nel markup. Il resto va controllato sulla pagina reale.",

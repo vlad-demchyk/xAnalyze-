@@ -694,7 +694,7 @@ def cmd_fullscan(args) -> int:
     audit_result = None
     audit_issues = []
     if is_url:
-        from crawler import CrawlConfig, RENDER_AUTO, crawl
+        from crawler import CrawlConfig, EMPTY_JS_RENDERED, RENDER_AUTO, crawl
 
         if not target.startswith(("http://", "https://")):
             target = "https://" + target
@@ -702,6 +702,16 @@ def cmd_fullscan(args) -> int:
         config = CrawlConfig(max_depth=args.depth, max_pages=args.max_pages,
                              render_mode=RENDER_AUTO)
         pages = _crawl_maybe_rendering(target, config)
+        
+        # Check if SPA pages were detected but not rendered
+        spa_pages = [p for p in pages if EMPTY_JS_RENDERED in (p.diagnostics.reasons or [])]
+        rendered_pages = [p for p in pages if "rendered" in (p.diagnostics.reasons or [])]
+        if spa_pages and not rendered_pages:
+            print(f"# WARNING: {len(spa_pages)} SPA page(s) detected but browser rendering failed.", file=sys.stderr)
+            print(f"# Pages may appear empty. Install PySide6 + QtWebEngine for full support.", file=sys.stderr)
+        elif spa_pages and rendered_pages:
+            print(f"# SPA: {len(rendered_pages)} page(s) rendered via browser, {len(spa_pages)} failed.", file=sys.stderr)
+        
         audit_result = audit.analyze_pages(pages, target)
     elif is_page_file:
         audit_result = audit.analyze_page_file(target)
@@ -901,7 +911,7 @@ def cmd_audit(args) -> int:
         # everything it needs is inlined.
         result = audit.analyze_page_file(target, ai_review=reviewer)
     elif target.startswith(("http://", "https://")) or args.url:
-        from crawler import CrawlConfig, crawl
+        from crawler import CrawlConfig, EMPTY_JS_RENDERED, crawl
 
         # Same crawler as the text scan: depth-limited, and refusing to leave
         # the domain. That rule holds for both modes because there is one
@@ -911,6 +921,16 @@ def cmd_audit(args) -> int:
         config = CrawlConfig(max_depth=args.depth, max_pages=args.max_pages,
                              render_mode=_render_mode(args))
         pages = _crawl_maybe_rendering(target, config)
+        
+        # Check if SPA pages were detected but not rendered
+        spa_pages = [p for p in pages if EMPTY_JS_RENDERED in (p.diagnostics.reasons or [])]
+        rendered_pages = [p for p in pages if "rendered" in (p.diagnostics.reasons or [])]
+        if spa_pages and not rendered_pages:
+            print(f"# WARNING: {len(spa_pages)} SPA page(s) detected but browser rendering failed.", file=sys.stderr)
+            print(f"# Use --browser flag and install PySide6 + QtWebEngine for SPA support.", file=sys.stderr)
+        elif spa_pages and rendered_pages:
+            print(f"# SPA: {len(rendered_pages)} page(s) rendered via browser, {len(spa_pages)} failed.", file=sys.stderr)
+        
         result = audit.analyze_pages(pages, target, ai_review=reviewer)
     else:
         from repo_scanner import ScanConfig, scan_repo
@@ -1558,8 +1578,9 @@ def _crawl_maybe_rendering(target: str, config):
 
     usable, reason = driver.available()
     if not usable:
-        print(f"# rendering unavailable ({reason}); reading what the server sends",
-              file=sys.stderr)
+        print(f"# Browser rendering unavailable: {reason}", file=sys.stderr)
+        print(f"# SPA/React/Vue pages may return empty results.", file=sys.stderr)
+        print(f"# Install PySide6 and QtWebEngine for full SPA support.", file=sys.stderr)
         return crawl(target, config)
     with driver.html_renderer() as render:
         return crawl(target, config, render=render)
