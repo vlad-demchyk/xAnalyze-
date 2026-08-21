@@ -1,0 +1,15 @@
+[
+  {
+    "at": "2026-08-21 09:56 UTC",
+    "root": "https://phpstack-1451965-6319681.cloudwaysapps.com/",
+    "mode": "web",
+    "counts": {
+      "critical": 8,
+      "serious": 377,
+      "moderate": 393,
+      "minor": 100
+    },
+    "documents": 5,
+    "fixed": 0
+  }
+]

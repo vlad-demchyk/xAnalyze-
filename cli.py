@@ -795,7 +795,27 @@ def cmd_fullscan(args) -> int:
 
     if getattr(args, "report", None):
         if audit_result:
-            _write_report(audit_result, args, lang, None)
+            # Collect AI pattern findings for the report
+            ai_for_report = []
+            if agent_mode and agent_candidates:
+                ai_for_report = [
+                    {"file": c.get("file", ""), "line": c.get("line", 0),
+                     "text": c.get("text", "")[:200],
+                     "score": c.get("offline_score", 0),
+                     "confidence": "medium" if c.get("offline_score", 0) >= 0.5 else "low",
+                     "explanation": c.get("offline_explanation", "")}
+                    for c in agent_candidates
+                ]
+            elif scan_findings:
+                ai_for_report = [
+                    {"file": f.get("file", ""), "line": f.get("line", 0),
+                     "text": f.get("text", "")[:200],
+                     "score": f.get("score", 0),
+                     "confidence": f.get("confidence", ""),
+                     "explanation": f.get("explanation", "")}
+                    for f in scan_findings
+                ]
+            _write_report(audit_result, args, lang, None, ai_findings=ai_for_report)
             print(f"# agent briefing: {args.report}", file=sys.stderr)
 
     # --- Phase 5: Output (always JSON for agent) ---
@@ -1159,7 +1179,7 @@ def _write_styled_text_report(files, findings, args) -> None:
 
 
 
-def _write_report(result, args, lang: str, fix_outcome=None) -> None:
+def _write_report(result, args, lang: str, fix_outcome=None, ai_findings=None) -> None:
     """Write a briefing another tool - or an agent - can act on directly.
 
     The plain `--json` output is a list of findings, which is the right shape
@@ -1186,6 +1206,29 @@ def _write_report(result, args, lang: str, fix_outcome=None) -> None:
         "fixed": len(fix_outcome.applied) if fix_outcome else 0,
     }
 
+    # AI pattern statistics
+    ai_stats = {}
+    if ai_findings:
+        ai_stats = {
+            "total": len(ai_findings),
+            "high": len([f for f in ai_findings if f.get("confidence") == "high"]),
+            "medium": len([f for f in ai_findings if f.get("confidence") == "medium"]),
+            "low": len([f for f in ai_findings if f.get("confidence") == "low"]),
+            "files": len({f.get("file", "") for f in ai_findings}),
+            "top_patterns": [],
+        }
+        # Top AI patterns by score
+        sorted_findings = sorted(ai_findings, key=lambda f: f.get("score", 0), reverse=True)
+        for f in sorted_findings[:10]:
+            ai_stats["top_patterns"].append({
+                "text": f.get("text", "")[:100],
+                "score": f.get("score", 0),
+                "confidence": f.get("confidence", ""),
+                "explanation": f.get("explanation", "")[:120],
+                "file": f.get("file", ""),
+                "line": f.get("line", 0),
+            })
+
     payload = {
         "generated": entry["at"],
         "root": result.root,
@@ -1197,6 +1240,7 @@ def _write_report(result, args, lang: str, fix_outcome=None) -> None:
             "documents_with_findings": len(result.documents_with_issues()),
             "rules_triggered": len(result.by_rule()),
         },
+        "ai_patterns": ai_stats,
         "history": history + [entry],
         "changed_this_run": _fix_summary(fix_outcome),
         "files": _file_map(result, render, lang),
@@ -1272,12 +1316,32 @@ def _report_markdown(payload: dict, lang: str) -> str:
     """The same facts, laid out for something that reads rather than parses."""
     summary = payload["summary"]
     counts = summary["counts"]
+    files = payload.get("files", [])
     out = [
         f"# Audit of {payload['root']}",
         "",
         f"Generated {payload['generated']} · mode `{payload['mode']}` · "
         f"{summary['documents']} document(s) examined.",
         "",
+    ]
+
+    # List all crawled pages
+    if files:
+        out += [
+            "## Pages examined",
+            "",
+        ]
+        for i, f in enumerate(files, 1):
+            url = f.get("source", "") or f.get("url", "")
+            findings = len(f.get("findings", []))
+            error = f.get("error", "")
+            if error:
+                out.append(f"{i}. {url} — *error: {error}*")
+            else:
+                out.append(f"{i}. {url} ({findings} findings)")
+        out.append("")
+
+    out += [
         "## Where the work is",
         "",
         f"| critical | serious | moderate | minor | total |",
@@ -1287,6 +1351,35 @@ def _report_markdown(payload: dict, lang: str) -> str:
         f"{summary['total']} |",
         "",
     ]
+
+    # AI patterns section
+    ai = payload.get("ai_patterns", {})
+    if ai.get("total", 0) > 0:
+        out += [
+            "## AI-generated text patterns",
+            "",
+            f"**{ai['total']}** passages flagged across **{ai['files']}** file(s).",
+            "",
+            f"| Confidence | Count |",
+            "|---|---|",
+            f"| high | {ai.get('high', 0)} |",
+            f"| medium | {ai.get('medium', 0)} |",
+            f"| low | {ai.get('low', 0)} |",
+            "",
+        ]
+        top = ai.get("top_patterns", [])
+        if top:
+            out += [
+                "### Top AI patterns detected",
+                "",
+                "| Score | Confidence | Text | Explanation |",
+                "|---|---|---|---|",
+            ]
+            for p in top:
+                text = p["text"].replace("|", "\\|")[:80]
+                exp = p["explanation"].replace("|", "\\|")[:80]
+                out.append(f"| {p['score']:.2f} | {p['confidence']} | {text} | {exp} |")
+            out.append("")
 
     previous = _previous_run(payload)
     if previous is not None:
