@@ -777,25 +777,21 @@ def cmd_fullscan(args) -> int:
         if audit_result:
             model = from_accessibility(audit_result, lang=lang)
 
-        # AI patterns for styled report
-        ai_findings_for_pdf = []
+        # Collect all content findings for styled report
+        all_content_findings = []
         if agent_mode and agent_candidates:
-            # Filter out typography, keep only style findings
-            ai_findings_for_pdf = [
-                c for c in agent_candidates
-                if "typography" not in c.get("offline_explanation", "").lower()
-            ]
+            all_content_findings = list(agent_candidates)
         elif scan_findings:
-            ai_findings_for_pdf = scan_findings
+            all_content_findings = list(scan_findings)
 
-        if ai_findings_for_pdf:
+        if all_content_findings:
             class _ScanResult:
                 def __init__(self, findings):
                     self.spans = []
                     self._findings = findings
                 def blocks(self):
                     return []
-            text_model = from_text_analysis(_ScanResult(ai_findings_for_pdf))
+            text_model = from_text_analysis(_ScanResult(all_content_findings))
             if model:
                 model.findings.extend(text_model.findings)
             else:
@@ -1219,13 +1215,19 @@ def _write_report(result, args, lang: str, fix_outcome=None, ai_findings=None) -
 
     # AI pattern statistics (only style findings, not typography/characters)
     ai_stats = {}
+    typo_stats = {}
     if ai_findings:
-        # Filter to only style-based findings (not typography/characters)
-        style_findings = [
-            f for f in ai_findings
-            if "typography" not in f.get("explanation", "").lower()
-            and "characters" not in f.get("source", "").lower()
-        ]
+        # Split into style (AI) and typography findings
+        style_findings = []
+        typo_findings = []
+        for f in ai_findings:
+            exp = f.get("explanation", "").lower()
+            src = f.get("source", "").lower()
+            if "typography" in exp or "characters" in src:
+                typo_findings.append(f)
+            else:
+                style_findings.append(f)
+
         if style_findings:
             ai_stats = {
                 "total": len(style_findings),
@@ -1247,6 +1249,26 @@ def _write_report(result, args, lang: str, fix_outcome=None, ai_findings=None) -
                     "line": f.get("line", 0),
                 })
 
+        # Typography statistics
+        if typo_findings:
+            # Group by character type
+            by_char = {}
+            for f in typo_findings:
+                exp = f.get("explanation", "")
+                # Extract character name from explanation like "[typography] U+2013 EN DASH -> '-'"
+                char_name = exp.split("] ")[-1].split(" ->")[0] if "] " in exp else exp[:50]
+                by_char.setdefault(char_name, 0)
+                by_char[char_name] += 1
+            typo_stats = {
+                "total": len(typo_findings),
+                "files": len({f.get("file", "") for f in typo_findings}),
+                "by_character": dict(sorted(by_char.items(), key=lambda x: -x[1])[:10]),
+                "top_examples": [
+                    {"text": f.get("text", "")[:80], "explanation": f.get("explanation", "")[:100]}
+                    for f in typo_findings[:5]
+                ],
+            }
+
     payload = {
         "generated": entry["at"],
         "root": result.root,
@@ -1259,6 +1281,7 @@ def _write_report(result, args, lang: str, fix_outcome=None, ai_findings=None) -
             "rules_triggered": len(result.by_rule()),
         },
         "ai_patterns": ai_stats,
+        "typography": typo_stats,
         "history": history + [entry],
         "changed_this_run": _fix_summary(fix_outcome),
         "files": _file_map(result, render, lang),
@@ -1397,6 +1420,34 @@ def _report_markdown(payload: dict, lang: str) -> str:
                 text = p["text"].replace("|", "\\|")[:80]
                 exp = p["explanation"].replace("|", "\\|")[:80]
                 out.append(f"| {p['score']:.2f} | {p['confidence']} | {text} | {exp} |")
+            out.append("")
+
+    # Typography section
+    typo = payload.get("typography", {})
+    if typo.get("total", 0) > 0:
+        out += [
+            "## Typography issues (non-keyboard characters)",
+            "",
+            f"**{typo['total']}** passages with non-standard characters across **{typo['files']}** file(s).",
+            "",
+            "### By character type",
+            "",
+            "| Character | Count |",
+            "|---|---|",
+        ]
+        for char_name, count in typo.get("by_character", {}).items():
+            out.append(f"| {char_name} | {count} |")
+        out.append("")
+        examples = typo.get("top_examples", [])
+        if examples:
+            out += [
+                "### Examples",
+                "",
+            ]
+            for ex in examples:
+                text = ex["text"].replace("|", "\\|")[:60]
+                exp = ex["explanation"].replace("|", "\\|")[:60]
+                out.append(f"- `{text}` — {exp}")
             out.append("")
 
     previous = _previous_run(payload)
