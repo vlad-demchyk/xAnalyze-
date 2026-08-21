@@ -20,7 +20,10 @@ from analysis_modes import (
 )
 from repo_scanner import SCOPE_BOTH, SCOPE_CONTENT, SCOPE_TECHNICAL
 from i18n.translations import t
-from ui.design_system import TOKENS as T
+from ui.tokens import Palette, current_palette
+
+# Default palette for inline styling. Updated when theme changes.
+T: Palette = current_palette("dark")
 
 
 class SourceButton(QPushButton):

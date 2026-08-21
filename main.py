@@ -17,8 +17,11 @@ import config
 import detectors  # noqa: F401 - registers detectors
 from detectors.factory import DetectorFactory
 from detectors.judges import judge_for_provider
-from ui.design_system import TOKENS as T
-from ui.modern_theme import build_modern_qss
+from ui.tokens import current_palette
+from ui.theme import apply_theme
+
+# Default palette for inline styling
+T = current_palette("dark")
 from ui.sidebar import Sidebar
 from ui.worker import AnalysisWorker, RepoAnalysisWorker
 
@@ -634,7 +637,7 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("XAnalyze")
     app.setOrganizationName("xFormat")
-    app.setStyleSheet(build_modern_qss())
+    apply_theme(app)
     window = MainWindow()
     window.show()
     return app.exec()

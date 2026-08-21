@@ -570,12 +570,13 @@ def cmd_fullscan(args) -> int:
     import audit
     from audit.explanations import summary_line
 
-    lang = args.language or "en"
+    lang = args.language  # None if not specified, will auto-detect after crawl
     target = args.target
     is_url = target.startswith(("http://", "https://")) or args.url
     is_page_file = _is_page_file(target) if not is_url else False
     # Browser is automatic for URLs and HTML files, not for repos
-    wants_browser = is_url or is_page_file
+    no_browser = getattr(args, "no_browser", False)
+    wants_browser = (is_url or is_page_file) and not no_browser
 
     # Auto-generate report paths on Desktop if not specified
     desktop = Path.home() / "Desktop"
@@ -672,9 +673,11 @@ def cmd_fullscan(args) -> int:
 
         if not target.startswith(("http://", "https://")):
             target = "https://" + target
-        # Always use RENDER_AUTO for fullscan on URLs
+        # Use RENDER_AUTO for fullscan on URLs, RENDER_NEVER if --no-browser
+        from crawler import RENDER_NEVER
+        render_mode = RENDER_NEVER if no_browser else RENDER_AUTO
         config = CrawlConfig(max_depth=args.depth, max_pages=args.max_pages,
-                             render_mode=RENDER_AUTO)
+                             render_mode=render_mode)
         pages = _crawl_maybe_rendering(target, config)
 
         # Check if SPA pages were detected but not rendered
@@ -734,6 +737,24 @@ def cmd_fullscan(args) -> int:
         for doc in audit_result.documents:
             audit_issues.extend(doc.issues)
 
+    # Auto-detect report language from site content
+    if lang is None:
+        from collections import Counter
+        from lang_detect import guess_language
+        all_blocks = []
+        if is_url and pages:
+            for page in pages:
+                all_blocks.extend(page.blocks)
+        elif audit_result:
+            for doc in audit_result.documents:
+                # Use the document's source to guess language
+                pass
+        if all_blocks:
+            hints = [b.language_hint for b in all_blocks if b.language_hint]
+            lang = Counter(hints).most_common(1)[0][0] if hints else "en"
+        else:
+            lang = "en"
+
     # --- Phase 3: Build combined result ---
     clean_findings = scan_result["findings"] if scan_result else []
     combined = {
@@ -787,7 +808,7 @@ def cmd_fullscan(args) -> int:
     # --- Phase 4: Save reports ---
     if getattr(args, "styled_report", None):
         from report.export import write_styled_report
-        from report.model import from_accessibility, from_text_analysis
+        from report.model import from_accessibility, from_text_analysis, ReportModel
 
         model = None
         if audit_result:
@@ -812,7 +833,60 @@ def cmd_fullscan(args) -> int:
                 model.findings.extend(text_model.findings)
             else:
                 model = text_model
+
+        # Populate pages, AI patterns, and typography
         if model:
+            # Pages
+            if audit_result:
+                model.pages = [
+                    {"source": doc.source, "findings_count": len(doc.issues),
+                     "error": doc.error or ""}
+                    for doc in audit_result.documents
+                ]
+
+            # AI patterns and typography (reuse logic from _write_report)
+            if all_content_findings:
+                style_findings = []
+                typo_findings = []
+                for f in all_content_findings:
+                    exp = f.get("explanation", f.get("offline_explanation", "")).lower()
+                    src = f.get("source", "").lower()
+                    if "typography" in exp or "characters" in src:
+                        typo_findings.append(f)
+                    else:
+                        style_findings.append(f)
+
+                if style_findings:
+                    model.ai_patterns = {
+                        "total": len(style_findings),
+                        "high": len([f for f in style_findings if f.get("confidence") == "high"]),
+                        "medium": len([f for f in style_findings if f.get("confidence") == "medium"]),
+                        "low": len([f for f in style_findings if f.get("confidence") == "low"]),
+                        "files": len({f.get("file", "") for f in style_findings}),
+                        "top_patterns": [
+                            {"text": f.get("text", f.get("offline_explanation", ""))[:100],
+                             "score": f.get("score", f.get("offline_score", 0)),
+                             "confidence": f.get("confidence", "low"),
+                             "explanation": f.get("explanation", f.get("offline_explanation", ""))[:120]}
+                            for f in sorted(style_findings,
+                                          key=lambda x: x.get("score", x.get("offline_score", 0)),
+                                          reverse=True)[:10]
+                        ],
+                    }
+
+                if typo_findings:
+                    by_char = {}
+                    for f in typo_findings:
+                        exp = f.get("explanation", f.get("offline_explanation", ""))
+                        char_name = exp.split("] ")[-1].split(" ->")[0] if "] " in exp else exp[:50]
+                        by_char.setdefault(char_name, 0)
+                        by_char[char_name] += 1
+                    model.typography = {
+                        "total": len(typo_findings),
+                        "files": len({f.get("file", "") for f in typo_findings}),
+                        "by_character": dict(sorted(by_char.items(), key=lambda x: -x[1])[:10]),
+                    }
+
             write_styled_report(args.styled_report, model, lang)
             print(f"# styled report: {args.styled_report}", file=sys.stderr)
 
@@ -2749,10 +2823,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="URL to crawl, a directory to scan, or one .html file")
     p_fullscan.add_argument("--url", action="store_true",
                             help="treat target as URL even without scheme")
-    p_fullscan.add_argument("--depth", type=int, default=2,
-                            help="crawl depth for URLs (default 2: target + 2 levels)")
-    p_fullscan.add_argument("--max-pages", type=int, default=0,
-                            help="max pages to crawl (default 0: unlimited, same-domain only)")
+    p_fullscan.add_argument("--depth", type=int, default=1,
+                            help="crawl depth for URLs (default 1: target + direct links)")
+    p_fullscan.add_argument("--max-pages", type=int, default=30,
+                            help="max pages to crawl (default 30, 0=unlimited)")
     p_fullscan.add_argument("--max-files", type=int, default=5000,
                             help="max files to scan (default 5000)")
     p_fullscan.add_argument("--ext", nargs="*", default=None,
@@ -2776,12 +2850,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_fullscan.add_argument("--check", action="store_true",
                             help="exit 1 when critical/serious issues found")
     p_fullscan.add_argument("--language", default=None,
-                            help="uk | it | en; language of reports")
-    p_fullscan.add_argument("--breakpoints", nargs="?", const="all", default="all",
+                            help="uk | it | en; language of reports (auto-detected if omitted)")
+    p_fullscan.add_argument("--breakpoints", nargs="?", const="all", default="desktop",
                             metavar="NAMES",
                             help="responsive breakpoints for browser audit: "
-                                 "all (default), desktop, tablet, mobile, "
+                                 "desktop (default), all, tablet, mobile, "
                                  "or comma-separated subset (e.g. desktop,mobile)")
+    p_fullscan.add_argument("--no-browser", action="store_true",
+                            help="skip browser rendering and responsive audit "
+                                 "(faster, but misses JS-rendered content)")
     p_fullscan.add_argument("--agent", action="store_true",
                             help="run offline scan and output candidate blocks "
                                  "for agent to judge with its own LLM "

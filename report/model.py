@@ -85,6 +85,9 @@ class ReportModel:
     """Everything `template.render_html` needs, and nothing it has to guess."""
     meta: ReportMeta
     findings: list[ReportFinding] = field(default_factory=list)
+    pages: list = field(default_factory=list)          # [{source, findings_count, error}]
+    ai_patterns: dict = field(default_factory=dict)     # {total, high, medium, low, files, top_patterns}
+    typography: dict = field(default_factory=dict)      # {total, files, by_character, top_examples}
 
     def counts_by_severity(self) -> dict:
         counts: dict[str, int] = {}

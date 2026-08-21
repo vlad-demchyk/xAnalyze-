@@ -287,6 +287,158 @@ class Palette:
     space_md: int = 12
     space_lg: int = 16
 
+    # -- DesignTokens compatibility aliases --
+    # These properties let code written for DesignTokens (design_system.py)
+    # work with Palette, enabling a gradual migration to a single system.
+
+    @property
+    def bg_base(self) -> str:
+        return self.page_bg
+
+    @property
+    def bg_surface(self) -> str:
+        return self.bg
+
+    @property
+    def bg_elevated(self) -> str:
+        return self.bg_card
+
+    @property
+    def bg_active(self) -> str:
+        return self.bg_muted
+
+    @property
+    def bg_input(self) -> str:
+        return self.bg
+
+    @property
+    def text_primary(self) -> str:
+        return self.text
+
+    @property
+    def text_secondary(self) -> str:
+        return self.text_muted
+
+    @property
+    def text_disabled(self) -> str:
+        return self.text_muted
+
+    @property
+    def text_inverse(self) -> str:
+        return self.on_primary
+
+    @property
+    def border_default(self) -> str:
+        return self.border
+
+    @property
+    def border_subtle(self) -> str:
+        return self.border
+
+    @property
+    def border_active(self) -> str:
+        return self.accent
+
+    @property
+    def accent_emphasis(self) -> str:
+        return self.accent_hover
+
+    @property
+    def critical(self) -> str:
+        return self.error
+
+    @property
+    def high(self) -> str:
+        return self.amber
+
+    @property
+    def medium(self) -> str:
+        return self.amber
+
+    @property
+    def low(self) -> str:
+        return self.success
+
+    @property
+    def info(self) -> str:
+        return self.accent
+
+    @property
+    def warning(self) -> str:
+        return self.amber
+
+    @property
+    def font_family(self) -> str:
+        return self.font
+
+    @property
+    def font_size_xs(self) -> int:
+        return self.font_size_sm - 1
+
+    @property
+    def font_size_base(self) -> int:
+        return self.font_size
+
+    @property
+    def font_size_xxl(self) -> int:
+        return self.font_size_xl + 3
+
+    @property
+    def space_1(self) -> int:
+        return 4
+
+    @property
+    def space_2(self) -> int:
+        return self.space_sm
+
+    @property
+    def space_3(self) -> int:
+        return self.space_md
+
+    @property
+    def space_4(self) -> int:
+        return self.space_lg
+
+    @property
+    def space_5(self) -> int:
+        return 20
+
+    @property
+    def space_6(self) -> int:
+        return 24
+
+    @property
+    def space_8(self) -> int:
+        return 32
+
+    @property
+    def radius_xl(self) -> int:
+        return self.radius
+
+    @property
+    def shadow_sm(self) -> str:
+        return "0 1px 2px rgba(0, 0, 0, 0.3)"
+
+    @property
+    def shadow_md(self) -> str:
+        return "0 4px 12px rgba(0, 0, 0, 0.4)"
+
+    @property
+    def shadow_lg(self) -> str:
+        return "0 8px 24px rgba(0, 0, 0, 0.5)"
+
+    @property
+    def sidebar_width(self) -> int:
+        return 260
+
+    @property
+    def detail_width(self) -> int:
+        return 380
+
+    @property
+    def header_height(self) -> int:
+        return 48
+
     @property
     def is_dark(self) -> bool:
         return self.name == "dark"
