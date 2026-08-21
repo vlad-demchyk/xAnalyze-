@@ -678,7 +678,21 @@ def cmd_fullscan(args) -> int:
         render_mode = RENDER_NEVER if no_browser else RENDER_AUTO
         config = CrawlConfig(max_depth=args.depth, max_pages=args.max_pages,
                              render_mode=render_mode)
-        pages = _crawl_maybe_rendering(target, config)
+        print(f"# [stage crawl] depth={args.depth} "
+              f"max_pages={args.max_pages or 'unlimited'} render={render_mode}",
+              file=sys.stderr, flush=True)
+
+        crawled = 0
+
+        def _crawl_progress(url: str, depth: int) -> None:
+            nonlocal crawled
+            crawled += 1
+            limit = f"/{args.max_pages}" if args.max_pages else ""
+            print(f"# [crawl {crawled}{limit}] depth={depth} {url}",
+                  file=sys.stderr, flush=True)
+
+        pages = _crawl_maybe_rendering(target, config, progress_cb=_crawl_progress)
+        print(f"# [crawl done] {len(pages)} page(s)", file=sys.stderr, flush=True)
 
         # Check if SPA pages were detected but not rendered
         spa_pages = [p for p in pages if EMPTY_JS_RENDERED in (p.diagnostics.reasons or [])]
@@ -887,6 +901,7 @@ def cmd_fullscan(args) -> int:
                         "by_character": dict(sorted(by_char.items(), key=lambda x: -x[1])[:10]),
                     }
 
+            print("# [stage] writing reports...", file=sys.stderr, flush=True)
             write_styled_report(args.styled_report, model, lang)
             print(f"# styled report: {args.styled_report}", file=sys.stderr)
 
@@ -1029,7 +1044,18 @@ def cmd_audit(args) -> int:
             target = "https://" + target
         config = CrawlConfig(max_depth=args.depth, max_pages=args.max_pages,
                              render_mode=_render_mode(args))
-        pages = _crawl_maybe_rendering(target, config)
+
+        crawled = 0
+
+        def _crawl_progress(url: str, depth: int) -> None:
+            nonlocal crawled
+            crawled += 1
+            limit = f"/{args.max_pages}" if args.max_pages else ""
+            print(f"# [crawl {crawled}{limit}] depth={depth} {url}",
+                  file=sys.stderr, flush=True)
+
+        pages = _crawl_maybe_rendering(target, config, progress_cb=_crawl_progress)
+        print(f"# [crawl done] {len(pages)} page(s)", file=sys.stderr, flush=True)
         
         # Check if SPA pages were detected but not rendered
         spa_pages = [p for p in pages if EMPTY_JS_RENDERED in (p.diagnostics.reasons or [])]
@@ -1709,7 +1735,7 @@ def _chosen_breakpoints(args):
                  if name in wanted)
 
 
-def _audit_at_widths(urls, options, sizes) -> list:
+def _audit_at_widths(urls, options, sizes, progress=None) -> list:
     """One browser, every page, every width."""
     from audit import driver
     from audit import responsive
@@ -1719,8 +1745,13 @@ def _audit_at_widths(urls, options, sizes) -> list:
     runner = driver.BrowserAuditRunner(
         replace(options, viewport=(sizes[0][1], sizes[0][2])))
     try:
-        return [responsive.audit_responsive(url, sizes, options, runner=runner)
-                for url in urls]
+        results = []
+        for i, url in enumerate(urls, 1):
+            if progress:
+                progress(i, url)
+            results.append(responsive.audit_responsive(url, sizes, options,
+                                                       runner=runner))
+        return results
     finally:
         runner.close()
 
@@ -1764,8 +1795,14 @@ def _run_browser_pass(result, suppressions, args=None) -> None:
     # the findings land back on the row the user recognises rather than on a
     # `file://` URL they never typed.
     urls = [_browser_url(d.source) for d in targets]
-    audits = (_audit_at_widths(urls, options, sizes) if sizes
-              else driver.audit_urls(urls, options))
+
+    def _show(page_no: int, url: str) -> None:
+        widths = f" at {len(sizes)} width(s)" if sizes else ""
+        print(f"# [browser {page_no}/{len(urls)}{widths}] {url}",
+              file=sys.stderr, flush=True)
+
+    audits = (_audit_at_widths(urls, options, sizes, progress=_show) if sizes
+              else driver.audit_urls(urls, options, progress=_show))
     by_url = {a.url: a for a in audits}
     for document, url in zip(targets, urls):
         page_audit = by_url.get(url)
@@ -1811,12 +1848,12 @@ def _render_mode(args) -> str:
     return RENDER_AUTO if getattr(args, "browser", False) else RENDER_NEVER
 
 
-def _crawl_maybe_rendering(target: str, config):
+def _crawl_maybe_rendering(target: str, config, progress_cb=None):
     """Crawl, starting a browser only if the configuration can use one."""
     from crawler import RENDER_NEVER, crawl
 
     if config.render_mode == RENDER_NEVER:
-        return crawl(target, config)
+        return crawl(target, config, progress_cb=progress_cb)
 
     from audit import driver
 
@@ -1825,9 +1862,9 @@ def _crawl_maybe_rendering(target: str, config):
         print(f"# Browser rendering unavailable: {reason}", file=sys.stderr)
         print(f"# SPA/React/Vue pages may return empty results.", file=sys.stderr)
         print(f"# Install PySide6 and QtWebEngine for full SPA support.", file=sys.stderr)
-        return crawl(target, config)
+        return crawl(target, config, progress_cb=progress_cb)
     with driver.html_renderer() as render:
-        return crawl(target, config, render=render)
+        return crawl(target, config, render=render, progress_cb=progress_cb)
 
 
 def _browser_url(source: str) -> str:

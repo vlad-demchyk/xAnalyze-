@@ -109,7 +109,19 @@ class RenderingACrawl(unittest.TestCase):
     def test_links_come_from_the_rendered_page_so_depth_works(self):
         pages, session = self._crawl(render=lambda url: RENDERED_HTML, depth=1)
         self.assertGreater(len(pages), 1)
-        self.assertIn("https://example.com/pricing/", session.fetched)
+        # The trailing slash is normalized away, so `/pricing/` and `/pricing`
+        # are fetched once, under one name.
+        self.assertIn("https://example.com/pricing", session.fetched)
+
+    def test_a_trailing_slash_does_not_make_a_second_page(self):
+        pages, session = self._crawl(
+            render=lambda url: RENDERED_HTML.replace(
+                "/pricing", "/pricing/"), depth=1)
+        fetched_roots = [u for u in session.fetched
+                         if u in ("https://example.com",
+                                  "https://example.com/")]
+        self.assertEqual(len(fetched_roots), 1,
+                         "root crawled twice under two spellings")
 
     def test_a_failed_render_leaves_the_fetched_reading_and_says_why(self):
         def render(_url):

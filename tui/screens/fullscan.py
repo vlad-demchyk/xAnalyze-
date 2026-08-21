@@ -46,7 +46,7 @@ class FullscanScreen(Screen):
                     ("Desktop + mobile", "desktop,mobile"),
                     ("Mobile only", "mobile"),
                 ],
-                value="all",
+                value="desktop",
                 id="breakpoints",
             )
 
@@ -85,8 +85,8 @@ class FullscanScreen(Screen):
         args = argparse.Namespace(
             target=target,
             url=False,
-            depth=2,
-            max_pages=0,
+            depth=1,
+            max_pages=30,
             max_files=5000,
             ext=None,
             exclude=None,

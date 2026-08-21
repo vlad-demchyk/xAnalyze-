@@ -468,16 +468,23 @@ def _pump(milliseconds: int) -> None:
     loop.exec()
 
 
-def audit_urls(urls, options: browser.BrowserAuditOptions | None = None) -> list:
+def audit_urls(urls, options: browser.BrowserAuditOptions | None = None,
+               progress=None) -> list:
     """Convenience for the CLI: audit several pages with one browser.
 
     Creates a headless `QApplication` when there is none, so a script can call
-    this without knowing that Qt is involved.
+    this without knowing that Qt is involved. progress, if given, is called as
+    progress(page_number, url) before each page so a long run can show life.
     """
     ensure_headless_application()
     runner = BrowserAuditRunner(options)
     try:
-        return [runner.audit(url) for url in urls]
+        results = []
+        for i, url in enumerate(urls, 1):
+            if progress:
+                progress(i, url)
+            results.append(runner.audit(url))
+        return results
     finally:
         runner.close()
 

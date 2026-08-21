@@ -126,7 +126,12 @@ class CrawlConfig:
 def _normalize(url: str) -> str:
     parsed = urlparse(url)
     # Drop fragments; keep query since some sites route content via query params.
-    return parsed._replace(fragment="").geturl()
+    # Collapse a trailing slash so `/about/` and `/about` dedupe into one page;
+    # the root keeps its slash so `https://site` and `https://site/` also meet.
+    path = parsed.path or "/"
+    if len(path) > 1 and path.endswith("/"):
+        path = path.rstrip("/")
+    return parsed._replace(path=path, fragment="").geturl()
 
 
 def _host_key(url: str) -> str:
