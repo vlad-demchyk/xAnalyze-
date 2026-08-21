@@ -654,7 +654,7 @@ def cmd_fullscan(args) -> int:
                     "candidates_count": len(agent_candidates),
                 }
             else:
-                scan_findings, _ = _analyze(files, ScanArgs)
+                scan_findings, _ = _analyze(files, scan_args)
                 clean_findings = [_public(f) for f in scan_findings]
                 scan_result = {
                     "findings": clean_findings,
