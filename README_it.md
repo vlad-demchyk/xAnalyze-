@@ -20,7 +20,8 @@ Desktop e headless analyzer: rilevamento di testi generati da AI, caratteri non 
   - [compare](#compare---confronta-detector)
   - [ai](#ai---operazioni-ai)
   - [clean](#clean---filtro-testo)
-  - [serve](#serve---server-http-locale)
+  - [agent-scan](#agent-scan---scansione-offline-per-agente)
+  - [agent-judge](#agent-judge---unione-giudizi-agente)
 - [Metodi di rilevamento](#metodi-di-rilevamento)
   - [Rilevamento pattern AI](#rilevamento-pattern-ai)
   - [Caratteri non da tastiera](#caratteri-non-da-tastiera)
@@ -368,22 +369,34 @@ cat article.txt | xanalyze clean --language it
 
 ---
 
-### `serve` - Server HTTP locale
+### `agent-scan` - Scansione offline per agente
 
-Avvia un server HTTP locale per la modalità agent-as-judge.
+Esegue la scansione offline e restituisce i candidati come JSON per la valutazione dell'agente.
 
 ```bash
-# Avvia su porta default (8765)
-xanalyze serve
+# Modalità semplice: solo candidati
+xanalyze agent-scan ./src --json
 
-# Porta personalizzata
-xanalyze serve --port 9000
+# Modalità completa: candidati + tutti i blocchi per analisi indipendente
+xanalyze agent-scan ./src --full --json
 
-# Bind a tutte le interfacce
-xanalyze serve --host 0.0.0.0
+# Soglia personalizzata
+xanalyze agent-scan ./src --threshold 0.3 --json
 ```
 
 ---
+
+### `agent-judge` - Unione giudizi agente
+
+Combina la scansione offline con i giudizi LLM dell'agente in un report finale.
+
+```bash
+# Unione semplice: l'agente ha valutato i candidati
+xanalyze agent-scan ./src --json | xanalyze agent-judge ./src --judgments -
+
+# Unione ibrida: l'agente ha valutato + trovato indipendentemente
+xanalyze agent-scan ./src --full --json | xanalyze agent-judge ./src --judgments -
+```
 
 ---
 
@@ -766,44 +779,45 @@ xanalyze compare ./src --json
 - Confronta i risultati
 - Mostra quale detector trova cosa
 
-### Modalità agente-comme-giudice
+### Modalità agente-come-giudice
 
-Quando l'agente stesso deve giudicare il testo (non serve chiave API):
+L'agente stesso agisce come giudice LLM (non serve chiave API). Due modalità:
 
+**Semplice — validare i ritrovamenti offline:**
 ```bash
-# Avvia con agente-comme-giudice
-xanalyze fullscan https://example.com --agent
+# Passo 1: scansione offline → candidati
+xanalyze agent-scan ./src --json > candidates.json
 
-# Porta personalizzata
-xanalyze fullscan https://example.com --agent --agent-port 9000
+# Passo 2: l'agente valuta i candidati, restituisce i giudizi
+echo '[{"block_id":"...","score":0.8,"reason":"AI cliché"}]' | \
+  xanalyze agent-judge ./src --judgments -
 ```
 
-**Come funziona:**
-1. `--agent` avvia un server HTTP locale sulla porta 8765
-2. L'agente invia testo a `POST /judge`
-3. Il server restituisce un punteggio (0-1) di probabilità AI
-4. Il server si arresta automaticamente dopo il completamento
-
-**Endpoints:**
-- `POST /judge` — Valuta il testo per pattern AI
-- `GET /health` — Controllo salute
-- `GET /detectors` — Elenco dei detector disponibili
-
-**Esempio curl:**
+**Completo — analisi ibrida (l'agente legge tutto):**
 ```bash
-curl -X POST http://localhost:8765/judge \
-  -H 'Content-Type: application/json' \
-  -d '{"text": "Vale la pena notare che questa soluzione completa..."}'
+# Passo 1: scansione offline + tutti i blocchi per l'agente
+xanalyze agent-scan ./src --full --json > scan.json
+
+# Passo 2: l'agente valuta i candidati E legge i blocchi indipendentemente
+
+# Passo 3: unione con logica ibrida
+cat agent_output.json | xanalyze agent-judge ./src --judgments -
+```
+
+**Fullscan con agente:**
+```bash
+xanalyze fullscan ./repo --agent --json
 ```
 
 **Opzioni LLM Judge:**
 
 | Detector | Comando | Chiave API |
 |---|---|---|
-| Agente (predefinito) | `xanalyze fullscan URL --agent` | Non necessaria |
-| Claude API | `xanalyze fullscan URL --detector claude-llm-judge` | `ANTHROPIC_API_KEY` |
-| xFormat | `xanalyze fullscan URL --detector xformat-llm-judge` | Login xFormat |
-| Claude Code | `xanalyze fullscan URL --detector claude-code-llm-judge` | Sessione Claude Code |
+| Agente (validazione) | `xanalyze agent-scan ./src --json` | Non necessaria |
+| Agente (ibrido completo) | `xanalyze agent-scan ./src --full --json` | Non necessaria |
+| Claude API | `xanalyze scan ./src --detector claude-llm-judge` | `ANTHROPIC_API_KEY` |
+| xFormat | `xanalyze scan ./src --detector xformat-llm-judge` | Login xFormat |
+| Claude Code | `xanalyze scan ./src --detector claude-code-llm-judge` | Sessione Claude Code |
 | Hybrid | `xanalyze fullscan URL --detector hybrid` | Opzionale |
 
 ### Esempi di workflow agente

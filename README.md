@@ -20,7 +20,8 @@ Desktop and headless analyzer: AI-generated text detection, non-keyboard charact
   - [compare](#compare---compare-detectors)
   - [ai](#ai---ai-backed-operations)
   - [clean](#clean---filter-text)
-  - [serve](#serve---local-http-server)
+  - [agent-scan](#agent-scan---offline-scan-for-agent)
+  - [agent-judge](#agent-judge---merge-agent-judgments)
 - [Detection Methods](#detection-methods)
   - [AI Pattern Detection](#ai-pattern-detection)
   - [Non-keyboard Characters](#non-keyboard-characters)
@@ -153,8 +154,7 @@ xanalyze fullscan https://example.com --language uk
 | `--report PATH` | Agent briefing path (.md or .json) |
 | `--check` | Exit 1 when critical/serious issues found |
 | `--language LANG` | Report language: `uk`, `it`, `en` |
-| `--agent` | Start agent judge server (no API key needed) |
-| `--agent-port PORT` | Port for agent judge server (default: 8765) |
+| `--agent` | Run offline scan and output candidates for agent to judge (no API key) |
 
 ---
 
@@ -374,22 +374,34 @@ cat article.txt | xanalyze clean --language uk
 
 ---
 
-### `serve` - Local HTTP Server
+### `agent-scan` - Offline Scan for Agent
 
-Starts a local HTTP server for agent-as-judge mode.
+Runs offline scan and outputs candidate blocks as JSON for the agent to judge.
 
 ```bash
-# Start server on default port (8765)
-xanalyze serve
+# Simple mode: candidates only
+xanalyze agent-scan ./src --json
 
-# Custom port
-xanalyze serve --port 9000
+# Full mode: candidates + all blocks for independent agent analysis
+xanalyze agent-scan ./src --full --json
 
-# Bind to all interfaces
-xanalyze serve --host 0.0.0.0
+# Custom threshold
+xanalyze agent-scan ./src --threshold 0.3 --json
 ```
 
 ---
+
+### `agent-judge` - Merge Agent Judgments
+
+Combines offline scan with agent's LLM judgments into a final report.
+
+```bash
+# Simple merge: agent judged candidates
+xanalyze agent-scan ./src --json | xanalyze agent-judge ./src --judgments -
+
+# Hybrid merge: agent judged + found independently
+xanalyze agent-scan ./src --full --json | xanalyze agent-judge ./src --judgments -
+```
 
 ---
 
@@ -762,25 +774,7 @@ Users ask agents in natural language. Here's how each request maps to a command:
 
 ### Agent-as-Judge Mode
 
-When the agent itself should judge text (no API key needed):
-
-```bash
-# Start with agent-as-judge
-xanalyze fullscan https://example.com --agent
-
-# Custom port
-xanalyze fullscan https://example.com --agent --agent-port 9000
-```
-
-**How it works:**
-1. `--agent` starts a local HTTP server on port 8765
-2. Agent sends text to `POST /judge`
-3. Server returns a score (0-1) indicating AI likelihood
-4. Server stops automatically after scan completes
-
-### Agent-as-Judge (No API Key)
-
-The agent itself acts as the LLM judge. Two modes:
+The agent itself acts as the LLM judge (no API key needed). Two modes:
 
 **Simple — validate offline findings:**
 ```bash

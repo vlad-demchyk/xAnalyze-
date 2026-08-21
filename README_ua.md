@@ -20,7 +20,8 @@
   - [compare](#compare---порівняння-детекторів)
   - [ai](#ai---ai-операції)
   - [clean](#clean---фільтр-тексту)
-  - [serve](#serve---локальний-http-сервер)
+  - [agent-scan](#agent-scan---офлайн-скан-для-агента)
+  - [agent-judge](#agent-judge---обєднання-оцінок-агента)
 - [Методи детекції](#методи-детекції)
   - [Виявлення AI-патернів](#виявлення-ai-патернів)
   - [Символи без клавіатури](#символи-без-клавіатури)
@@ -149,8 +150,7 @@ xanalyze fullscan https://example.com --language uk
 | `--report PATH` | Шлях до брифінгу для агента (.md або .json) |
 | `--check` | Вихід 1 при критичних/серйозних проблемах |
 | `--language LANG` | Мова звітів: `uk`, `it`, `en` |
-| `--agent` | Запустити сервер агент-судді (без API ключа) |
-| `--agent-port PORT` | Порт сервера агент-судді (за замовчуванням: 8765) |
+| `--agent` | Запустити офлайн скан і вивести кандидатів для агента (без API ключа) |
 
 ---
 
@@ -370,22 +370,34 @@ cat article.txt | xanalyze clean --language uk
 
 ---
 
-### `serve` - Локальний HTTP сервер
+### `agent-scan` - Офлайн скан для агента
 
-Запускає локальний HTTP сервер для режиму agent-as-judge.
+Запускає офлайн скан і виводить кандидатів як JSON для оцінки агентом.
 
 ```bash
-# Запустити на стандартному порту (8765)
-xanalyze serve
+# Простий режим: тільки кандидати
+xanalyze agent-scan ./src --json
 
-# Власний порт
-xanalyze serve --port 9000
+# Повний режим: кандидати + всі блоки для самостійного аналізу
+xanalyze agent-scan ./src --full --json
 
-# Прив'язати до всіх інтерфейсів
-xanalyze serve --host 0.0.0.0
+# Власний поріг
+xanalyze agent-scan ./src --threshold 0.3 --json
 ```
 
 ---
+
+### `agent-judge` - Об'єднання оцінок агента
+
+Поєднує офлайн скан з оцінками LLM агента в фінальний звіт.
+
+```bash
+# Просте об'єднання: агент оцінив кандидатів
+xanalyze agent-scan ./src --json | xanalyze agent-judge ./src --judgments -
+
+# Гібридне об'єднання: агент оцінив + знайшов самостійно
+xanalyze agent-scan ./src --full --json | xanalyze agent-judge ./src --judgments -
+```
 
 ---
 
