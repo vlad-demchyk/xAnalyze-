@@ -99,6 +99,59 @@ python cli.py fullscan https://example.com
 
 ---
 
+## Usage
+
+### Interactive TUI
+
+Just type `xanalyze` with no arguments to launch the interactive terminal interface:
+
+```bash
+xanalyze
+```
+
+The TUI provides a menu-driven interface with:
+- **Scan** — detect AI-generated text patterns and non-keyboard characters
+- **Audit** — check accessibility, SEO, performance, best practices
+- **Full Scan** — everything in one run
+- **Reports** — view previous analysis results
+- **Settings** — inspect configuration
+- **Update** — check for new versions
+
+Navigate with arrow keys or number shortcuts (1-6). Press `q` or `Esc` to go back/quit.
+
+### CLI Commands
+
+```bash
+# Scan a directory for AI patterns
+xanalyze scan ./src
+
+# Audit a website for accessibility
+xanalyze audit https://example.com --browser
+
+# Full scan (AI + accessibility + SEO)
+xanalyze fullscan https://example.com
+
+# Fix non-keyboard characters in place
+xanalyze fix ./src
+
+# Check for updates
+xanalyze update
+
+# Show version
+xanalyze --version
+```
+
+### Self-Update
+
+```bash
+# Check and install the latest version
+xanalyze update
+```
+
+Every CLI command also checks for updates once a day and prints a hint if a newer version is available. Suppress with `--no-update-check`.
+
+---
+
 ## CLI Commands
 
 ### `fullscan` - Full Scan

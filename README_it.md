@@ -95,7 +95,58 @@ python cli.py fullscan https://example.com
 
 ---
 
-## Comandi CLI
+## Utilizzo
+
+### TUI interattivo
+
+Basta digitare `xanalyze` senza argomenti per avviare l'interfaccia terminale interattiva:
+
+```bash
+xanalyze
+```
+
+Il TUI fornisce un menu con:
+- **Scan** — rilevamento pattern AI e caratteri non da tastiera
+- **Audit** — controllo accessibilità, SEO, performance
+- **Full Scan** — tutto in un'esecuzione
+- **Reports** — visualizza risultati precedenti
+- **Settings** — ispeziona configurazione
+- **Update** — controlla nuove versioni
+
+Navigazione con frecce o tasti rapidi (1-6). `q` o `Esc` per tornare/uscire.
+
+### Comandi CLI
+
+```bash
+# Scansione directory per pattern AI
+xanalyze scan ./src
+
+# Audit sito per accessibilità
+xanalyze audit https://example.com --browser
+
+# Scansione completa (AI + accessibilità + SEO)
+xanalyze fullscan https://example.com
+
+# Correggi caratteri non da tastiera
+xanalyze fix ./src
+
+# Controlla aggiornamenti
+xanalyze update
+
+# Mostra versione
+xanalyze --version
+```
+
+### Aggiornamento automatico
+
+```bash
+# Controlla e installa l'ultima versione
+xanalyze update
+```
+
+Ogni comando CLI controlla anche gli aggiornamenti una volta al giorno e mostra un suggerimento se esiste una versione più recente. Disattivare con `--no-update-check`.
+
+---
 
 ### `fullscan` - Scansione completa
 

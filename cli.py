@@ -49,6 +49,35 @@ EXIT_ERROR = 2
 
 # --------------------------------------------------------------- collection
 
+def _build_ignore_list(args) -> list:
+    """Build the ignore pattern list from args and defaults.
+
+    Single source of truth for the ignore logic used by scan, audit,
+    fullscan, and reaudit.
+    """
+    use_defaults = getattr(args, "use_default_excludes", True)
+    ignore = _parse_ignore_text(DEFAULT_IGNORE_PATTERNS) if use_defaults else []
+    ignore += list(getattr(args, "exclude", None) or [])
+    return ignore
+
+
+def _build_scan_config(args, extensions=None) -> "ScanConfig":
+    """Build a ScanConfig from args.
+
+    Single source of truth for scan configuration used by scan, audit,
+    fullscan, and reaudit.
+    """
+    from repo_scanner import ScanConfig
+    if extensions is None and getattr(args, "ext", None):
+        extensions = tuple(e if e.startswith(".") else "." + e for e in args.ext)
+    return ScanConfig(
+        extensions=extensions,
+        ignore_patterns=_build_ignore_list(args),
+        max_files=getattr(args, "max_files", 5000),
+        scope=getattr(args, "scope", "content"),
+    )
+
+
 def _collect_files(paths: list[str], args, missing_out=None,
                    diagnostics_out=None) -> list:
     """Turn the given paths into FileResults. A directory is walked with the
@@ -58,11 +87,7 @@ def _collect_files(paths: list[str], args, missing_out=None,
     directory, so the caller can say what was read rather than only what was
     found. A file named directly needs none: naming it is the answer.
     """
-    ignore = _parse_ignore_text(DEFAULT_IGNORE_PATTERNS) if args.use_default_excludes else []
-    ignore += list(args.exclude or [])
-    # None lets the scope pick the extension set (comments are worth reading
-    # in far more file types than copy is); an explicit --ext still wins.
-    extensions = tuple(e if e.startswith(".") else "." + e for e in args.ext) if args.ext else None
+    config = _build_scan_config(args)
     scope = getattr(args, "scope", "content")
 
     results = []
@@ -74,12 +99,7 @@ def _collect_files(paths: list[str], args, missing_out=None,
         p = Path(raw)
         if p.is_dir():
             walk = ScanDiagnostics()
-            results.extend(scan_repo(str(p), ScanConfig(
-                extensions=extensions,
-                ignore_patterns=ignore,
-                max_files=args.max_files,
-                scope=scope,
-            ), diagnostics=walk))
+            results.extend(scan_repo(str(p), config, diagnostics=walk))
             if diagnostics_out is not None:
                 diagnostics_out.append((str(p), walk))
         elif p.exists():
@@ -581,27 +601,26 @@ def cmd_fullscan(args) -> int:
     scan_result = None
     agent_candidates = []
     if not is_url:
-        # Build scan args
-        class ScanArgs:
-            paths = [target]
-            ext = args.ext
-            exclude = args.exclude
-            no_default_excludes = getattr(args, "no_default_excludes", False)
-            use_default_excludes = not getattr(args, "no_default_excludes", False)
-            max_files = args.max_files
-            detector = args.detector
-            scope = args.scope
-            no_typography = getattr(args, "no_typography", False)
-            no_ignore = False
-            no_unicode = False
-            categories = None
-            json = False
-            check = False
-            incremental = False
-            styled_report = None
-            language = lang
+        scan_args = argparse.Namespace(
+            paths=[target],
+            ext=args.ext,
+            exclude=args.exclude,
+            use_default_excludes=not getattr(args, "no_default_excludes", False),
+            max_files=args.max_files,
+            detector=args.detector,
+            scope=args.scope,
+            no_typography=getattr(args, "no_typography", False),
+            no_ignore=False,
+            no_unicode=False,
+            categories=None,
+            json=False,
+            check=False,
+            incremental=False,
+            styled_report=None,
+            language=lang,
+        )
 
-        files = _collect_files(ScanArgs.paths, ScanArgs)
+        files = _collect_files(scan_args.paths, scan_args)
         if files:
             if agent_mode:
                 # Agent mode: run offline scan, collect candidates for LLM judgment
@@ -700,12 +719,9 @@ def cmd_fullscan(args) -> int:
     elif is_page_file:
         audit_result = audit.analyze_page_file(target)
     else:
-        from repo_scanner import ScanConfig, scan_repo
+        from repo_scanner import scan_repo
 
-        ignore = _parse_ignore_text(DEFAULT_IGNORE_PATTERNS) if not getattr(args, "no_default_excludes", False) else []
-        ignore += list(args.exclude or [])
-        repo_files = scan_repo(target, ScanConfig(ignore_patterns=ignore,
-                                                   max_files=args.max_files))
+        repo_files = scan_repo(target, _build_scan_config(args))
         if repo_files:
             audit_result = audit.analyze_files(repo_files, target)
 
@@ -952,12 +968,9 @@ def cmd_audit(args) -> int:
         
         result = audit.analyze_pages(pages, target, ai_review=reviewer)
     else:
-        from repo_scanner import ScanConfig, scan_repo
+        from repo_scanner import scan_repo
 
-        ignore = _parse_ignore_text(DEFAULT_IGNORE_PATTERNS) if args.use_default_excludes else []
-        ignore += list(args.exclude or [])
-        files = scan_repo(target, ScanConfig(ignore_patterns=ignore,
-                                             max_files=args.max_files))
+        files = scan_repo(target, _build_scan_config(args))
         result = audit.analyze_files(files, target, ai_review=reviewer)
 
     # The same suppression list governs both analyses: a user thinking "not
@@ -1060,12 +1073,9 @@ def _reaudit(args, target: str, previous):
 
     if previous.mode == "file":
         return audit.analyze_page_file(target)
-    from repo_scanner import ScanConfig, scan_repo
+    from repo_scanner import scan_repo
 
-    ignore = _parse_ignore_text(DEFAULT_IGNORE_PATTERNS) if args.use_default_excludes else []
-    ignore += list(args.exclude or [])
-    files = scan_repo(target, ScanConfig(ignore_patterns=ignore,
-                                         max_files=args.max_files))
+    files = scan_repo(target, _build_scan_config(args))
     return audit.analyze_files(files, target)
 
 

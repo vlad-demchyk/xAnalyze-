@@ -1,8 +1,7 @@
 """Scan screen — configure and run AI pattern detection."""
 from __future__ import annotations
 
-import json
-from pathlib import Path
+import argparse
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
@@ -80,26 +79,27 @@ class ScanScreen(Screen):
 
         self.query_one("#scan-status", Label).update(f"Scanning {target}...")
 
-        class Args:
-            paths = [target]
-            ext = None
-            exclude = None
-            use_default_excludes = True
-            max_files = 5000
-            detector = detector
-            scope = scope
-            no_typography = False
-            no_ignore = False
-            no_unicode = False
-            categories = None
-            json = True
-            check = False
-            incremental = False
-            styled_report = None
-            language = None
+        args = argparse.Namespace(
+            paths=[target],
+            ext=None,
+            exclude=None,
+            use_default_excludes=True,
+            max_files=5000,
+            detector=detector,
+            scope=scope,
+            no_typography=False,
+            no_ignore=False,
+            no_unicode=False,
+            categories=None,
+            json=True,
+            check=False,
+            incremental=False,
+            styled_report=None,
+            language=None,
+        )
 
         try:
-            result_code = cmd_scan(Args())
+            result_code = cmd_scan(args)
             self.query_one("#scan-status", Label).update(
                 f"Scan complete (exit code {result_code}). See results in terminal."
             )

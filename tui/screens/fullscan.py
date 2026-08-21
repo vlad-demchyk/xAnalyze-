@@ -1,6 +1,8 @@
 """Fullscan screen — combined AI patterns + accessibility in one run."""
 from __future__ import annotations
 
+import argparse
+
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
@@ -80,28 +82,29 @@ class FullscanScreen(Screen):
 
         self.query_one("#fullscan-status", Label).update(f"Full scan of {target}...")
 
-        class Args:
-            target = target
-            url = False
-            depth = 2
-            max_pages = 0
-            max_files = 5000
-            ext = None
-            exclude = None
-            no_default_excludes = False
-            detector = "offline"
-            scope = "both"
-            no_typography = False
-            styled_report = None
-            report = None
-            check = False
-            language = language
-            breakpoints = breakpoints
-            agent = agent
-            json = True
+        args = argparse.Namespace(
+            target=target,
+            url=False,
+            depth=2,
+            max_pages=0,
+            max_files=5000,
+            ext=None,
+            exclude=None,
+            no_default_excludes=False,
+            detector="offline",
+            scope="both",
+            no_typography=False,
+            styled_report=None,
+            report=None,
+            check=False,
+            language=language,
+            breakpoints=breakpoints,
+            agent=agent,
+            json=True,
+        )
 
         try:
-            result_code = cmd_fullscan(Args())
+            result_code = cmd_fullscan(args)
             self.query_one("#fullscan-status", Label).update(
                 f"Full scan complete (exit code {result_code}). See results in terminal."
             )
