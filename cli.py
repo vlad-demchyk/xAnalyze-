@@ -1158,11 +1158,6 @@ def _write_styled_text_report(files, findings, args) -> None:
     print(f"# styled report: {args.styled_report}", file=sys.stderr)
 
 
-#: Where a run's numbers are remembered between runs, beside the report. Small
-#: on purpose: counts and dates, never findings, so it stays readable and
-#: cannot become a second source of truth about the code.
-HISTORY_SUFFIX = ".history.json"
-
 
 def _write_report(result, args, lang: str, fix_outcome=None) -> None:
     """Write a briefing another tool - or an agent - can act on directly.
@@ -1407,8 +1402,21 @@ def _previous_run(payload: dict) -> dict | None:
     return mine[-1] if mine else None
 
 
+def _history_dir() -> Path:
+    """Where run history lives: .xanalyze/ in the current working directory."""
+    d = Path.cwd() / ".xanalyze"
+    d.mkdir(exist_ok=True)
+    return d
+
+
+def _history_key(report_path: Path) -> str:
+    """Stable filename from the report path, without directory traversal."""
+    import hashlib
+    return hashlib.md5(str(report_path).encode()).hexdigest()[:12]
+
+
 def _read_history(report_path: Path) -> list:
-    history_path = Path(str(report_path) + HISTORY_SUFFIX)
+    history_path = _history_dir() / f"{_history_key(report_path)}.json"
     try:
         data = json.loads(history_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -1417,10 +1425,8 @@ def _read_history(report_path: Path) -> list:
 
 
 def _write_history(report_path: Path, history: list) -> None:
-    history_path = Path(str(report_path) + HISTORY_SUFFIX)
+    history_path = _history_dir() / f"{_history_key(report_path)}.json"
     try:
-        # Bounded: the useful comparison is with recent runs, and an unbounded
-        # file beside a report eventually becomes the biggest thing in the repo.
         history_path.write_text(
             json.dumps(history[-20:], ensure_ascii=False, indent=2),
             encoding="utf-8")
