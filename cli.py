@@ -776,15 +776,26 @@ def cmd_fullscan(args) -> int:
         model = None
         if audit_result:
             model = from_accessibility(audit_result, lang=lang)
-        if scan_result and scan_findings:
-            # Build a minimal result for styled report
+
+        # AI patterns for styled report
+        ai_findings_for_pdf = []
+        if agent_mode and agent_candidates:
+            # Filter out typography, keep only style findings
+            ai_findings_for_pdf = [
+                c for c in agent_candidates
+                if "typography" not in c.get("offline_explanation", "").lower()
+            ]
+        elif scan_findings:
+            ai_findings_for_pdf = scan_findings
+
+        if ai_findings_for_pdf:
             class _ScanResult:
                 def __init__(self, findings):
                     self.spans = []
                     self._findings = findings
                 def blocks(self):
                     return []
-            text_model = from_text_analysis(_ScanResult(scan_findings))
+            text_model = from_text_analysis(_ScanResult(ai_findings_for_pdf))
             if model:
                 model.findings.extend(text_model.findings)
             else:
