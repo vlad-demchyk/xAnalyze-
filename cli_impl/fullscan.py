@@ -188,8 +188,19 @@ def _content_findings_from_pages(pages, args=None) -> list:
     from .scanning import CHARACTER_SOURCE
 
     passes = _content_passes(args)
+    # A judge reads every block over the network, and on ten pages that is
+    # minutes with nothing on screen. The crawl and the browser pass both
+    # count themselves out loud; this stage did not, so the one stage that
+    # can legitimately take longest was also the one that looked hung. The
+    # offline pass stays quiet - it finishes in a tenth of a second, and a
+    # progress line for it would be noise.
+    talkative = len(passes) > 1
+    total = len(pages)
     findings = []
-    for page in pages:
+    for index, page in enumerate(pages, 1):
+        if talkative:
+            print(f"# [AI patterns {index}/{total}] {page.url}",
+                  file=sys.stderr, flush=True)
         for block in page.blocks:
             spans = []
             for detector in passes:
@@ -309,7 +320,8 @@ def _warn_about_spa(pages) -> None:
                       if "rendered" in (p.diagnostics.reasons or [])]
     if spa_pages and not rendered_pages:
         print(f"# WARNING: {len(spa_pages)} SPA page(s) detected but browser rendering failed.", file=sys.stderr)
-        print(f"# Pages may appear empty. Install PySide6 + QtWebEngine for full support.", file=sys.stderr)
+        print("# Pages may appear empty. Install PySide6 + QtWebEngine "
+              "for full support.", file=sys.stderr)
     elif spa_pages and rendered_pages:
         print(f"# SPA: {len(rendered_pages)} page(s) rendered via browser, {len(spa_pages)} failed.", file=sys.stderr)
 

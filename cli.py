@@ -852,9 +852,17 @@ def build_parser() -> argparse.ArgumentParser:
                             help="additional gitignore patterns to exclude")
     p_fullscan.add_argument("--no-default-excludes", action="store_true",
                             help="don't skip node_modules/, dist/, .git/ etc")
+    # `ai` first, because it is the word people reach for and it was the one
+    # the help did not mention: the list named `llm-judge`, a backend name,
+    # and left the natural request undiscoverable even though it has always
+    # worked. `ai`, `judge` and `llm-judge` all mean the same thing - ask a
+    # model, billed to whichever account is configured (see
+    # `detectors/judges.py`); the concrete judge is printed when the run
+    # starts, so the answer to "whose account paid" is in the log.
     p_fullscan.add_argument("--detector", default="offline",
-                            help="detector for AI patterns: offline, embedding, "
-                                 "hybrid, llm-judge")
+                            help="how to read for AI patterns: offline "
+                                 "(default, free), ai (ask a model; also "
+                                 "spelled llm-judge), hybrid (both), embedding")
     p_fullscan.add_argument("--scope", default="both",
                             choices=["content", "technical", "both"],
                             help="what to read for AI patterns (default: both)")

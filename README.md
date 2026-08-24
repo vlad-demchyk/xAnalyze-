@@ -12,6 +12,7 @@ Desktop and headless analyzer: AI-generated text detection, non-keyboard charact
 - [Quick Start](#quick-start)
 - [CLI Commands](#cli-commands)
   - [fullscan](#fullscan---full-scan)
+  - [The four things people actually ask for](#the-four-things-people-actually-ask-for)
   - [scan](#scan---ai-patterns-detection)
   - [audit](#audit---accessibility-seo-performance)
   - [fix](#fix---apply-fixes)
@@ -242,6 +243,43 @@ xanalyze fullscan https://example.com --language uk
 | `--language LANG` | Report language: `uk`, `it`, `en` |
 | `--agent` | Run offline scan and output candidates for agent to judge (no API key) |
 | `--no-browser` | Static fetch only: no browser rendering and no browser pass |
+
+---
+
+### The four things people actually ask for
+
+`fullscan` has a lot of flags because it can do a lot. These are the shapes
+worth remembering; everything else is a variation on one of them.
+
+```bash
+# 1. "Check my site properly."  Ten pages, all three widths, a model reading
+#    the copy. The four flags are the four decisions - how much, how deep,
+#    how wide, who reads.
+xanalyze fullscan mysite.com --max-pages 10 --depth 2 --detector ai --breakpoints all
+
+# 2. "Check it quickly."  Defaults: 30 pages, depth 1, desktop only, offline.
+xanalyze fullscan mysite.com
+
+# 3. "Check this code."  No crawl, no browser; the AI-text and character
+#    passes plus the static audit.
+xanalyze fullscan ./my-project
+
+# 4. "What did I run, and can I carry on?"
+xanalyze runs
+xanalyze resume 2026-08-24-1331
+```
+
+**`--detector ai`** is the natural spelling and it works; `llm-judge` and
+`judge` are the same thing. None of them says whose account pays - that comes
+from your settings, and the run prints the judge it resolved to
+(`# [stage] AI patterns: claude-code-llm-judge`) so the answer is in the log
+rather than in your memory. `xanalyze ai status` says what is available.
+
+**The defaults are a quick look, not a thorough one.** Depth 1 and
+desktop-only are chosen so an unqualified `fullscan` finishes in a minute or
+two. A real audit is recipe 1, and on a ten-page site it takes about five -
+the browser pass at three widths is ~90% of that, which `timings.md` will
+show you.
 
 ---
 

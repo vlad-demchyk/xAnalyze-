@@ -201,3 +201,42 @@ class DetectorReachesACrawledSite(unittest.TestCase):
         # say whose account pays and that is the part worth printing.
         self.assertIn("AI patterns:", captured.getvalue())
         self.assertNotIn("AI patterns: ai", captured.getvalue())
+
+
+class TheSlowStageSaysSomething(unittest.TestCase):
+    """A judge reads every block over the network.
+
+    On ten pages that is minutes with nothing on screen. The crawl and the
+    browser pass both count themselves out loud; this one did not, so the
+    stage that can legitimately take longest was the one that looked hung.
+    """
+
+    class _Page:
+        def __init__(self, url):
+            self.url = url
+            self.blocks = []
+
+    def _run(self, detector):
+        import argparse
+        import contextlib
+        import io
+
+        from cli_impl.fullscan import _content_findings_from_pages
+
+        args = argparse.Namespace(detector=detector, provider=None,
+                                  scope="both", no_typography=False,
+                                  categories=None, no_unicode=False)
+        pages = [self._Page(f"https://example.com/{i}") for i in range(3)]
+        captured = io.StringIO()
+        with contextlib.redirect_stderr(captured):
+            _content_findings_from_pages(pages, args)
+        return captured.getvalue()
+
+    def test_a_judged_run_counts_its_pages(self):
+        output = self._run("ai")
+        self.assertIn("[AI patterns 1/3]", output)
+        self.assertIn("[AI patterns 3/3]", output)
+
+    def test_the_offline_pass_stays_quiet(self):
+        """It finishes in a tenth of a second; a progress line is noise."""
+        self.assertNotIn("[AI patterns", self._run(None))

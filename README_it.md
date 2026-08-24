@@ -226,6 +226,43 @@ xanalyze fullscan https://example.com --language it
 
 ---
 
+### Le quattro cose che si chiedono davvero
+
+`fullscan` ha molti flag perché sa fare molto. Queste sono le forme da
+ricordare; il resto è una variazione di una di queste.
+
+```bash
+# 1. "Controlla il mio sito per bene." Dieci pagine, tutte e tre le larghezze,
+#    un modello che legge i testi. I quattro flag sono le quattro decisioni:
+#    quanto, quanto in profondità, quanto in larghezza, chi legge.
+xanalyze fullscan mysite.com --max-pages 10 --depth 2 --detector ai --breakpoints all
+
+# 2. "Controlla velocemente." Default: 30 pagine, profondità 1, solo desktop,
+#    offline.
+xanalyze fullscan mysite.com
+
+# 3. "Controlla questo codice." Niente crawl, niente browser.
+xanalyze fullscan ./my-project
+
+# 4. "Che cosa ho eseguito, e posso riprendere?"
+xanalyze runs
+xanalyze resume 2026-08-24-1331
+```
+
+**`--detector ai`** è la grafia naturale e funziona; `llm-judge` e `judge`
+sono la stessa cosa. Nessuna dice a quale account viene addebitato: quello
+viene dalle impostazioni, e l'esecuzione stampa il giudice a cui è arrivata
+(`# [stage] AI patterns: claude-code-llm-judge`), così la risposta sta nel log
+e non nella memoria. `xanalyze ai status` dice che cosa è disponibile.
+
+**I default sono uno sguardo rapido, non accurato.** Profondità 1 e solo
+desktop sono scelti perché un `fullscan` senza flag finisca in un minuto o due.
+Un audit vero è la ricetta 1, e su un sito di dieci pagine richiede circa
+cinque minuti, di cui ~90% è il passaggio col browser a tre larghezze.
+`timings.md` lo mostra.
+
+---
+
 ### `scan` - Rilevamento pattern AI
 
 Scansiona file per pattern di testo generato da AI e caratteri non da tastiera senza modificarli.
