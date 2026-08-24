@@ -392,8 +392,13 @@ def _build_combined(args, target: str, is_url: bool, lang: str,
         },
         "summary": {
             "total_findings": len(clean_findings) + len(audit_issues),
-            "ai_patterns": len([f for f in clean_findings if f.get("source") == "style"]),
-            "characters": len([f for f in clean_findings if f.get("source") == "characters"]),
+            # One predicate, not two. See `is_character_finding`: counting
+            # `source == "style"` here missed every judge finding, because a
+            # judge stamps its own name.
+            "ai_patterns": len([f for f in clean_findings
+                                if not is_character_finding(f)]),
+            "characters": len([f for f in clean_findings
+                               if is_character_finding(f)]),
             "accessibility": sum(1 for i in audit_issues if i.category == "accessibility"),
             "seo": sum(1 for i in audit_issues if i.category == "seo"),
             "performance": sum(1 for i in audit_issues if i.category == "performance"),
@@ -429,17 +434,33 @@ class _ScanResultShim:
         return []
 
 
+def is_character_finding(finding: dict) -> bool:
+    """Is this about a character, rather than about the wording?
+
+    The one place that answers it. There were two, and they disagreed: the
+    summary counted `source == "style"` while the report counted "anything
+    that is not typography". A judge stamps its findings `source: "model"`,
+    so a live run that found six model-written passages - three of them at
+    high confidence, with the reasoning written out in Italian - reported
+    `ai_patterns: 0` in the same JSON whose own `counts` said `style: 6`.
+
+    Asked the way round that stays true when a new detector is added: a
+    character finding is recognisable (it says so), and everything else is
+    about the wording. The other phrasing has to be extended for every
+    backend, and is silently wrong until someone notices.
+    """
+    explanation = finding.get("explanation",
+                              finding.get("offline_explanation", "")) or ""
+    source = (finding.get("source") or "").lower()
+    return "characters" in source or "typography" in explanation.lower()
+
+
 def _split_style_typography(content_findings: list):
     """Sort content findings into wording vs character buckets."""
     style_findings: list = []
     typo_findings: list = []
     for f in content_findings:
-        exp = f.get("explanation", f.get("offline_explanation", "")).lower()
-        src = f.get("source", "").lower()
-        if "typography" in exp or "characters" in src:
-            typo_findings.append(f)
-        else:
-            style_findings.append(f)
+        (typo_findings if is_character_finding(f) else style_findings).append(f)
     return style_findings, typo_findings
 
 

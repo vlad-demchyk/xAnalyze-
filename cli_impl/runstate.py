@@ -51,6 +51,12 @@ PHASE_LABELS = {
 PENDING, RUNNING, DONE, FAILED, SKIPPED, PAUSED = (
     "pending", "running", "done", "failed", "skipped", "paused")
 
+#: Recorded as `running`, but the process that recorded it is gone. Never
+#: written to the file - it is derived by `RunState.status()`, because the run
+#: that would have written it is exactly the run that was killed before it
+#: could write anything.
+INTERRUPTED = "interrupted"
+
 #: Bumped when the file's shape changes in a way a reader must notice. A
 #: reader that does not recognise the number should say so rather than guess.
 SCHEMA = 1
@@ -228,8 +234,46 @@ class RunState:
                 return entry["name"]
         return None
 
+    def alive(self) -> bool:
+        """Is the process that recorded this run still running?
+
+        A run that is killed - Ctrl-C, a closed laptop, an `OOM` - never gets
+        to write a final state, so the file keeps saying `running` forever.
+        The catalogue then claims work is in progress that stopped an hour
+        ago, which is worse than saying nothing: it is the one status a
+        reader would act on.
+
+        Checked with signal 0, which asks the kernel whether the pid exists
+        without touching it. `PermissionError` means it exists and belongs to
+        someone else - still alive, still not ours to signal.
+        """
+        pid = self.data.get("pid")
+        if not isinstance(pid, int) or pid <= 0:
+            return False
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        except OSError:
+            return False
+        return True
+
+    def status(self) -> str:
+        """The recorded status, corrected for a process that is gone.
+
+        Derived rather than stored, because the correction can only be made
+        by asking now: the run that would have written `interrupted` is
+        precisely the run that was not around to write anything.
+        """
+        recorded = self.data.get("status", "")
+        if recorded == RUNNING and not self.alive():
+            return INTERRUPTED
+        return recorded
+
     def resumable(self) -> bool:
-        return (self.data.get("status") in (PAUSED, FAILED, RUNNING)
+        return (self.status() in (PAUSED, FAILED, RUNNING, INTERRUPTED)
                 and self.next_phase() is not None)
 
     def resume_command(self) -> str:
@@ -272,7 +316,7 @@ class RunState:
                 stopped = entry
                 break
         return {
-            "status": self.data.get("status"),
+            "status": self.status(),
             "target": self.data.get("target"),
             "stopped_in": stopped["name"] if stopped else None,
             "stopped_because": stopped.get("reason") if stopped else None,

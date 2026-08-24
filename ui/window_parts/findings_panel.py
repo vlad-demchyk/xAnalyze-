@@ -369,7 +369,7 @@ class FindingsPanelMixin:
         layout.setContentsMargins(0, 0, 0, 0)
 
         if is_repo_block:
-            source_label = QLabel(t("source_file", lang, path=block.file_path, line=block.line_number))
+            source_label = QLabel(t("finding_file_line", lang, path=block.file_path, line=block.line_number))
         else:
             source_label = QLabel(t("source_page", lang, url=block.page_url))
         source_label.setWordWrap(True)

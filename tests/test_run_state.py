@@ -435,3 +435,59 @@ class PauseCommand(unittest.TestCase):
         self.state.start("crawl")
         self._pause()
         self.assertTrue((self.run / runstate.PAUSE_FILE).exists())
+
+
+class AKilledRunDoesNotClaimToBeRunning(unittest.TestCase):
+    """A run that is killed never writes a final state.
+
+    Ctrl-C, a closed laptop, an OOM: the file keeps saying `running` forever,
+    and the catalogue then claims work is in progress that stopped an hour
+    ago. That is worse than saying nothing - `running` is the one status a
+    reader would act on by waiting.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.state = _state(self.tmp.name)
+        self.state.start("crawl")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_a_live_process_is_still_running(self):
+        self.assertTrue(self.state.alive())
+        self.assertEqual(self.state.status(), "running")
+
+    def test_a_dead_process_reads_as_interrupted(self):
+        self.state.data["pid"] = 2 ** 30      # nothing can have this pid
+        self.assertFalse(self.state.alive())
+        self.assertEqual(self.state.status(), runstate.INTERRUPTED)
+
+    def test_an_interrupted_run_can_still_be_continued(self):
+        self.state.data["pid"] = 2 ** 30
+        self.assertTrue(self.state.resumable())
+        self.assertEqual(self.state.next_phase(), "scan")
+
+    def test_the_correction_is_derived_not_written(self):
+        """The run that would have written `interrupted` is exactly the run
+        that was killed before it could write anything."""
+        self.state.data["pid"] = 2 ** 30
+        self.state.status()
+        self.assertEqual(self.state.data["status"], "running")
+
+    def test_a_finished_run_is_unaffected_by_its_dead_pid(self):
+        for name in runstate.PHASES:
+            self.state.start(name)
+            self.state.done(name)
+        self.state.finish()
+        self.state.data["pid"] = 2 ** 30
+        self.assertEqual(self.state.status(), "done")
+
+    def test_a_file_with_no_pid_is_not_called_alive(self):
+        self.state.data.pop("pid", None)
+        self.assertFalse(self.state.alive())
+
+    def test_the_feedback_carries_the_corrected_status(self):
+        self.state.data["pid"] = 2 ** 30
+        self.assertEqual(self.state.feedback()["status"],
+                         runstate.INTERRUPTED)

@@ -54,7 +54,11 @@ def run_rows(states) -> list:
             "run": str(state.run_dir),
             "name": state.run_dir.name,
             "target": data.get("target", ""),
-            "status": data.get("status", ""),
+            # `state.status()`, not the recorded field: a killed run never
+            # got to write a final state, so the file still says `running`
+            # and the catalogue would claim work is in progress that stopped
+            # an hour ago.
+            "status": state.status(),
             "stage": stage or "-",
             "created": data.get("created", ""),
             "age": _age(data.get("created", "")),
@@ -76,12 +80,12 @@ def cmd_runs(args) -> int:
         return EXIT_OK
     width = max(len(r["target"]) for r in rows)
     width = min(max(width, 6), 48)
-    print(f"{'run':<17} {'status':<9} {'stage':<9} {'age':<9} target")
+    print(f"{'run':<17} {'status':<12} {'stage':<9} {'age':<9} target")
     for row in rows:
         target = row["target"]
         if len(target) > width:
             target = target[:width - 1] + "…"
-        print(f"{row['name']:<17} {row['status']:<9} {row['stage']:<9} "
+        print(f"{row['name']:<17} {row['status']:<12} {row['stage']:<9} "
               f"{row['age']:<9} {target}")
     unfinished = [r for r in rows if r["resumable"]]
     if unfinished:

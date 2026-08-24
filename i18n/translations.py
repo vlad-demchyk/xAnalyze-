@@ -342,6 +342,8 @@ _STRINGS: dict[str, dict[str, str]] = {
     "runs_status_paused": {"uk": "на паузі", "it": "in pausa", "en": "paused"},
     "runs_status_failed": {"uk": "зупинено", "it": "interrotta",
                            "en": "stopped"},
+    "runs_status_interrupted": {"uk": "перервано", "it": "interrotta",
+                                "en": "interrupted"},
     "runs_status_done": {"uk": "завершено", "it": "completata",
                          "en": "complete"},
     "runs_pause_requested": {
@@ -857,7 +859,12 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Elenco salvato: {path}",
         "en": "List saved: {path}",
     },
-    "source_file": {
+    # Renamed from `source_file`, which was already the source picker's
+    # "HTML file" label. Two different strings under one key, and the later
+    # definition won - so the main source dropdown offered a literal
+    # "Файл: {path}:{line}" as its third option, in all three languages.
+    # `pyflakes` had been reporting the duplicate the whole time.
+    "finding_file_line": {
         "uk": "Файл: {path}:{line}",
         "it": "File: {path}:{line}",
         "en": "File: {path}:{line}",

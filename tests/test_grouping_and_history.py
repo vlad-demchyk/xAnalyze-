@@ -319,3 +319,78 @@ class BriefingPageIndex(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GeneratedIdentifiersDoNotSplitAProblem(unittest.TestCase):
+    """A theme that stamps a unique id per page turns one bug into ten.
+
+    WordPress writes `aria-controls="page-toc-panel-6a8c2c05ce8bd"`. The
+    markup then differs on every page while describing one broken component
+    in one template, and a live ten-page crawl reported it as ten separate
+    critical findings - the inflation grouping exists to remove, in a
+    different disguise.
+    """
+
+    class _Issue:
+        def __init__(self, snippet, source):
+            self.rule_id = "axe:aria-allowed-attr"
+            self.category = "accessibility"
+            self.severity = "critical"
+            self.snippet = snippet
+            self.selector = ""
+            self.source = source
+            self.line = None
+
+    def _toc(self, suffix, page):
+        return self._Issue(
+            f'<span class="page-toc__toggle" aria-expanded="true" '
+            f'aria-controls="page-toc-panel-{suffix}">', page)
+
+    def test_one_component_is_one_problem(self):
+        from duplicates import group_issues
+
+        issues = [self._toc(s, f"p{i}.html") for i, s in enumerate(
+            ("6a8c2c05ce8bd", "6a8c2c534c8eb", "6a8c2c7063e18", "6a8c2ca11f22"))]
+        self.assertEqual(len(group_issues(issues)), 1)
+
+    def test_every_place_is_still_named(self):
+        """Nothing is dropped: a fix has to visit each page."""
+        from duplicates import group_issues, places_of
+
+        issues = [self._toc(s, f"p{i}.html") for i, s in enumerate(
+            ("6a8c2c05ce8bd", "6a8c2c534c8eb", "6a8c2c7063e18"))]
+        first, others = group_issues(issues)[0]
+        self.assertEqual(len(places_of(first, others)), 3)
+
+    def test_genuinely_different_elements_stay_apart(self):
+        """Over-masking would hide a real problem behind a merged one."""
+        from duplicates import group_issues
+
+        issues = [self._Issue('<span class="page-toc__toggle">', "a.html"),
+                  self._Issue('<button class="nav-link">', "a.html")]
+        self.assertEqual(len(group_issues(issues)), 2)
+
+    def test_short_numbers_are_meaningful_and_kept(self):
+        """`col-6` and `h2` are structure, not machine noise."""
+        from duplicates import mask_generated_ids
+
+        self.assertEqual(mask_generated_ids('<div class="col-6"><h2>'),
+                         '<div class="col-6"><h2>')
+
+    def test_a_uuid_is_masked_whole(self):
+        from duplicates import mask_generated_ids
+
+        masked = mask_generated_ids(
+            'id="a3f1b2c4-5d6e-7f80-91a2-b3c4d5e6f708"')
+        self.assertEqual(masked, 'id="#"')
+
+    def test_a_long_digit_run_is_masked(self):
+        from duplicates import mask_generated_ids
+
+        self.assertEqual(mask_generated_ids('data-post="128374"'),
+                         'data-post="#"')
+
+    def test_empty_markup_is_left_alone(self):
+        from duplicates import mask_generated_ids
+
+        self.assertEqual(mask_generated_ids(""), "")

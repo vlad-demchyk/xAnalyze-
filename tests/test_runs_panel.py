@@ -198,3 +198,57 @@ class RunsCatalogue(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipIf(QApplication is None, "PySide6 not available")
+class SourcePickerLabels(unittest.TestCase):
+    """Two different strings shared one translation key.
+
+    `source_file` was both the picker's "HTML file" label and a finding's
+    "File: {path}:{line}" location line. The later definition won, so the main
+    source dropdown offered a literal `Файл: {path}:{line}` as its third
+    option, in all three languages. `pyflakes` had been reporting the
+    duplicate key the whole time.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_the_picker_names_a_file_type_not_a_location(self):
+        from i18n.translations import t
+
+        for lang in ("uk", "it", "en"):
+            label = t("source_file", lang)
+            self.assertNotIn("{path}", label)
+            self.assertNotIn("{line}", label)
+
+    def test_the_location_line_still_takes_a_path_and_a_line(self):
+        from i18n.translations import t
+
+        for lang in ("uk", "it", "en"):
+            self.assertIn("a.py", t("finding_file_line", lang,
+                                    path="a.py", line=5))
+
+    def test_no_translation_key_is_defined_twice(self):
+        """The defect class, not just this instance.
+
+        A duplicate key is silent: the later value wins and the earlier call
+        site renders something that was written for somewhere else.
+        """
+        import ast
+        import pathlib
+
+        source = pathlib.Path("i18n/translations.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        duplicates = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Dict):
+                continue
+            seen = set()
+            for key in node.keys:
+                if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                    if key.value in seen:
+                        duplicates.append(key.value)
+                    seen.add(key.value)
+        self.assertEqual(duplicates, [])

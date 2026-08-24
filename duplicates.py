@@ -21,6 +21,8 @@ N other places.
 """
 from __future__ import annotations
 
+import re
+
 #: What makes two findings in two files the same finding. The flagged text
 #: and what it becomes: the offsets differ between copies (the compiled file
 #: has different line numbers), and the file is the thing that varies by
@@ -82,14 +84,54 @@ def issue_identity(issue) -> tuple:
     with anything the page renders above it, so two copies of one header
     image would look like two different problems. The markup is the same
     string in both.
+
+    Generated identifiers inside the markup are masked first, and that is not
+    cosmetic. A theme that stamps a unique id into a component - WordPress
+    writes `aria-controls="page-toc-panel-6a8c2c05ce8bd"` - produces markup
+    that differs on every page while describing one bug in one template. On a
+    live ten-page crawl that turned one broken TOC toggle into ten separate
+    critical findings, which is the same inflation grouping exists to remove,
+    wearing a different disguise.
+
+    Masked narrowly on purpose: long hex runs, UUIDs and long digit runs are
+    machine-made, and anything shorter is likely to be meaningful (`h2`,
+    `col-6`, `id="nav"`). Over-masking would merge findings that really are
+    different, and a wrongly merged problem hides a real one.
     """
-    snippet = " ".join((getattr(issue, "snippet", "") or "").split())
+    snippet = mask_generated_ids(
+        " ".join((getattr(issue, "snippet", "") or "").split()))
     return (
         getattr(issue, "rule_id", ""),
         getattr(issue, "category", ""),
         getattr(issue, "severity", ""),
         snippet or (getattr(issue, "selector", "") or ""),
     )
+
+
+#: A UUID, first: it contains hex runs that the next pattern would otherwise
+#: chew up piecemeal, leaving the dashes behind as false structure.
+_UUID_RE = re.compile(
+    r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.I)
+#: Eight hex characters or more. Short enough to catch a theme's suffix,
+#: long enough that ordinary words and class names do not qualify.
+_HEXRUN_RE = re.compile(r"\b[0-9a-f]{8,}\b", re.I)
+#: Four digits or more: a timestamp, a post id, a counter. Three would catch
+#: `col-3` and every year in a copyright line.
+_DIGITRUN_RE = re.compile(r"\d{4,}")
+
+
+def mask_generated_ids(text: str) -> str:
+    """Replace machine-generated identifiers with `#`.
+
+    Exported because the report, the GUI and the tests all have to agree on
+    what "the same markup" means, and a second copy of these three patterns
+    is how they would stop agreeing.
+    """
+    if not text:
+        return text
+    text = _UUID_RE.sub("#", text)
+    text = _HEXRUN_RE.sub("#", text)
+    return _DIGITRUN_RE.sub("#", text)
 
 
 def group_issues(issues: list) -> list:
