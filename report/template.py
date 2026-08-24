@@ -66,6 +66,8 @@ _LABELS = {
         top_patterns="Highest-scoring passages",
         found_in="Found in {count} places", and_more="and {count} more",
         occurrences="Occurrences",
+        source_at="Source: {path}:{line}",
+        repo_coverage="Matched to the given repository: {matched}/{total} passages",
         mode={"text-web": "AI-text scan · website", "text-repo": "AI-text scan · repository",
              "audit-web": "Site audit · website", "audit-repo": "Site audit · repository",
              "audit-file": "Site audit · page"},
@@ -90,6 +92,8 @@ _LABELS = {
         top_patterns="Уривки з найвищою оцінкою",
         found_in="Знайдено у {count} місцях", and_more="і ще {count}",
         occurrences="Повторів",
+        source_at="Джерело: {path}:{line}",
+        repo_coverage="Знайдено в репозиторії: {matched}/{total} уривків",
         mode={"text-web": "Аналіз тексту · сайт", "text-repo": "Аналіз тексту · репозиторій",
              "audit-web": "Аудит доступності · сайт", "audit-repo": "Аудит доступності · репозиторій",
              "audit-file": "Аудит доступності · сторінка"},
@@ -114,6 +118,8 @@ _LABELS = {
         top_patterns="Passaggi con punteggio più alto",
         found_in="Trovato in {count} punti", and_more="e altri {count}",
         occurrences="Occorrenze",
+        source_at="Origine: {path}:{line}",
+        repo_coverage="Corrispondenza nel repository indicato: {matched}/{total} passaggi",
         mode={"text-web": "Analisi testo · sito", "text-repo": "Analisi testo · repository",
              "audit-web": "Audit di accessibilità · sito",
              "audit-repo": "Audit di accessibilità · repository",
@@ -430,18 +436,33 @@ def _top_patterns_section(model: ReportModel, labels: dict) -> str:
     top = ai.get("top_patterns") or []
     if not top:
         return ""
-    rows = "".join(
-        f'<tr><td class="num">{p.get("score", 0):.2f}</td>'
-        f'<td>{_esc(p.get("confidence", ""))}</td>'
-        f'<td>{_esc(p.get("text", "")[:80])}</td>'
-        f'<td>{_esc(p.get("explanation", "")[:80])}</td></tr>'
-        for p in top)
+    rows = []
+    for p in top:
+        explanation = _esc(p.get("explanation", "")[:80])
+        # A repo path is not a fifth column - most reports have none to show,
+        # and a column empty in every row but a few reads as a layout defect
+        # rather than as "this one is different". It rides inside the
+        # explanation cell instead, on its own line, only where it exists.
+        if p.get("source_file"):
+            note = labels["source_at"].format(
+                path=p["source_file"], line=p.get("source_line", 0))
+            explanation += f'<div class="src">{_esc(note)}</div>'
+        rows.append(
+            f'<tr><td class="num">{p.get("score", 0):.2f}</td>'
+            f'<td>{_esc(p.get("confidence", ""))}</td>'
+            f'<td>{_esc(p.get("text", "")[:80])}</td>'
+            f'<td>{explanation}</td></tr>')
+    coverage = ""
+    if ai.get("repo_total"):
+        note = labels["repo_coverage"].format(
+            matched=ai.get("repo_matched", 0), total=ai["repo_total"])
+        coverage = f'<p class="repo-coverage">{_esc(note)}</p>'
     return (f'<section class="ai-patterns"><h2>{_esc(labels["top_patterns"])}'
-            f'</h2><table class="category-table">'
+            f'</h2>{coverage}<table class="category-table">'
             f'<tr><th class="num">{_esc(labels["score"])}</th>'
             f'<th>{_esc(labels["confidence"])}</th>'
             f'<th>{_esc(labels["text"])}</th>'
-            f'<th>{_esc(labels["explanation"])}</th></tr>{rows}</table></section>')
+            f'<th>{_esc(labels["explanation"])}</th></tr>{"".join(rows)}</table></section>')
 
 
 def render_html(model: ReportModel, lang: str = "en") -> str:
@@ -569,6 +590,14 @@ table.category-table td.num, table.category-table th.num {{
   text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;
 }}
 table.find-table td.detail {{ color: {palette.text_muted}; }}
+/* The repo path rides inside the explanation cell rather than its own
+   column - see `_top_patterns_section` - so it needs to read as an aside,
+   not as more of the explanation. */
+table.category-table .src {{
+  color: {palette.text_muted}; font-size: 8pt; margin-top: 1mm;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}}
+.repo-coverage {{ color: {palette.text_muted}; font-size: 9pt; margin: -1mm 0 2mm; }}
 /* The index of what was examined is context, not content: small type, and a
    fixed narrow column for the count so the addresses get the width. */
 table.pages-table {{ font-size: 8pt; }}

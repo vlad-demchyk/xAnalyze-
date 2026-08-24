@@ -129,14 +129,23 @@ def _write_report(result, args, lang: str, fix_outcome=None, ai_findings=None) -
             # Top AI patterns by score
             sorted_findings = sorted(style_findings, key=lambda f: f.get("score", 0), reverse=True)
             for f in sorted_findings[:10]:
-                ai_stats["top_patterns"].append({
+                row = {
                     "text": f.get("text", "")[:100],
                     "score": f.get("score", 0),
                     "confidence": f.get("confidence", ""),
                     "explanation": f.get("explanation", "")[:120],
                     "file": f.get("file", ""),
                     "line": f.get("line", 0),
-                })
+                }
+                # Where `--repo` matched this passage to a file - the place
+                # an agent about to edit the code should open, not the page
+                # it renders on. Absent for a site-only run, which is the
+                # ordinary case, not something this summary should imply is
+                # missing.
+                if f.get("source_file"):
+                    row["source_file"] = f["source_file"]
+                    row["source_line"] = f.get("source_line", 0)
+                ai_stats["top_patterns"].append(row)
 
         # Typography statistics
         if typo_findings:

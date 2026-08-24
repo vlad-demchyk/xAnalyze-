@@ -233,7 +233,11 @@ xanalyze fullscan https://example.com --language uk
 | `--ext ...` | File extensions to scan |
 | `--exclude PATTERN` | Gitignore-style exclude pattern (repeatable) |
 | `--no-default-excludes` | Don't skip `node_modules/`, `dist/`, `.git/` etc. |
+| `--repo PATH` | Local checkout behind a URL target. A finding whose passage matches a block found under `PATH` gets `source_file`/`source_line` - the file to fix, not just the page it renders on. Additive: a URL scanned without it works exactly as before |
 | `--detector DETECTOR` | AI pattern detector: `offline`, `embedding`, `hybrid`, `llm-judge` |
+| `--model MODEL` | Model for the AI pass, e.g. `sonnet`, `opus` (only with `--detector ai`/`llm-judge`; ignored by the xFormat subscription, which picks its own) |
+| `--effort {low,medium,high}` | How hard the AI pass thinks (default: `low`) |
+| `--no-judgment-cache` | Re-ask the model about passages it already judged this machine has seen before (slower; the only way to get a fresh, and possibly different, opinion - the judge is not deterministic) |
 | `--scope SCOPE` | What to read: `content`, `technical`, `both` |
 | `--no-typography` | Leave em dashes and curly quotes alone |
 | `--breakpoints NAMES` | Responsive breakpoints: `all`, `desktop`, `tablet`, `mobile`, or comma-separated |
@@ -280,6 +284,52 @@ desktop-only are chosen so an unqualified `fullscan` finishes in a minute or
 two. A real audit is recipe 1, and on a ten-page site it takes about five -
 the browser pass at three widths is ~90% of that, which `timings.md` will
 show you.
+
+---
+
+### Scanning a site you also have the code for
+
+The two are not the same question, and neither reading substitutes for the
+other. Measured on matched content - one HTML page and the PHP template that
+produces it: the rendered page triggered **15** rules the template could not
+(`html-lang`, `page-has-h1`, `seo-canonical`, `link-text-vague`... - most of
+what WordPress writes through `wp_head()` and a template file never holds),
+and the template triggered one the page could not, backwards
+(`_e('clicca qui')` reads as `seo-empty-link` on the page - the text is
+hidden behind a function call there - and as nothing on the template, where
+`link-text-vague` never gets to see the words at all).
+
+**Scan the site for what it is: `fullscan https://example.com`.** It sees
+what a browser sees - rendered `<head>`, `axe-core`, HTML_CodeSniffer,
+Core Web Vitals - none of which exist as text in any file. This is the
+right default even when a checkout is sitting right there, because most of
+what an accessibility and SEO audit measures is a property of the render,
+not of the source.
+
+**Add `--repo PATH` when you also want to know where to fix it.** A
+content finding whose passage matches a block found under `PATH` gets
+`source_file`/`source_line` alongside the page it renders on - the report,
+the agent briefing and the JSON output all carry it. Nothing about a
+site-only run changes when `--repo` is left out; most runs have no checkout
+to point at, and are not worse off for lacking one.
+
+```bash
+xanalyze fullscan https://example.com --repo ./my-wordpress-theme --detector ai
+```
+
+The run prints how much of the site the given checkout actually explains -
+`# [AI patterns] matched to --repo: 42/68 distinct passage(s)` - and the
+report repeats it next to the highest-scoring passages. A low number is
+not necessarily a defect in the checkout: WordPress puts `<html lang>` and
+canonical links in `wp_head()`, and a widget's or a plugin's text can come
+from the database rather than any file at all. It is a real fact about
+this run either way, and worth a look either way.
+
+**Scan the repository alone (`fullscan ./my-project`) for the opposite
+case** - no live site, or a code review where "does this text sound
+AI-written" and "does this comment need a rewrite" are the only questions.
+It reads comments and docstrings, which a rendered page never shows a
+reader and this scan never claims are visible.
 
 ---
 

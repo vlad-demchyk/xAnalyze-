@@ -215,7 +215,11 @@ xanalyze fullscan https://example.com --language it
 | `--ext ...` | Estensioni file da scansionare |
 | `--exclude PATTERN` | Pattern gitignore-style di esclusione (ripetibile) |
 | `--no-default-excludes` | Non saltare `node_modules/`, `dist/`, `.git/` ecc. |
+| `--repo PATH` | Checkout locale dietro un target URL. Un rilievo il cui passaggio corrisponde a un blocco trovato sotto `PATH` ottiene `source_file`/`source_line` - il file da correggere, non solo la pagina su cui compare. Additivo: un sito scansionato senza funziona esattamente come prima |
 | `--detector DETECTOR` | Detector pattern AI: `offline`, `embedding`, `hybrid`, `llm-judge` |
+| `--model MODEL` | Modello per il passaggio AI, es. `sonnet`, `opus` (solo con `--detector ai`/`llm-judge`; ignorato dall'abbonamento xFormat, che sceglie da sé) |
+| `--effort {low,medium,high}` | Quanto impegno mette il passaggio AI (default: `low`) |
+| `--no-judgment-cache` | Richiedi di nuovo al modello passaggi già giudicati su questa macchina (più lento; unico modo per ottenere un'opinione fresca - e possibilmente diversa - dato che il giudice non è deterministico) |
 | `--scope SCOPE` | Cosa leggere: `content`, `technical`, `both` |
 | `--no-typography` | Lasciare em dash e virgolette curly |
 | `--breakpoints NAMES` | Responsive breakpoints: `all`, `desktop`, `tablet`, `mobile` |
@@ -260,6 +264,53 @@ desktop sono scelti perché un `fullscan` senza flag finisca in un minuto o due.
 Un audit vero è la ricetta 1, e su un sito di dieci pagine richiede circa
 cinque minuti, di cui ~90% è il passaggio col browser a tre larghezze.
 `timings.md` lo mostra.
+
+---
+
+### Scansionare un sito di cui hai anche il codice
+
+Non è la stessa domanda, e nessuna delle due letture sostituisce l'altra.
+Misurato su contenuto identico - una pagina HTML pronta e il template PHP
+che la genera: la pagina resa ha fatto scattare **15** regole che il
+template non poteva far scattare (`html-lang`, `page-has-h1`,
+`seo-canonical`, `link-text-vague`... - per lo più ciò che WordPress scrive
+tramite `wp_head()` e che nessun file di template contiene mai), e il
+template ne ha fatta scattare una che la pagina non poteva, al contrario
+(`_e('clicca qui')` sulla pagina si legge come `seo-empty-link` - il testo
+è nascosto dietro una chiamata di funzione - e come niente sul template,
+dove `link-text-vague` non arriva mai a vedere le parole).
+
+**Scansiona il sito per quello che è: `fullscan https://example.com`.**
+Vede ciò che vede un browser - `<head>` reso, `axe-core`,
+HTML_CodeSniffer, Core Web Vitals - nulla di tutto ciò esiste come testo in
+alcun file. È il default giusto anche quando un checkout è lì a portata di
+mano, perché la maggior parte di ciò che misura un audit di accessibilità e
+SEO è una proprietà del rendering, non della sorgente.
+
+**Aggiungi `--repo PATH` quando vuoi sapere anche dove correggere.** Un
+rilievo di contenuto il cui passaggio corrisponde a un blocco trovato sotto
+`PATH` ottiene `source_file`/`source_line` accanto alla pagina su cui
+compare - lo portano il report, il briefing per l'agente e l'output JSON.
+Senza `--repo` nulla cambia in un'esecuzione: la maggior parte delle
+esecuzioni non ha un checkout da indicare, e non ne sono peggiori.
+
+```bash
+xanalyze fullscan https://example.com --repo ./my-wordpress-theme --detector ai
+```
+
+L'esecuzione stampa quanto del sito il checkout indicato spiega davvero -
+`# [AI patterns] matched to --repo: 42/68 distinct passage(s)` - e il
+report lo ripete accanto ai passaggi con punteggio più alto. Un numero
+basso non è necessariamente un difetto del checkout: WordPress mette
+`<html lang>` e i link canonici in `wp_head()`, e il testo di un widget o
+di un plugin può venire dal database e non da alcun file. È comunque un
+fatto reale su questa esecuzione, e vale comunque la pena guardarlo.
+
+**Scansiona solo il repository (`fullscan ./my-project`) per il caso
+opposto** - nessun sito live, o una revisione del codice dove le uniche
+domande sono "questo testo suona scritto da un'AI" e "questo commento va
+riscritto". Legge commenti e docstring, che una pagina resa non mostra mai
+a un lettore e che questa scansione non fa mai passare per visibili.
 
 ---
 

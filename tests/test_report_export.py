@@ -541,6 +541,50 @@ class ReportReadability(unittest.TestCase):
         model = self._model(ai={"total": 3, "low": 3})
         self.assertNotIn("ai-patterns", render_html(model, lang="en"))
 
+    def test_a_matched_repo_path_rides_inside_the_explanation_cell(self):
+        """Not a fifth column: most reports have no `--repo` to show, and a
+        column empty in every row but a few reads as a layout defect."""
+        model = self._model(ai={"total": 1, "high": 1, "top_patterns": [
+            {"score": 0.8, "confidence": "high", "text": "a passage",
+             "explanation": "cliché: delve",
+             "source_file": "/repo/hero.php", "source_line": 12}]})
+        html = render_html(model, lang="en")
+        table = html[html.index("ai-patterns"):]
+        self.assertIn("/repo/hero.php:12", table)
+        # One <tr>, not two: the path is a line inside the explanation cell.
+        self.assertEqual(table.count("<tr>"), 2)  # header row + the one finding
+
+    def test_an_unmatched_passage_shows_no_source_line(self):
+        model = self._model(ai={"total": 1, "high": 1, "top_patterns": [
+            {"score": 0.8, "confidence": "high", "text": "a passage",
+             "explanation": "cliché: delve"}]})
+        html = render_html(model, lang="en")
+        self.assertNotIn('class="src"', html)
+
+    def test_repo_coverage_note_appears_only_when_repo_was_given(self):
+        model = self._model(ai={"total": 2, "high": 2, "repo_matched": 1,
+                                "repo_total": 2, "top_patterns": [
+            {"score": 0.8, "confidence": "high", "text": "a", "explanation": "e"}]})
+        html = render_html(model, lang="en")
+        self.assertIn("Matched to the given repository: 1/2 passages", html)
+
+    def test_no_repo_coverage_note_without_repo_total(self):
+        model = self._model(ai={"total": 1, "high": 1, "top_patterns": [
+            {"score": 0.8, "confidence": "high", "text": "a", "explanation": "e"}]})
+        html = render_html(model, lang="en")
+        # The class name is always in the stylesheet; the element it styles
+        # must not be, for a report with nothing to say about coverage.
+        self.assertNotIn('class="repo-coverage"', html)
+
+    def test_every_language_renders_the_coverage_note_without_a_raw_placeholder(self):
+        for lang in ("uk", "it", "en"):
+            model = self._model(ai={"total": 1, "high": 1, "repo_matched": 1,
+                                    "repo_total": 1, "top_patterns": [
+                {"score": 0.8, "confidence": "high", "text": "a", "explanation": "e"}]})
+            html = render_html(model, lang=lang)
+            self.assertNotIn("{matched}", html)
+            self.assertNotIn("{total}", html)
+
     def test_every_language_renders_the_new_sections(self):
         for lang in ("uk", "it", "en"):
             html = render_html(self._model(pages=3, chars=2), lang=lang)

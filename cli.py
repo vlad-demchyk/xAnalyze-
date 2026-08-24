@@ -852,6 +852,16 @@ def build_parser() -> argparse.ArgumentParser:
                             help="additional gitignore patterns to exclude")
     p_fullscan.add_argument("--no-default-excludes", action="store_true",
                             help="don't skip node_modules/, dist/, .git/ etc")
+    # Only meaningful alongside a URL target: a repo scan already reads its
+    # own files directly, and has nothing to cross-reference against. A site
+    # given without --repo scans exactly as it always did - this is additive,
+    # not a mode switch, because a live site with no matching checkout is the
+    # ordinary case, not the exception.
+    p_fullscan.add_argument("--repo", default=None, metavar="PATH",
+                            help="local checkout behind this URL, if any: AI-"
+                                 "pattern findings that match a passage in it "
+                                 "get the file and line to fix, not just the "
+                                 "page")
     # `ai` first, because it is the word people reach for and it was the one
     # the help did not mention: the list named `llm-judge`, a backend name,
     # and left the natural request undiscoverable even though it has always

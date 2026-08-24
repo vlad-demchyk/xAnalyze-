@@ -260,7 +260,41 @@ def _run_detector(detector, blocks, *, talkative: bool) -> dict:
     return out
 
 
-def _content_findings_from_pages(pages, args=None) -> list:
+def _repo_content_index(repo_path: str, args) -> dict:
+    """Distinct content blocks under `repo_path`, keyed by passage identity.
+
+    Built once per run, so a paragraph rendered on ten crawled pages is one
+    lookup rather than ten. The key is `duplicates.block_identity` - the same
+    normalise-and-mask identity a crawled page's own blocks are grouped by -
+    so a passage matches whichever side it is asked from: the rendered page,
+    or the template that produced it.
+
+    A repo given without matching pages is not an error here: WordPress
+    puts `<html lang>`, canonical links and most of `<head>` in `wp_head()`,
+    not in a theme file, so the given checkout can be entirely genuine and
+    still explain none of a particular finding. That is `--repo`'s honest
+    answer for those, not a bug in this lookup.
+    """
+    scan_args = argparse.Namespace(
+        paths=[repo_path],
+        ext=None,
+        exclude=None,
+        use_default_excludes=True,
+        max_files=getattr(args, "max_files", 5000) if args is not None else 5000,
+        scope="content",
+    )
+    files = _collect_files(scan_args.paths, scan_args)
+    index: dict = {}
+    for file in files:
+        for block in file.blocks:
+            # First occurrence wins: a passage repeated inside the repo
+            # itself (a shared partial or include) still resolves to one
+            # place, matching how `distinct_blocks` treats the crawled side.
+            index.setdefault(duplicates.block_identity(block), block)
+    return index
+
+
+def _content_findings_from_pages(pages, args=None, stats_out: dict | None = None) -> list:
     """The AI-patterns and typography pass for a crawled site.
 
     Local targets get this through the ordinary scan; a crawled page never
@@ -290,6 +324,16 @@ def _content_findings_from_pages(pages, args=None) -> list:
     keeps them: a wrong dash is a fact about the text, so a low score there
     means "a small defect", not "probably nothing". A style score below the
     threshold means the second thing, and saying it 10,946 times says nothing.
+
+    **`args.repo`**, when given, adds `source_file`/`source_line` to a
+    finding whose passage matches a block found under that path - the actual
+    place to fix it, not just the page it renders on. This is additive: a
+    site given without `--repo` behaves exactly as before, because most runs
+    have no checkout to point at and are not made worse for lacking one.
+    `stats_out`, when given, receives `{"repo_matched", "repo_total"}` over
+    every distinct passage on the site, not only the ones that produced a
+    finding - "how much of this site the given checkout explains" is a
+    question worth an answer even when nothing was flagged.
     """
     from models import Confidence
 
@@ -308,8 +352,18 @@ def _content_findings_from_pages(pages, args=None) -> list:
     groups = duplicates.distinct_blocks(blocks)
     spans_by_id = _judge_distinct(groups, passes, args)
 
+    repo_path = getattr(args, "repo", None) if args is not None else None
+    repo_index = _repo_content_index(repo_path, args) if repo_path else None
+    if repo_index is not None and stats_out is not None:
+        matched = sum(1 for representative, _occurrences in groups
+                      if duplicates.block_identity(representative) in repo_index)
+        stats_out["repo_matched"] = matched
+        stats_out["repo_total"] = len(groups)
+
     findings = []
     for representative, occurrences in groups:
+        source_block = repo_index.get(duplicates.block_identity(representative)) \
+            if repo_index is not None else None
         for span in spans_by_id.get(representative.block_id, ()):
             if (span.details or {}).get("error"):
                 continue
@@ -331,7 +385,7 @@ def _content_findings_from_pages(pages, args=None) -> list:
             # *asked*; every place is still reported, because a fix has to
             # visit each page that carries the passage.
             for block in occurrences:
-                findings.append({
+                finding = {
                     "file": block.page_url,
                     "line": 0,
                     "text": passage[:200],
@@ -339,7 +393,11 @@ def _content_findings_from_pages(pages, args=None) -> list:
                     "score": round(span.score, 3),
                     "confidence": confidence,
                     "explanation": span.explanation,
-                })
+                }
+                if source_block is not None:
+                    finding["source_file"] = source_block.file_path
+                    finding["source_line"] = source_block.line_number
+                findings.append(finding)
     return findings
 
 
@@ -571,23 +629,32 @@ def _split_style_typography(content_findings: list):
     return style_findings, typo_findings
 
 
-def _populate_ai_patterns(model, style_findings: list) -> None:
+def _populate_ai_patterns(model, style_findings: list, repo_stats: dict | None = None) -> None:
+    top_patterns = []
+    for f in sorted(style_findings,
+                    key=lambda x: x.get("score", x.get("offline_score", 0)),
+                    reverse=True)[:10]:
+        row = {"text": f.get("text", f.get("offline_explanation", ""))[:100],
+               "score": f.get("score", f.get("offline_score", 0)),
+               "confidence": f.get("confidence", "low"),
+               "explanation": f.get("explanation", f.get("offline_explanation", ""))[:120]}
+        # Present only when `--repo` was given and this passage matched -
+        # the direct place to fix it, alongside the page it renders on.
+        if f.get("source_file"):
+            row["source_file"] = f["source_file"]
+            row["source_line"] = f.get("source_line", 0)
+        top_patterns.append(row)
     model.ai_patterns = {
         "total": len(style_findings),
         "high": len([f for f in style_findings if f.get("confidence") == "high"]),
         "medium": len([f for f in style_findings if f.get("confidence") == "medium"]),
         "low": len([f for f in style_findings if f.get("confidence") == "low"]),
         "files": len({f.get("file", "") for f in style_findings}),
-        "top_patterns": [
-            {"text": f.get("text", f.get("offline_explanation", ""))[:100],
-             "score": f.get("score", f.get("offline_score", 0)),
-             "confidence": f.get("confidence", "low"),
-             "explanation": f.get("explanation", f.get("offline_explanation", ""))[:120]}
-            for f in sorted(style_findings,
-                            key=lambda x: x.get("score", x.get("offline_score", 0)),
-                            reverse=True)[:10]
-        ],
+        "top_patterns": top_patterns,
     }
+    if repo_stats and repo_stats.get("repo_total"):
+        model.ai_patterns["repo_matched"] = repo_stats["repo_matched"]
+        model.ai_patterns["repo_total"] = repo_stats["repo_total"]
 
 
 def _populate_typography(model, typo_findings: list) -> None:
@@ -604,7 +671,8 @@ def _populate_typography(model, typo_findings: list) -> None:
     }
 
 
-def _styled_report_model(audit_result, content_findings: list, lang: str):
+def _styled_report_model(audit_result, content_findings: list, lang: str,
+                         repo_stats: dict | None = None):
     """Build the ReportModel behind --styled-report."""
     from report.model import from_accessibility, from_text_analysis
 
@@ -631,17 +699,17 @@ def _styled_report_model(audit_result, content_findings: list, lang: str):
 
     style_findings, typo_findings = _split_style_typography(content_findings)
     if style_findings:
-        _populate_ai_patterns(model, style_findings)
+        _populate_ai_patterns(model, style_findings, repo_stats)
     if typo_findings:
         _populate_typography(model, typo_findings)
     return model
 
 
 def _write_styled_report(args, audit_result, content_findings: list,
-                         lang: str) -> None:
+                         lang: str, repo_stats: dict | None = None) -> None:
     if not getattr(args, "styled_report", None):
         return
-    model = _styled_report_model(audit_result, content_findings, lang)
+    model = _styled_report_model(audit_result, content_findings, lang, repo_stats)
     if model is None:
         return
     from report.export import write_styled_report
@@ -667,14 +735,22 @@ def _markdown_briefing_input(agent_mode: bool, agent_candidates: list,
              "explanation": c.get("offline_explanation", "")}
             for c in agent_candidates
         ]
-    return [
-        {"file": f.get("file", ""), "line": f.get("line", 0),
-         "text": f.get("text", "")[:200],
-         "score": f.get("score", 0),
-         "confidence": f.get("confidence", ""),
-         "explanation": f.get("explanation", "")}
-        for f in scan_findings
-    ]
+    rows = []
+    for f in scan_findings:
+        row = {"file": f.get("file", ""), "line": f.get("line", 0),
+               "text": f.get("text", "")[:200],
+               "score": f.get("score", 0),
+               "confidence": f.get("confidence", ""),
+               "explanation": f.get("explanation", "")}
+        # `file`/`line` stay the page - the agent briefing's other rows all
+        # mean "here" that way. `source_file`/`source_line` are additive:
+        # where `--repo` was given and this passage matched, an agent about
+        # to edit the code should not have to re-derive that from the page.
+        if f.get("source_file"):
+            row["source_file"] = f["source_file"]
+            row["source_line"] = f.get("source_line", 0)
+        rows.append(row)
+    return rows
 
 
 def _write_markdown_briefing(args, audit_result, agent_mode: bool,
@@ -812,6 +888,12 @@ def cmd_fullscan(args) -> int:
         print(f"path not found: {target}", file=sys.stderr)
         return EXIT_ERROR
 
+    repo_arg = getattr(args, "repo", None)
+    if repo_arg and not Path(repo_arg).is_dir():
+        print(f"--repo path not found or not a directory: {repo_arg}",
+              file=sys.stderr)
+        return EXIT_ERROR
+
     resumed = getattr(args, "_resume_state", None)
     if resumed is not None:
         folder = runfolder.RunFolder(resumed.run_dir.parent, resumed.run_dir)
@@ -926,16 +1008,29 @@ def _run_phases(args, state, folder, timings, target, lang, is_url, is_page,
             # Not agent mode: the same content pass a repo gets, so the
             # AI-patterns and typography sections exist in the reports.
             timings.start("AI patterns scan")
-            scan_findings = _content_findings_from_pages(pages, args)
+            repo_stats: dict = {}
+            scan_findings = _content_findings_from_pages(
+                pages, args, stats_out=repo_stats)
+            counts = {
+                "total": len(scan_findings),
+                "style": len([f for f in scan_findings
+                              if f.get("source") != "characters"]),
+                "characters": len([f for f in scan_findings
+                                   if f.get("source") == "characters"]),
+            }
+            if repo_stats:
+                counts.update(repo_stats)
+                # One line, not one per passage: `--repo` given but almost
+                # nothing matching is worth knowing about (wrong checkout,
+                # or a gap like `_I18N_CALLS` missing WordPress's `_e()`),
+                # and it belongs beside the other stage notes, not buried in
+                # the JSON only an agent will read.
+                print(f"# [AI patterns] matched to --repo: "
+                      f"{repo_stats['repo_matched']}/{repo_stats['repo_total']} "
+                      f"distinct passage(s)", file=sys.stderr, flush=True)
             scan_result = {
                 "findings": scan_findings,
-                "counts": {
-                    "total": len(scan_findings),
-                    "style": len([f for f in scan_findings
-                                  if f.get("source") != "characters"]),
-                    "characters": len([f for f in scan_findings
-                                       if f.get("source") == "characters"]),
-                },
+                "counts": counts,
             }
 
     guard("audit")
@@ -1032,7 +1127,8 @@ def _run_phases(args, state, folder, timings, target, lang, is_url, is_page,
         ("agent briefing", _briefing),
         ("styled report",
          lambda: _write_styled_report(args, audit_result,
-                                      all_content_findings, lang)),
+                                      all_content_findings, lang,
+                                      repo_stats=(scan_result or {}).get("counts"))),
     ):
         try:
             write()
