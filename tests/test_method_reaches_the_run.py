@@ -290,3 +290,68 @@ class BatchingIsNotDefeated(unittest.TestCase):
 
         self.assertEqual(detector.batch_calls, 1)
         self.assertEqual(detector.block_calls, 0)
+
+
+class TheRowShowsWhatWasJudged(unittest.TestCase):
+    """Five reasons about five sentences must not show one block five times.
+
+    A live run's hero block produced five findings with five different
+    explanations and five identical text columns, because this path showed
+    `block.text[:200]` while the local scan has always sliced the span. The
+    reader could not tell which sentence each reason was about.
+    """
+
+    class _Page:
+        def __init__(self, url, blocks):
+            self.url = url
+            self.blocks = blocks
+
+    class _Judge:
+        name = "fake-judge"
+
+        def __init__(self, ranges):
+            self.ranges = ranges
+
+        def analyze_blocks(self, blocks):
+            from models import Confidence, TextSpan
+
+            block = blocks[0]
+            return [TextSpan(block_id=block.block_id, start=s, end=e,
+                             score=0.8, confidence=Confidence.HIGH,
+                             detector_name=self.name, explanation=f"reason {i}",
+                             details={"source": "model"})
+                    for i, (s, e) in enumerate(self.ranges)]
+
+    def _run(self, text, ranges):
+        from models import TextBlock
+        from cli_impl import fullscan
+
+        block = TextBlock(block_id="b1", text=text,
+                          page_url="https://example.com", dom_path="p")
+        page = self._Page("https://example.com", [block])
+        real = fullscan._content_passes
+        fullscan._content_passes = lambda args: [self._Judge(ranges)]
+        try:
+            return fullscan._content_findings_from_pages([page], None)
+        finally:
+            fullscan._content_passes = real
+
+    def test_each_row_carries_its_own_passage(self):
+        text = "First sentence here. Second sentence here. Third one here."
+        found = self._run(text, [(0, 20), (21, 42), (43, len(text))])
+        texts = [f["text"] for f in found]
+        self.assertEqual(len(set(texts)), 3)
+        self.assertIn("First sentence", texts[0])
+        self.assertIn("Second sentence", texts[1])
+
+    def test_a_whole_block_flag_still_shows_the_block(self):
+        """The judge falls back to the whole block when it paraphrases."""
+        text = "One passage that was not quoted verbatim."
+        found = self._run(text, [(0, len(text))])
+        self.assertEqual(found[0]["text"], text)
+
+    def test_an_empty_slice_falls_back_to_the_block(self):
+        """A zero-width span would otherwise print an empty row."""
+        text = "Some text."
+        found = self._run(text, [(3, 3)])
+        self.assertEqual(found[0]["text"], text)

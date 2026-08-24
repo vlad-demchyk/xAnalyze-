@@ -224,10 +224,17 @@ def _content_findings_from_pages(pages, args=None) -> list:
             confidence = span.confidence
             if isinstance(confidence, Confidence):
                 confidence = confidence.value
+            # The passage that was judged, not the block it sat in. The
+            # local scan has always sliced the span (`cli_impl/scanning.py`);
+            # this path showed `block.text[:200]`, so a judge that returned
+            # five findings for five sentences of one hero block produced
+            # five rows with identical text and five different reasons - the
+            # reader could not tell which sentence each reason was about.
+            passage = block.text[span.start:span.end] or block.text
             findings.append({
                 "file": page.url,
                 "line": 0,
-                "text": block.text[:200],
+                "text": passage[:200],
                 "source": (span.details or {}).get("source", ""),
                 "score": round(span.score, 3),
                 "confidence": confidence,
