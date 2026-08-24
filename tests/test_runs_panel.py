@@ -252,3 +252,65 @@ class SourcePickerLabels(unittest.TestCase):
                         duplicates.append(key.value)
                     seen.add(key.value)
         self.assertEqual(duplicates, [])
+
+
+@unittest.skipIf(QApplication is None, "PySide6 not available")
+class TheColumnStaysNarrow(unittest.TestCase):
+    """The runs panel must fit the column it was added to.
+
+    Three buttons abreast needed 284px in a 268px column. That raised the
+    whole sidebar's minimum width to 308, which turned on a horizontal
+    scrollbar and clipped every control above it - "Sign in" rendered as
+    "Sign i". Found by rendering the window and looking at it.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        os.environ["XANALYZE_REPORT_ROOT"] = str(Path(self.tmp.name))
+        _make_run(Path(self.tmp.name), "2026-08-24-1200",
+                  "https://a-very-long-host-name.cloudwaysapps.com/x",
+                  failed=True)
+        self.window = MainWindow()
+        self.window.show()
+        self.app.processEvents()
+
+    def tearDown(self):
+        self.window.close()
+        self.window.deleteLater()
+        self.app.processEvents()
+        os.environ.pop("XANALYZE_REPORT_ROOT", None)
+        self.tmp.cleanup()
+
+    def test_the_panel_fits_the_sidebar(self):
+        from ui.main_window import SIDEBAR_WIDTH
+
+        self.window.refresh_runs()
+        self.app.processEvents()
+        self.assertLessEqual(self.window.toolbar.minimumSizeHint().width(),
+                             SIDEBAR_WIDTH)
+
+    def test_the_list_never_scrolls_sideways(self):
+        """A scrollbar here eats a row and widens the whole column."""
+        self.assertEqual(self.window.runs_list.horizontalScrollBarPolicy(),
+                         Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+    def test_a_long_address_is_trimmed_from_the_left(self):
+        """An address is recognised by its tail."""
+        self.window.refresh_runs()
+        first = self.window.runs_list.item(0).text().split("\n")[0]
+        self.assertTrue(first.startswith("…"))
+        self.assertTrue(first.endswith("cloudwaysapps.com/x"))
+
+    def test_the_status_line_is_not_trimmed_from_the_left(self):
+        """`ElideLeft` turned "complete · 34m ago" into "…mplete · 34m ago"."""
+        self.assertEqual(self.window.runs_list.textElideMode(),
+                         Qt.TextElideMode.ElideRight)
+
+    def test_nothing_trimmed_is_lost(self):
+        self.window.refresh_runs()
+        tip = self.window.runs_list.item(0).toolTip()
+        self.assertIn("a-very-long-host-name.cloudwaysapps.com", tip)

@@ -49,13 +49,38 @@ class RunsPanel:
         # Short: this sits in a column that already holds eleven controls, and
         # a list that grows with the disk would push Analyze off the bottom.
         self.runs_list.setMaximumHeight(120)
+        # A URL is longer than any column this could live in. Eliding is the
+        # honest answer - a horizontal scrollbar here would both eat a row of
+        # the short list and force the whole sidebar wider, which is what the
+        # buttons below already did once.
+        self.runs_list.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        # Elide from the right, and pre-shorten the address from the left in
+        # `_run_label`. The two lines of a row want opposite treatment - an
+        # address is identified by its tail, a status line by its head - and a
+        # view has only one elide mode, so the address is trimmed by hand and
+        # the mode is set for the line that is left. `ElideLeft` here turned
+        # "complete · 34m ago" into "…mplete · 34m ago".
+        self.runs_list.setTextElideMode(Qt.TextElideMode.ElideRight)
+        self.runs_list.setWordWrap(False)
+        # Free to shrink: without this the widest row sets a floor under the
+        # column, which is the same defect one level down.
+        self.runs_list.setMinimumWidth(0)
         self.runs_list.itemSelectionChanged.connect(self._on_run_selected)
         self.runs_list.itemDoubleClicked.connect(
             lambda _item: self._on_open_run_clicked())
         self.runs_empty = muted(t("runs_empty", self.lang))
 
+        # Two rows, not three buttons abreast. Three needed 284px in a 268px
+        # column: it raised the whole sidebar's minimum width to 308, which
+        # turned on a horizontal scrollbar and clipped every control above it
+        # - "Sign in" rendered as "Sign i". The pattern the rest of this
+        # column already follows is that only a *short pair* earns a row, so
+        # Resume and Pause share one (they are opposites and both fit) and
+        # "Open folder" takes its own, being both longer and a different kind
+        # of action.
         buttons = QWidget()
-        button_layout = QHBoxLayout(buttons)
+        button_layout = QVBoxLayout(buttons)
         button_layout.setContentsMargins(0, 0, 0, 0)
         button_layout.setSpacing(self.palette_tokens.space_1)
         self.resume_run_btn = QPushButton(t("runs_resume", self.lang))
@@ -64,9 +89,14 @@ class RunsPanel:
         self.pause_run_btn.clicked.connect(self._on_pause_run_clicked)
         self.open_run_btn = QPushButton(t("runs_open", self.lang))
         self.open_run_btn.clicked.connect(self._on_open_run_clicked)
-        for button in (self.resume_run_btn, self.pause_run_btn,
-                       self.open_run_btn):
-            button_layout.addWidget(button)
+        pair = QWidget()
+        pair_layout = QHBoxLayout(pair)
+        pair_layout.setContentsMargins(0, 0, 0, 0)
+        pair_layout.setSpacing(self.palette_tokens.space_1)
+        pair_layout.addWidget(self.resume_run_btn)
+        pair_layout.addWidget(self.pause_run_btn)
+        button_layout.addWidget(pair)
+        button_layout.addWidget(self.open_run_btn)
 
         for widget in (self.runs_label, self.runs_list, self.runs_empty,
                        buttons):
@@ -92,6 +122,9 @@ class RunsPanel:
             # and the status, and re-deriving either from the label would mean
             # parsing a string this method formatted.
             item.setData(Qt.ItemDataRole.UserRole, row)
+            # The row is trimmed to fit a narrow column, so the whole truth
+            # goes on the tooltip: nothing shown short is thereby lost.
+            item.setToolTip(f"{row.get('target', '')}\n{row.get('run', '')}")
             self.runs_list.addItem(item)
         self.runs_list.setVisible(bool(rows))
         self.runs_empty.setVisible(not rows)
@@ -99,10 +132,17 @@ class RunsPanel:
         self._on_run_selected()
         return len(rows)
 
+    #: Characters of the address kept in a row. Short, because the column is
+    #: narrow at every width and this list holds runs of the *same* project
+    #: more often than not - what tells two rows apart is the age and the
+    #: status, not the address they share.
+    _ADDRESS_CHARS = 22
+
     def _run_label(self, row: dict) -> str:
         target = row.get("target", "")
-        if len(target) > 34:
-            target = "…" + target[-33:]
+        # From the left: an address is recognised by its tail.
+        if len(target) > self._ADDRESS_CHARS:
+            target = "…" + target[-(self._ADDRESS_CHARS - 1):]
         # `t` returns the key when it has no entry, so an unrecognised status
         # would print `runs_status_whatever` at the user. The raw word is a
         # worse label but a true one, so it is what an unknown status gets.
