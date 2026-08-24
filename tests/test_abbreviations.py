@@ -90,3 +90,55 @@ class TestSentenceSplitting(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LanguageGuessMustNotGateAbbreviations(unittest.TestCase):
+    """The abbreviation list is not chosen by the detected language.
+
+    The Italian placeholder `Inserisci un colore (es. #ffffff) o un gradiente
+    (es. linear-gradient(...))` was detected as English. `es.` is in the
+    Italian list and not the English one, so the splitter cut on it, three
+    near-equal fragments became "three sentences", and rhythm uniformity
+    scored 0.82 on a CSS placeholder with no cliché and no structure - the
+    highest-scoring finding of an entire run over eight projects.
+    """
+
+    ITALIAN_PLACEHOLDER = ("Inserisci un colore (es. #ffffff) o un gradiente "
+                           "(es. linear-gradient(45deg, #ff0000, #00ff00))")
+
+    def test_the_placeholder_is_one_sentence(self):
+        from detectors.heuristic import _sentences
+
+        self.assertEqual(len(_sentences(self.ITALIAN_PLACEHOLDER)), 1)
+
+    def test_it_is_one_sentence_even_when_called_as_english(self):
+        """The guess is what was wrong; the split must not depend on it."""
+        from detectors.heuristic import _sentences
+
+        self.assertEqual(len(_sentences(self.ITALIAN_PLACEHOLDER, "en")), 1)
+
+    def test_no_rhythm_signal_is_invented_for_it(self):
+        import detectors  # noqa: F401 - registers the detectors
+        from detectors.factory import DetectorFactory
+        from models import CodeBlock
+
+        detector = DetectorFactory.create("offline", include_style=True)
+        block = CodeBlock(block_id="b", file_path="x.css", start=0,
+                          end=len(self.ITALIAN_PLACEHOLDER),
+                          text=self.ITALIAN_PLACEHOLDER, line_number=1)
+        for span in detector.analyze_block(block):
+            signals = (span.details or {}).get("signals") or {}
+            self.assertIsNone(signals.get("uniformity"),
+                              "uniformity was measured on fragments of one "
+                              "sentence")
+
+    def test_an_english_abbreviation_is_honoured_under_an_italian_guess(self):
+        """The union works in both directions."""
+        from detectors.heuristic import _sentences
+
+        self.assertEqual(len(_sentences("Ask Dr. Rossi about it.", "it")), 1)
+
+    def test_a_real_boundary_still_splits(self):
+        from detectors.heuristic import _sentences
+
+        self.assertEqual(len(_sentences("First one. Second one.")), 2)

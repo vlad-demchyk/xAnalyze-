@@ -40,7 +40,7 @@ from cli_impl.scanning import (  # noqa: F401 - re-exported for `import cli`
     CHARACTER_SOURCE, HYBRID_NAME,
     _analyze, _build_ignore_list, _build_scan_config, _categories,
     _collect_files, _create_detector, _ignore_root, _report_detector_errors,
-    _settings_for_ignore,
+    _settings_for_ignore, _split_unchanged, _store_unchanged,
 )
 from cli_impl.output import (  # noqa: F401 - re-exported for `import cli`
     _counts, _coverage_line, _print_human, _print_json, _public, _visible,
@@ -53,7 +53,7 @@ from cli_impl.reports import (  # noqa: F401 - re-exported for `import cli`
 from cli_impl.auditpass import (  # noqa: F401 - re-exported for `import cli`
     PAGE_FILE_SUFFIXES, _audit_at_widths, _browser_url,
     _chosen_breakpoints, _crawl_maybe_rendering, _is_page_file,
-    _render_mode, _run_browser_pass, _wrap,
+    _render_mode, _run_browser_pass, _wrap, looks_like_url, with_scheme,
 )
 from cli_impl.aicmds import (  # noqa: F401 - re-exported for `import cli`
     _provider_for, _xformat_provider,
@@ -88,18 +88,27 @@ def cmd_scan(args) -> int:
     missing: list = []
     unjudged: list = []
     walked: list = []
-    
-    # Incremental scan: only scan changed files
-    if getattr(args, "incremental", False):
-        from scan_cache import get_cache
-        cache = get_cache()
-        # TODO: implement incremental logic
-        # For now, just print a message
-        print("# Incremental scan: checking cache...", file=sys.stderr)
-    
+
     files = _collect_files(args.paths, args, missing_out=missing,
                            diagnostics_out=walked)
-    findings, _ = _analyze(files, args, unjudged_out=unjudged)
+
+    incremental = bool(getattr(args, "incremental", False))
+    cached_findings: list = []
+    to_read = files
+    if incremental:
+        to_read, cached_findings, reused = _split_unchanged(files, args)
+        print(f"# incremental: {reused} file(s) unchanged since the last scan, "
+              f"{len(to_read)} re-read", file=sys.stderr)
+
+    findings, _ = _analyze(to_read, args, unjudged_out=unjudged)
+    if incremental:
+        _store_unchanged(to_read, findings, args)
+        # Cached rows have no `TextSpan` behind them - it does not survive
+        # JSON - so the styled report, which reads spans, covers only the
+        # files actually re-read this run. It says so; see
+        # `_write_styled_text_report`.
+        findings = findings + cached_findings
+        findings.sort(key=lambda f: (f.get("file", ""), f.get("offset", 0)))
     if args.json:
         _print_json(findings, walked=walked)
     else:
@@ -304,14 +313,19 @@ def cmd_audit(args) -> int:
         reviewer = AIAccessibilityReview(provider=provider)
 
     target = args.target
+    # `example.com` is what people type; treating it as a path and answering
+    # "path not found" is the wrong answer to a question that had one obvious
+    # reading. An existing path still wins - see `looks_like_url`.
+    is_url = looks_like_url(target) or args.url
+    if is_url:
+        target = with_scheme(target)
     # A target that is neither a URL nor a path that exists is a typo, and the
     # only honest answer is to say so. Auditing it used to print "0 findings"
     # and exit 0 - which in a pipeline is a pass, so a mistyped path read as a
     # clean bill of health.
-    if not (target.startswith(("http://", "https://")) or args.url):
-        if not Path(target).exists():
-            print(f"path not found: {target}", file=sys.stderr)
-            return EXIT_ERROR
+    if not is_url and not Path(target).exists():
+        print(f"path not found: {target}", file=sys.stderr)
+        return EXIT_ERROR
 
     if _is_page_file(target) and not args.url:
         # A page built into one file is a finished document, so it is audited
@@ -319,14 +333,12 @@ def cmd_audit(args) -> int:
         # rendered from `file://`, which is faithful precisely because
         # everything it needs is inlined.
         result = audit.analyze_page_file(target, ai_review=reviewer)
-    elif target.startswith(("http://", "https://")) or args.url:
+    elif is_url:
         from crawler import CrawlConfig, EMPTY_JS_RENDERED, crawl
 
         # Same crawler as the text scan: depth-limited, and refusing to leave
         # the domain. That rule holds for both modes because there is one
         # crawler, not two.
-        if not target.startswith(("http://", "https://")):
-            target = "https://" + target
         config = CrawlConfig(max_depth=args.depth, max_pages=args.max_pages,
                              render_mode=_render_mode(args))
 
@@ -872,6 +884,12 @@ def build_parser() -> argparse.ArgumentParser:
                             help="machine-readable JSON output for agent")
     p_fullscan.set_defaults(func=cmd_fullscan)
 
+    # `runs` / `resume` / `pause`: a long scan that stops must not be a scan
+    # that is lost. Registered from their own module because they are about
+    # the run rather than about the target.
+    from cli_impl.runcmds import add_run_parsers
+    add_run_parsers(sub)
+
     p_update = sub.add_parser(
         "update",
         help="self-update the CLI binary from the latest GitHub Release")
@@ -917,7 +935,42 @@ def build_parser() -> argparse.ArgumentParser:
         help="hybrid merge: input contains both judgments and agent_findings")
     p_agent_judge.set_defaults(func=cmd_agent_judge)
 
+    # The global flags again, on every subcommand. `xanalyze fullscan X
+    # --no-update-check` is what people type - the flag reads as belonging to
+    # the command, not to the program - and argparse answered it with
+    # "unrecognized arguments", which is a wrong answer to a correct request.
+    #
+    # `default=SUPPRESS` is what makes the two copies co-operate rather than
+    # fight: without it the subparser's own default would write `False` over
+    # a `True` set before the subcommand, so putting the flag first would
+    # stop working the moment it also worked last.
+    _accept_global_flags_everywhere(sub)
     return parser
+
+
+def _accept_global_flags_everywhere(subparsers, seen: set | None = None) -> None:
+    """Add `--no-update-check` to every subcommand, at every depth.
+
+    Recursive because two commands nest further (`cache stats`, `ai login`),
+    and a flag accepted on `cache` but not on `cache stats` is the same
+    surprise one level down.
+
+    Deduplicated by object identity: an alias (`a11y` for `audit`) is the
+    same parser under a second name, and adding one flag to it twice raises.
+    """
+    seen = seen if seen is not None else set()
+    for subparser in subparsers.choices.values():
+        if id(subparser) in seen:
+            continue
+        seen.add(id(subparser))
+        subparser.add_argument(
+            "--no-update-check", action="store_true",
+            default=argparse.SUPPRESS,
+            help="skip the automatic daily check for a newer version")
+        for action in subparser._subparsers._group_actions if \
+                subparser._subparsers else ():
+            if hasattr(action, "choices") and action.choices:
+                _accept_global_flags_everywhere(action, seen)
 
 
 def main(argv=None) -> int:

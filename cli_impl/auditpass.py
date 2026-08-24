@@ -129,6 +129,96 @@ def _is_page_file(target: str) -> bool:
     return path.is_file() and path.suffix.lower() in PAGE_FILE_SUFFIXES
 
 
+#: Last labels that read as a file suffix rather than a TLD. Everything the
+#: scanner can open, plus the archive and document suffixes a person is most
+#: likely to point at by mistake. Only consulted for a target with no slash
+#: and no port - see `looks_like_url`.
+_FILE_SUFFIXES = frozenset((
+    ".html", ".htm", ".xhtml", ".xml", ".jsx", ".tsx", ".vue", ".svelte",
+    ".js", ".ts", ".mjs", ".cjs", ".py", ".php", ".rb", ".erb", ".go",
+    ".java", ".cs", ".json", ".yml", ".yaml", ".md", ".txt", ".css",
+    ".scss", ".less", ".zip", ".tar", ".gz", ".pdf", ".png", ".jpg",
+    ".jpeg", ".svg", ".webp", ".lock", ".log", ".toml", ".ini", ".cfg",
+    ".sh", ".bak",
+))
+
+#: A bare host, with an optional port and path: `example.com`,
+#: `www.example.co.uk/pricing`, `localhost:8000`, `127.0.0.1:8000/admin`.
+#: Anchored, so a shell path never matches by accident. Built on first use.
+_BARE_HOST = None
+
+
+def _bare_host_pattern():
+    """Compiled lazily and cached: `cmd_scan` never needs it."""
+    global _BARE_HOST
+    if _BARE_HOST is None:
+        import re
+        label = r"[A-Za-z0-9¡-￿](?:[A-Za-z0-9¡-￿-]*[A-Za-z0-9¡-￿])?"
+        _BARE_HOST = re.compile(
+            r"^(?:"
+            # dotted host whose last label is a TLD-shaped word: example.com
+            rf"{label}(?:\.{label})*\.[A-Za-z¡-￿]{{2,}}"
+            # or a name that only makes sense with a port: localhost:8000
+            rf"|{label}(?=:\d)"
+            # or a dotted-quad address
+            r"|\d{1,3}(?:\.\d{1,3}){3}"
+            r")"
+            r"(?::\d{1,5})?"      # optional port
+            r"(?:[/?#].*)?$",     # optional path, query, fragment
+            re.IGNORECASE)
+    return _BARE_HOST
+
+
+def looks_like_url(target: str) -> bool:
+    """Is this target meant as a website rather than a path on disk?
+
+    `https://example.com` is unambiguous; `example.com` is what people
+    actually type, and answering it with `path not found: example.com` is
+    the wrong answer to a question that had one obvious reading. So a target
+    with no scheme is treated as a host when it *looks* like one and there
+    is no such file or directory - an existing path always wins, so a folder
+    genuinely named `example.com` still scans as a folder.
+
+    Deliberately not "anything without a slash": `./src`, `src`, `~/repo`
+    and `page.html` must keep resolving as paths, and a single word with no
+    dot and no port is far more likely a typo'd directory than a hostname.
+    """
+    if not target:
+        return False
+    if target.startswith(("http://", "https://")):
+        return True
+    # Another scheme entirely (file://, ftp://, mailto:) is not ours to crawl.
+    if "://" in target:
+        return False
+    from pathlib import Path
+    try:
+        if Path(target).exists():
+            return False
+    except OSError:
+        pass  # a name too long or otherwise unopenable is not a path
+    if target.startswith(("/", ".", "~")):
+        return False
+    if not _bare_host_pattern().match(target):
+        return False
+    # `page.html` matches the host shape - `.html` is TLD-shaped - but a
+    # target with no slash, no port and a file suffix is a file the user
+    # expected to find, and reporting it as an unreachable website would
+    # hide the real answer: it is not there. A suffix inside a path
+    # (`example.com/page.html`) is unaffected; the host is what is checked.
+    host = target.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0]
+    if ":" in host:
+        return True
+    import posixpath
+    return posixpath.splitext(host)[1].lower() not in _FILE_SUFFIXES
+
+
+def with_scheme(target: str) -> str:
+    """`example.com` -> `https://example.com`; an explicit scheme is kept."""
+    if target.startswith(("http://", "https://")):
+        return target
+    return "https://" + target
+
+
 def _render_mode(args) -> str:
     """When to hand a page to a browser during the crawl.
 

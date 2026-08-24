@@ -64,10 +64,33 @@ class ReportFinding:
     #: for audit, the detector name for text.
     engine: str = ""
     wcag: tuple = ()
+    #: Every place this same problem was found, `location` included and
+    #: first. Filled by `ReportModel.grouped_findings`; empty on an
+    #: ungrouped finding, where `location` alone is the answer.
+    locations: list = field(default_factory=list)
 
     @property
     def severity_rank(self) -> int:
         return SEVERITY_RANK.get(self.severity, 9)
+
+    @property
+    def occurrences(self) -> int:
+        """How many places this problem was found in - 1 when ungrouped."""
+        return max(1, len(self.locations))
+
+    @property
+    def identity(self) -> tuple:
+        """What makes two findings the same problem in different places.
+
+        Everything the reader would compare *except* where it is. Two pages
+        missing a meta description produce the same title, the same
+        explanation and the same (empty) markup, so they are one problem
+        with two places; two different images missing `alt` differ in
+        `snippet` and stay two problems.
+        """
+        return (self.category, self.severity, self.title, self.found,
+                self.why, self.fix, self.snippet, self.replacement,
+                self.engine, self.wcag)
 
 
 @dataclass
@@ -106,6 +129,42 @@ class ReportModel:
         so two findings in the same file sit next to each other."""
         return sorted(self.findings,
                       key=lambda f: (f.severity_rank, f.category, f.location))
+
+    def grouped_findings(self) -> list:
+        """The same findings, with one row per distinct problem.
+
+        A crawl of thirty pages that share a header reports the header's
+        every fault thirty times. Thirty identical cards is not thirty times
+        the information — it is the same card, and a reader stops reading a
+        list where every row repeats the previous one. So identical findings
+        collapse into one, carrying the full list of places in `locations`,
+        and nothing is lost: every address a fix has to visit is still named.
+
+        Ordering follows `sorted_findings`, and the collapsed row keeps the
+        first place it was seen at as its own `location`, so a grouped report
+        and an ungrouped one open on the same finding.
+        """
+        from dataclasses import replace
+
+        grouped: dict = {}
+        order: list = []
+        for finding in self.sorted_findings():
+            key = finding.identity
+            if key in grouped:
+                where = finding.location
+                if where and where not in grouped[key]:
+                    grouped[key].append(where)
+                continue
+            grouped[key] = [finding.location] if finding.location else []
+            order.append((key, finding))
+        return [replace(first, locations=grouped[key]) for key, first in order]
+
+    def counts_by_severity_grouped(self) -> dict:
+        """`counts_by_severity`, counting each distinct problem once."""
+        counts: dict = {}
+        for finding in self.grouped_findings():
+            counts[finding.severity] = counts.get(finding.severity, 0) + 1
+        return counts
 
 
 # --------------------------------------------------------------- text mode

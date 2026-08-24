@@ -336,6 +336,23 @@ def _sentences(text: str, language: str | None = None) -> list[str]:
     breaks on abbreviations like "es." or "Dr.". This version checks
     whether the word before each period is a known abbreviation and, if
     so, does not split there.
+
+    Abbreviations are checked against **every** language's list, not against
+    the detected language's. The language is a guess, and on exactly the
+    strings this matters for - short ones - it is often wrong: the Italian
+    placeholder `Inserisci un colore (es. #ffffff) o un gradiente (es.
+    linear-gradient(...))` was detected as English, so the Italian list
+    holding `es.` was never consulted, the string split into three
+    fragments, and three fragments of near-equal length scored 0.82 for
+    rhythm uniformity. A CSS placeholder with no clich√© and no structure
+    became the highest-scoring finding of a whole run.
+
+    The two errors are not symmetrical. Splitting on an abbreviation
+    *invents* sentences, and the uniformity signal is computed from their
+    lengths, so it invents evidence. Failing to split a real boundary only
+    lowers the sentence count, and below three sentences uniformity is not
+    measured at all - the signal goes quiet instead of lying. Given a guess
+    at the language, the quiet failure is the one to choose.
     """
     if not text or not text.strip():
         return []
@@ -348,7 +365,9 @@ def _sentences(text: str, language: str | None = None) -> list[str]:
             if i + 1 < len(text) and text[i + 1] in ' \t\n':
                 # Check if this is an abbreviation
                 word = find_word_before_period(text, i)
-                if word and is_abbreviation(word, language):
+                # `language=None` on purpose: every list, not the detected
+                # one. See the docstring.
+                if word and is_abbreviation(word):
                     continue  # Skip this split point
                 split_points.append(i + 1)  # Split after the punctuation
 

@@ -70,16 +70,28 @@ class ScanCache:
         
         return cached.get("result")
     
-    def put(self, file_path: str, result: dict) -> None:
-        """Cache a scan result for a file."""
+    def put(self, file_path: str, result: dict, *, save: bool = True) -> None:
+        """Cache a scan result for a file.
+
+        `save=False` keeps the entry in memory only, for a caller writing
+        many entries in one pass: saving flushes the whole cache file, so a
+        repository of four thousand files meant four thousand full rewrites
+        of it. Such a caller must call `save()` when it is done - see
+        `cli_impl.scanning._store_unchanged`.
+        """
         file_key = _file_hash(file_path)
         if not file_key:
             return
-        
+
         self._cache[file_path] = {
             "hash": file_key,
             "result": result,
         }
+        if save:
+            self._save()
+
+    def save(self) -> None:
+        """Flush the cache to disk. For callers that used `put(save=False)`."""
         self._save()
     
     def invalidate(self, file_path: str) -> None:

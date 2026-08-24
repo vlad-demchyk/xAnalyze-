@@ -15,8 +15,78 @@ from detectors.factory import DetectorFactory
 from models import Confidence, score_to_confidence
 
 from cli_impl import EXIT_ERROR, EXIT_FINDINGS, EXIT_OK
+from cli_impl.auditpass import looks_like_url, with_scheme
 from cli_impl.scanning import _categories, _collect_files
 from cli_impl.output import _print_human, _print_json
+
+
+def _blocks_from_pages(pages) -> list:
+    """Crawled page blocks, adapted to the shape this pipeline reads.
+
+    `TextBlock` carries `page_url`; everything downstream here - the origin
+    matcher, the finding dicts, the human output - reads `file_path`,
+    `line_number` and `start`/`end`, because it was written for a repository
+    scan. Adapting at the boundary keeps one pipeline instead of two.
+
+    The page URL becomes the "file". A page has no lines, so the line is 0
+    and the offsets span the block: the origin matcher falls back to
+    matching on the wording, which is what actually survives between a scan
+    and the judgment of it - `block_id` is a fresh uuid every process, so it
+    never does.
+    """
+    from models import CodeBlock
+
+    blocks = []
+    for page in pages:
+        for block in page.blocks:
+            blocks.append(CodeBlock(
+                block_id=block.block_id,
+                file_path=page.url,
+                start=0,
+                end=len(block.text),
+                text=block.text,
+                line_number=0,
+                language_hint=block.language_hint,
+            ))
+    return blocks
+
+
+def _agent_blocks(args, walked: list | None = None) -> list:
+    """The blocks to judge, from whichever kind of target was named.
+
+    A URL is crawled; a path is walked. `agent-scan` and `agent-judge` used
+    to walk the filesystem unconditionally, so pointing either at a website
+    produced zero blocks - and for `agent-judge` that meant every judgment
+    the agent had just made matched nothing and was dropped with a single
+    warning. `fullscan --agent` on a URL prints an instruction to run
+    exactly that command, so the documented workflow ended in silence.
+    """
+    targets = list(getattr(args, "paths", None) or [])
+    urls = [t for t in targets if looks_like_url(t)]
+    paths = [t for t in targets if t not in urls]
+
+    blocks: list = []
+    if paths:
+        files = _collect_files(paths, args, diagnostics_out=walked)
+        blocks.extend(b for f in files for b in f.blocks)
+    for url in urls:
+        blocks.extend(_blocks_from_pages(_crawl_for_agent(url, args)))
+    return blocks
+
+
+def _crawl_for_agent(url: str, args):
+    """Crawl one URL with the same rules the audit uses."""
+    from cli_impl.auditpass import _crawl_maybe_rendering, _render_mode
+    from crawler import CrawlConfig
+
+    config = CrawlConfig(max_depth=getattr(args, "depth", 0) or 0,
+                         max_pages=getattr(args, "max_pages", None) or 30,
+                         render_mode=_render_mode(args))
+    print(f"# [crawl] {with_scheme(url)} depth={config.max_depth}",
+          file=sys.stderr, flush=True)
+    pages = _crawl_maybe_rendering(with_scheme(url), config)
+    print(f"# [crawl done] {len(pages)} page(s)", file=sys.stderr, flush=True)
+    return pages
 
 
 def _agent_detection_rules() -> dict:
@@ -247,7 +317,7 @@ def cmd_agent_scan(args) -> int:
     No API key, no registration, no network call — the agent IS the judge.
     """
     walked: list = []
-    files = _collect_files(args.paths, args, diagnostics_out=walked)
+    blocks = _agent_blocks(args, walked)
 
     categories = _categories(args)
     offline = DetectorFactory.create(
@@ -256,7 +326,6 @@ def cmd_agent_scan(args) -> int:
         include_style=True,
     )
 
-    blocks = [b for f in files for b in f.blocks]
     spans = offline.analyze_blocks(blocks)
 
     threshold = getattr(args, "threshold", 0.25)
@@ -582,8 +651,7 @@ def cmd_agent_judge(args) -> int:
         _split_input(input_data, getattr(args, "hybrid", False))
 
     walked: list = []
-    files = _collect_files(args.paths, args, diagnostics_out=walked)
-    blocks = [b for f in files for b in f.blocks]
+    blocks = _agent_blocks(args, walked)
     blocks_by_id = {b.block_id: b for b in blocks}
 
     categories = _categories(args)

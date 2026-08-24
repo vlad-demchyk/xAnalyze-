@@ -197,6 +197,81 @@ def _report_detector_errors(spans) -> int:
     return len(failures)
 
 
+#: Keys of a finding dict that only make sense in the process that produced
+#: it: the `TextSpan` and the `CodeBlock` behind it. Everything else is plain
+#: JSON, so everything else can be cached.
+_UNCACHEABLE = ("_span", "_block")
+
+
+def _incremental_signature(args) -> dict:
+    """What a cached result is only valid for.
+
+    A cache keyed on the file alone is worse than no cache: `--detector
+    offline` and `--detector llm-judge` read the same bytes and must not
+    read each other's answers, and neither must a run with a different
+    `--scope` or a narrower `--categories`. So the configuration that
+    changes the answer is stored alongside the answer and compared before it
+    is trusted. The app version is in there too - a rule added in a release
+    changes what the same file yields, and a cache that outlives the release
+    would keep reporting the old verdict.
+    """
+    return {
+        "version": config.APP_VERSION,
+        "detector": DetectorFactory.resolve(getattr(args, "detector", None)
+                                            or "none"),
+        "scope": getattr(args, "scope", "content"),
+        "categories": list(_categories(args)),
+        "no_unicode": bool(getattr(args, "no_unicode", False)),
+        "no_ignore": bool(getattr(args, "no_ignore", False)),
+    }
+
+
+def _split_unchanged(file_results, args):
+    """Partition files into "must be read again" and "answer already known".
+
+    Returns `(fresh, cached_findings, reused)`. `--incremental` exists for
+    the pre-commit case: a repository of four thousand files where two
+    changed. Reading the two is the whole point, and the cache is keyed on
+    modification time and size, so a file edited back to its previous
+    contents is still re-read rather than assumed.
+    """
+    from scan_cache import get_cache
+
+    cache = get_cache()
+    signature = _incremental_signature(args)
+    fresh, cached_findings, reused = [], [], 0
+    for result in file_results:
+        entry = cache.get(result.path)
+        if entry and entry.get("config") == signature:
+            cached_findings.extend(entry.get("findings") or [])
+            reused += 1
+            continue
+        fresh.append(result)
+    return fresh, cached_findings, reused
+
+
+def _store_unchanged(file_results, findings, args) -> None:
+    """Record this run's answer per file, for the next `--incremental` run.
+
+    Every scanned file is recorded, including the ones with nothing wrong:
+    otherwise a clean file has no cache entry and is re-read on every run,
+    which is most of the repository and most of the time.
+    """
+    from scan_cache import get_cache
+
+    cache = get_cache()
+    signature = _incremental_signature(args)
+    by_file: dict = {result.path: [] for result in file_results}
+    for finding in findings:
+        bucket = by_file.get(finding.get("file"))
+        if bucket is not None:
+            bucket.append({k: v for k, v in finding.items()
+                           if k not in _UNCACHEABLE})
+    for path, rows in by_file.items():
+        cache.put(path, {"config": signature, "findings": rows}, save=False)
+    cache.save()
+
+
 def _analyze(file_results, args, unjudged_out: list | None = None):
     """Return (findings, blocks_by_id). Findings are plain dicts so the JSON
     output and the human output share one shape."""

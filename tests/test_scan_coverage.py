@@ -199,7 +199,7 @@ class WindowList(unittest.TestCase):
         result.spans = [self._span(b.block_id, b, dash, dash + 1) for b in blocks]
 
         self.window.result = result
-        self.window._last_request = None
+        self.window.view_model._last_request = None
         self.window._populate_flagged_list()
 
         rows = [self.window.flagged_list.item(i).text()

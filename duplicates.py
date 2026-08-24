@@ -57,3 +57,72 @@ def group(findings: list) -> list:
 def copies_of(finding: dict, others: list) -> list:
     """The other files the same finding sits in, as plain paths."""
     return [other.get("file", "") for other in others]
+
+
+# ------------------------------------------------------- audit issues
+#
+# The same reasoning, one document type further out. A crawl of thirty pages
+# that share a header reports the header's unlabelled search field thirty
+# times, and a missing meta description once per page - the count says
+# "thirty problems" when there is one problem and thirty places. Reports and
+# lists therefore group on what the problem *is* and carry the places with
+# it, rather than repeating the whole finding per place.
+
+
+def issue_identity(issue) -> tuple:
+    """What makes two audit findings the same problem.
+
+    The rule that fired, and the element it fired on. `source` is excluded
+    by definition - being in more than one document is what makes this a
+    group - and so is `line`, since the same shared markup sits at a
+    different line in every page that includes it.
+
+    The element is identified by its markup rather than by its selector: a
+    selector is a position (`body > header:nth-child(1) > img`) and shifts
+    with anything the page renders above it, so two copies of one header
+    image would look like two different problems. The markup is the same
+    string in both.
+    """
+    snippet = " ".join((getattr(issue, "snippet", "") or "").split())
+    return (
+        getattr(issue, "rule_id", ""),
+        getattr(issue, "category", ""),
+        getattr(issue, "severity", ""),
+        snippet or (getattr(issue, "selector", "") or ""),
+    )
+
+
+def group_issues(issues: list) -> list:
+    """`[(first, others)]` for audit issues, in arrival order.
+
+    Same contract as `group`: nothing is dropped, and a finding with no twin
+    comes back with an empty `others`, so one branch renders every case.
+    """
+    order: list = []
+    seen: dict = {}
+    for issue in issues:
+        key = issue_identity(issue)
+        if key in seen:
+            seen[key][1].append(issue)
+            continue
+        entry = (issue, [])
+        seen[key] = entry
+        order.append(entry)
+    return order
+
+
+def places_of(issue, others: list) -> list:
+    """Every document the grouped problem was found in, first one included.
+
+    Deduplicated and in arrival order: a page reached twice by the crawl, or
+    two findings collapsed within one document, must not make the list say
+    the same address twice.
+    """
+    places: list = []
+    for candidate in [issue] + list(others):
+        where = getattr(candidate, "source", "") or ""
+        line = getattr(candidate, "line", None)
+        label = f"{where}:{line}" if line else where
+        if label and label not in places:
+            places.append(label)
+    return places

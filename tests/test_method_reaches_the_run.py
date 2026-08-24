@@ -41,12 +41,15 @@ class MethodDecidesTheEngine(unittest.TestCase):
         # test: without pinning it, the request would normalise the AI method
         # away on a machine with nothing signed in, and the test would pass
         # for the wrong reason.
-        self.window._ai_available = lambda: True
+        # Pinned on AppState, which is where the answer now lives: the
+        # window used to carry its own `_ai_available`, and the two could
+        # disagree.
+        self.window.app_state.set_ai_available(True)
         # Picking an account in the toolbar writes it to settings, which is
         # the point of the control - but a test run must not edit the config
         # of whoever is running it.
         self.window.settings.save = lambda: None
-        self.window._last_request = None
+        self.window.view_model._last_request = None
         self.window._retranslate_choices()
         self._select(self.window.checks_combo,
                      (CHECK_ACCESSIBILITY, CHECK_AI_PATTERNS))
@@ -93,7 +96,7 @@ class MethodDecidesTheEngine(unittest.TestCase):
     def test_no_account_is_refused_before_it_is_offered(self):
         """With nothing signed in, the AI entries are not in the combo at
         all - the window does not offer a method it would then substitute."""
-        self.window._ai_available = lambda: False
+        self.window.app_state.set_ai_available(False)
         self.window._retranslate_choices()
         offered = [self.window.method_combo.itemData(i)
                    for i in range(self.window.method_combo.count())]
