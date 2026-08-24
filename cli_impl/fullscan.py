@@ -201,28 +201,38 @@ def _content_findings_from_pages(pages, args=None) -> list:
         if talkative:
             print(f"# [AI patterns {index}/{total}] {page.url}",
                   file=sys.stderr, flush=True)
-        for block in page.blocks:
-            spans = []
-            for detector in passes:
-                spans.extend(detector.analyze_block(block))
-            for span in spans:
-                if (span.details or {}).get("error"):
-                    continue
-                if span.confidence == Confidence.LOW \
-                        and (span.details or {}).get("source") != CHARACTER_SOURCE:
-                    continue
-                confidence = span.confidence
-                if isinstance(confidence, Confidence):
-                    confidence = confidence.value
-                findings.append({
-                    "file": page.url,
-                    "line": 0,
-                    "text": block.text[:200],
-                    "source": (span.details or {}).get("source", ""),
-                    "score": round(span.score, 3),
-                    "confidence": confidence,
-                    "explanation": span.explanation,
-                })
+        blocks = list(page.blocks)
+        by_id = {block.block_id: block for block in blocks}
+        # `analyze_blocks`, not a loop over `analyze_block`. The judges batch
+        # in groups of eight, and the per-block call defeats that completely:
+        # the Claude Code judge starts one `claude -p` process per call, so a
+        # ten-page site went from roughly a hundred requests to roughly eight
+        # hundred. Measured on a live run - the stage was still going after
+        # five minutes and would have taken about an hour.
+        spans = []
+        for detector in passes:
+            spans.extend(detector.analyze_blocks(blocks))
+        for span in spans:
+            if (span.details or {}).get("error"):
+                continue
+            if span.confidence == Confidence.LOW \
+                    and (span.details or {}).get("source") != CHARACTER_SOURCE:
+                continue
+            block = by_id.get(span.block_id)
+            if block is None:
+                continue
+            confidence = span.confidence
+            if isinstance(confidence, Confidence):
+                confidence = confidence.value
+            findings.append({
+                "file": page.url,
+                "line": 0,
+                "text": block.text[:200],
+                "source": (span.details or {}).get("source", ""),
+                "score": round(span.score, 3),
+                "confidence": confidence,
+                "explanation": span.explanation,
+            })
     return findings
 
 

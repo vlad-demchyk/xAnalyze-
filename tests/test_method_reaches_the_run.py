@@ -240,3 +240,53 @@ class TheSlowStageSaysSomething(unittest.TestCase):
     def test_the_offline_pass_stays_quiet(self):
         """It finishes in a tenth of a second; a progress line is noise."""
         self.assertNotIn("[AI patterns", self._run(None))
+
+
+class BatchingIsNotDefeated(unittest.TestCase):
+    """The judges batch in eights; a per-block loop throws that away.
+
+    The Claude Code judge starts one `claude -p` process per call, so calling
+    `analyze_block` in a loop turned roughly a hundred requests into roughly
+    eight hundred. Measured on a live ten-page run: still going after five
+    minutes, on course for about an hour.
+    """
+
+    class _Page:
+        def __init__(self, url, blocks):
+            self.url = url
+            self.blocks = blocks
+
+    class _CountingDetector:
+        name = "counting"
+
+        def __init__(self):
+            self.block_calls = 0
+            self.batch_calls = 0
+
+        def analyze_block(self, block):
+            self.block_calls += 1
+            return []
+
+        def analyze_blocks(self, blocks):
+            self.batch_calls += 1
+            return []
+
+    def test_the_whole_page_is_handed_over_at_once(self):
+        from models import TextBlock
+        from cli_impl import fullscan
+
+        detector = self._CountingDetector()
+        blocks = [TextBlock(block_id=f"b{i}", text=f"passage {i}",
+                            page_url="https://example.com", dom_path="p")
+                  for i in range(20)]
+        page = self._Page("https://example.com", blocks)
+
+        real = fullscan._content_passes
+        fullscan._content_passes = lambda args: [detector]
+        try:
+            fullscan._content_findings_from_pages([page], None)
+        finally:
+            fullscan._content_passes = real
+
+        self.assertEqual(detector.batch_calls, 1)
+        self.assertEqual(detector.block_calls, 0)
