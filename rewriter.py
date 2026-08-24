@@ -39,8 +39,15 @@ def effective_provider_name(settings, force: str | None = None,
 
 
 def build_provider(settings=None, force: str | None = None,
-                   allow_auto: bool = False) -> LLMProvider:
-    """Create the provider named in settings, configured and ready."""
+                   allow_auto: bool = False, model: str | None = None,
+                   effort: str | None = None) -> LLMProvider:
+    """Create the provider named in settings, configured and ready.
+
+    `model` and `effort` override what the settings hold, for a caller that
+    was told on the command line. `None` means "not asked for" and leaves the
+    setting alone - passing the setting's own value back in would be the same
+    thing, but only until the setting changes shape.
+    """
     settings = settings or config.Settings.load()
     name = effective_provider_name(settings, force, allow_auto)
     if name == "xformat":
@@ -51,12 +58,14 @@ def build_provider(settings=None, force: str | None = None,
         )
     if name == "claude-code":
         return LLMProviderFactory.create(
-            "claude-code", model=settings.claude_code_model,
+            "claude-code",
+            model=model or settings.claude_code_model,
+            effort=effort or settings.claude_code_effort,
         )
     return LLMProviderFactory.create(
         "anthropic",
         api_key=config.get_anthropic_api_key(),
-        model=settings.claude_model,
+        model=model or settings.claude_model,
     )
 
 

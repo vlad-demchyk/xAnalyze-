@@ -40,6 +40,18 @@ _SUPPRESSION_LEVELS = (
 )
 
 
+def _select_data(combo, value) -> None:
+    """Select the entry whose `userData` is `value`, if there is one.
+
+    Falls back to leaving the current index alone rather than to index 0: a
+    settings file holding a model this build does not offer should show as
+    unrecognised, not be silently rewritten to the first item on save.
+    """
+    index = combo.findData(value)
+    if index >= 0:
+        combo.setCurrentIndex(index)
+
+
 class SettingsDialog(QDialog):
     def __init__(self, settings: config.Settings, lang: str, parent=None):
         super().__init__(parent)
@@ -190,6 +202,28 @@ class SettingsDialog(QDialog):
         self.model_edit = QLineEdit(self.settings.claude_model)
         a_form.addRow(t("settings_model", self.lang), self.model_edit)
         layout.addWidget(self.anthropic_group)
+
+        # --- Claude Code group ---
+        # Its own box, because it is a different account from the one above:
+        # this is the session already signed in on this machine, and what it
+        # costs is a setting rather than a detail - the AI pass runs over
+        # every block on a site. `sonnet` at `low` effort is enough for the
+        # job, which classifies short passages against a fixed rubric.
+        self.claude_code_group = QGroupBox("Claude Code")
+        cc_form = QFormLayout(self.claude_code_group)
+        self.cc_model_combo = QComboBox()
+        for label, value in (("—", ""), ("sonnet", "sonnet"),
+                             ("opus", "opus"), ("haiku", "haiku")):
+            self.cc_model_combo.addItem(label, userData=value)
+        _select_data(self.cc_model_combo, self.settings.claude_code_model)
+        cc_form.addRow(t("settings_cc_model", self.lang), self.cc_model_combo)
+        self.cc_effort_combo = QComboBox()
+        for label, value in (("—", ""), ("low", "low"),
+                             ("medium", "medium"), ("high", "high")):
+            self.cc_effort_combo.addItem(label, userData=value)
+        _select_data(self.cc_effort_combo, self.settings.claude_code_effort)
+        cc_form.addRow(t("settings_cc_effort", self.lang), self.cc_effort_combo)
+        layout.addWidget(self.claude_code_group)
 
         # --- xformat group ---
         self.xformat_group = QGroupBox("app.xformat.net")
@@ -558,6 +592,11 @@ class SettingsDialog(QDialog):
 
         self.settings.llm_provider = self.provider_combo.currentData()
         self.settings.claude_model = self.model_edit.text().strip() or self.settings.claude_model
+        # Empty is a real answer here - "whatever the session is set to" -
+        # so these are read straight rather than falling back to the old
+        # value the way the free-text model field above has to.
+        self.settings.claude_code_model = self.cc_model_combo.currentData() or ""
+        self.settings.claude_code_effort = self.cc_effort_combo.currentData() or ""
         self.settings.xformat_base_url = self.xformat_url_edit.text().strip() or self.settings.xformat_base_url
 
         typed_key = self.api_key_edit.text().strip()

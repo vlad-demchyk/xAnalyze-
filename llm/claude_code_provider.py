@@ -64,6 +64,14 @@ _SESSION_ENV_VARS = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT")
 #: someone driving this from Claude Code expects.
 DEFAULT_MODEL = ""
 
+#: How hard the session thinks. Empty means "whatever the session is set to",
+#: the same contract as the model. The CLI accepts `--effort <level>`; a scan
+#: classifies short passages against a fixed rubric, which is the kind of work
+#: a low setting does as well as a high one and far faster - see
+#: `detectors/claude_llm_judge.py`, which has made the same choice on the API
+#: path since it was written.
+DEFAULT_EFFORT = ""
+
 #: A rewrite is short. A CLI start-up plus one turn measured ~6s cold and
 #: ~2s warm, so this is generous rather than tight.
 DEFAULT_TIMEOUT = 180.0
@@ -103,9 +111,11 @@ class ClaudeCodeProvider(LLMProvider):
     uses_account = True
 
     def __init__(self, model: str = DEFAULT_MODEL, timeout: float = DEFAULT_TIMEOUT,
-                 binary: str | None = None, **config):
+                 binary: str | None = None, effort: str = DEFAULT_EFFORT,
+                 **config):
         super().__init__(**config)
         self.model = model or ""
+        self.effort = effort or ""
         self.timeout = timeout
         self._binary = binary or find_binary()
         self._workdir: str | None = None
@@ -138,6 +148,8 @@ class ClaudeCodeProvider(LLMProvider):
         ]
         if self.model:
             argv += ["--model", self.model]
+        if self.effort:
+            argv += ["--effort", self.effort]
         return argv
 
     def _call(self, system: str, user_text: str) -> str:

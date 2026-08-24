@@ -312,6 +312,12 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Finding detail",
     },
     # --- the runs catalogue ---
+    "settings_cc_model": {
+        "uk": "Модель", "it": "Modello", "en": "Model",
+    },
+    "settings_cc_effort": {
+        "uk": "Зусилля", "it": "Sforzo", "en": "Effort",
+    },
     "runs_title": {
         "uk": "Прогони:",
         "it": "Esecuzioni:",

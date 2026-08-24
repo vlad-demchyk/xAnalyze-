@@ -37,6 +37,15 @@ CHOICES = (
      (("anthropic — your own API key", "anthropic"),
       ("xformat — subscription", "xformat"),
       ("claude-code — the signed-in CLI", "claude-code"))),
+    # The AI pass runs over every block on a site, so what it costs is a
+    # setting and not a detail. `sonnet` at `low` is enough for the job: the
+    # pass classifies short passages against a fixed rubric.
+    ("claude_code_model", "AI model (Claude Code)",
+     (("the session's own setting", ""), ("sonnet", "sonnet"),
+      ("opus", "opus"), ("haiku", "haiku"))),
+    ("claude_code_effort", "AI effort (Claude Code)",
+     (("the session's own setting", ""), ("low", "low"),
+      ("medium", "medium"), ("high", "high"))),
     ("crawl_depth", "Crawl depth",
      (("0", "0"), ("1", "1"), ("2", "2"), ("3", "3"))),
     ("max_pages", "Max pages per crawl",

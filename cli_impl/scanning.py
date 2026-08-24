@@ -14,7 +14,9 @@ import config
 import suppression
 import unicode_rules
 from detectors.factory import DetectorFactory
-from detectors.judges import JUDGE_ALIASES, JUDGE_NAMES, judge_for_provider
+from detectors.judges import (
+    JUDGE_ALIASES, JUDGE_BY_PROVIDER, JUDGE_NAMES, judge_for_provider,
+)
 from models import Confidence, ScanDiagnostics
 from repo_scanner import (
     DEFAULT_IGNORE_PATTERNS,
@@ -133,10 +135,28 @@ def _create_detector(args):
     if name in JUDGE_NAMES and (provider or name in JUDGE_ALIASES):
         name = resolved_judge()
 
+    # `--model` and `--effort` are about the pass, not about the account, so
+    # they apply to whichever judge the account resolved to. Only what was
+    # actually asked for is passed: an unset flag must leave the settings'
+    # answer alone rather than overwrite it with a default of its own.
+    overrides = {key: value for key, value in
+                 (("model", getattr(args, "model", None)),
+                  ("effort", getattr(args, "effort", None))) if value}
+
     if name == "claude-llm-judge":
         # The key can live in the keychain as well as the environment; reading
         # only the environment made a key entered in Settings invisible here.
-        return DetectorFactory.create(name, api_key=config.get_anthropic_api_key())
+        return DetectorFactory.create(name, api_key=config.get_anthropic_api_key(),
+                                      **overrides)
+    if overrides and name in JUDGE_BY_PROVIDER.values():
+        # A provider-backed judge builds its own account client from the
+        # settings, so an override has to arrive as a ready provider rather
+        # than as a constructor argument it would ignore.
+        settings = config.Settings.load()
+        forced = rewriter.effective_provider_name(
+            settings, force=provider, allow_auto=True)
+        return DetectorFactory.create(
+            name, provider=rewriter.build_provider(force=forced, **overrides))
     return DetectorFactory.create(name)
 
 

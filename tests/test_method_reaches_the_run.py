@@ -355,3 +355,73 @@ class TheRowShowsWhatWasJudged(unittest.TestCase):
         text = "Some text."
         found = self._run(text, [(3, 3)])
         self.assertEqual(found[0]["text"], text)
+
+
+class ModelAndEffortAreSettable(unittest.TestCase):
+    """The AI pass runs over every block, so what it costs is a setting.
+
+    `sonnet` at `low` effort is enough for this job - it classifies short
+    passages against a fixed rubric - and there was no way to say so from the
+    CLI, the TUI or the window.
+    """
+
+    def _detector(self, model=None, effort=None):
+        import argparse
+
+        from cli_impl.scanning import _create_detector
+
+        return _create_detector(argparse.Namespace(
+            detector="ai", provider=None, model=model, effort=effort))
+
+    def _argv(self, detector):
+        provider = detector._get_provider()
+        return provider._argv("system prompt")
+
+    def test_nothing_asked_for_leaves_the_session_alone(self):
+        """An unset flag must not overwrite the setting with its own default."""
+        argv = self._argv(self._detector())
+        self.assertNotIn("--model", argv)
+        self.assertNotIn("--effort", argv)
+
+    def test_a_model_reaches_the_invocation(self):
+        argv = self._argv(self._detector(model="sonnet"))
+        self.assertIn("--model", argv)
+        self.assertEqual(argv[argv.index("--model") + 1], "sonnet")
+
+    def test_an_effort_reaches_the_invocation(self):
+        argv = self._argv(self._detector(effort="low"))
+        self.assertIn("--effort", argv)
+        self.assertEqual(argv[argv.index("--effort") + 1], "low")
+
+    def test_one_may_be_set_without_the_other(self):
+        argv = self._argv(self._detector(model="haiku"))
+        self.assertIn("--model", argv)
+        self.assertNotIn("--effort", argv)
+
+    def test_the_settings_carry_it_when_the_flags_do_not(self):
+        import config
+        import rewriter
+
+        settings = config.Settings.load()
+        settings.claude_code_model = "sonnet"
+        settings.claude_code_effort = "low"
+        provider = rewriter.build_provider(settings, force="claude-code")
+        self.assertEqual(provider.model, "sonnet")
+        self.assertEqual(provider.effort, "low")
+
+    def test_a_flag_beats_the_setting(self):
+        import config
+        import rewriter
+
+        settings = config.Settings.load()
+        settings.claude_code_model = "opus"
+        provider = rewriter.build_provider(settings, force="claude-code",
+                                           model="haiku")
+        self.assertEqual(provider.model, "haiku")
+
+    def test_the_tui_offers_both(self):
+        from tui.screens.settings import CHOICES
+
+        names = {attribute for attribute, _label, _options in CHOICES}
+        self.assertIn("claude_code_model", names)
+        self.assertIn("claude_code_effort", names)

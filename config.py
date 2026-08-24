@@ -112,6 +112,12 @@ class Settings:
     # configured to use", which is what someone driving this from a Claude
     # Code session normally expects; set e.g. "sonnet" to pin it cheaper.
     claude_code_model: str = ""
+    # How hard that session thinks. Empty means "whatever the session is set
+    # to". A scan classifies short passages against a fixed rubric, which a
+    # low setting does as well as a high one and far faster - the API judge
+    # has always sent `effort: "low"` for the same reason. Set it here to make
+    # the Claude Code route match, or raise it for a one-off careful pass.
+    claude_code_effort: str = ""
     # The API host, not the app host: app.xformat.net serves the web client.
     # Mirrors BUILTIN_API_URL in the frontend's saasAuth/backendUrl.ts.
     xformat_base_url: str = "https://api.xformat.net"

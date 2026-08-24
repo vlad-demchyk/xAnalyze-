@@ -863,6 +863,20 @@ def build_parser() -> argparse.ArgumentParser:
                             help="how to read for AI patterns: offline "
                                  "(default, free), ai (ask a model; also "
                                  "spelled llm-judge), hybrid (both), embedding")
+    # Which model, and how hard it thinks. Both only matter when `--detector`
+    # asks for a model at all; both default to whatever the account is
+    # configured for, so naming them here is an override rather than a
+    # requirement. `sonnet` at `low` effort is enough for this job - the pass
+    # classifies short passages against a fixed rubric - and is what the
+    # settings should hold for a route that runs over every block on a site.
+    p_fullscan.add_argument("--model", default=None,
+                            help="model for the AI pass, e.g. sonnet, opus "
+                                 "(default: whatever the account is set to)")
+    p_fullscan.add_argument("--effort", default=None,
+                            choices=["low", "medium", "high"],
+                            help="how hard the AI pass thinks (default: low "
+                                 "for the API judge, the session's own "
+                                 "setting for Claude Code)")
     p_fullscan.add_argument("--scope", default="both",
                             choices=["content", "technical", "both"],
                             help="what to read for AI patterns (default: both)")
