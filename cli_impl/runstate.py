@@ -242,12 +242,19 @@ class RunState:
         this list is to tell a reader what they can open right now, and a
         recorded path whose file is gone would be a promise, not a fact.
         """
-        found = []
+        found: list = []
+        seen: set = set()
         for entry in self.data["phases"]:
             for name in entry.get("artifacts", ()):
                 path = Path(name)
-                if path.exists():
-                    found.append(str(path))
+                # Deduplicated: two phases legitimately record the same file -
+                # the audit writes its checkpoint and the browser pass
+                # rewrites it - and a reader counting what is on disk should
+                # not be told about one file twice.
+                if str(path) in seen or not path.exists():
+                    continue
+                seen.add(str(path))
+                found.append(str(path))
         return found
 
     # ------------------------------------------------------------ feedback

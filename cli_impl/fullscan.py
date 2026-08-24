@@ -113,13 +113,63 @@ def _agent_candidates_from_pages(pages) -> list:
     return candidates
 
 
-def _content_findings_from_pages(pages) -> list:
+def _content_passes(args) -> list:
+    """The detectors a crawled page's text is read by, given `--detector`.
+
+    Mirrors what `cli_impl.scanning._analyze` does for a folder, and it has to:
+    the two are the same question asked of a page and of a file, and the moment
+    they answer differently the flag means one thing on disk and another on the
+    web - which is exactly what happened.
+
+    Offline is always in the list, because it carries the character pass. When
+    a judge was asked for, it is added rather than substituted: the offline
+    engine finds the exact character defects a model does not, so replacing it
+    would be a downgrade wearing an upgrade's name.
+    """
+    offline = DetectorFactory.create("offline", include_style=True)
+    name = getattr(args, "detector", None) if args is not None else None
+    if not name or DetectorFactory.resolve(name) == "offline":
+        return [offline]
+
+    from .scanning import _create_detector
+
+    try:
+        judge = _create_detector(args)
+    except Exception as exc:  # noqa: BLE001 - said out loud, not swallowed
+        # Loud, and the run continues on the offline pass. A judge that cannot
+        # be built (no account, an exhausted plan, a typo in a name) must not
+        # cost the crawl that already happened - but it must never be silent
+        # either, which is the whole defect this function exists to close.
+        print(f"# warning: --detector {name} could not be used ({exc}); "
+              f"the offline engine ran instead", file=sys.stderr, flush=True)
+        return [offline]
+    # The judge's own name, not the flag's. `ai` and `llm-judge` mean "ask a
+    # model" without saying whose account pays, and which account it turned
+    # out to be is the part worth printing - it is what the run will be
+    # billed to.
+    print(f"# [stage] AI patterns: {getattr(judge, 'name', name)}",
+          file=sys.stderr, flush=True)
+    return [offline, judge]
+
+
+def _content_findings_from_pages(pages, args=None) -> list:
     """The AI-patterns and typography pass for a crawled site.
 
     Local targets get this through the ordinary scan; a crawled page never
-    was a file, so the same offline detector runs over its text blocks here
-    and the spans become the finding dicts the reports read. Without this,
-    a website scan silently lost whole report sections a repo scan had.
+    was a file, so the detector runs over its text blocks here and the spans
+    become the finding dicts the reports read. Without this, a website scan
+    silently lost whole report sections a repo scan had.
+
+    **`--detector` reaches this.** It did not, and that was the whole of the
+    AI mode on the path most people use: this hardcoded the offline engine, so
+    `fullscan https://site --detector llm-judge` crawled the site, said
+    nothing, and ran the free heuristic. The flag was accepted, reported
+    nowhere, and did nothing - the failure mode this project keeps finding,
+    where a control looks like it works because nothing raises.
+
+    The character pass stays offline whatever was asked for. It is exact and
+    free, a model has nothing to add to "this is an en dash", and paying a
+    judge to re-answer it would be a cost with no result.
 
     The same threshold as the repo scan, and this is not a detail. Without it
     this path appended *every* span the detector produced, scored or not: a
@@ -137,11 +187,14 @@ def _content_findings_from_pages(pages) -> list:
 
     from .scanning import CHARACTER_SOURCE
 
-    offline = DetectorFactory.create("offline", include_style=True)
+    passes = _content_passes(args)
     findings = []
     for page in pages:
         for block in page.blocks:
-            for span in offline.analyze_block(block):
+            spans = []
+            for detector in passes:
+                spans.extend(detector.analyze_block(block))
+            for span in spans:
                 if (span.details or {}).get("error"):
                     continue
                 if span.confidence == Confidence.LOW \
@@ -723,7 +776,7 @@ def _run_phases(args, state, folder, timings, target, lang, is_url, is_page,
             # Not agent mode: the same content pass a repo gets, so the
             # AI-patterns and typography sections exist in the reports.
             timings.start("AI patterns scan")
-            scan_findings = _content_findings_from_pages(pages)
+            scan_findings = _content_findings_from_pages(pages, args)
             scan_result = {
                 "findings": scan_findings,
                 "counts": {

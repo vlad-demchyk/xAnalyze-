@@ -36,6 +36,14 @@ from pathlib import Path
 from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
 ROOT = Path(SPECPATH).resolve().parent
+
+# The single source of the version. Read out of the file rather than imported,
+# because a spec runs before the package is importable in the build sandbox.
+APP_VERSION = next(
+    line.split('"')[1]
+    for line in (ROOT / "config.py").read_text(encoding="utf-8").splitlines()
+    if line.startswith("APP_VERSION")
+)
 #: Where PyInstaller writes the build. Needed by the post-build repair below.
 DIST = ROOT / "dist"
 
@@ -115,8 +123,12 @@ app = BUNDLE(
     info_plist={
         "CFBundleName": "XAnalyze",
         "CFBundleDisplayName": "XAnalyze",
-        "CFBundleShortVersionString": "0.7.0",
-        "CFBundleVersion": "0.7.0",
+        # Read from `config.APP_VERSION`, not written here. A second copy
+        # is a second answer to "what version is this", and it was the one
+        # that went stale: the bundle reported 0.7.0 while the CLI built
+        # from the same tree reported 0.9.0.
+        "CFBundleShortVersionString": APP_VERSION,
+        "CFBundleVersion": APP_VERSION,
         # Retina: without this the whole UI renders at 1x and looks blurred.
         "NSHighResolutionCapable": True,
         # The app reaches arbitrary sites the user types in, so it needs

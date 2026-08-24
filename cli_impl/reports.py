@@ -338,20 +338,32 @@ def _report_markdown(payload: dict, lang: str) -> str:
         "",
     ]
 
-    # List all crawled pages
+    # The index of what was examined, as a table and worst first.
+    #
+    # It used to be a numbered list of every page, in reading order, at the
+    # top of the briefing: on a 192-page crawl that was 192 lines before the
+    # first finding. It is context, not content - so it is a table, the pages
+    # carrying the most problems come first, and it is cut off once it stops
+    # informing. The full count stays in the heading, because truncating the
+    # list must not truncate the fact.
     if files:
+        ranked = sorted(
+            files,
+            key=lambda f: (bool(f.get("error")), -len(f.get("findings", []))))
         out += [
-            "## Pages examined",
+            f"## Pages examined ({len(files)})",
             "",
+            "| page or file | findings |",
+            "|---|---|",
         ]
-        for i, f in enumerate(files, 1):
+        for f in ranked[:_PAGES_LISTED]:
             url = f.get("source", "") or f.get("url", "")
-            findings = len(f.get("findings", []))
             error = f.get("error", "")
-            if error:
-                out.append(f"{i}. {url} — *error: {error}*")
-            else:
-                out.append(f"{i}. {url} ({findings} findings)")
+            count = f"*error: {error}*" if error else len(f.get("findings", []))
+            out.append(f"| {url} | {count} |")
+        rest = len(ranked) - _PAGES_LISTED
+        if rest > 0:
+            out.append(f"| *and {rest} more* | |")
         out.append("")
 
     # Both numbers, because they answer different questions and reporting
@@ -362,7 +374,7 @@ def _report_markdown(payload: dict, lang: str) -> str:
     out += [
         "## Where the work is",
         "",
-        f"| critical | serious | moderate | minor | total | distinct problems |",
+        "| critical | serious | moderate | minor | total | distinct problems |",
         "|---|---|---|---|---|---|",
         f"| {counts.get('critical', 0)} | {counts.get('serious', 0)} | "
         f"{counts.get('moderate', 0)} | {counts.get('minor', 0)} | "
@@ -378,7 +390,7 @@ def _report_markdown(payload: dict, lang: str) -> str:
             "",
             f"**{ai['total']}** passages flagged across **{ai['files']}** file(s).",
             "",
-            f"| Confidence | Count |",
+            "| Confidence | Count |",
             "|---|---|",
             f"| high | {ai.get('high', 0)} |",
             f"| medium | {ai.get('medium', 0)} |",
@@ -698,6 +710,12 @@ def _previous_run(payload: dict) -> dict | None:
     mine = [e for e in history[:-1]
             if e.get("root") == root and e.get("mode") == mode]
     return mine[-1] if mine else None
+
+
+#: Rows of the page index before the briefing cuts it short. Long enough to
+#: be useful on an ordinary site, short enough that a large crawl does not
+#: bury the findings under its own table of contents.
+_PAGES_LISTED = 40
 
 
 def _history_dir() -> Path:

@@ -138,3 +138,66 @@ class MethodDecidesTheEngine(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DetectorReachesACrawledSite(unittest.TestCase):
+    """`--detector` has to mean the same thing on a site as in a folder.
+
+    It did not. `_content_findings_from_pages` hardcoded the offline engine,
+    so `fullscan https://site --detector llm-judge` crawled the site, said
+    nothing, and ran the free heuristic - the AI mode was inert on the path
+    most people use, and nothing raised to say so.
+    """
+
+    def _args(self, detector):
+        import argparse
+
+        return argparse.Namespace(detector=detector, provider=None,
+                                  scope="both", no_typography=False,
+                                  categories=None, no_unicode=False)
+
+    def test_no_detector_is_the_offline_engine_alone(self):
+        from cli_impl.fullscan import _content_passes
+
+        passes = _content_passes(self._args(None))
+        self.assertEqual(len(passes), 1)
+
+    def test_naming_offline_explicitly_is_the_same_thing(self):
+        from cli_impl.fullscan import _content_passes
+
+        self.assertEqual(len(_content_passes(self._args("offline"))), 1)
+
+    def test_a_judge_is_added_not_substituted(self):
+        """The offline engine finds the exact character defects a model does
+        not, so replacing it would be a downgrade wearing an upgrade's name."""
+        from cli_impl.fullscan import _content_passes
+
+        passes = _content_passes(self._args("ai"))
+        self.assertEqual(len(passes), 2)
+        self.assertEqual(passes[0].name, "offline")
+
+    def test_a_judge_that_cannot_be_built_is_reported_not_swallowed(self):
+        from cli_impl import fullscan
+
+        import io
+        import contextlib
+
+        captured = io.StringIO()
+        with contextlib.redirect_stderr(captured):
+            passes = fullscan._content_passes(self._args("no-such-detector"))
+        self.assertEqual(len(passes), 1)          # the crawl is not lost
+        self.assertIn("could not be used", captured.getvalue())
+
+    def test_the_run_says_which_account_it_will_be_billed_to(self):
+        from cli_impl import fullscan
+
+        import io
+        import contextlib
+
+        captured = io.StringIO()
+        with contextlib.redirect_stderr(captured):
+            fullscan._content_passes(self._args("ai"))
+        # The judge's own name, not the alias that was typed: `ai` does not
+        # say whose account pays and that is the part worth printing.
+        self.assertIn("AI patterns:", captured.getvalue())
+        self.assertNotIn("AI patterns: ai", captured.getvalue())

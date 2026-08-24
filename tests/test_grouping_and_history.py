@@ -259,3 +259,63 @@ class ProblemsSection(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BriefingPageIndex(unittest.TestCase):
+    """The index of examined pages is context, not content.
+
+    On a 192-page crawl it was 192 numbered lines before the first finding -
+    a table of contents burying the thing the reader opened the file for.
+    """
+
+    def _payload(self, pages):
+        return {
+            "root": "https://example.com", "mode": "web",
+            "generated": "2026-08-24 11:36:30 UTC",
+            "summary": {"counts": {"critical": 1}, "total": 1,
+                        "distinct_problems": 1, "documents": pages,
+                        "documents_with_findings": pages,
+                        "rules_triggered": 1},
+            "problems": [], "by_rule": [],
+            "files": [{"source": f"https://example.com/page-{i}",
+                       "findings": [{}] * i, "error": ""}
+                      for i in range(pages)],
+            "history": [], "changed_this_run": {},
+            "ai_patterns": {}, "typography": {},
+        }
+
+    def _render(self, pages):
+        from cli_impl.reports import _report_markdown
+
+        return _report_markdown(self._payload(pages), "en")
+
+    def test_it_is_a_table_not_a_numbered_list(self):
+        text = self._render(5)
+        self.assertIn("| page or file | findings |", text)
+        self.assertNotIn("1. https://example.com/page-", text)
+
+    def test_a_large_crawl_is_cut_short(self):
+        text = self._render(200)
+        self.assertIn("and 160 more", text)
+        self.assertEqual(text.count("https://example.com/page-"), 40)
+
+    def test_what_survives_the_cut_is_what_matters(self):
+        """Truncating is only acceptable if the worst pages are what stay."""
+        text = self._render(200)
+        self.assertIn("page-199", text)
+
+    def test_the_full_count_survives_the_truncation(self):
+        self.assertIn("Pages examined (200)", self._render(200))
+
+    def test_a_page_that_failed_is_listed_before_the_rest(self):
+        from cli_impl.reports import _report_markdown
+
+        payload = self._payload(3)
+        payload["files"].append({"source": "https://example.com/broken",
+                                 "findings": [], "error": "fetch failed"})
+        text = _report_markdown(payload, "en")
+        self.assertIn("*error: fetch failed*", text)
+
+
+if __name__ == "__main__":
+    unittest.main()
