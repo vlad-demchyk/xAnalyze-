@@ -12,6 +12,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+import duplicates
 import suppression
 
 import detectors  # noqa: F401 - registers the detectors
@@ -152,6 +153,97 @@ def _content_passes(args) -> list:
     return [offline, judge]
 
 
+def _judge_distinct(groups, passes, args) -> dict:
+    """Run the detectors over one block per distinct passage.
+
+    Returns `{block_id: [span]}` keyed on the representative, so the caller
+    can fan a verdict back out to every place the passage appears.
+
+    A judged verdict is also remembered on disk between runs. That is not
+    only about cost: this judge is **not deterministic** - two runs of one
+    site with identical flags returned 6 findings and then 24 - and no route
+    here exposes a temperature or a seed, so identical output cannot be
+    requested from the model. It can only be remembered, which is what makes
+    a repeat run reproducible.
+    """
+    import judgment_cache
+
+    representatives = [rep for rep, _ in groups]
+    spans_by_id: dict = {}
+    for detector in passes:
+        cache = _cache_for(detector, args)
+        todo = representatives
+        if cache is not None:
+            todo = []
+            for block in representatives:
+                stored = cache.get(block.text, block.language_hint)
+                if stored is None:
+                    todo.append(block)
+                    continue
+                spans_by_id.setdefault(block.block_id, []).extend(
+                    judgment_cache.record_to_span(record, block)
+                    for record in stored)
+        fresh = _run_detector(detector, todo, talkative=cache is not None)
+        for block in todo:
+            produced = fresh.get(block.block_id, [])
+            spans_by_id.setdefault(block.block_id, []).extend(produced)
+            if cache is not None:
+                cache.put(block.text,
+                          [judgment_cache.span_to_record(s) for s in produced],
+                          block.language_hint)
+        if cache is not None:
+            cache.save()
+            note = cache.summary()
+            if note:
+                print(f"# [AI patterns] {note}", file=sys.stderr, flush=True)
+    return spans_by_id
+
+
+def _cache_for(detector, args):
+    """The verdict cache for this detector, or None when it must not be used.
+
+    None for the offline pass: it is deterministic and costs a tenth of a
+    second, so a cache would add a disk round trip and a staleness risk to
+    buy nothing. None for `--no-judgment-cache`, because a cached wrong
+    answer must not be un-fixable.
+    """
+    import judgment_cache
+
+    name = getattr(detector, "name", "")
+    if not name or name == "offline" or getattr(args, "no_judgment_cache", False):
+        return None
+    from detectors.claude_llm_judge import _SYSTEM_PROMPT
+
+    return judgment_cache.JudgmentCache(
+        detector=name,
+        model=str(getattr(detector, "model", "") or ""),
+        effort=str(getattr(detector, "effort", "") or ""),
+        prompt=_SYSTEM_PROMPT,
+    )
+
+
+def _run_detector(detector, blocks, *, talkative: bool) -> dict:
+    """One detector over `blocks`, batched, reporting progress by batch.
+
+    By batch and not by page: deduplication is across the whole run, so the
+    work stopped being per page and a "3/10 pages" counter would be counting
+    something that is no longer happening.
+    """
+    if not blocks:
+        return {}
+    size = max(1, int(getattr(detector, "batch_size", len(blocks)) or len(blocks)))
+    batches = (len(blocks) + size - 1) // size
+    out: dict = {}
+    for index in range(batches):
+        chunk = blocks[index * size:(index + 1) * size]
+        if talkative:
+            print(f"# [AI patterns {index + 1}/{batches} batches] "
+                  f"{len(chunk)} passage(s)", file=sys.stderr, flush=True)
+        for span in detector.analyze_blocks(chunk):
+            out.setdefault(span.block_id, []).append(span)
+    return out
+
+
 def _content_findings_from_pages(pages, args=None) -> list:
     """The AI-patterns and typography pass for a crawled site.
 
@@ -188,38 +280,25 @@ def _content_findings_from_pages(pages, args=None) -> list:
     from .scanning import CHARACTER_SOURCE
 
     passes = _content_passes(args)
-    # A judge reads every block over the network, and on ten pages that is
-    # minutes with nothing on screen. The crawl and the browser pass both
-    # count themselves out loud; this stage did not, so the one stage that
-    # can legitimately take longest was also the one that looked hung. The
-    # offline pass stays quiet - it finishes in a tenth of a second, and a
-    # progress line for it would be noise.
-    talkative = len(passes) > 1
-    total = len(pages)
+    blocks = [block for page in pages for block in page.blocks]
+    # Deduplicated across the whole run, not within a page. A header and a
+    # footer appear on every page, so the repetition worth removing is exactly
+    # the one a single page cannot see: ten pages of a real site gave 573
+    # blocks and 236 distinct passages, with a phone number read 26 times.
+    #
+    # Both detectors read the same list. A second list would be a second
+    # answer to "what is distinct here", and the offline pass would keep
+    # paying for repeats the judge had stopped paying for.
+    groups = duplicates.distinct_blocks(blocks)
+    spans_by_id = _judge_distinct(groups, passes, args)
+
     findings = []
-    for index, page in enumerate(pages, 1):
-        if talkative:
-            print(f"# [AI patterns {index}/{total}] {page.url}",
-                  file=sys.stderr, flush=True)
-        blocks = list(page.blocks)
-        by_id = {block.block_id: block for block in blocks}
-        # `analyze_blocks`, not a loop over `analyze_block`. The judges batch
-        # in groups of eight, and the per-block call defeats that completely:
-        # the Claude Code judge starts one `claude -p` process per call, so a
-        # ten-page site went from roughly a hundred requests to roughly eight
-        # hundred. Measured on a live run - the stage was still going after
-        # five minutes and would have taken about an hour.
-        spans = []
-        for detector in passes:
-            spans.extend(detector.analyze_blocks(blocks))
-        for span in spans:
+    for representative, occurrences in groups:
+        for span in spans_by_id.get(representative.block_id, ()):
             if (span.details or {}).get("error"):
                 continue
             if span.confidence == Confidence.LOW \
                     and (span.details or {}).get("source") != CHARACTER_SOURCE:
-                continue
-            block = by_id.get(span.block_id)
-            if block is None:
                 continue
             confidence = span.confidence
             if isinstance(confidence, Confidence):
@@ -230,16 +309,21 @@ def _content_findings_from_pages(pages, args=None) -> list:
             # five findings for five sentences of one hero block produced
             # five rows with identical text and five different reasons - the
             # reader could not tell which sentence each reason was about.
-            passage = block.text[span.start:span.end] or block.text
-            findings.append({
-                "file": page.url,
-                "line": 0,
-                "text": passage[:200],
-                "source": (span.details or {}).get("source", ""),
-                "score": round(span.score, 3),
-                "confidence": confidence,
-                "explanation": span.explanation,
-            })
+            passage = representative.text[span.start:span.end] \
+                or representative.text
+            # One finding per occurrence. Reading once is about what is
+            # *asked*; every place is still reported, because a fix has to
+            # visit each page that carries the passage.
+            for block in occurrences:
+                findings.append({
+                    "file": block.page_url,
+                    "line": 0,
+                    "text": passage[:200],
+                    "source": (span.details or {}).get("source", ""),
+                    "score": round(span.score, 3),
+                    "confidence": confidence,
+                    "explanation": span.explanation,
+                })
     return findings
 
 

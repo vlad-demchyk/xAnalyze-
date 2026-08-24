@@ -213,13 +213,23 @@ class TheSlowStageSaysSomething(unittest.TestCase):
 
     class _Page:
         def __init__(self, url):
+            from models import TextBlock
+
             self.url = url
-            self.blocks = []
+            # Real blocks, and different on each page: with none there is
+            # nothing to judge, and with identical text the run would
+            # correctly collapse to a single batch.
+            self.blocks = [
+                TextBlock(block_id=f"{url}-{i}", page_url=url, dom_path="p",
+                          text=f"a passage from {url} number {i}")
+                for i in range(4)]
 
     def _run(self, detector):
         import argparse
         import contextlib
         import io
+        import os
+        import tempfile
 
         from cli_impl.fullscan import _content_findings_from_pages
 
@@ -228,14 +238,27 @@ class TheSlowStageSaysSomething(unittest.TestCase):
                                   categories=None, no_unicode=False)
         pages = [self._Page(f"https://example.com/{i}") for i in range(3)]
         captured = io.StringIO()
-        with contextlib.redirect_stderr(captured):
-            _content_findings_from_pages(pages, args)
+        # An isolated cache. Without it the previous test run's answers come
+        # back as this run's, and the detector is never called at all.
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["XANALYZE_JUDGMENT_CACHE"] = tmp
+            try:
+                with contextlib.redirect_stderr(captured):
+                    _content_findings_from_pages(pages, args)
+            finally:
+                os.environ.pop("XANALYZE_JUDGMENT_CACHE", None)
         return captured.getvalue()
 
-    def test_a_judged_run_counts_its_pages(self):
+    def test_a_judged_run_counts_its_batches(self):
+        """By batch, not by page.
+
+        Deduplication is across the whole run, so the work stopped being per
+        page: a "3/10 pages" counter would be counting something that is no
+        longer happening.
+        """
         output = self._run("ai")
-        self.assertIn("[AI patterns 1/3]", output)
-        self.assertIn("[AI patterns 3/3]", output)
+        self.assertIn("batches]", output)
+        self.assertIn("[AI patterns 1/", output)
 
     def test_the_offline_pass_stays_quiet(self):
         """It finishes in a tenth of a second; a progress line is noise."""
@@ -281,12 +304,18 @@ class BatchingIsNotDefeated(unittest.TestCase):
                   for i in range(20)]
         page = self._Page("https://example.com", blocks)
 
+        import os
+        import tempfile
+
         real = fullscan._content_passes
         fullscan._content_passes = lambda args: [detector]
-        try:
-            fullscan._content_findings_from_pages([page], None)
-        finally:
-            fullscan._content_passes = real
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["XANALYZE_JUDGMENT_CACHE"] = tmp
+            try:
+                fullscan._content_findings_from_pages([page], None)
+            finally:
+                fullscan._content_passes = real
+                os.environ.pop("XANALYZE_JUDGMENT_CACHE", None)
 
         self.assertEqual(detector.batch_calls, 1)
         self.assertEqual(detector.block_calls, 0)
@@ -329,12 +358,18 @@ class TheRowShowsWhatWasJudged(unittest.TestCase):
         block = TextBlock(block_id="b1", text=text,
                           page_url="https://example.com", dom_path="p")
         page = self._Page("https://example.com", [block])
+        import os
+        import tempfile
+
         real = fullscan._content_passes
         fullscan._content_passes = lambda args: [self._Judge(ranges)]
-        try:
-            return fullscan._content_findings_from_pages([page], None)
-        finally:
-            fullscan._content_passes = real
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["XANALYZE_JUDGMENT_CACHE"] = tmp
+            try:
+                return fullscan._content_findings_from_pages([page], None)
+            finally:
+                fullscan._content_passes = real
+                os.environ.pop("XANALYZE_JUDGMENT_CACHE", None)
 
     def test_each_row_carries_its_own_passage(self):
         text = "First sentence here. Second sentence here. Third one here."

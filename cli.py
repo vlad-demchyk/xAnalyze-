@@ -877,6 +877,12 @@ def build_parser() -> argparse.ArgumentParser:
                             help="how hard the AI pass thinks (default: low "
                                  "for the API judge, the session's own "
                                  "setting for Claude Code)")
+    # A cached wrong answer must not be un-fixable, and a rubric change that
+    # the prompt hash somehow did not catch must have a way out.
+    p_fullscan.add_argument("--no-judgment-cache", action="store_true",
+                            help="re-ask the model about passages it has "
+                                 "already judged (slower, and the only way to "
+                                 "get a fresh opinion)")
     p_fullscan.add_argument("--scope", default="both",
                             choices=["content", "technical", "both"],
                             help="what to read for AI patterns (default: both)")

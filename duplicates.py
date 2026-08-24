@@ -168,3 +168,55 @@ def places_of(issue, others: list) -> list:
         if label and label not in places:
             places.append(label)
     return places
+
+
+# ------------------------------------------------------- text blocks
+#
+# One step earlier than everything above. The functions before this group
+# findings *after* they were produced; this one stops the same passage being
+# read twice in the first place.
+#
+# A crawl of ten pages produced 573 blocks and 236 distinct texts: a header
+# and a footer appear on every page, so `Tel. +39 0432 924815` was read 26
+# times. The offline pass paid for that in wasted local work and the judge
+# paid for it in network round trips - on the Claude Code route each one is a
+# process start, so the waste was minutes and real money spent asking the
+# same question of the same string.
+
+
+def block_identity(block) -> tuple:
+    """What makes two extracted passages the same passage.
+
+    The text, normalised, and the language it was taken to be. The language
+    belongs in the identity because the detectors genuinely answer
+    differently for it - the same string read as Italian and as English is
+    two questions, and collapsing them would silently pick one answer for
+    both.
+
+    Machine-generated identifiers are masked, so a menu that renders with a
+    fresh uuid on every page is still one passage. Same reasoning, and the
+    same function, as `issue_identity`.
+    """
+    text = mask_generated_ids(" ".join((getattr(block, "text", "") or "").split()))
+    return (text, getattr(block, "language_hint", None) or "")
+
+
+def distinct_blocks(blocks: list) -> list:
+    """`[(representative, [every block with that identity])]`, in arrival order.
+
+    The representative is the first occurrence, and it is the one handed to a
+    detector. Every occurrence is carried alongside because each is a real
+    place on a real page that a fix has to visit: this changes what is
+    *asked*, never what is *reported*.
+    """
+    order: list = []
+    seen: dict = {}
+    for block in blocks:
+        key = block_identity(block)
+        if key in seen:
+            seen[key].append(block)
+            continue
+        group = [block]
+        seen[key] = group
+        order.append((block, group))
+    return order
