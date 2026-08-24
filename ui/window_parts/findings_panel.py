@@ -238,7 +238,10 @@ class FindingsPanelMixin:
             return
         kind, span, block = data
         if kind == MODE_AUDIT:
-            self._on_audit_item_clicked(span)
+            # For an audit row the second slot is the issue and the third is
+            # the other places the same problem was found - see
+            # `AuditPanelMixin._add_audit_rows`.
+            self._on_audit_item_clicked(span, block or [])
             return
         self._last_selected_key = (span.block_id, span.start, span.end)
         if kind == MODE_WEB:
@@ -308,8 +311,15 @@ class FindingsPanelMixin:
     def _clear_layout(layout) -> None:
         while layout.count():
             child = layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
+            widget = child.widget()
+            if widget:
+                # Unparented before it is scheduled for deletion.
+                # `takeAt` only removes the widget from the *layout* - it
+                # keeps its parent and keeps painting until the event loop
+                # gets around to the deletion, so clearing and refilling in
+                # one turn showed both the old contents and the new.
+                widget.setParent(None)
+                widget.deleteLater()
 
     def _populate_detail_column(self, span: TextSpan, block) -> None:
         self._clear_layout(self.detail_layout)

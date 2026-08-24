@@ -81,6 +81,13 @@ class AccountMixin:
         else:
             self.account_label.setText("")
             self.account_btn.setText(t("settings_sign_in", self.lang))
+        # The one place that learns whether an AI pass can be paid for is
+        # also the place that has to say so. `AppState` normalises the
+        # method choice against this, and it was never told: the state kept
+        # its startup default of "no account", so a signed-in user asking
+        # for the AI pass had it silently normalised back to offline.
+        if ask or status is not None:
+            self.app_state.set_ai_available(status is not None)
 
     def _on_account_clicked(self) -> None:
         if self._account_status(refresh=True) is not None:

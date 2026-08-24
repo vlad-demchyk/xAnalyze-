@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QPushButton, QVBoxLayout, QWidget,
 )
 
+import duplicates
 from audit import explanations as audit_explanations
 from i18n.translations import t
 from models import Confidence
@@ -53,10 +54,22 @@ class AuditPanelMixin:
 
         self.results_stack.setCurrentIndex(0)
         self.flagged_list.setItemDelegate(self.finding_delegate)
-        for issue in issues:
+        # One row per distinct problem, with the number of places on it -
+        # the same rule the copy findings already followed (`duplicates.py`).
+        # A crawl of thirty pages sharing a header produced thirty identical
+        # rows, and a list where every row repeats the previous one is a list
+        # nobody reads to the bottom. Nothing is dropped: the grouped issues
+        # travel with the row, so clicking it can still name every page.
+        rows = 0
+        for issue, others in duplicates.group_issues(issues):
             explanation = audit_explanations.render(issue, self.lang)
+            places = duplicates.places_of(issue, others)
+            label = explanation.title
+            if len(places) > 1:
+                label += "   ·   " + t("finding_copies", self.lang,
+                                       n=len(places) - 1)
             item = QListWidgetItem()
-            item.setText(explanation.title)
+            item.setText(label)
             item.setData(ROW_ROLE, RowData(
                 badge=t(f"severity_{issue.severity}", self.lang),
                 # The delegate colours a row by confidence, and severity is
@@ -64,14 +77,19 @@ class AuditPanelMixin:
                 # given the delegate a second vocabulary to paint.
                 confidence=_SEVERITY_CONFIDENCE.get(issue.severity, Confidence.MEDIUM),
                 score=0.0,
-                text=explanation.title,
+                text=label,
                 has_draft=False,
                 is_character=False,
             ))
-            item.setToolTip(explanation.found)
-            item.setData(Qt.ItemDataRole.UserRole, (MODE_AUDIT, issue, None))
+            item.setToolTip(explanation.found if len(places) == 1
+                            else explanation.found + "\n\n"
+                            + "\n".join(places[:10]))
+            # `others` rides along so the detail panel can list every place
+            # without grouping the issues a second time.
+            item.setData(Qt.ItemDataRole.UserRole, (MODE_AUDIT, issue, others))
             self.flagged_list.addItem(item)
-        return len(issues)
+            rows += 1
+        return rows
 
     def _show_audit_empty_state(self) -> None:
         """An audit with no findings is a result, not a blank screen — and it
@@ -100,7 +118,7 @@ class AuditPanelMixin:
         self.empty_state.show_message(
             t("empty_audit_unreadable_title", self.lang), "\n".join(lines).strip())
 
-    def _on_audit_item_clicked(self, issue) -> None:
+    def _on_audit_item_clicked(self, issue, others=None) -> None:
         """Show the finding in its document, and the explanation beside it.
 
         "Show" means the element, not the page: a list of findings next to a
@@ -117,12 +135,19 @@ class AuditPanelMixin:
             self._show_audit_issue_in_page(issue)
         if self.wide_mode:
             self._clear_layout(self.detail_layout)
-            self.detail_layout.addWidget(self._build_audit_detail_widget(issue))
+            self.detail_layout.addWidget(
+                self._build_audit_detail_widget(issue, others))
         else:
             # In a narrow window there is no third column, so the explanation
             # expands under the row that was clicked - the same behaviour the
             # text scan has always had.
-            self._toggle_audit_detail(self.flagged_list.currentItem(), issue)
+            self._toggle_audit_detail(self.flagged_list.currentItem(), issue,
+                                      others)
+
+    #: How many places the detail card lists before it stops. Enough to see
+    #: whether this is the whole site or three pages; a card that is nothing
+    #: but addresses has stopped being an explanation.
+    _PLACES_IN_DETAIL = 25
 
     #: Elements a finding can name that cannot be pointed at on screen.
     #: `<head>` has no rendered box, and outlining `<html>` outlines
@@ -201,7 +226,7 @@ class AuditPanelMixin:
         else:
             self.status_bar.showMessage(t("audit_document_level", self.lang))
 
-    def _toggle_audit_detail(self, item, issue) -> None:
+    def _toggle_audit_detail(self, item, issue, others=None) -> None:
         """Expand the finding under its row, or collapse it if already open."""
         if item is None:
             return
@@ -209,7 +234,7 @@ class AuditPanelMixin:
             self._collapse_inline_detail()
             return
         self._collapse_inline_detail()
-        detail = self._build_audit_detail_widget(issue)
+        detail = self._build_audit_detail_widget(issue, others)
         # Bounded: an explanation with four blocks and two code samples is
         # taller than a list row has any business being, and a row that fills
         # the window hides the findings the user is comparing it against.
@@ -218,7 +243,7 @@ class AuditPanelMixin:
         item.setSizeHint(QSize(0, min(detail.sizeHint().height(), 460)))
         self._expanded_item = item
 
-    def _build_audit_detail_widget(self, issue) -> QWidget:
+    def _build_audit_detail_widget(self, issue, others=None) -> QWidget:
         """One finding, laid out as the four questions it answers.
 
         What was found, why it matters, how to fix it, and - when the check
@@ -306,6 +331,16 @@ class AuditPanelMixin:
         if confirmations:
             layout.addWidget(muted(t("audit_also_found_by", self.lang,
                                      engines=", ".join(confirmations))))
+
+        # Every place this same problem was found. The row collapses them into
+        # one line; the detail is where the full list belongs, because a fix
+        # has to visit each of them.
+        places = duplicates.places_of(issue, others or [])
+        if len(places) > 1:
+            layout.addWidget(field(
+                t("audit_places", self.lang, count=len(places)),
+                "\n".join(places[:self._PLACES_IN_DETAIL])
+                + ("\n…" if len(places) > self._PLACES_IN_DETAIL else "")))
 
         layout.addStretch(1)
         scroll.setWidget(inner)

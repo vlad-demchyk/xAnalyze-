@@ -203,6 +203,172 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Seleziona un frammento dall'elenco",
         "en": "Select a passage from the list",
     },
+    "suppression_note": {
+        "uk": "Знахідки, про які ви вже вирішили. Особисті записи діють на всі "
+              "проєкти; приберіть запис, щоб побачити цю знахідку знову при "
+              "наступному скані.",
+        "it": "Rilievi su cui hai già deciso. Le voci personali valgono per "
+              "ogni progetto; rimuovine una per rivedere quel rilievo alla "
+              "prossima scansione.",
+        "en": "Findings you've already decided about. Personal entries apply "
+              "to every project; remove one to see that finding again on the "
+              "next scan.",
+    },
+    "suppression_add": {"uk": "Додати", "it": "Aggiungi", "en": "Add"},
+    "suppression_remove": {
+        "uk": "Прибрати вибране",
+        "it": "Rimuovi selezionati",
+        "en": "Remove selected",
+    },
+    "suppression_add_placeholder": {
+        "uk": "додати…", "it": "aggiungi…", "en": "add…",
+    },
+    "suppression_rule_placeholder": {
+        "uk": "id правила", "it": "id regola", "en": "rule id",
+    },
+    "suppression_empty": {"uk": "порожньо", "it": "vuoto", "en": "empty"},
+    "suppression_fingerprints": {
+        "uk": "Точні знахідки",
+        "it": "Rilievi esatti",
+        "en": "Exact findings",
+    },
+    "suppression_fingerprints_hint": {
+        "uk": "Одна конкретна знахідка, відхилена один раз - переживає "
+              "повторний скан і не впливає ні на що інше.",
+        "it": "Un singolo rilievo, ignorato una volta: sopravvive a una nuova "
+              "scansione e non tocca nient'altro.",
+        "en": "One exact finding, dismissed once - survives a re-scan, "
+              "nothing else.",
+    },
+    "suppression_phrases": {
+        "uk": "Фрази",
+        "it": "Frasi",
+        "en": "Phrases",
+    },
+    "suppression_phrases_hint": {
+        "uk": "Слово або фраза більше ніколи не позначається, ніде.",
+        "it": "Una parola o frase non viene più segnalata, da nessuna parte.",
+        "en": "A word or phrase never flagged again, anywhere.",
+    },
+    "suppression_rules": {
+        "uk": "Правила",
+        "it": "Regole",
+        "en": "Rules",
+    },
+    "suppression_rules_hint": {
+        "uk": "Ціла перевірка вимкнена - сигнал стилю, категорія символів або "
+              "id правила доступності.",
+        "it": "Un intero controllo disattivato: un segnale di stile, una "
+              "categoria di caratteri o l'id di una regola di accessibilità.",
+        "en": "A whole check switched off - a style signal, a character "
+              "category, or an accessibility rule id.",
+    },
+    "suppression_paths": {
+        "uk": "Шляхи",
+        "it": "Percorsi",
+        "en": "Paths",
+    },
+    "suppression_paths_hint": {
+        "uk": "Файл або шаблон URL повністю виключений з аналізу.",
+        "it": "Un file o un pattern di URL escluso completamente dall'analisi.",
+        "en": "A file or URL pattern excluded from analysis entirely.",
+    },
+    "suppression_selectors": {
+        "uk": "Селектори",
+        "it": "Selettori",
+        "en": "Selectors",
+    },
+    "suppression_selectors_hint": {
+        "uk": "Частина сторінки виключена - CSS-селектор.",
+        "it": "Una parte della pagina esclusa: un selettore CSS.",
+        "en": "A part of the page excluded - a CSS selector.",
+    },
+    "ignore_finding": {
+        "uk": "Не показувати цю знахідку",
+        "it": "Ignora questo rilievo",
+        "en": "Ignore this finding",
+    },
+    "ignore_finding_hint": {
+        "uk": "Приховати саме цю знахідку, щоб вона не поверталась при "
+              "повторному скані. Запис іде у .xanalyze-ignore у сканованій "
+              "теці, або у ваші налаштування, якщо теки немає (скан сайту).",
+        "it": "Nascondi esattamente questo rilievo, così non riappare a una "
+              "nuova scansione. Salvato in .xanalyze-ignore nella cartella "
+              "scansionata, o nelle tue impostazioni quando non c'è una "
+              "cartella (scansione di un sito).",
+        "en": "Suppress this exact finding at the fingerprint level, so it "
+              "does not reappear on a re-scan. Written to .xanalyze-ignore in "
+              "the scanned folder, or to your personal settings when there is "
+              "no folder to write into (a web scan).",
+    },
+    "audit_places": {
+        "uk": "Знайдено у {count} місцях",
+        "it": "Trovato in {count} punti",
+        "en": "Found in {count} places",
+    },
+    "detail_header": {
+        "uk": "Деталі знахідки",
+        "it": "Dettagli del rilievo",
+        "en": "Finding detail",
+    },
+    # --- the runs catalogue ---
+    "runs_title": {
+        "uk": "Прогони:",
+        "it": "Esecuzioni:",
+        "en": "Runs:",
+    },
+    "runs_empty": {
+        "uk": "Ще немає збережених прогонів",
+        "it": "Nessuna esecuzione registrata",
+        "en": "No runs recorded yet",
+    },
+    "runs_resume": {
+        "uk": "Продовжити",
+        "it": "Riprendi",
+        "en": "Resume",
+    },
+    "runs_pause": {
+        "uk": "Пауза",
+        "it": "Pausa",
+        "en": "Pause",
+    },
+    "runs_open": {
+        "uk": "Відкрити теку",
+        "it": "Apri cartella",
+        "en": "Open folder",
+    },
+    "runs_status_running": {"uk": "виконується", "it": "in corso",
+                            "en": "running"},
+    "runs_status_paused": {"uk": "на паузі", "it": "in pausa", "en": "paused"},
+    "runs_status_failed": {"uk": "зупинено", "it": "interrotta",
+                           "en": "stopped"},
+    "runs_status_done": {"uk": "завершено", "it": "completata",
+                         "en": "complete"},
+    "runs_pause_requested": {
+        "uk": "Пауза запрошена: прогін спиниться на межі наступного етапу",
+        "it": "Pausa richiesta: si fermerà al confine della fase successiva",
+        "en": "Pause requested: the run stops at its next phase boundary",
+    },
+    "runs_resuming": {
+        "uk": "Продовжую прогін {run}…",
+        "it": "Ripresa dell'esecuzione {run}…",
+        "en": "Resuming run {run}…",
+    },
+    "runs_resume_done": {
+        "uk": "Прогін завершено",
+        "it": "Esecuzione completata",
+        "en": "The run finished",
+    },
+    "runs_resume_incomplete": {
+        "uk": "Прогін знову спинився: деталі в state.md у теці прогону",
+        "it": "L'esecuzione si è fermata di nuovo: dettagli in state.md",
+        "en": "The run stopped again: see state.md in the run folder",
+    },
+    "runs_resume_failed": {
+        "uk": "Не вдалось продовжити: {reason}",
+        "it": "Ripresa non riuscita: {reason}",
+        "en": "Could not resume: {reason}",
+    },
     "mode_label": {
         "uk": "Джерело:",
         "it": "Origine:",

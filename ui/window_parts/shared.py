@@ -19,6 +19,17 @@ MODE_AUDIT = "audit"
 MODE_WEB = "web"
 MODE_REPO = "repo"
 
+#: One HTML file the user picked, rather than a folder or a site. The same
+#: three words `audit.engine.AccessibilityResult.mode` uses, because they end
+#: up being the same fact read from two places.
+#:
+#: This was referenced by `MainWindow.mode` and by the browser pass's
+#: `allow_local_files` before it existed anywhere - so choosing "single file"
+#: as the source raised `NameError` on a property that half the window reads.
+#: It did not show up as a failing test because no test selected that source
+#: and then asked for the mode.
+MODE_FILE = "file"
+
 #: Shown beside a lowered score so it does not read as the detector being
 #: unsure rather than as a decision the user already made.
 SUPPRESSED_NOTE = (

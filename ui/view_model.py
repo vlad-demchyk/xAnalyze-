@@ -418,31 +418,33 @@ class MainViewModel(QObject):
         self.busy_changed.emit(True)
 
     def _start_audit(self):
+        """Audit whatever the source is: a site, one page file, or a folder.
+
+        A folder used to end up here with `https://` glued onto its path -
+        see `ui.worker.audit_worker_for`, which now decides this once for
+        both callers.
+        """
         from i18n.translations import t
+        from ui.worker import audit_worker_for
+
         lang = self.settings.ui_language
-
-        if self.mode == "file":
-            target = self.state.target
-            if not target:
-                self.error.emit(t("no_file_path", lang))
-                return
-        else:
-            target = self.state.target
-            if not target:
-                self.error.emit(t("url_label_full", lang))
-                return
-            if not target.startswith(("http://", "https://")):
-                target = "https://" + target
-
-        self.audit_result = None
-        self._worker = AuditWorker(
-            pages=self._reusable_pages() if self.state.source == SOURCE_SITE else None,
-            target=target,
+        worker, refusal = audit_worker_for(
+            self.state.source,
+            target=self.state.target,
             depth=self.state.depth,
             max_pages=self.settings.max_pages,
-            is_page_file=self.mode == "file",
+            pages=(self._reusable_pages()
+                   if self.state.source == SOURCE_SITE else None),
+            ignore_patterns=self.repo_ignore_patterns,
             settings=self.settings,
         )
+        if worker is None:
+            self.error.emit(self._missing_target_message() if refusal == "no_target"
+                            else t("url_label_full", lang))
+            return
+
+        self.audit_result = None
+        self._worker = worker
         self._wire_worker(self._worker,
                           on_finished=self._on_audit_finished)
         self._worker.start()

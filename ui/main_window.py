@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QHBoxLayout,
     QFrame, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
     QMessageBox,
-    QPlainTextEdit, QPushButton, QSizePolicy, QSpinBox, QSplitter,
+    QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy, QSpinBox, QSplitter,
     QStackedWidget, QStatusBar, QTextEdit, QVBoxLayout, QWidget,
 )
 
@@ -59,8 +59,9 @@ from ui.window_parts.report_export import (
     ReportExportMixin, _styled_report_text,
 )
 from ui.window_parts.findings_panel import FindingsPanelMixin
+from ui.window_parts.runs_panel import RunsPanel
 from ui.window_parts.shared import (
-    MODE_AUDIT, MODE_REPO, MODE_WEB, _SEVERITY_BADGE,
+    MODE_AUDIT, MODE_FILE, MODE_REPO, MODE_WEB, _SEVERITY_BADGE,
     _SEVERITY_CONFIDENCE, _SUPPRESSED_NOTE, _browser_url,
 )
 from ui.widgets import (
@@ -68,9 +69,26 @@ from ui.widgets import (
     diagnostics_message, divider, field, heading, muted, panel, restyle,
 )
 from ui.worker import (
-    AnalysisWorker, AuditWorker, RepoAnalysisWorker, RewriteAllWorker,
+    AnalysisWorker, RepoAnalysisWorker, RewriteAllWorker,
     SingleBlockWorker, SingleRewriteWorker,
 )
+
+#: How many characters a combo in the controls column reserves room for.
+#: Every combo uses the same number: a column where each dropdown is a
+#: different width reads as misalignment rather than as information, and the
+#: longest label ("Claude Code session") does not have to fit - the popup
+#: shows it in full.
+_COMBO_CHARS = 10
+
+#: Width of the controls column. Wide enough that a URL field and a
+#: provider name are both readable without abbreviation, narrow enough to
+#: leave a three-column body room at 1300px - the window's default width.
+SIDEBAR_WIDTH = 268
+
+#: What the column shrinks to once the body has folded to a single column.
+#: At that point the window is being used as a list of findings, and a
+#: full-width form beside it would leave the list unusable.
+SIDEBAR_WIDTH_NARROW = 200
 
 # Below this window width, the detail panel collapses from a persistent
 # third column into an inline panel that expands under the clicked list row.
@@ -91,22 +109,15 @@ MEDIUM_BREAKPOINT = 620
 #: the app is the same whether it runs from source or from a bundle.
 ASSETS = Path(__file__).resolve().parent / "design" / "assets"
 
-# "Ignore this finding" is not routed through `i18n.translations.t()`: that
-# module is another agent's territory while this feature is being built, and
-# a made-up key would just show up on screen as the raw key. Plain English
-# here, same as the code around it, rather than guessing at a translation
-# that would need to be reconciled later anyway.
-_IGNORE_FINDING_LABEL = "Ignore this finding"
-_IGNORE_FINDING_TOOLTIP = (
-    "Suppress this exact finding at the fingerprint level, so it does not "
-    "reappear on a re-scan. Written to .xanalyze-ignore in the scanned "
-    "folder, or to your personal settings when there is no folder to write "
-    "into (a web scan)."
-)
+# Translated like everything else now. It was hardcoded English, with a
+# comment explaining that the translations file belonged to someone else at
+# the time - so the one button on the detail card that was not in the user's
+# language sat next to eight that were.
 
 
 class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
-                 ReportExportMixin, BulkRewriteMixin, QMainWindow):
+                 ReportExportMixin, BulkRewriteMixin, RunsPanel,
+                 QMainWindow):
     def __init__(self, palette=None):
         super().__init__()
         self.settings = config.Settings.load()
@@ -124,20 +135,17 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         #: different states and only one of them is worth a round trip.
         self._account_cache = _UNASKED
         self.source = SOURCE_SITE
-        #: The last request that actually ran, kept so a changed question can
-        #: be answered from the pages already fetched. See
-        #: `AnalysisRequest.reuses_extraction`.
-        self._last_request = None
-        #: The request whose fetch produced `_cached_pages` / `_cached_files`,
-        #: and the documents themselves. Held apart from `_last_request`
-        #: because a run can fail or be cancelled after the fetch succeeded.
-        self._extraction_request = None
-        self._cached_pages = None
-        self._cached_files = None
-        #: The scope the cached files were extracted under. A different scope
-        #: extracts different text, so it invalidates them even though the
-        #: source and the target are the same.
-        self._cached_scope = None
+        # The run's state - which request ran, and which documents its fetch
+        # produced - lives on the view model and is read from there through
+        # the properties below. It used to be duplicated here, and the copy
+        # on this side was never written to: `analyze()` records the request
+        # on the view model, so the window's `_last_request` stayed None for
+        # the life of the process. Three visible consequences, all reported
+        # as separate faults: an audit's findings never appeared in a
+        # both-questions run (the list gated them on this value), the browser
+        # pass never ran (`_on_audit_finished` gates on it too), and the
+        # extraction cache never hit, so changing the question re-crawled the
+        # whole site. One owner instead.
 
         self.worker = None  # AnalysisWorker | RepoAnalysisWorker | None
         self._rewrite_worker: RewriteAllWorker | None = None
@@ -180,6 +188,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         self._retranslate_ui()
         self._wire_app_state()
         self._setup_shortcuts()
+        self._sync_choices_to_state()
         self._update_layout_mode(force=True)
         _ask_account_later(self)
 
@@ -197,9 +206,28 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         self.method_combo.currentIndexChanged.connect(self._on_method_to_state)
         self.provider_combo.currentIndexChanged.connect(self._on_provider_to_state)
 
+        # -- fields -> AppState --
+        # As they are edited, not only when Analyze is pressed. The state was
+        # pushed once, inside `_on_analyze_clicked`, so until the first run
+        # `AppState.target` was empty - and anything that asked the view
+        # model what the current request was got a request for nothing. That
+        # is what made the extraction cache never match: the window compared
+        # a request with a target against one without.
+        for field_widget in (self.url_edit, self.repo_path_edit,
+                             self.file_path_edit):
+            field_widget.textChanged.connect(self._sync_target_to_state)
+        self.depth_spin.valueChanged.connect(self.app_state.set_depth)
+        self.scope_combo.currentIndexChanged.connect(self._sync_scope_to_state)
+
         # -- AppState -> UI updates --
         self.app_state.any_changed.connect(self._apply_mode_visibility)
         self.app_state.any_changed.connect(self._sync_source_from_state)
+        # The account is asked for after the window is on screen, so the
+        # answer arrives later than the combo that depends on it. Rebuilt when
+        # it does; before this, an account found at startup did not add the AI
+        # entries until the user signed in and out again.
+        self.app_state.ai_available_changed.connect(
+            lambda _ready: self._retranslate_choices())
 
         # -- ViewModel -> UI updates --
         self.view_model.busy_changed.connect(self._on_busy_changed)
@@ -239,6 +267,33 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         data = self.mode_combo.currentData()
         if data:
             self.app_state.set_source(data)
+            # The target belongs to the source: switching from a site to a
+            # folder means the state must now hold the folder's path, not the
+            # URL still sitting in the other field.
+            self._sync_target_to_state()
+
+    def _sync_choices_to_state(self) -> None:
+        """Push what the combos currently show into the state, once.
+
+        `_fill_combo` blocks signals while it rebuilds - otherwise every
+        refill would look like a user choice - so the first fill of the
+        session never reached `AppState`. The state then answered with its own
+        constructor defaults, and "both questions", which is what the combo
+        showed, became "AI patterns only", which is what actually ran.
+        """
+        self._on_mode_to_state(0)
+        self._on_checks_to_state(0)
+        self._on_method_to_state(0)
+        self._on_provider_to_state(0)
+        self._sync_target_to_state()
+        self._sync_scope_to_state()
+        self.app_state.set_depth(self.depth_spin.value())
+
+    def _sync_target_to_state(self, _text: str = "") -> None:
+        self.app_state.set_target(self._current_target())
+
+    def _sync_scope_to_state(self, _idx: int = 0) -> None:
+        self.app_state.set_scope(self._repo_scope())
 
     def _on_checks_to_state(self, _idx: int) -> None:
         data = self.checks_combo.currentData()
@@ -332,36 +387,53 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
 
         bar = QWidget()
         bar.setProperty("class", theme.CLASS_BRAND)
-        layout = QHBoxLayout(bar)
+        # Four things in one row need about 500px; the column has 268. So the
+        # header stacks: the mark and the name on one line, then the tagline,
+        # then the account. Each of those wraps rather than clipping - a
+        # tagline cut mid-word is worse than a tagline on two lines.
+        layout = QVBoxLayout(bar)
         layout.setContentsMargins(4, 0, 4, 0)
-        layout.setSpacing(self.palette_tokens.space_sm)
+        layout.setSpacing(self.palette_tokens.space_1)
+
+        title_row = QWidget()
+        title_layout = QHBoxLayout(title_row)
+        title_layout.setContentsMargins(0, 0, 0, 0)
+        title_layout.setSpacing(self.palette_tokens.space_sm)
 
         mark = ASSETS / ("logo-dark.svg" if theme.resolve_mode(self.settings.theme) == "dark"
                          else "logo-light.svg")
         if mark.is_file():
             self.brand_mark = QSvgWidget(str(mark))
             self.brand_mark.setFixedSize(QSize(22, 22))
-            layout.addWidget(self.brand_mark)
+            title_layout.addWidget(self.brand_mark)
         else:
             self.brand_mark = None
 
         self.brand_name = QLabel("XAnalyze")
         self.brand_name.setProperty("class", theme.CLASS_HEADING)
-        layout.addWidget(self.brand_name)
+        title_layout.addWidget(self.brand_name)
+        title_layout.addStretch(1)
+        layout.addWidget(title_row)
 
         self.brand_tagline = muted()
+        self.brand_tagline.setWordWrap(True)
         layout.addWidget(self.brand_tagline)
-        layout.addStretch(1)
 
         # Account state belongs where it can be seen. It used to live inside
         # the settings dialog, which meant the one fact that decides whether
         # the AI assessment is available at all was three clicks away and
         # invisible from the window that offers it.
+        account_row = QWidget()
+        account_layout = QHBoxLayout(account_row)
+        account_layout.setContentsMargins(0, 0, 0, 0)
+        account_layout.setSpacing(self.palette_tokens.space_sm)
         self.account_label = muted()
-        layout.addWidget(self.account_label)
+        self.account_label.setWordWrap(True)
+        account_layout.addWidget(self.account_label, stretch=1)
         self.account_btn = QPushButton()
         self.account_btn.clicked.connect(self._on_account_clicked)
-        layout.addWidget(self.account_btn)
+        account_layout.addWidget(self.account_btn)
+        layout.addWidget(account_row)
         # Drawn from what is known, which at build time is nothing. The real
         # answer is asked once the window exists; see `_ask_account_later`.
         self._refresh_account_control(ask=False)
@@ -419,16 +491,17 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
     def _build_ui(self) -> None:
         central = QWidget()
         self.setCentralWidget(central)
-        root = QVBoxLayout(central)
+        # A left column of controls beside the results, not a strip of them
+        # above. Every control is the same object it was as a toolbar - the
+        # panels, the mixins and the tests all address these widgets by name -
+        # only the geometry changed: a form reads top to bottom, and a row
+        # that has to wrap to fit eleven controls reads in no direction at
+        # all. The sidebar also gives each control room for its label, which
+        # the wrapping row could only afford by abbreviating them away.
+        root = QHBoxLayout(central)
         gap = self.palette_tokens.space_md
         root.setContentsMargins(gap, gap, gap, gap)
         root.setSpacing(gap)
-
-        # A header strip with the mark and the product name. Not decoration:
-        # this is one application in a family, and the thing that says so at a
-        # glance is the mark, in the same indigo, in the same place as the web
-        # app puts it.
-        root.addWidget(self._build_brand_header())
 
         # The controls live on their own surface rather than floating on the
         # page canvas — the same "monolithic card on a warm canvas" the web
@@ -436,23 +509,30 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         self.toolbar = QWidget()
         self.toolbar.setProperty("class", theme.CLASS_TOOLBAR)
         self.toolbar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        # The toolbar carries the source, its fields, three choices, the
-        # detector and three buttons. In a row that cannot wrap, a narrow window
-        # answers that by clipping labels to nothing; this answers it by using a
-        # second line.
-        controls = FlowLayout(self.toolbar, margin=gap,
-                              spacing=self.palette_tokens.space_sm)
+        controls = QVBoxLayout(self.toolbar)
+        controls.setContentsMargins(gap, gap, gap, gap)
+        controls.setSpacing(self.palette_tokens.space_sm)
+
+        # A header strip with the mark and the product name. Not decoration:
+        # this is one application in a family, and the thing that says so at a
+        # glance is the mark, in the same indigo, in the same place as the web
+        # app puts it.
+        controls.addWidget(self._build_brand_header())
 
         self.mode_label = QLabel()
         self.mode_combo = QComboBox()
         self.mode_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-        self.mode_combo.setMinimumContentsLength(14)
+        self.mode_combo.setMinimumContentsLength(_COMBO_CHARS)
         self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
 
         # --- web-mode controls ---
+        # Stacked, not in a row. Four controls side by side need about 520px
+        # to stay readable, which is twice the column's width - the row fitted
+        # only by squeezing the URL field down to a few characters.
         web_controls = QWidget()
-        web_layout = QHBoxLayout(web_controls)
+        web_layout = QVBoxLayout(web_controls)
         web_layout.setContentsMargins(0, 0, 0, 0)
+        web_layout.setSpacing(self.palette_tokens.space_1)
         self.url_label = QLabel()
         self.url_edit = QLineEdit()
         self.url_edit.textChanged.connect(lambda: self._clear_field_error(self.url_edit))
@@ -462,15 +542,15 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         self.depth_spin.setValue(self.settings.crawl_depth)
         for w in (self.url_label, self.url_edit, self.depth_label, self.depth_spin):
             web_layout.addWidget(w)
-        web_layout.setStretch(1, 3)
         self.url_error = muted()
         self.url_error.setProperty("class", "field-error")
         self.url_error.setVisible(False)
 
         # --- repo-mode controls ---
         repo_controls = QWidget()
-        repo_layout = QHBoxLayout(repo_controls)
+        repo_layout = QVBoxLayout(repo_controls)
         repo_layout.setContentsMargins(0, 0, 0, 0)
+        repo_layout.setSpacing(self.palette_tokens.space_1)
         self.repo_path_edit = QLineEdit()
         self.repo_path_edit.textChanged.connect(lambda: self._clear_field_error(self.repo_path_edit))
         self.browse_btn = QPushButton()
@@ -482,27 +562,34 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         self.scope_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
         )
-        self.scope_combo.setMinimumContentsLength(12)
+        self.scope_combo.setMinimumContentsLength(_COMBO_CHARS)
         self.scope_combo.currentIndexChanged.connect(self._on_scope_changed)
-        for w in (self.repo_path_edit, self.browse_btn, self.exclusions_btn,
-                  self.scope_label, self.scope_combo):
-            repo_layout.addWidget(w)
-        repo_layout.setStretch(0, 3)
+        repo_layout.addWidget(self.repo_path_edit)
+        # These two are short and belong together - the only pair worth a row.
+        repo_buttons = QWidget()
+        repo_buttons_layout = QHBoxLayout(repo_buttons)
+        repo_buttons_layout.setContentsMargins(0, 0, 0, 0)
+        repo_buttons_layout.setSpacing(self.palette_tokens.space_1)
+        repo_buttons_layout.addWidget(self.browse_btn)
+        repo_buttons_layout.addWidget(self.exclusions_btn)
+        repo_layout.addWidget(repo_buttons)
+        repo_layout.addWidget(self.scope_label)
+        repo_layout.addWidget(self.scope_combo)
         self.repo_error = muted()
         self.repo_error.setProperty("class", "field-error")
         self.repo_error.setVisible(False)
 
         # --- single-file controls ---
         file_controls = QWidget()
-        file_layout = QHBoxLayout(file_controls)
+        file_layout = QVBoxLayout(file_controls)
         file_layout.setContentsMargins(0, 0, 0, 0)
+        file_layout.setSpacing(self.palette_tokens.space_1)
         self.file_path_edit = QLineEdit()
         self.file_path_edit.textChanged.connect(lambda: self._clear_field_error(self.file_path_edit))
         self.file_browse_btn = QPushButton()
         self.file_browse_btn.clicked.connect(self._on_browse_file_clicked)
         file_layout.addWidget(self.file_path_edit)
         file_layout.addWidget(self.file_browse_btn)
-        file_layout.setStretch(0, 3)
         self.file_error = muted()
         self.file_error.setProperty("class", "field-error")
         self.file_error.setVisible(False)
@@ -525,7 +612,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         # alone can keep the whole window from ever shrinking below ~1300px
         # and would silently defeat the narrow-window layout below.
         self.provider_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-        self.provider_combo.setMinimumContentsLength(14)
+        self.provider_combo.setMinimumContentsLength(_COMBO_CHARS)
         self.provider_combo.currentIndexChanged.connect(self._on_provider_changed)
         self._populate_providers()
 
@@ -551,7 +638,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         for combo in (self.checks_combo, self.method_combo):
             combo.setSizeAdjustPolicy(
                 QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-            combo.setMinimumContentsLength(12)
+            combo.setMinimumContentsLength(_COMBO_CHARS)
             combo.currentIndexChanged.connect(self._on_choice_changed)
 
         # --- advanced controls (hidden by default) ---
@@ -571,39 +658,81 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         self.settings_btn = QPushButton()
         self.settings_btn.clicked.connect(self._on_settings_clicked)
 
-        # Toolbar keeps only what changes per scan. Language, API keys,
-        # provider and endpoint mapping live in the Settings dialog, which
-        # is what stops this row from growing unusable.
-        controls.addWidget(self.mode_label)
-        controls.addWidget(self.mode_combo)
-        self.source_controls_stack.setMinimumWidth(200)
+        # The sidebar keeps only what changes per scan. Language, API keys and
+        # endpoint mapping live in the Settings dialog, which is what stops
+        # this column from growing unusable.
+        self.source_controls_stack.setMinimumWidth(0)
         self.source_controls_stack.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        controls.addWidget(self.source_controls_stack)
-        # Checks is always visible - it's the primary question
-        controls.addWidget(self.checks_label)
-        controls.addWidget(self.checks_combo)
-        # Advanced toggle shows/hides reader, method, provider
-        controls.addWidget(self.advanced_toggle)
-        controls.addWidget(self.analyze_btn)
-        controls.addWidget(self.cancel_btn)
-        controls.addWidget(self.settings_btn)
-        self.analyze_btn.setProperty("class", theme.CLASS_PRIMARY)
-        root.addWidget(self.toolbar)
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        for widget in (self.mode_label, self.mode_combo,
+                       self.source_controls_stack,
+                       self.checks_label, self.checks_combo):
+            controls.addWidget(widget)
 
-        # Advanced row (hidden by default) - below the main toolbar
+        # The advanced controls: a container rather than a second row, so
+        # showing them extends the column instead of pushing the results
+        # down. Same widget, same name, same `setVisible` from
+        # `_on_advanced_toggle`.
         self.advanced_row = QWidget()
-        self.advanced_row.setProperty("class", theme.CLASS_TOOLBAR)
-        self.advanced_row.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        adv_layout = QHBoxLayout(self.advanced_row)
-        adv_layout.setContentsMargins(gap, 0, gap, gap)
+        adv_layout = QVBoxLayout(self.advanced_row)
+        adv_layout.setContentsMargins(0, 0, 0, 0)
         adv_layout.setSpacing(self.palette_tokens.space_sm)
         for w in (self.method_label, self.method_combo,
                   self.provider_label, self.provider_combo):
             adv_layout.addWidget(w)
-        adv_layout.addStretch(1)
         self.advanced_row.setVisible(False)
-        root.addWidget(self.advanced_row)
+
+        controls.addWidget(self.advanced_toggle)
+        controls.addWidget(self.advanced_row)
+
+        # The catalogue of runs, below the controls and above the buttons:
+        # it is about work that already happened, so it must not sit between
+        # the target and Analyze, and it must not be the thing that scrolls
+        # off the bottom either.
+        controls.addWidget(self._build_runs_panel())
+        controls.addStretch(1)
+        controls.addWidget(self.analyze_btn)
+        controls.addWidget(self.cancel_btn)
+        controls.addWidget(self.settings_btn)
+        self.analyze_btn.setProperty("class", theme.CLASS_PRIMARY)
+
+        # Scrolled, because the column's content grows: the advanced block,
+        # the repository fields and a long provider list together are taller
+        # than a laptop window in its smallest usable size, and controls that
+        # fall off the bottom of a fixed column cannot be reached at all.
+        self.sidebar_scroll = QScrollArea()
+        self.sidebar_scroll.setWidgetResizable(True)
+        self.sidebar_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        # Both scrollbars are allowed rather than suppressed, and that is
+        # what keeps the window resizable. With `widgetResizable` on, a
+        # scroll area that may not scroll horizontally inherits its
+        # content's minimum width as its own - so a fixed-width column of
+        # combos raised the *window's* minimum width and the narrow layout
+        # became unreachable, taking the responsive fold with it.
+        self.sidebar_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.sidebar_scroll.setWidget(self.toolbar)
+        # Max, not fixed: the column keeps its comfortable width whenever
+        # there is room and gives way when there is not.
+        self.sidebar_scroll.setMinimumWidth(0)
+        self.sidebar_scroll.setSizePolicy(QSizePolicy.Policy.Preferred,
+                                          QSizePolicy.Policy.Expanding)
+
+        # --- controls column beside the body -----------------------------------
+        #
+        # A splitter rather than two items in the box layout, for two
+        # reasons. A box layout gives a non-stretching child exactly its
+        # size hint, so the column came out at whatever width its widgets
+        # happened to need (184px) instead of the width it was designed for -
+        # and forcing the hint up with a minimum width raised the *window's*
+        # minimum width with it, which is what made the narrow layout
+        # unreachable the first time. A splitter takes an explicit size,
+        # squeezes to a child's minimum when the window shrinks, and lets
+        # someone widen the column if they want to see a long path in full.
+        self.body_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.body_splitter.setHandleWidth(gap)
+        self.body_splitter.addWidget(self.sidebar_scroll)
+        root.addWidget(self.body_splitter, stretch=1)
 
         # --- three-column body -------------------------------------------------
         self.columns_splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -612,7 +741,13 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         # look the surfaces exist to avoid.
         self.columns_splitter.setHandleWidth(gap)
         self.columns_splitter.setChildrenCollapsible(False)
-        root.addWidget(self.columns_splitter, stretch=1)
+        self.body_splitter.addWidget(self.columns_splitter)
+        # The controls column keeps its width; everything else goes to the
+        # body. Index 1 is the only stretching child, so widening the window
+        # widens the results rather than the form.
+        self.body_splitter.setStretchFactor(0, 0)
+        self.body_splitter.setStretchFactor(1, 1)
+        self.body_splitter.setSizes([SIDEBAR_WIDTH, 1000])
 
         # Column 1: graphical copy of the site OR the raw source file being
         # analyzed, depending on mode.
@@ -727,8 +862,11 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         self.columns_splitter.addWidget(col2)
 
         # Column 3 (wide layout only): input box + actions for the selected passage.
-        self.col3 = QWidget()
-        self.detail_layout = QVBoxLayout(self.col3)
+        # A panel with a head, like the other two columns. It was a bare
+        # widget, so its contents floated directly on the page canvas while
+        # its neighbours sat on titled surfaces - which read as a column that
+        # had failed to render rather than as a third zone.
+        self.col3, self.detail_layout, self.detail_header = panel()
         self.detail_layout.setContentsMargins(0, 0, 0, 0)
         self.detail_layout.setSpacing(0)
         self.columns_splitter.addWidget(self.col3)
@@ -739,6 +877,11 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         self.setStatusBar(self.status_bar)
 
         self._apply_mode_visibility()
+        # A blank white pane is the one thing the empty state exists to
+        # prevent, and it was exactly what the window opened with: the state
+        # was only ever shown after a scan produced no rows, never before the
+        # first scan.
+        self._show_empty_state()
 
     def _populate_providers(self) -> None:
         """Offer every account, including ones not connected yet.
@@ -844,6 +987,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
             else t("advanced_show", lang))
         self.flagged_header.setText(t("flagged_list_header", lang))
         self.col1_header.setText(t("site_preview_header", lang))
+        self.detail_header.setText(t("detail_header", lang))
         # The action row is icons, and the words move into the tooltips: six
         # buttons of six different widths read as a heap rather than as a row,
         # and their labels are long in every language this app speaks. The
@@ -996,6 +1140,12 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         # collapsing both together is the jump from three columns to one that
         # this second breakpoint exists to remove.
         self.col1.setVisible(medium)
+        # The controls column narrows with the body. A fixed 268px form
+        # beside a single 350px findings list is a window where neither half
+        # works.
+        wanted = SIDEBAR_WIDTH if medium else SIDEBAR_WIDTH_NARROW
+        self.body_splitter.setSizes(
+            [wanted, max(1, self.width() - wanted - self.palette_tokens.space_md)])
         self._collapse_inline_detail()
         self._reset_detail_panel()
 
@@ -1045,14 +1195,18 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
             return tuple(part for part in data.split("+") if part)
         return tuple(data)
 
+    # The combos are the input device; `AppState` is the answer. Reading the
+    # widget here as well gave the window a second opinion about what the
+    # user had chosen, and the two were compared against each other.
+
     def _chosen_checks(self) -> tuple:
-        return self._decode_choice(self.checks_combo.currentData(), CHECKS)
+        return self.app_state.checks
 
     def _chosen_readers(self) -> tuple:
-        return self._decode_choice(self.reader_combo.currentData(), (READER_CODE,))
+        return self.app_state.readers
 
     def _chosen_methods(self) -> tuple:
-        return self._decode_choice(self.method_combo.currentData(), (METHOD_LOCAL,))
+        return self.app_state.methods
 
     def _ai_available(self) -> bool:
         """Is there anything to pay for an AI pass with?
@@ -1075,16 +1229,15 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
             return False
 
     def current_request(self) -> AnalysisRequest:
-        """What the four controls currently describe, made runnable."""
-        return AnalysisRequest(
-            source=self.source,
-            target=self._current_target(),
-            depth=self.depth_spin.value(),
-            readers=self._chosen_readers(),
-            checks=self._chosen_checks(),
-            methods=self._chosen_methods(),
-            ai_available=self._ai_available(),
-        ).normalised()
+        """The run the current choices describe.
+
+        Delegated: the view model builds this from `AppState`, and a second
+        builder here - reading the combos directly - meant the window and the
+        view model could describe different runs at the same moment. They
+        did, and comparing one against the other is what stopped the
+        extraction cache from ever matching.
+        """
+        return self.view_model.current_request()
 
     def _current_target(self) -> str:
         if self.source == SOURCE_REPO:
@@ -1093,6 +1246,34 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
             return self.file_path_edit.text().strip()
         return self.url_edit.text().strip()
 
+    # ------------------------------------------- run state, owned elsewhere
+    #
+    # Read-only views onto the view model. The window needs these values -
+    # the findings list asks whether the run wanted an audit, the audit
+    # handler asks whether it wanted a browser - but it must not hold a
+    # second copy of them. See the note in `__init__`.
+
+    @property
+    def _last_request(self):
+        """The request that actually ran, or None before the first run."""
+        return self.view_model._last_request
+
+    @property
+    def _extraction_request(self):
+        return self.view_model._extraction_request
+
+    @property
+    def _cached_pages(self):
+        return self.view_model._cached_pages
+
+    @property
+    def _cached_files(self):
+        return self.view_model._cached_files
+
+    @property
+    def _cached_scope(self):
+        return self.view_model._cached_scope
+
     def _reusable_pages(self):
         """Pages an earlier run already fetched for this exact target, or None.
 
@@ -1100,10 +1281,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         judge used to mean crawling the site again, which is the slowest
         possible way to answer a question about pages already on this machine.
         """
-        request = self.current_request()
-        if self._cached_pages and request.reuses_extraction(self._extraction_request):
-            return self._cached_pages
-        return None
+        return self.view_model._reusable_pages()
 
     def _reusable_files(self):
         """The repository counterpart, with one extra condition.
@@ -1111,29 +1289,17 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         The scope decides what is extracted at all - copy, comments, or both -
         so a changed scope is a changed extraction and cannot be reused.
         """
-        request = self.current_request()
-        if (self._cached_files
-                and self._cached_scope == self._repo_scope()
-                and request.reuses_extraction(self._extraction_request)):
-            return self._cached_files
-        return None
+        return self.view_model._reusable_files()
 
     def _remember_extraction(self, request, *, pages=None, files=None,
                              scope=None) -> None:
-        self._extraction_request = request
-        if pages is not None:
-            self._cached_pages = pages
-        if files is not None:
-            self._cached_files = files
-            self._cached_scope = scope
+        self.view_model._remember_extraction(request, pages=pages, files=files,
+                                             scope=scope)
 
     def _forget_extraction(self) -> None:
         """Drop the cache. Called when the source or the target changes: those
         are the two things the cached documents *are*."""
-        self._extraction_request = None
-        self._cached_pages = None
-        self._cached_files = None
-        self._cached_scope = None
+        self.view_model.forget_extraction()
 
     def _on_choice_changed(self, _idx: int = 0) -> None:
         """A changed question does not invalidate the fetched pages.
@@ -1187,7 +1353,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
             (t("check_ai_patterns", lang), self.choice_key((CHECK_AI_PATTERNS,))),
         ])
 
-        ai_ready = self._ai_available()
+        ai_ready = self.app_state.ai_available
         method_options = [
             (t("method_local", lang), self.choice_key((METHOD_LOCAL,))),
             (t("method_embedding", lang), self.choice_key((METHOD_EMBEDDING,))),
@@ -1231,7 +1397,6 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         # question from where it looks.
         wants_copy = CHECK_AI_PATTERNS in checks
         wants_audit = CHECK_ACCESSIBILITY in checks
-        is_audit = wants_audit
         # Auditing a site takes a URL and a depth, exactly like the web scan,
         # so it reuses those fields rather than growing a second pair beside
         # them. Auditing one file needs a path and nothing else.
@@ -1342,8 +1507,8 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
 
     def _clear_all_field_errors(self) -> None:
         """Clear all inline error indicators."""
-        for field in (self.url_edit, self.repo_path_edit, self.file_path_edit):
-            self._clear_field_error(field)
+        for edit in (self.url_edit, self.repo_path_edit, self.file_path_edit):
+            self._clear_field_error(edit)
 
     def _sync_state_from_ui(self) -> None:
         """Push current widget values into AppState before an action."""
@@ -1615,8 +1780,8 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         self._update_audit_buttons_enabled()
 
     def _build_ignore_button(self, on_click) -> QPushButton:
-        button = QPushButton(_IGNORE_FINDING_LABEL)
-        button.setToolTip(_IGNORE_FINDING_TOOLTIP)
+        button = QPushButton(t("ignore_finding", self.lang))
+        button.setToolTip(t("ignore_finding_hint", self.lang))
         button.clicked.connect(on_click)
         return button
 
@@ -1631,31 +1796,31 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
 
     def _start_audit(self) -> None:
         """Audit the chosen source: accessibility, SEO, performance, best
-        practices. The source is a site in one mode and one packed HTML file
-        in the other; everything downstream is identical."""
-        if self.mode == MODE_FILE:
-            target = self.file_path_edit.text().strip()
-            if not target:
-                QMessageBox.warning(self, "", t("no_file_path", self.lang))
-                return
-        else:
-            target = self.url_edit.text().strip()
-            if not target:
-                QMessageBox.warning(self, "", t("url_label_full", self.lang))
-                return
-            if not target.startswith(("http://", "https://")):
-                target = "https://" + target
+        practices. Reached from the re-audit after a fix (see
+        `ui.window_parts.report_export`); the first audit of a run goes
+        through the view model. Both build the worker with the same function,
+        because when they built it separately they were separately wrong -
+        see `ui.worker.audit_worker_for`."""
+        from ui.worker import audit_worker_for
+
+        worker, refusal = audit_worker_for(
+            self.source,
+            target=self._current_target(),
+            depth=self.depth_spin.value(),
+            max_pages=self.settings.max_pages,
+            pages=self._reusable_pages() if self.source == SOURCE_SITE else None,
+            ignore_patterns=self.repo_ignore_patterns,
+            settings=self.settings,
+        )
+        if worker is None:
+            QMessageBox.warning(self, "", self._missing_target_message()
+                                if refusal == "no_target"
+                                else t("url_label_full", self.lang))
+            return
 
         self.audit_result = None
         self._reset_scan_ui()
-        self.worker = AuditWorker(
-            pages=self._reusable_pages() if self.source == SOURCE_SITE else None,
-            target=target,
-            depth=self.depth_spin.value(),
-            max_pages=self.settings.max_pages,
-            is_page_file=self.mode == MODE_FILE,
-            settings=self.settings,
-        )
+        self.worker = worker
         self.worker.crawling.connect(self._on_crawling)
         self.worker.auditing.connect(self._on_auditing)
         self.worker.finished_ok.connect(self._on_audit_finished)

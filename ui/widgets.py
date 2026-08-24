@@ -196,6 +196,8 @@ def card(widget: QWidget) -> QWidget:
 def heading(text: str = "") -> QLabel:
     label = QLabel(text)
     label.setProperty("class", theme.CLASS_HEADING)
+    # A finding's title can be the flagged markup itself.
+    label.setTextFormat(Qt.TextFormat.PlainText)
     return label
 
 
@@ -203,6 +205,9 @@ def muted(text: str = "") -> QLabel:
     label = QLabel(text)
     label.setProperty("class", theme.CLASS_MUTED)
     label.setWordWrap(True)
+    # Same reason as in `field`: these carry rule text and file paths, and a
+    # `<tag>` in either must be read, not rendered.
+    label.setTextFormat(Qt.TextFormat.PlainText)
     return label
 
 
@@ -264,6 +269,7 @@ def chip(text: str = "") -> QLabel:
     """A quiet pill: a rule id, an engine name, a position in a file."""
     label = QLabel(text)
     label.setProperty("class", theme.CLASS_CHIP)
+    label.setTextFormat(Qt.TextFormat.PlainText)
     return label
 
 
@@ -290,6 +296,13 @@ def field(label_text: str, body_text: str) -> QWidget:
 
     body = QLabel(body_text)
     body.setWordWrap(True)
+    # Plain text, explicitly. Qt auto-detects rich text, and these
+    # explanations are *about* markup: the fix for a missing language
+    # attribute is the sentence «add <html lang="uk">», and Qt rendered that
+    # as an HTML tag - so the one thing the reader needed vanished and the
+    # sentence ended in a bare colon. Every explanation carrying an example
+    # tag was silently truncated the same way.
+    body.setTextFormat(Qt.TextFormat.PlainText)
     body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
     layout.addWidget(body)
     return container

@@ -27,22 +27,16 @@ from ui import theme
 PROVIDER_ANTHROPIC = "anthropic"
 PROVIDER_XFORMAT = "xformat"
 
-# The suppression tab is not routed through `i18n.translations.t()`: that
-# module belongs to another agent while this feature is being built, and a
-# key with no translation entry would show the raw key on screen. Plain
-# English labels here, same rule `main_window._IGNORE_FINDING_LABEL` follows.
+#: The five suppression levels, as translation keys rather than as English
+#: strings. They were hardcoded English with a comment saying the
+#: translations file belonged to someone else at the time - which left one
+#: tab of a translated dialog in a language the user had not chosen.
 _SUPPRESSION_LEVELS = (
-    ("fingerprints", "Exact findings",
-     "One exact finding, dismissed once — survives a re-scan, nothing else."),
-    ("phrases", "Phrases",
-     "A word or phrase never flagged again, anywhere."),
-    ("rules", "Rules",
-     "A whole check switched off — a style signal, a character category, "
-     "or an accessibility rule id."),
-    ("paths", "Paths",
-     "A file or URL pattern excluded from analysis entirely."),
-    ("selectors", "Selectors",
-     "A part of the page excluded — a CSS selector."),
+    ("fingerprints", "suppression_fingerprints"),
+    ("phrases", "suppression_phrases"),
+    ("rules", "suppression_rules"),
+    ("paths", "suppression_paths"),
+    ("selectors", "suppression_selectors"),
 )
 
 
@@ -264,20 +258,16 @@ class SettingsDialog(QDialog):
         w = QWidget()
         scroll.setWidget(w)
         layout = QVBoxLayout(w)
-        note = QLabel(
-            "Findings you've already decided about. Personal entries apply "
-            "to every project; remove one to see that finding again on the "
-            "next scan."
-        )
+        note = QLabel(t("suppression_note", self.lang))
         note.setWordWrap(True)
         note.setProperty("class", theme.CLASS_MUTED)
         layout.addWidget(note)
 
         own = suppression.Suppressions.from_dict(self.settings.ignore)
         self._suppression_lists: dict[str, QListWidget] = {}
-        for key, title, hint in _SUPPRESSION_LEVELS:
-            group = QGroupBox(title)
-            group.setToolTip(hint)
+        for key, label_key in _SUPPRESSION_LEVELS:
+            group = QGroupBox(t(label_key, self.lang))
+            group.setToolTip(t(f"{label_key}_hint", self.lang))
             group_layout = QVBoxLayout(group)
 
             listbox = QListWidget()
@@ -294,11 +284,13 @@ class SettingsDialog(QDialog):
                     for rule_id in ids:
                         entry.addItem(f"{rule_id}  ({category})", userData=rule_id)
                 entry.setCurrentIndex(-1)
-                entry.lineEdit().setPlaceholderText("rule id")
+                entry.lineEdit().setPlaceholderText(
+                    t("suppression_rule_placeholder", self.lang))
             else:
-                entry.setPlaceholderText("add…")
-            add_btn = QPushButton("Add")
-            remove_btn = QPushButton("Remove selected")
+                entry.setPlaceholderText(t("suppression_add_placeholder",
+                                           self.lang))
+            add_btn = QPushButton(t("suppression_add", self.lang))
+            remove_btn = QPushButton(t("suppression_remove", self.lang))
             row.addWidget(entry, stretch=1)
             row.addWidget(add_btn)
             row.addWidget(remove_btn)
@@ -373,10 +365,10 @@ class SettingsDialog(QDialog):
 
         project = suppression.Suppressions.parse(path.read_text(encoding="utf-8"))
         summary = ", ".join(
-            f"{title.lower()}: {len(getattr(project, key))}"
-            for key, title, _hint in _SUPPRESSION_LEVELS
+            f"{t(label_key, self.lang).lower()}: {len(getattr(project, key))}"
+            for key, label_key in _SUPPRESSION_LEVELS
             if getattr(project, key)
-        ) or "empty"
+        ) or t("suppression_empty", self.lang)
         label = QLabel(f"{path}\n{summary}")
         label.setWordWrap(True)
         layout.addWidget(label)

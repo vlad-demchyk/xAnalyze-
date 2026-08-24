@@ -68,7 +68,7 @@ class Choices(unittest.TestCase):
         account now, and an offline-only run has no account question. Which
         engine judges the copy is the method's answer - see
         `test_method_reaches_the_run.py`."""
-        self.window._ai_available = lambda: True
+        self.window.app_state.set_ai_available(True)
         self.window._retranslate_choices()
         self._select_raw(self.window.mode_combo, SOURCE_SITE)
         self._select(self.window.checks_combo, (CHECK_ACCESSIBILITY, CHECK_AI_PATTERNS))
@@ -166,7 +166,7 @@ class AccountControl(unittest.TestCase):
 
     def test_signing_in_selects_the_ai_method_alongside_the_local_one(self):
         window = self._window("someone@example.com · pro")
-        window._ai_available = lambda: True
+        window.app_state.set_ai_available(True)
         window._select_ai_method()
         self.assertEqual(set(window.current_request().methods),
                          {METHOD_LOCAL, METHOD_AI})

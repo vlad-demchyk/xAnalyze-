@@ -329,6 +329,51 @@ class AuditWorker(QThread):
             self.failed.emit(str(exc))
 
 
+def audit_worker_for(source: str, *, target: str, depth: int, max_pages: int,
+                     pages=None, ignore_patterns=None, max_files: int = 5000,
+                     settings=None, parent=None):
+    """The right `AuditWorker` for the source, or `(None, message)` on refusal.
+
+    One place, because there were two: the window and the view model each
+    built this worker, and both built it the same wrong way. Neither ever
+    passed `is_repo`, and both prefixed `https://` onto anything that was not
+    a single file - so auditing a *folder* sent `https:///Users/me/project`
+    to the crawler. That produced one document with a fetch error and zero
+    findings, and the window reported it as a clean audit. Accessibility
+    auditing of a repository did not work at all from the desktop app.
+
+    Returns `(worker, "")` or `(None, reason)`.
+    """
+    from analysis_modes import SOURCE_FILE, SOURCE_REPO
+    from cli_impl.auditpass import looks_like_url, with_scheme
+
+    target = (target or "").strip()
+    if not target:
+        return None, "no_target"
+
+    if source == SOURCE_REPO:
+        # A folder of source files. Walked and audited as files, never
+        # fetched: there is no server, and the templates in it are not pages
+        # a browser could load.
+        return AuditWorker(target=target, depth=0, max_pages=max_pages,
+                           is_repo=True, ignore_patterns=ignore_patterns,
+                           max_files=max_files, settings=settings,
+                           parent=parent), ""
+    if source == SOURCE_FILE:
+        return AuditWorker(target=target, depth=0, max_pages=max_pages,
+                           is_page_file=True, settings=settings,
+                           parent=parent), ""
+
+    # A site. `example.com` is accepted here exactly as the CLI accepts it,
+    # rather than only `https://example.com`.
+    address = with_scheme(target) if looks_like_url(target) else target
+    if not address.startswith(("http://", "https://")):
+        return None, "not_a_url"
+    return AuditWorker(pages=pages, target=address, depth=depth,
+                       max_pages=max_pages, settings=settings,
+                       parent=parent), ""
+
+
 class RewriteAllWorker(QThread):
     """Generates a human-sounding rewrite for every (block, span) passed in
     that doesn't already have a draft, through whichever LLM provider is
