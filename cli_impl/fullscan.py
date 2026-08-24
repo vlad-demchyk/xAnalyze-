@@ -10,7 +10,6 @@ import argparse
 import json
 import sys
 from collections import Counter
-from datetime import datetime
 from pathlib import Path
 
 import suppression
@@ -18,12 +17,14 @@ import suppression
 import detectors  # noqa: F401 - registers the detectors
 from detectors.factory import DetectorFactory
 
-from cli_impl import EXIT_ERROR, EXIT_FINDINGS, EXIT_OK
+from cli_impl import EXIT_ERROR, EXIT_FINDINGS, EXIT_INCOMPLETE, EXIT_OK
 from cli_impl.agentcmds import _agent_detection_rules
 from cli_impl.auditpass import (
-    _crawl_maybe_rendering, _is_page_file, _run_browser_pass,
+    _crawl_maybe_rendering, _is_page_file, _run_browser_pass, looks_like_url,
+    with_scheme,
 )
 from cli_impl.output import _public
+from cli_impl import checkpoint, runfolder, runstate
 from cli_impl.scanning import (
     _analyze, _build_scan_config, _collect_files, _ignore_root,
     _settings_for_ignore,
@@ -33,19 +34,32 @@ from cli_impl.scanning import (
 _AGENT_CANDIDATE_FLOOR = 0.25
 
 
-def _fullscan_report_paths(args, target: str, is_url: bool) -> None:
-    """Default both reports onto ~/Desktop unless the caller named them."""
-    desktop = Path.home() / "Desktop"
-    timestamp = datetime.now().strftime("%Y-%m-%d-%H%M")
-    if is_url:
-        name = target.replace("https://", "").replace("http://", "")
-        name = name.replace("/", "_")[:30]
-    else:
-        name = Path(target).stem
-    if not getattr(args, "styled_report", None):
-        args.styled_report = str(desktop / f"xanalyze-{name}-{timestamp}.pdf")
-    if not getattr(args, "report", None):
-        args.report = str(desktop / f"xanalyze-{name}-{timestamp}.md")
+def _fullscan_report_paths(args, target: str):
+    """Put this run's documents in this target's folder on the Desktop.
+
+    A folder per target, a sub-folder per run: see `cli_impl.runfolder`. The
+    documents used to be timestamped files dropped loose on the Desktop,
+    which made a second run of the same site impossible to find next to the
+    first - and the run history was keyed on those ever-changing file names,
+    so no run was ever compared with any other.
+
+    The folder is created either way. Naming both report paths says where the
+    *reports* go, and it used to mean no run folder at all - which also meant
+    no phase record and no checkpoints, so the one caller who had asked for
+    control over their output was the one who could not resume. The reports
+    now go exactly where they were asked for, and the run still has a folder
+    to keep its state and its intermediate results in.
+    """
+    from cli_impl import runfolder
+
+    named_styled = bool(getattr(args, "styled_report", None))
+    named_report = bool(getattr(args, "report", None))
+    folder = runfolder.prepare(target)
+    if not named_styled:
+        args.styled_report = str(folder.styled_report)
+    if not named_report:
+        args.report = str(folder.report)
+    return folder
 
 
 def _candidate(block, source_url: str, line: int, span) -> dict:
@@ -106,8 +120,22 @@ def _content_findings_from_pages(pages) -> list:
     was a file, so the same offline detector runs over its text blocks here
     and the spans become the finding dicts the reports read. Without this,
     a website scan silently lost whole report sections a repo scan had.
+
+    The same threshold as the repo scan, and this is not a detail. Without it
+    this path appended *every* span the detector produced, scored or not: a
+    real 192-page run reported 10,976 "AI text patterns" of which 10,946 were
+    `low` - blocks that scored 0.00 and were listed anyway. They inflated the
+    count the user reads, and they are most of why that run's artifacts came
+    to 14 MB of JSON, 31 MB of HTML and a 117 MB PDF.
+
+    Character findings are kept at any confidence, exactly as the repo scan
+    keeps them: a wrong dash is a fact about the text, so a low score there
+    means "a small defect", not "probably nothing". A style score below the
+    threshold means the second thing, and saying it 10,946 times says nothing.
     """
     from models import Confidence
+
+    from .scanning import CHARACTER_SOURCE
 
     offline = DetectorFactory.create("offline", include_style=True)
     findings = []
@@ -115,6 +143,9 @@ def _content_findings_from_pages(pages) -> list:
         for block in page.blocks:
             for span in offline.analyze_block(block):
                 if (span.details or {}).get("error"):
+                    continue
+                if span.confidence == Confidence.LOW \
+                        and (span.details or {}).get("source") != CHARACTER_SOURCE:
                     continue
                 confidence = span.confidence
                 if isinstance(confidence, Confidence):
@@ -413,7 +444,11 @@ def _write_styled_report(args, audit_result, content_findings: list,
     from report.export import write_styled_report
 
     print("# [stage] writing reports...", file=sys.stderr, flush=True)
-    write_styled_report(args.styled_report, model, lang)
+    # The markdown path travels with it so that, if the PDF cannot be
+    # printed, the one-page stand-in can name the report to read instead of
+    # merely gesturing at the folder.
+    write_styled_report(args.styled_report, model, lang,
+                        markdown_path=getattr(args, "report", None))
     print(f"# styled report: {args.styled_report}", file=sys.stderr)
 
 
@@ -441,15 +476,97 @@ def _markdown_briefing_input(agent_mode: bool, agent_candidates: list,
 
 def _write_markdown_briefing(args, audit_result, agent_mode: bool,
                              agent_candidates: list, scan_findings: list,
-                             lang: str) -> None:
+                             lang: str) -> dict | None:
+    """Write the briefing and hand back the payload it wrote.
+
+    The payload carries the grouped problems and the run history, which the
+    comparison document needs; recomputing either would mean grouping the
+    findings twice.
+    """
     from cli_impl.reports import _write_report
 
     if not getattr(args, "report", None) or audit_result is None:
-        return
+        return None
     ai_for_report = _markdown_briefing_input(
         agent_mode, agent_candidates, scan_findings)
-    _write_report(audit_result, args, lang, None, ai_findings=ai_for_report)
-    print(f"# agent briefing: {args.report}", file=sys.stderr)
+    # No second "agent briefing: <path>" line here: `_write_report` already
+    # prints the path it wrote, and two lines naming one file read as two
+    # files.
+    return _write_report(audit_result, args, lang, None,
+                         ai_findings=ai_for_report)
+
+
+def _write_run_documents(folder, target: str, timings, payload, combined,
+                         documents: int) -> None:
+    """The two documents that describe the run rather than the target.
+
+    `timings.md` says where the time went, so "why did this take an hour"
+    has an answer without re-running anything. `changes.md` says what the
+    last round of work achieved - and is not written at all on a first run,
+    because a comparison document with nothing to compare reads as a broken
+    comparison rather than as a first run.
+    """
+    from cli_impl.reports import write_comparison_document
+
+    summary = combined.get("summary", {})
+    timings.write(folder.timings, target, extra={
+        "pages or files examined": documents,
+        "findings": summary.get("total_findings", 0),
+        "AI patterns": summary.get("ai_patterns", 0),
+        "accessibility": summary.get("accessibility", 0),
+        "run folder": str(folder.run),
+    })
+    if payload is not None:
+        wrote = write_comparison_document(folder.changes, payload)
+        if not wrote:
+            earlier = folder.previous_runs()
+            print("# first run of this target - nothing to compare against"
+                  if not earlier else
+                  "# no comparable previous run recorded for this target",
+                  file=sys.stderr)
+
+
+def _stop_short(state, folder, target, timings, phase, reason, *,
+                paused=False) -> int:
+    """End a run that could not finish, keeping everything it produced.
+
+    The whole point of the phase record is this function existing at all: a
+    run that stops has to leave behind what it computed, a statement of where
+    it stopped, and one command that continues. Before this, a failure in the
+    last of six phases discarded the five that had succeeded - on a real site
+    that was forty-six minutes of crawling and auditing thrown away because a
+    two-minute step raised.
+    """
+    if state is None:
+        print(f"# {'paused' if paused else 'stopped'}: {reason}",
+              file=sys.stderr, flush=True)
+        return EXIT_INCOMPLETE
+    if not paused:
+        state.fail(phase, reason)
+    timings.finish()
+    if folder is not None:
+        try:
+            timings.write(folder.timings, target,
+                          extra={"stopped in": phase, "reason": reason})
+        except Exception as exc:  # noqa: BLE001 - the state file matters more
+            print(f"# warning: timings failed: {exc}", file=sys.stderr)
+    state.write_feedback()
+    state.write_markdown()
+    info = state.feedback()
+    print(f"# {'paused' if paused else 'stopped'} in {phase}: {reason}",
+          file=sys.stderr, flush=True)
+    if info["artifacts"]:
+        print(f"# kept {len(info['artifacts'])} artifact(s) in {state.run_dir}",
+              file=sys.stderr)
+    if info["resume_with"]:
+        print(f"# continue with: {info['resume_with']}", file=sys.stderr)
+    # The machine-readable half goes to stdout, where every other command
+    # puts its JSON: an agent that ran this must be able to read the outcome
+    # the same way it reads a success, and not have to scrape stderr.
+    print(json.dumps({"target": target, "incomplete": True,
+                      "run": str(state.run_dir), "state": info},
+                     indent=2, ensure_ascii=False))
+    return EXIT_INCOMPLETE
 
 
 def cmd_fullscan(args) -> int:
@@ -475,35 +592,122 @@ def cmd_fullscan(args) -> int:
     """
     lang = args.language  # None if not specified, will auto-detect after crawl
     target = args.target
-    is_url = target.startswith(("http://", "https://")) or args.url
+    is_url = looks_like_url(target) or args.url
+    if is_url:
+        # Normalised here rather than inside the crawl, so the report file
+        # names and the JSON `target` say the same address that was fetched.
+        target = with_scheme(target)
     is_page = _is_page_file(target) if not is_url else False
     # Browser is automatic for URLs and HTML files, not for repos
     no_browser = getattr(args, "no_browser", False)
     wants_browser = (is_url or is_page) and not no_browser
     agent_mode = getattr(args, "agent", False)
 
-    _fullscan_report_paths(args, target, is_url)
+    # Validated before the run folder is created: a typo must not leave an
+    # empty folder behind on someone's Desktop.
+    if not is_url and not is_page and not Path(target).exists():
+        print(f"path not found: {target}", file=sys.stderr)
+        return EXIT_ERROR
 
-    # Validate target
-    if not is_url and not is_page:
-        if not Path(target).exists():
-            print(f"path not found: {target}", file=sys.stderr)
-            return EXIT_ERROR
+    resumed = getattr(args, "_resume_state", None)
+    if resumed is not None:
+        folder = runfolder.RunFolder(resumed.run_dir.parent, resumed.run_dir)
+        state = resumed
+    else:
+        folder = _fullscan_report_paths(args, target)
+        state = (runstate.RunState.begin(folder, target) if folder is not None
+                 else None)
+    timings = runfolder.Timings()
 
+    def already(phase: str) -> bool:
+        """Did an earlier attempt finish this phase?
+
+        Only ever true on a resume, and it is what makes resume worth having:
+        the crawl and the browser pass are three minutes and forty-three on a
+        real site, against two for everything after them.
+        """
+        entry = state.phase(phase) if state is not None else None
+        return bool(entry and entry["status"] == runstate.DONE)
+
+    def guard(phase: str) -> None:
+        """Honour a pause request at a phase boundary."""
+        if state is not None:
+            state.checkpoint(phase)
+
+    try:
+        return _run_phases(args, state, folder, timings, target, lang, is_url,
+                           is_page, wants_browser, agent_mode, already, guard)
+    except runstate.Paused as paused:
+        return _stop_short(state, folder, target, timings,
+                           state.next_phase() if state else "", str(paused),
+                           paused=True)
+
+
+def _run_phases(args, state, folder, timings, target, lang, is_url, is_page,
+                wants_browser, agent_mode, already, guard) -> int:
+    """The phases themselves, each recording its own outcome.
+
+    Split out from `cmd_fullscan` so the pause exception has one place to be
+    caught: a `Paused` raised at any boundary unwinds to exactly one handler,
+    and a paused run and a failed run then leave the same shape behind - which
+    is what lets `resume` have one code path instead of two.
+    """
     # --- Phase 1: AI patterns scan (for local files/repos) ---
     pages = None
     agent_candidates: list = []
+    scan_findings, scan_result = [], None
     if not is_url:
-        scan_findings, scan_result, agent_candidates = \
-            _scan_local_target(target, args, lang, agent_mode)
-    else:
-        scan_findings, scan_result = [], None
+        guard("scan")
+        if already("scan"):
+            scan_findings, counts = checkpoint.load_scan(state.run_dir)
+            scan_result = {"findings": scan_findings or [],
+                           "counts": counts or {}}
+            print("# [resume] AI patterns scan reused", file=sys.stderr)
+        else:
+            timings.start("AI patterns scan")
+            if state is not None:
+                state.start("scan")
+            try:
+                scan_findings, scan_result, agent_candidates = \
+                    _scan_local_target(target, args, lang, agent_mode)
+            except Exception as exc:  # noqa: BLE001 - recorded, not swallowed
+                return _stop_short(state, folder, target, timings, "scan",
+                                   f"the AI patterns scan failed: {exc}")
+            if state is not None:
+                # The public form, not the raw findings: those carry `_span`
+                # and `_block` keys holding live detector objects, which are
+                # what `fix` rewrites files through and are not serialisable.
+                # Nothing after this phase reads them - the reports take the
+                # same public dicts a crawl produces - so the checkpoint is
+                # complete for every consumer that exists.
+                saved = checkpoint.save_scan(
+                    state.run_dir, (scan_result or {}).get("findings", []),
+                    (scan_result or {}).get("counts"))
+                state.done("scan", artifacts=[saved])
+    elif state is not None:
+        state.skip("scan", "folded into the crawl for a website")
+    if not is_url and state is not None:
+        # A folder is not crawled. Said explicitly, because a phase left
+        # `pending` is one `resume` will try to run: without this a finished
+        # repo scan reported itself as unfinished and offered to continue.
+        state.skip("crawl", "not a website")
 
     # --- Phase 2: Accessibility audit ---
     audit_issues: list = []
     audit_result = None
     if is_url:
-        pages, target = _crawl_for_fullscan(target, args, no_browser)
+        guard("crawl")
+        timings.start("crawl")
+        if state is not None:
+            state.start("crawl")
+        try:
+            pages, target = _crawl_for_fullscan(target, args, no_browser=
+                                                getattr(args, "no_browser", False))
+        except Exception as exc:  # noqa: BLE001
+            return _stop_short(state, folder, target, timings, "crawl",
+                               f"the crawl failed: {exc}")
+        if state is not None:
+            state.done("crawl")
         _warn_about_spa(pages)
 
         # Agent mode: extract candidates from crawled pages
@@ -518,6 +722,7 @@ def cmd_fullscan(args) -> int:
         elif pages:
             # Not agent mode: the same content pass a repo gets, so the
             # AI-patterns and typography sections exist in the reports.
+            timings.start("AI patterns scan")
             scan_findings = _content_findings_from_pages(pages)
             scan_result = {
                 "findings": scan_findings,
@@ -530,20 +735,59 @@ def cmd_fullscan(args) -> int:
                 },
             }
 
-        audit_result = _audit_fullscan_target(True, False, target, args, pages)
-    elif is_page:
-        audit_result = _audit_fullscan_target(False, True, target, args, pages)
-    else:
-        audit_result = _audit_fullscan_target(False, False, target, args, pages)
+    guard("audit")
+    if already("audit") and not already("browser"):
+        # The static findings survived; the browser pass did not finish, so
+        # it runs again over the reloaded result. Not resumed at page 97 -
+        # per-page checkpointing is a bigger change, and the crawl, which is
+        # the expensive part, is what this already saves.
+        audit_result = checkpoint.load_audit(state.run_dir)
+        if audit_result is not None:
+            print("# [resume] static audit reused", file=sys.stderr)
+    if audit_result is None:
+        timings.start("static audit")
+        if state is not None:
+            state.start("audit")
+        try:
+            audit_result = _audit_fullscan_target(
+                is_url, is_page and not is_url, target, args, pages)
+        except Exception as exc:  # noqa: BLE001
+            return _stop_short(state, folder, target, timings, "audit",
+                               f"the static audit failed: {exc}")
+        if state is not None:
+            state.done("audit", artifacts=filter(
+                None, [checkpoint.save_audit(state.run_dir, audit_result)]))
 
     if audit_result:
         # Run browser pass automatically for URLs and HTML files
-        if wants_browser:
+        if already("browser"):
+            reloaded = checkpoint.load_audit(state.run_dir)
+            if reloaded is not None:
+                audit_result = reloaded
+                print("# [resume] browser pass reused", file=sys.stderr)
+        elif wants_browser:
+            guard("browser")
+            timings.start("browser pass")
+            if state is not None:
+                state.start("browser")
             suppressions = suppression.Suppressions.load(
                 _settings_for_ignore(args), _ignore_root(args))
-            _run_browser_pass(audit_result, suppressions, args)
+            try:
+                _run_browser_pass(audit_result, suppressions, args)
+            except Exception as exc:  # noqa: BLE001
+                # The static findings are already checkpointed, so stopping
+                # here keeps them: a browser pass that dies half-way used to
+                # cost the crawl and the static audit as well.
+                return _stop_short(state, folder, target, timings, "browser",
+                                   f"the browser pass failed: {exc}")
+            if state is not None:
+                state.done("browser", artifacts=filter(
+                    None, [checkpoint.save_audit(state.run_dir, audit_result)]))
+        elif state is not None:
+            state.skip("browser", "no browser pass for this target")
         for doc in audit_result.documents:
             audit_issues.extend(doc.issues)
+    timings.finish()
 
     # Auto-detect report language from site content
     lang = _detect_report_language(lang, pages)
@@ -563,9 +807,80 @@ def cmd_fullscan(args) -> int:
     elif scan_findings:
         all_content_findings = list(scan_findings)
 
-    _write_styled_report(args, audit_result, all_content_findings, lang)
-    _write_markdown_briefing(args, audit_result, agent_mode,
-                             agent_candidates, scan_findings, lang)
+    # Markdown first: it is plain text written in milliseconds and is the
+    # artifact every consumer parses. The styled export starts a browser and
+    # can take minutes on a large scan, so each writer is isolated: one
+    # report failing must not take the others or the JSON below down with
+    # it (a 158-page PDF once died after the whole browser pass and left
+    # the run without any output at all).
+    guard("reports")
+    timings.start("writing reports")
+    if state is not None:
+        state.start("reports")
+    written: dict = {}
+    report_failures: list = []
+
+    def _briefing() -> None:
+        written["payload"] = _write_markdown_briefing(
+            args, audit_result, agent_mode, agent_candidates, scan_findings,
+            lang)
+
+    for label, write in (
+        ("agent briefing", _briefing),
+        ("styled report",
+         lambda: _write_styled_report(args, audit_result,
+                                      all_content_findings, lang)),
+    ):
+        try:
+            write()
+        except Exception as exc:  # noqa: BLE001 - keep shipping the rest
+            report_failures.append(f"{label}: {exc}")
+            print(f"# warning: {label} failed: {exc}",
+                  file=sys.stderr, flush=True)
+
+    if state is not None:
+        produced = [p for p in (getattr(args, "report", None),
+                                getattr(args, "styled_report", None))
+                    if p and Path(p).exists()]
+        if report_failures and not produced:
+            # Every writer failed, so there is no report at all. Recorded as
+            # a failure rather than warned about, because "no findings" and
+            # "nothing was written" look identical to whoever opens the
+            # folder next, and only one of them is a clean result.
+            return _stop_short(state, folder, target, timings, "reports",
+                               "; ".join(report_failures))
+        if report_failures:
+            # Partly written: the phase did its job, and the reason records
+            # which writer did not, so a resume can be a deliberate choice
+            # rather than a guess.
+            state.phase("reports")["reason"] = "; ".join(report_failures)
+        state.done("reports", artifacts=produced)
+
+    # The comparison and the timings go in the run folder next to the
+    # documents they describe. Isolated the same way as the reports above:
+    # a failure here must not cost the caller the JSON result.
+    if folder is not None:
+        if state is not None:
+            state.start("documents")
+        try:
+            _write_run_documents(
+                folder, target, timings, written.get("payload"), combined,
+                len(audit_result.documents) if audit_result else 0)
+            if state is not None:
+                state.done("documents", artifacts=[
+                    p for p in (folder.timings, folder.changes) if p.exists()])
+        except Exception as exc:  # noqa: BLE001 - keep shipping the rest
+            print(f"# warning: run documents failed: {exc}",
+                  file=sys.stderr, flush=True)
+            if state is not None:
+                state.fail("documents", str(exc))
+        print(f"# run folder: {folder.run}", file=sys.stderr)
+
+    if state is not None:
+        if state.next_phase() is None:
+            state.finish()
+        state.write_feedback()
+        state.write_markdown()
 
     # --- Phase 5: Output (always JSON for agent) ---
     print(json.dumps(combined, indent=2, ensure_ascii=False))

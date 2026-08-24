@@ -26,11 +26,18 @@ from pathlib import Path
 
 from audit.driver import ensure_headless_application
 
-#: Ceiling for the whole render (load + print). Generous for what is always
-#: local content with no network, but a page that never settles must still
-#: fail with a reason instead of hanging the caller forever - same idea as
-#: `audit.driver.LOAD_TIMEOUT_MS`.
-RENDER_TIMEOUT_MS = 30_000
+#: An absolute ceiling on the whole render, in milliseconds. `0` - the
+#: default - means there is none, and that is correct: printing a large
+#: report legitimately takes minutes, and a fixed 30s ceiling once killed a
+#: 158-page document that finishes in 108 seconds when left alone, taking a
+#: 46-minute run's entire output with it.
+#:
+#: What replaces it is not "nothing". `report.activity.ActivityWatch` stops a
+#: render that has stopped *making progress* - a dead render process, or no
+#: output and no CPU time for `STALL_SECONDS` - which is the failure a ceiling
+#: was a poor proxy for. Set this above 0 only to bound a render regardless of
+#: progress, as the tests do.
+RENDER_TIMEOUT_MS = 0
 
 #: `QWebEnginePage.setHtml` funnels its argument through a `data:` URL
 #: internally, which historically caps out around 2 MB. A styled report of
@@ -52,10 +59,17 @@ class PdfRenderer:
     warns loudly and can crash - see `close()`.
     """
 
-    def __init__(self, profile=None):
+    def __init__(self, profile=None, stall_seconds: float | None = None):
+        from report.activity import STALL_SECONDS
+
         self._profile = profile
         self._owns_profile = profile is None
         self._page = None
+        #: How long this renderer tolerates no progress. A parameter rather
+        #: than only a module constant so a caller that knows the report is
+        #: enormous can be more patient without changing it for everyone.
+        self.stall_seconds = (STALL_SECONDS if stall_seconds is None
+                              else stall_seconds)
 
     def __enter__(self) -> "PdfRenderer":
         ensure_headless_application()
@@ -140,13 +154,16 @@ class PdfRenderer:
         from PySide6.QtCore import QEventLoop, QMarginsF, QTimer, QUrl
         from PySide6.QtGui import QPageLayout, QPageSize
 
+        from report.activity import ActivityWatch, RenderProcessGone, Stalled
+
         page = self._get_page()
         loop = QEventLoop()
         # `phase` is what makes the timeout message worth reading: "the page
         # never loaded" and "the printer never answered" are different
         # failures with different causes, and one of them is worth retrying.
         state = {"finished": False, "error": None, "pdf": None,
-                 "phase": "loading", "timed_out": False}
+                 "phase": "loading", "timed_out": False, "stalled": False,
+                 "process_gone": False}
 
         def finish() -> None:
             if not state["finished"]:
@@ -163,16 +180,32 @@ class PdfRenderer:
                 finish()
                 return
             state["phase"] = "printing"
+            # Printing is the phase with no progress signal of its own, so
+            # the watch is told the phase changed: entering it is itself
+            # progress, and the stall window starts again from here rather
+            # than counting the load's quiet tail against the printer.
+            watch.set_phase("printing")
             layout = QPageLayout(QPageSize(QPageSize.PageSizeId.A4),
                                  QPageLayout.Orientation.Portrait, QMarginsF())
             page.printToPdf(on_pdf, layout)
 
+        def on_no_progress(reason: Exception) -> None:
+            if state["finished"]:
+                return
+            state["stalled"] = isinstance(reason, Stalled)
+            state["process_gone"] = isinstance(reason, RenderProcessGone)
+            state["error"] = str(reason)
+            finish()
+
+        watch = ActivityWatch(stall_seconds=self.stall_seconds)
         page.loadFinished.connect(on_load)
-        QTimer.singleShot(RENDER_TIMEOUT_MS, lambda: (
-            state.__setitem__("timed_out", not state["error"]),
-            state.__setitem__("error", state["error"] or _timeout_message(state)),
-            finish(),
-        ) if not state["finished"] else None)
+        watch.attach(page, on_no_progress)
+        if RENDER_TIMEOUT_MS > 0:
+            QTimer.singleShot(RENDER_TIMEOUT_MS, lambda: (
+                state.__setitem__("timed_out", not state["error"]),
+                state.__setitem__("error", state["error"] or _timeout_message(state)),
+                finish(),
+            ) if not state["finished"] else None)
 
         temp_path = None
         encoded_len = len(html.encode("utf-8"))
@@ -193,14 +226,20 @@ class PdfRenderer:
             except (RuntimeError, TypeError):
                 pass
         finally:
+            watch.detach()
             if temp_path is not None:
                 Path(temp_path).unlink(missing_ok=True)
 
         if state["error"]:
-            # `timed_out` rather than the phase: a load that answered "no"
-            # sets the same error string in the loading phase, and that one
-            # must not be retried.
-            if state["timed_out"]:
+            # A dead render process is Qt answering, and the answer will be
+            # the same against a fresh page - so this one is never retried,
+            # even though it arrived the same way a stall does.
+            if state["process_gone"]:
+                raise RuntimeError(state["error"])
+            # `timed_out`/`stalled` rather than the phase: a load that
+            # answered "no" sets the same error string in the loading phase,
+            # and that one must not be retried.
+            if state["timed_out"] or state["stalled"]:
                 raise _CallbackLost(state["error"])
             raise RuntimeError(state["error"])
         if not state["pdf"]:
