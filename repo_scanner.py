@@ -474,9 +474,22 @@ _CONTENT_KEYS = (
 # Translation helpers. Matching the call rather than the file means an inline
 # t("...") and a locale module are both found, without hardcoding a project's
 # folder layout.
+#
+# The WordPress family (`_e`, `_x`, `_n`, `_ex`, `_nx`, `_n_noop`, `_nx_noop`,
+# and the `esc_html`/`esc_attr` variants of each) was missing everything but
+# `__`. Measured on five calls of real theme copy: one found. A theme's
+# visible text is written almost entirely through these, so the gap did not
+# just miss a few strings - it read as a clean scan while finding almost
+# nothing. `_n`/`_nx`/`_n_noop`/`_nx_noop` take a plural as a second string
+# argument that this still does not capture - `_string_pattern` grabs one
+# quoted string per match - but the singular found here beats the nothing
+# found before.
 _I18N_CALLS = (
     r"\$?t", r"i18n\.t", r"intl\.formatMessage", r"translate", r"gettext",
     r"__", r"\$tc", r"trans",
+    r"esc_html__", r"esc_html_e", r"esc_html_x",
+    r"esc_attr__", r"esc_attr_e", r"esc_attr_x",
+    r"_ex", r"_nx_noop", r"_nx", r"_n_noop", r"_n", r"_e", r"_x",
 )
 
 

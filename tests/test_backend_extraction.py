@@ -99,6 +99,43 @@ class PhpExtraction(unittest.TestCase):
         self.assertEqual(content_texts(src, "cart.blade.php"), [])
 
 
+class WordPressExtraction(unittest.TestCase):
+    """The WordPress i18n family beyond `__()`.
+
+    Measured on real theme copy: five calls in, one found - `_e`,
+    `esc_html__`, `esc_html_e` and `_x` were silently missing, so a theme's
+    visible text (written almost entirely through these) came back looking
+    clean while the scan had found almost nothing.
+    """
+
+    def test_e_is_content(self):
+        src = "<?php _e('Immerso in un paesaggio unico', 'theme'); ?>\n"
+        self.assertIn("Immerso in un paesaggio unico", content_texts(src, "header.php"))
+
+    def test_esc_html_underscore_underscore_is_content(self):
+        src = "<?php echo esc_html__('Prenota ora la tua vacanza', 'theme'); ?>\n"
+        self.assertIn("Prenota ora la tua vacanza", content_texts(src, "cta.php"))
+
+    def test_esc_html_e_is_content(self):
+        src = "<?php esc_html_e('Un soggiorno indimenticabile', 'theme'); ?>\n"
+        self.assertIn("Un soggiorno indimenticabile", content_texts(src, "cta.php"))
+
+    def test_esc_attr_e_is_content(self):
+        src = "<input placeholder=\"<?php esc_attr_e('Cerca nel sito', 'theme'); ?>\">\n"
+        self.assertIn("Cerca nel sito", content_texts(src, "search.php"))
+
+    def test_x_with_context_is_content(self):
+        src = "<?php echo _x('Prenota adesso', 'button label', 'theme'); ?>\n"
+        self.assertIn("Prenota adesso", content_texts(src, "cta.php"))
+
+    def test_n_plural_singular_form_is_content(self):
+        # The plural argument is not captured - one quoted string per call
+        # site is what the pattern-based extractor does everywhere else -
+        # but the singular is real copy and must not be lost either.
+        src = "<?php echo _n('Un ospite', 'Piu ospiti', $count, 'theme'); ?>\n"
+        self.assertIn("Un ospite", content_texts(src, "booking.php"))
+
+
 class RubyExtraction(unittest.TestCase):
     def test_flash_notice_is_content(self):
         src = 'flash[:notice] = "Your profile has been updated"\n'
