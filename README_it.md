@@ -48,7 +48,7 @@ Desktop e headless analyzer: rilevamento di testi generati da AI, caratteri non 
 
 - **Rilevamento pattern AI** — euristico (cliché, pattern strutturali, burstiness) e basato su embedding (sentence-transformers)
 - **Caratteri non da tastiera** — spazi zero-width, virgolette curly, em dash, omoglifi
-- **Audit accessibilità** — regole WCAG, SEO, performance, best practice (49 regole)
+- **Audit accessibilità** — regole WCAG, SEO, performance, best practice (52 regole)
 - **Scansione completa** — pattern AI + accessibilità in un comando con rendering browser automatico
 - **Report stilizzati** — PDF/HTML brandizzati per persone
 - **Briefing per agenti** — markdown/JSON per coding agent
@@ -113,7 +113,8 @@ Il TUI fornisce un menu con:
 - **Settings** — ispeziona configurazione
 - **Update** — controlla nuove versioni
 
-Navigazione con frecce o tasti rapidi (1-6). `q` o `Esc` per tornare/uscire.
+Navigazione con frecce o tasti rapidi (1-7). Il footer elenca i tasti che lo
+schermo accetta. `Esc` torna indietro, `q` esce.
 
 ### Comandi CLI
 
@@ -156,8 +157,26 @@ Il comando principale per l'analisi completo. Combina rilevamento pattern AI, au
 - Rendering browser abilitato (gestisce React, Vue, Next.js, ecc.)
 - Responsive breakpoints: desktop (1440px), tablet (834px), mobile (390px)
 - Output JSON per l'agente
-- Report PDF stilizzato salvato in `~/Desktop`
-- Briefing agente (Markdown) salvato in `~/Desktop`
+- Ogni documento salvato in una cartella per questo target sul Desktop
+
+**Dove finiscono i documenti.** Una cartella per target, una sottocartella per
+esecuzione:
+
+```
+~/Desktop/XAnalyze/example.com/
+    2026-08-24-0930/
+        report.md        briefing per l'agente e l'elenco raggruppato dei problemi
+        report.pdf       il report brandizzato per una persona
+        timings.md       quanto è durata ogni fase
+        changes.md       cosa è cambiato dall'esecuzione precedente
+    2026-08-24-1145/
+        ...
+```
+
+`changes.md` appare dalla seconda esecuzione di un target in poi e risponde alla
+domanda che una ri-esecuzione sta ponendo: quanti punti sono stati corretti,
+quali regole hanno smesso di scattare e quali sono comparse. `XANALYZE_REPORT_ROOT`
+sposta la radice delle cartelle fuori dal Desktop.
 
 ```bash
 # Scansione completa di un sito (tutto automatico)
@@ -249,7 +268,7 @@ xanalyze scan ./src --styled-report report.pdf --language it
 | `--no-ignore` | Segnalare tutto, incluso risultati soppressi |
 | `--json` | Output JSON |
 | `--check` | Uscita 1 quando trovati risultati (per hooks e CI) |
-| `--incremental` | Solo file modificati dall'ultima scansione |
+| `--incremental` | Rilegge solo i file cambiati dall'ultima scansione con le stesse impostazioni. La cache è indicizzata su data di modifica e dimensione del file **e** su detector, scope e categorie, quindi cambiarne uno rilegge tutto. Un rilievo riproposto dalla cache non può comparire in `--styled-report`, che si costruisce dagli span vivi; l'esecuzione lo dichiara |
 | `--styled-report PATH` | Report PDF/HTML brandizzato |
 | `--language LANG` | Lingua report: `uk`, `it`, `en` |
 
@@ -469,11 +488,118 @@ Quando si esegue da source (`python cli.py`), mostra il link di download invece 
 
 ---
 
+## Esecuzioni: pausa, arresto, ripresa
+
+Una scansione completa di un sito grande è un lavoro lungo. Un sito di 192
+pagine richiedeva quarantasei minuti, per lo più nel passaggio col browser, ed
+era tutto o niente: se qualcosa falliva prima dell'ultima riga, l'esecuzione
+non scriveva nulla e quei quarantasei minuti erano persi.
+
+Ora ogni fase si registra nel momento in cui cambia stato, quindi
+un'esecuzione che si ferma conserva ciò che ha calcolato e può riprendere.
+
+```bash
+# Quali esecuzioni esistono e quali si possono riprendere
+xanalyze runs
+
+# Riprendere dalla prima fase non completata
+xanalyze resume 2026-08-24-0930
+
+# Chiedere a una scansione in corso di fermarsi al confine della fase successiva
+xanalyze pause 2026-08-24-0930
+```
+
+Un'esecuzione interrotta esce con codice **3** (non 2, che continua a
+significare invocazione sbagliata) e stampa su stdout un blocco leggibile da
+una macchina: cosa si è fermato, perché, quali fasi sono complete, quali file
+sono già su disco e l'unico comando che prosegue. È questo il punto: un agente
+legge il motivo, lo corregge ed emette quel comando. Le fasi completate non
+vengono ricalcolate, perché crawl e audit si rileggono dalla cartella.
+
+La GUI mostra lo stesso catalogo nella colonna dei comandi, con **Riprendi**,
+**Pausa** e **Apri cartella**. Percorre le stesse cartelle della CLI invece di
+tenere un elenco proprio, quindi le due non possono divergere.
+
+### Il watchdog del render
+
+La stampa del PDF è l'unica fase priva di un segnale di avanzamento proprio, ed
+era governata da un limite fisso di 30 secondi. Quel limite uccideva un report
+di 158 pagine che da solo si stampa in 108 secondi, portandosi via l'intero
+risultato dell'esecuzione. Togliere il limite ha tolto anche il pavimento: un
+processo di render morto restava appeso per sempre.
+
+Nessuno dei due misurava se il render stesse lavorando, perché il tempo
+trascorso non può dirlo. Ora ci si ferma sull'**assenza di progresso**:
+
+| evidenza | cosa succede |
+|---|---|
+| il processo di render è morto | si ferma subito, con lo stato di uscita nel messaggio |
+| l'avanzamento del caricamento è cambiato | si prosegue |
+| il processo di render ha usato più CPU del controllo precedente | si prosegue |
+| nulla di quanto sopra per 45 secondi | si ferma, nominando la fase e il silenzio |
+
+Un render che sta lavorando non viene mai interrotto, per quanto duri. Se il
+processo di render non è osservabile, il messaggio lo dichiara invece di
+tornare silenziosamente a essere un timer fisso.
+
+### Quando il PDF non si stampa comunque
+
+La stampa è l'**ultimo** passo di un'esecuzione. Quando può fallire i rilievi
+sono già completi e `report.md` è già scritto: un PDF fallito è una conversione
+fallita, non un'esecuzione fallita, e non ferma più nulla.
+
+Al suo posto il file che ti aspettavi compare ugualmente, come una pagina
+sostitutiva che dice dove si trova il report Markdown e porta i numeri
+principali, così da essere un riepilogo utile e non una pagina di scuse. Se
+nemmeno quella si stampa, lo stesso avviso viene scritto accanto come `.html`:
+un browser lo apre, mentre un PDF da zero byte non lo apre nessuno.
+
+### Come è impaginato il report
+
+Tre cose decidono se un report lungo si legge, e tutte e tre erano sbagliate:
+
+**Le interruzioni di pagina seguono ciò che deve restare unito, non ciò che
+sembra ordinato.** `break-inside: avoid` su ogni scheda è la regola ovvia ed è
+quella sbagliata: una scheda alta che non entrava nello spazio rimasto passava
+intera alla pagina successiva, e lo spazio lasciato restava bianco. Su un report
+di 120 rilievi questo costava il **9% delle pagine**. Ciò che deve davvero
+valere è più stretto: un titolo non è mai l'ultima cosa di una pagina, una riga
+isolata non ne apre né chiude una, e i blocchi piccoli (un campo, una riga di
+tabella, una barra del grafico) restano interi. Schede e tabelle possono
+spezzarsi.
+
+**Una tabella, non quattro.** I conteggi per categoria, le fasce di confidenza
+dei pattern AI e i conteggi dei caratteri erano tre tabelle in tre sezioni
+separate dai rilievi, quindi chi si chiedeva "che tipo di cose ha trovato"
+doveva tenere a mente tre punti e non li vedeva mai accanto. Rispondono a una
+sola domanda e ora stanno in una sola risposta, sotto **Che cosa è stato
+trovato**, con una colonna che dice da quale passaggio viene ogni riga.
+
+**L'indice di ciò che è stato esaminato è contesto, non contenuto.** Un crawl di
+192 pagine stampava 192 righe numerate in corpo testo prima del primo rilievo,
+circa cinque pagine di indice. Ora è una tabella in 8pt, ordinata in modo che le
+pagine con più problemi vengano prima, troncata dopo 40 righe mantenendo il
+conteggio completo, e collocata **dopo** i rilievi. Stessa esecuzione: **due
+pagine invece di cinque**.
+
+La panoramica si apre inoltre con due grafici a barre, per gravità e per
+categoria, perché i conteggi in tabella sono esatti ma senza forma, e chi legge
+vuole vedere dove sta il peso prima di leggere un numero. Sono CSS puro, senza
+script e senza immagini, perché il consumatore è `printToPdf` e il resto a volte
+stampa in bianco.
+
+---
+
 ## Flag globali
 
 | Flag | Descrizione |
 |---|---|
-| `--no-update-check` | Salva il controllo automatico giornaliero della versione |
+| `--no-update-check` | Salta il controllo automatico giornaliero della versione |
+
+`--no-update-check` è accettato prima del sottocomando e dopo, a qualsiasi
+profondità: `xanalyze --no-update-check scan .`, `xanalyze scan . --no-update-check`
+e `xanalyze cache stats --no-update-check` funzionano allo stesso modo.
+`--version` appartiene al programma, quindi va per prima.
 | `--version` | Stampa la versione ed esci |
 
 ---
@@ -554,9 +680,10 @@ Ogni anomalia fornisce:
 
 ### Audit accessibilità
 
-47 regole in 4 categorie. Le regole statiche operano su HTML analizzato; le regole browser su DOM renderizzato.
+52 regole in 4 categorie: 28 accessibilità, 8 SEO, 8 performance, 8 best practice.
+Le regole statiche operano su HTML analizzato; le regole browser su DOM renderizzato.
 
-#### Regole accessibilità (25)
+#### Regole accessibilità (28)
 
 | Rule ID | Gravità | WCAG | Descrizione |
 |---|---|---|---|
@@ -577,6 +704,9 @@ Ogni anomalia fornisce:
 | `table-headers` | Serious | 1.3.1 | Tabelle dati necessitano `<th>` |
 | `table-scope` | Moderate | 1.3.1 | `<th>` dovrebbe avere `scope` |
 | `viewport-zoom` | Serious | 1.4.4 | Non bloccare lo zoom |
+| `viewport-fixed-width` | Moderate | 1.4.10 | Nessuna `width:` fissa su un contenitore: costringe a scorrere di lato sul telefono |
+| `viewport-tiny-font` | Serious | 1.4.4 | Nessun corpo di testo sotto la soglia leggibile |
+| `viewport-touch-target` | Minor | 2.5.8 | Bersagli di tocco abbastanza grandi da centrare |
 | `contrast-inline` | Serious | 1.4.3 | Contrasto colori inline (necessita browser) |
 | `landmark-regions` | Moderate | 1.3.1, 2.4.1 | La pagina necessita landmark `<main>` |
 | `skip-link` | Moderate | 2.4.1 | Il primo elemento focalizzabile deve saltare al contenuto |
@@ -684,11 +814,32 @@ Una scoperta vista a più larghezze diventa una riga che registra dove è stata 
 
 ## Report
 
+### Un problema, per quante pagine lo portino
+
+Un crawl di trenta pagine che condividono un header trova ogni difetto di quel
+header trenta volte. Sono trenta punti e un problema, e i report lo dicono: ogni
+problema distinto è elencato una volta, con sotto ogni punto in cui è stato
+trovato. Niente viene scartato — una correzione deve visitare ciascuno di quei
+punti — ed entrambi i numeri sono riportati, perché rispondono a domande diverse:
+
+```
+| critical | serious | moderate | minor | total | distinct problems |
+|---|---|---|---|---|---|
+| 0 | 3 | 64 | 3 | 70 | 14 |
+```
+
+Due rilievi contano come un problema quando regola, gravità e markup incriminato
+coincidono. Due immagini diverse senza `alt` restano due problemi; lo stesso logo
+condiviso su cinque pagine è uno.
+
+L'elenco completo per documento resta per ciò che analizza invece di leggere:
+salva il briefing con estensione `.json` e lo trovi sotto `files`.
+
 ### Report stilizzato (PDF/HTML)
 
 Report brandizzato e stampabile per persone:
 - Riepilogo con conteggi gravità
-- Scoperte raggruppate per categoria
+- Una scheda per problema distinto, con ogni punto in cui compare
 - Frammenti di codice con correzioni
 - Indicatori responsive breakpoint
 
@@ -700,13 +851,39 @@ xanalyze fullscan https://example.com --styled-report report.pdf
 
 Briefing strutturato per coding agent:
 - Statistiche e conteggi
-- Scoperte per file
+- L'elenco raggruppato dei problemi, i più gravi e diffusi per primi
+- La mappa per documento (forma `.json`)
 - Suggerimenti di correzione
-- Tracciamento modifiche
+- Confronto con l'esecuzione precedente dello stesso target
 
 ```bash
 xanalyze fullscan https://example.com --report briefing.md
 ```
+
+### Confronto con l'esecuzione precedente
+
+Ogni esecuzione è registrata per target in `~/.xanalyze/history/`, indicizzata su
+cosa è stato scansionato e quale analisi è girata — così una seconda esecuzione
+dello stesso target è confrontata con la prima, qualunque sia il nome del report.
+`fullscan` scrive il confronto anche come documento a sé, `changes.md`, nella
+cartella dell'esecuzione:
+
+```
+| | previous | now | change |
+|---|---|---|---|
+| findings | 70 | 67 | down 3 |
+
+**3 place(s) corrected**, 0 new one(s) appeared.
+
+| rule | previous | now | change |
+|---|---|---|---|
+| `image-alt` | 5 | 2 | down 3 |
+```
+
+*Findings* si muove anche quando il crawl raggiunge un numero diverso di pagine,
+e quello non è progresso. *Places corrected* e la tabella per regola sono i
+numeri che tracciano il lavoro fatto: una regola scatta in meno punti solo quando
+qualcosa è stato davvero corretto.
 
 ### Output JSON
 
@@ -777,14 +954,14 @@ xanalyze fullscan https://example.com
 
 **Cosa fa:**
 - Crawla il sito (con rendering browser per SPA)
-- Esegue audit accessibilità (49 regole)
+- Esegue audit accessibilità (52 regole)
 - Esegue audit SEO
 - Esegue audit performance
 - Controlla pattern di testo generato da AI
 - Controlla caratteri non da tastiera
 - Genera output JSON + report PDF + briefing agente
 
-**Output:** JSON su stdout, report salvati in `~/Desktop`
+**Output:** JSON su stdout, documenti nella cartella di questo target sul Desktop
 
 #### 2. Analizzare un codebase
 
@@ -1024,16 +1201,37 @@ xanalyze fullscan https://staging.example.com --check --json
 
 ## GUI
 
-L'app desktop fornisce la stessa funzionalità con un'interfaccia visiva:
+L'app desktop risponde alle stesse domande della CLI, con i controlli in una
+colonna a sinistra e i risultati accanto.
 
-1. **Selezione sorgente** — URL sito, cartella repository o singolo file HTML
-2. **Selezione reader** — Code (statico) o Browser (renderizzato)
-3. **Selezione controlli** — Accessibilità, pattern AI o entrambi
-4. **Selezione metodo** — Offline, AI o hybrid
-5. **Progresso in tempo reale** — Aggiornamenti stato live
-6. **Pannello scoperte** — Lista cliccabile con badge gravità
-7. **Pannello dettagli** — Descrizione completa, frammento codice, suggerimento correzione
-8. **Pannello anteprima** — Anteprima pagina con problemi evidenziati
+**La colonna dei controlli**
+
+1. **Sorgente** — URL del sito, cartella del repository o singolo file HTML.
+   Anche un host senza schema va bene
+2. **Controllo** — accessibilità, pattern AI o entrambi (entrambi per default)
+3. **Metodo** — offline, embedding, AI oppure offline + AI. Le voci con AI
+   compaiono solo quando c'è un account o una chiave che le paghi
+4. **Scope** (cartelle) — il testo che arriva all'utente, i commenti e le
+   docstring, o entrambi
+5. **Profondità** (siti) — quanto lontano il crawl segue i link
+6. **Account** — chi paga un passaggio AI, e se qualcuno ha effettuato l'accesso
+
+**I risultati**
+
+7. **Anteprima** — la pagina renderizzata, o il file sorgente, con il rilievo
+   evidenziato o la sua riga marcata. Si può fissare a larghezza desktop, tablet
+   o mobile, così un rilievo trovato a una larghezza si guarda a quella larghezza
+8. **Lista dei rilievi** — badge di gravità, una riga per problema distinto. Un
+   problema trovato in più file dice in quanti, invece di ripetersi
+9. **Dettaglio** — cosa è stato trovato, perché conta, come correggerlo,
+   l'elemento, la sostituzione pronta e ogni punto in cui lo stesso problema
+   compare
+10. **Azioni** — correggi i caratteri, genera l'elenco delle sostituzioni,
+    riscrivi sul posto, scrivi su disco una correzione dell'audit, annullala,
+    esporta il report
+
+La finestra ripiega una colonna alla volta mentre si restringe: prima la colonna
+dei dettagli (che ricompare sotto la riga cliccata), poi l'anteprima.
 
 ---
 
@@ -1050,11 +1248,19 @@ Il TUI fornisce:
 - **Scan** — configura ed esegui il rilevamento pattern AI
 - **Audit** — configura ed esegui audit accessibilità/SEO/performance
 - **Full Scan** — analisi combinata in un'esecuzione
-- **Reports** — visualizza risultati analisi precedenti
-- **Settings** — ispeziona la configurazione corrente
-- **Update** — controlla nuove versioni
+- **Reports** — ogni esecuzione registrata; `Enter` apre il report di quella
+- **Settings** — leggi e modifica la configurazione
+- **Update** — controlla e installa una nuova versione
+- **Uninstall** — rimuovi XAnalyze da questa macchina
 
-Navigazione con frecce o scorciatoie (1-6). `q` o `Esc` per uscire.
+Ogni esecuzione avviene su un thread di lavoro, così l'interfaccia continua a
+rispondere mentre un crawl macina, e il suo avanzamento compare nella riga di
+stato. Al termine, il risultato è mostrato nell'interfaccia — un riepilogo, i
+documenti scritti e il log completo — non lasciato nel terminale sotto.
+
+Navigazione con frecce o tasti 1-7; anche `Tab` sposta tra i controlli. Il
+footer elenca i tasti che lo schermo corrente accetta. `Esc` torna indietro,
+`q` esce.
 
 ---
 

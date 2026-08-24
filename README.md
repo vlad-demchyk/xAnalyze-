@@ -23,6 +23,9 @@ Desktop and headless analyzer: AI-generated text detection, non-keyboard charact
   - [agent-scan](#agent-scan---offline-scan-for-agent)
   - [agent-judge](#agent-judge---merge-agent-judgments)
   - [update](#update---self-update)
+- [Runs: pause, stop, continue](#runs-pause-stop-continue)
+  - [The render watchdog](#the-render-watchdog)
+  - [When the PDF still cannot be printed](#when-the-pdf-still-cannot-be-printed)
 - [Global Flags](#global-flags)
 - [Detection Methods](#detection-methods)
   - [AI Pattern Detection](#ai-pattern-detection)
@@ -52,7 +55,7 @@ Desktop and headless analyzer: AI-generated text detection, non-keyboard charact
 
 - **AI Pattern Detection** — heuristic (clichés, structural patterns, burstiness) and embedding-based (sentence-transformers)
 - **Non-keyboard Characters** — zero-width spaces, curly quotes, em dashes, homoglyphs
-- **Accessibility Audit** — WCAG rules, SEO, performance, best practices (49 rules)
+- **Accessibility Audit** — WCAG rules, SEO, performance, best practices (52 rules)
 - **Full Scan** — combined AI patterns + accessibility in one command with automatic browser rendering
 - **Styled Reports** — branded PDF/HTML for humans
 - **Agent Briefings** — markdown/JSON for coding agents
@@ -118,7 +121,8 @@ The TUI provides a menu-driven interface with:
 - **Update** — check for new versions
 - **Uninstall** — remove XAnalyze from this machine
 
-Navigate with arrow keys or number shortcuts (1-7). Press `q` or `Esc` to go back/quit.
+Navigate with arrow keys or number shortcuts (1-7). The footer lists the keys
+each screen accepts. `Esc` goes back, `q` quits.
 
 ### CLI Commands
 
@@ -166,12 +170,34 @@ The primary command for comprehensive analysis. Combines AI pattern detection, a
 - Browser rendering enabled (handles React, Vue, Next.js, etc.)
 - Responsive breakpoints: desktop (1440px), tablet (834px), mobile (390px)
 - JSON output for agent consumption
-- Styled PDF report saved to `~/Desktop`
-- Agent briefing (Markdown) saved to `~/Desktop`
+- Every document saved into a folder for this target on your Desktop
+
+**Where the documents go.** One folder per target, one sub-folder per run:
+
+```
+~/Desktop/XAnalyze/example.com/
+    2026-08-24-0930/
+        report.md        agent briefing, and the grouped problem list
+        report.pdf       the branded report for a person
+        timings.md       how long each stage took
+        changes.md       what changed since the previous run
+        state.md         which stage the run reached, and how to continue it
+        state.json       the same, for a machine
+    2026-08-24-1145/
+        ...
+```
+
+`changes.md` appears from the second run of a target onward and answers the
+question a re-run is asking: how many places were corrected, which rules
+stopped firing, and which appeared. Set `XANALYZE_REPORT_ROOT` to put the
+folders somewhere other than the Desktop.
 
 ```bash
 # Full scan of a website (everything automatic)
 xanalyze fullscan https://xformat.net
+
+# The scheme is optional - this is the same run as above
+xanalyze fullscan xformat.net
 
 # Full scan of a local repository (no browser, code analysis only)
 xanalyze fullscan ./my-project
@@ -198,8 +224,8 @@ xanalyze fullscan https://example.com --language uk
 
 | Option | Description |
 |---|---|
-| `target` | URL, directory, or `.html` file |
-| `--url` | Treat target as URL even without scheme |
+| `target` | URL, directory, or `.html` file. A bare host (`example.com`) is read as a URL when there is no such file or directory |
+| `--url` | Treat target as a URL even when it looks like a path |
 | `--depth N` | Crawl depth for URLs (default: 0) |
 | `--max-pages N` | Max pages to crawl (default: 30) |
 | `--max-files N` | Max files to scan (default: 5000) |
@@ -215,6 +241,7 @@ xanalyze fullscan https://example.com --language uk
 | `--check` | Exit 1 when critical/serious issues found |
 | `--language LANG` | Report language: `uk`, `it`, `en` |
 | `--agent` | Run offline scan and output candidates for agent to judge (no API key) |
+| `--no-browser` | Static fetch only: no browser rendering and no browser pass |
 
 ---
 
@@ -260,7 +287,7 @@ xanalyze scan ./src --styled-report report.pdf --language uk
 | `--no-ignore` | Report everything, including suppressed findings |
 | `--json` | Machine-readable JSON output |
 | `--check` | Exit 1 when anything is found (for hooks and CI) |
-| `--incremental` | Only scan files changed since last scan |
+| `--incremental` | Re-read only files that changed since the last scan with the same settings. The cache is keyed on the file's modification time and size *and* on the detector, scope and categories, so changing any of those re-reads everything. A finding replayed from the cache cannot appear in `--styled-report`, which is built from live spans; the run says so when that happens |
 | `--styled-report PATH` | Branded PDF/HTML report |
 | `--language LANG` | Report language: `uk`, `it`, `en` |
 
@@ -499,12 +526,108 @@ Never touched: `.xanalyze/` run-history folders and `.xanalyze-ignore` files ins
 
 ---
 
+## Runs: pause, stop, continue
+
+A full scan of a large site is a long job. A 192-page site took forty-six
+minutes, most of it in the browser pass, and it used to be all-or-nothing: if
+anything failed before the last line, the run wrote nothing at all and the
+forty-six minutes were gone.
+
+Every run now records each stage as it happens, so a run that stops keeps what
+it computed and can be continued.
+
+```bash
+# What runs exist, and which can be continued
+xanalyze runs
+
+# Continue one from its first unfinished stage
+xanalyze resume 2026-08-24-0930
+
+# Ask a running scan to stop at its next stage boundary
+xanalyze pause 2026-08-24-0930
+```
+
+```
+run               status    stage     age       target
+2026-08-24-1204   stopped   reports   4m ago    https://example.com
+2026-08-24-0930   complete  -         3h ago    https://example.com
+```
+
+A stopped run exits with code **3** (not 2, which still means the invocation
+was wrong) and prints a machine-readable block on stdout:
+
+```json
+{
+  "incomplete": true,
+  "run": "~/Desktop/XAnalyze/example.com/2026-08-24-1204",
+  "state": {
+    "stopped_in": "reports",
+    "stopped_because": "styled report: [Errno 13] Permission denied",
+    "completed_phases": ["scan", "crawl", "audit", "browser"],
+    "remaining_phases": ["reports", "documents"],
+    "artifacts": ["…/checkpoint-audit.json", "…/report.md"],
+    "resume_with": "xanalyze resume …/2026-08-24-1204",
+    "action_required": true
+  }
+}
+```
+
+That block is the point: an agent can read what stopped, fix it, and issue the
+one command that continues. Finished stages are not recomputed - the crawl and
+the audit are reloaded from the run folder, so a resume costs the stages that
+did not finish and nothing else.
+
+The GUI shows the same catalogue in its control column, with **Resume**,
+**Pause** and **Open folder**. It walks the same run folders the CLI does
+rather than keeping a list of its own, so the two can never disagree.
+
+### The render watchdog
+
+Printing the PDF is the one stage with no progress signal of its own, and it
+used to be governed by a fixed 30-second ceiling. That ceiling killed a
+158-page report which finishes in 108 seconds when left alone, and took the
+whole run's output with it. Removing the ceiling removed the floor too: a
+render process that died simply hung forever.
+
+Neither measured whether the render was working, because elapsed time cannot.
+What runs now stops on the absence of progress:
+
+| evidence | what happens |
+|---|---|
+| the render process died | stops at once, with the exit status in the message |
+| load progress moved | keeps going |
+| the render process used more CPU than at the last check | keeps going |
+| none of the above for 45 seconds | stops, naming the stage and the silence |
+
+A render that is working is never interrupted, however long it takes. When the
+render process cannot be watched at all, the message says so rather than
+quietly becoming a fixed timer again.
+
+### When the PDF still cannot be printed
+
+Printing is the **last** step of a run. By the time it can fail, the findings
+are complete and `report.md` is already written - so a failed PDF is a failed
+conversion, not a failed run, and it no longer stops anything.
+
+Instead the file you expected still appears, as a one-page stand-in that says
+where the Markdown report is and carries the headline numbers, so it is a
+usable summary rather than a page of apology. If even that will not print, the
+same notice is written as `.html` beside it: a browser opens that, and nothing
+opens a zero-byte PDF.
+
+---
+
 ## Global Flags
 
 | Flag | Description |
 |---|---|
 | `--no-update-check` | Skip the automatic daily version check |
 | `--version` | Print version and exit |
+
+`--no-update-check` is accepted before the subcommand and after it, at any
+depth - `xanalyze --no-update-check scan .`, `xanalyze scan . --no-update-check`
+and `xanalyze cache stats --no-update-check` all work. `--version` belongs to
+the program, so it goes first.
 
 ---
 
@@ -561,6 +684,44 @@ score = 1 - remaining
 
 Statistical signals alone (without cliché/structural matches) are capped at 0.32 to prevent false positives on technical text.
 
+#### What reaches the report
+
+Below **0.33** a passage is `low` confidence and is not reported as an AI
+pattern - the cap above puts every statistics-only finding there deliberately.
+Character findings are different and are always reported whatever they score: a
+wrong dash is a fact about the text, not a probability, so a low score there
+means "a small defect", not "probably nothing".
+
+This threshold used to be applied only when scanning a folder. Scanning a
+website skipped it, so a crawl listed every passage the detector had ever
+looked at: a real 192-page run reported **10,976 "AI text patterns"** of which
+10,946 scored `low`, most of them 0.00. Both paths now apply the same rule, and
+that run reports 30. The removed rows were also most of the reason its
+artifacts came to 14 MB of JSON and a 117 MB PDF.
+
+#### What this does not do
+
+There is no dependency parser here, and the sentence-structure features named
+in the 2026 detection literature (dependency-relation n-grams, clause
+regularity, parataxis) are **not** implemented. They were prototyped and
+rejected on evidence rather than skipped:
+
+- Clause coordination looked decisive - model entries averaged 4.2 coordinating
+  conjunctions per 100 words against a human median of 0.00, in all three
+  languages. It was measuring length. The model half of the corpus runs to a
+  median of 19 words and the human half to 9, because the human half is largely
+  interface strings. Conditioned on entries of 25 words or more, the difference
+  **reverses**: humans coordinate more than models do.
+- Clause regularity and opening uniformity need three or more sentences, and
+  almost no entry in the corpus has them - so they cannot be validated here at
+  all.
+
+`scripts/calibrate.py --confounds` prints the length distribution and what a
+classifier that knows *only* the length scores, so the same mistake is visible
+before the next signal is believed. On this corpus that ceiling is 57.9%
+precision; the detector reaches 100%, which is what says it is detecting
+writing rather than length.
+
 ---
 
 ### Non-keyboard Characters
@@ -584,9 +745,10 @@ Each anomaly provides:
 
 ### Accessibility Audit
 
-47 rules across 4 categories. Static rules run on parsed HTML; browser rules run on rendered DOM.
+52 rules across 4 categories: 28 accessibility, 8 SEO, 8 performance, 8 best
+practices. Static rules run on parsed HTML; browser rules run on the rendered DOM.
 
-#### Accessibility Rules (25)
+#### Accessibility Rules (28)
 
 | Rule ID | Severity | WCAG | Description |
 |---|---|---|---|
@@ -607,6 +769,9 @@ Each anomaly provides:
 | `table-headers` | Serious | 1.3.1 | Data tables need `<th>` |
 | `table-scope` | Moderate | 1.3.1 | `<th>` should have `scope` |
 | `viewport-zoom` | Serious | 1.4.4 | Don't block zoom |
+| `viewport-fixed-width` | Moderate | 1.4.10 | No fixed `width:` on a container - it forces sideways scrolling on a phone |
+| `viewport-tiny-font` | Serious | 1.4.4 | No font size below the readable floor |
+| `viewport-touch-target` | Minor | 2.5.8 | Tap targets large enough to hit |
 | `contrast-inline` | Serious | 1.4.3 | Inline color contrast (needs browser) |
 | `landmark-regions` | Moderate | 1.3.1, 2.4.1 | Page needs `<main>` landmark |
 | `skip-link` | Moderate | 2.4.1 | First focusable element should skip to content |
@@ -715,11 +880,67 @@ A finding seen at multiple widths becomes one row recording where it was seen. A
 
 ## Reports
 
+### One problem, however many pages carry it
+
+A crawl of thirty pages that share a header finds that header's every fault
+thirty times. That is thirty places and one problem, and the reports say so:
+each distinct problem is listed once, with every place it was found under it.
+Nothing is dropped - a fix has to visit each of those places - and both
+numbers are reported, because they answer different questions:
+
+```
+| critical | serious | moderate | minor | total | distinct problems |
+|---|---|---|---|---|---|
+| 0 | 3 | 64 | 3 | 70 | 14 |
+```
+
+Two findings count as one problem when the rule, the severity and the
+offending markup all match. Two different images missing `alt` stay two
+problems; the same shared logo on five pages is one.
+
+The complete per-document listing is still there for anything that parses
+rather than reads: write the briefing with a `.json` suffix and it is under
+`files`.
+
+### How the report is laid out
+
+Three things decide whether a long report is readable, and all three were got
+wrong first:
+
+**Page breaks follow what must stay together, not what looks tidy.**
+`break-inside: avoid` on every finding card is the obvious rule and the wrong
+one: a tall card that did not fit in the remainder of a page moved to the next
+page whole, and the space it left stayed blank. On a report of 120 findings
+that cost **9% of its pages** to white space. What actually has to hold is
+narrower - a heading is never the last thing on a page, a stray line never
+opens or closes one, and small blocks (a field, a table row, a chart bar) stay
+whole. Cards and tables may break.
+
+**One table, not four.** The category counts, the AI-pattern confidence bands
+and the character tallies used to be three tables in three sections, separated
+by the findings - so a reader asking "what kind of thing did this find" had to
+hold three places at once and never saw them side by side. They answer one
+question and now sit in one answer, under **What was found**, with a column
+saying which pass each row came from.
+
+**The index of what was examined is context, not content.** A 192-page crawl
+printed 192 numbered lines in body type before the first finding - about five
+printed pages of index. It is now a table in 8pt, sorted so the pages carrying
+the most problems come first, cut off after 40 rows with the full count still
+stated, and placed *after* the findings. Same run: **two pages instead of
+five**.
+
+The overview also opens with two bar charts - by severity and by category -
+because counts in a table are exact and shapeless, and a reader wants to see
+where the weight is before reading a number. They are plain CSS, no script and
+no image, because `printToPdf` is the consumer and anything else sometimes
+prints blank.
+
 ### Styled Report (PDF/HTML)
 
 Branded, print-ready report for humans:
 - Summary with severity counts
-- Findings grouped by category
+- One card per distinct problem, with every place it appears
 - Code snippets with fixes
 - Responsive breakpoint indicators
 
@@ -731,13 +952,38 @@ xanalyze fullscan https://example.com --styled-report report.pdf
 
 Structured briefing for coding agents:
 - Statistics and counts
-- File-by-file findings
+- The grouped problem list, worst and most widespread first
+- The per-document file map (`.json` form)
 - Fix suggestions
-- Change tracking
+- Change tracking against the previous run of the same target
 
 ```bash
 xanalyze fullscan https://example.com --report briefing.md
 ```
+
+### Comparison With The Previous Run
+
+Every run is recorded per target in `~/.xanalyze/history/`, keyed on what was
+scanned and which analysis ran - so a second run of the same target is
+compared with the first whatever the report is called. `fullscan` also writes
+the comparison as its own document, `changes.md`, in the run folder:
+
+```
+| | previous | now | change |
+|---|---|---|---|
+| findings | 70 | 67 | down 3 |
+
+**3 place(s) corrected**, 0 new one(s) appeared.
+
+| rule | previous | now | change |
+|---|---|---|---|
+| `image-alt` | 5 | 2 | down 3 |
+```
+
+*Findings* also moves when the crawl reaches a different number of pages,
+which is not progress. *Places corrected* and the per-rule table are the
+numbers that track work done: a rule fires in fewer places only when
+something was actually fixed.
 
 ### JSON Output
 
@@ -772,6 +1018,10 @@ Output structure:
   }
 }
 ```
+
+`audit.issues` is the complete list, one entry per place. The grouped view
+lives in the briefing (`--report`), under `problems`, next to
+`summary.distinct_problems`.
 
 ---
 
@@ -1128,16 +1378,34 @@ xanalyze audit https://example.com --category seo --styled-report seo-report.pdf
 
 ## GUI
 
-The desktop app provides the same functionality with a visual interface:
+The desktop app answers the same questions as the CLI, with the controls in a
+column on the left and the results beside them.
 
-1. **Source Selection** — Website URL, repository folder, or single HTML file
-2. **Reader Selection** — Code (static) or Browser (rendered)
-3. **Check Selection** — Accessibility, AI patterns, or both
-4. **Method Selection** — Offline, AI, or hybrid
-5. **Real-time Progress** — Live status updates
-6. **Findings Panel** — Clickable list with severity badges
-7. **Detail Panel** — Full description, code snippet, fix suggestion
-8. **Preview Panel** — Page preview with highlighted issues
+**The controls column**
+
+1. **Source** — website URL, repository folder, or single HTML file. A bare
+   host is accepted here too
+2. **Check** — accessibility, AI patterns, or both (both by default)
+3. **Method** — offline, embedding, AI, or offline + AI. The AI entries appear
+   only when there is an account or a key to pay for them
+4. **Scope** (folders) — the copy that ships, comments and docstrings, or both
+5. **Depth** (sites) — how far the crawl follows links
+6. **Account** — who pays for an AI pass, and whether anyone is signed in
+
+**The results**
+
+7. **Preview** — the rendered page, or the source file, with the finding
+   outlined or its line highlighted. Pinnable to desktop, tablet or mobile
+   width, so a finding reported at one width can be looked at that width
+8. **Findings list** — severity badge, one row per distinct problem. A problem
+   found in several files says how many, rather than repeating itself
+9. **Detail** — what was found, why it matters, how to fix it, the element,
+   the ready replacement, and every place the same problem appears
+10. **Actions** — fix the characters, generate a replacement list, rewrite in
+    place, write an audit correction to disk, undo it, export the report
+
+The window folds one column at a time as it narrows: the detail column first
+(it reappears inline under the clicked row), then the preview.
 
 ---
 
@@ -1154,11 +1422,19 @@ The TUI provides:
 - **Scan** — configure and run AI pattern detection
 - **Audit** — configure and run accessibility/SEO/performance audit
 - **Full Scan** — combined analysis in one run
-- **Reports** — view previous analysis results
-- **Settings** — inspect current configuration
-- **Update** — check for new versions
+- **Reports** — every recorded run; Enter opens that run's report
+- **Settings** — read and change the configuration
+- **Update** — check for and install a new version
+- **Uninstall** — remove XAnalyze from this machine
 
-Navigate with arrow keys or number shortcuts (1-6). Press `q` or `Esc` to quit.
+Every run happens on a worker thread, so the interface keeps answering while a
+crawl grinds, and its progress appears on the status line. When it finishes,
+the result is shown in the interface - a summary, the documents that were
+written, and the full log - not left in the terminal underneath.
+
+Navigate with arrow keys or number shortcuts (1-7); `Tab` also moves between
+controls. The footer lists the keys the current screen accepts. `Esc` goes
+back, `q` quits.
 
 ---
 

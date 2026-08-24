@@ -161,6 +161,65 @@ def review(detector_name: str, limit: int) -> None:
               f"{row['text'][:96]}")
 
 
+def confounds(rows: list, threshold: float) -> None:
+    """Is the corpus measuring writing, or is it measuring length?
+
+    This exists because a candidate signal passed and should not have. The
+    2026 dependency-parse literature names clause coordination as a syntactic
+    marker of generated text, and on this corpus it looked decisive: model
+    entries averaged 4.2 coordinating conjunctions per 100 words against a
+    human median of 0.00, in all three languages at once.
+
+    It was measuring length. Model entries here run to a median of 19 words
+    and human entries to 9, because the human half is largely interface
+    strings - "Save", "Carica file" - which contain no conjunctions because
+    they contain no clauses. Conditioned on entries of 25 words or more, the
+    difference reverses: humans coordinate *more* than models do.
+
+    So this reports the two things that make such a mistake visible, and both
+    should be read before any new signal is believed:
+
+    * how far apart the two halves are in length, and
+    * what a classifier that knows *only* the length can score.
+
+    A signal cannot be credited with separating the labels any better than
+    length alone does, until it has been checked against comparable lengths.
+    """
+    lengths = {label: sorted(len(_words_of(r["text"]))
+                             for r in rows if r["label"] == label)
+               for label in ("model", "human")}
+    print("length confound")
+    for label, values in lengths.items():
+        if not values:
+            continue
+        print(f"  {label:6} n={len(values):3}  median {values[len(values)//2]:3} words"
+              f"  ({values[0]}-{values[-1]})")
+
+    models = [r for r in rows if r["label"] == "model"]
+    best_precision = (0, 0.0, 0.0)
+    for cut in range(3, 60):
+        flagged = [r for r in rows if len(_words_of(r["text"])) >= cut]
+        if not flagged or not models:
+            continue
+        hits = [r for r in flagged if r["label"] == "model"]
+        precision = len(hits) / len(flagged)
+        recall = len(hits) / len(models)
+        if precision > best_precision[1]:
+            best_precision = (cut, precision, recall)
+    cut, precision, recall = best_precision
+    print(f"  a classifier that knows only the length tops out at "
+          f"precision {precision*100:.1f}% (words>={cut}, recall {recall*100:.1f}%)")
+    print("  read the detector's precision against that line: a signal that "
+          "does no better has not been shown to detect writing.")
+    print()
+
+
+def _words_of(text: str) -> list:
+    from detectors.heuristic import _words
+
+    return _words(text)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--detector", default="offline")
@@ -169,6 +228,8 @@ def main() -> int:
     parser.add_argument("--sweep", action="store_true")
     parser.add_argument("--review", action="store_true")
     parser.add_argument("--limit", type=int, default=20)
+    parser.add_argument("--confounds", action="store_true",
+                        help="what length alone scores, before believing a signal")
     parser.add_argument("--holdout", action="store_true",
                         help="report the tune half and the held-out half apart")
     args = parser.parse_args()
@@ -182,6 +243,8 @@ def main() -> int:
         print("corpus/labelled.jsonl is empty; nothing to calibrate against")
         return 1
     scored = score_rows(rows, args.detector)
+    if args.confounds:
+        confounds(scored, args.threshold)
     if args.holdout:
         train, test = split(scored)
         print(f"tune half ({len(train)} entries)")
