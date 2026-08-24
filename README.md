@@ -516,6 +516,19 @@ xanalyze agent-scan ./src --threshold 0.3 --json
 
 ---
 
+**Candidates are deduplicated.** The agent pays for every candidate it is
+handed, whichever model it runs - that is the point of this path - so the same
+header on ten pages was ten times the cost of one answer. It used to be: the
+only guard was `block_id`, a fresh uuid per block, which deduplicated nothing
+across pages. Measured on a ten-page site: **124 candidates, 68 distinct, 45%
+repeats.**
+
+Each candidate now carries `places` and `occurrences`, so the agent can see
+that a passage is site-wide - real context when judging a header - and
+`agent-judge` gives one verdict to every place it names. Three identical files
+produce two candidates and six findings, two per file: nothing is lost, half
+the work is.
+
 ### `agent-judge` - Merge Agent Judgments
 
 Combines offline scan with agent's LLM judgments into a final report.

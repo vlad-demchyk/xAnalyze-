@@ -11,6 +11,8 @@ import json
 import os
 import sys
 
+import duplicates
+
 from detectors.factory import DetectorFactory
 from models import Confidence, score_to_confidence
 
@@ -254,11 +256,16 @@ class _OriginMatcher:
                 if not jt or jt == block_text:
                     self.used.add(id(j))
                     return j
+        # Wording alone, and deliberately *not* consumed. The first two tiers
+        # match a place - an id, or a file and a line - so pairing them one to
+        # one is right: two blocks at two places deserve two judgments. This
+        # tier matches the passage itself, and a passage that appears on ten
+        # pages is one passage. Since the agent is now handed each distinct
+        # wording once (see `_agent_candidates_from_pages`), consuming here
+        # would give the verdict to the first page and leave the other nine
+        # unjudged - which is how deduplication turns into data loss.
         for j in self.judgments_list:
-            if id(j) in self.used:
-                continue
             if self._norm_text(j.get("text", "")) == block_text and block_text:
-                self.used.add(id(j))
                 return j
         return None
 
@@ -326,23 +333,32 @@ def cmd_agent_scan(args) -> int:
         include_style=True,
     )
 
-    spans = offline.analyze_blocks(blocks)
+    # One candidate per distinct passage. The agent pays for every candidate
+    # it is handed, whichever model it runs, so the same header on ten pages
+    # was ten times the cost of one answer. `block_id` is a fresh uuid per
+    # block, so guarding on it deduplicated nothing at all.
+    groups = duplicates.distinct_blocks(blocks)
+    representatives = [rep for rep, _ in groups]
+    occurrences_by_id = {rep.block_id: rest for rep, rest in groups}
+    spans = offline.analyze_blocks(representatives)
 
     threshold = getattr(args, "threshold", 0.25)
     full_mode = getattr(args, "full", False)
     candidates = []
     seen_blocks = set()
+    by_id = {b.block_id: b for b in representatives}
     for span in spans:
         if span.score < threshold:
             continue
         if (span.details or {}).get("error"):
             continue
         block_id = span.block_id
-        block = next((b for b in blocks if b.block_id == block_id), None)
+        block = by_id.get(block_id)
         if block is None:
             continue
         if block_id not in seen_blocks:
             seen_blocks.add(block_id)
+            places = occurrences_by_id.get(block_id, [block])
             candidates.append({
                 "block_id": block_id,
                 "file": block.file_path,
@@ -352,6 +368,11 @@ def cmd_agent_scan(args) -> int:
                 "offline_score": round(span.score, 3),
                 "offline_explanation": span.explanation,
                 "offline_details": span.details,
+                # Where else this exact passage sits. Context worth having
+                # when judging a header, and what `agent-judge` fans the
+                # verdict out across.
+                "places": [f"{b.file_path}:{b.line_number}" for b in places],
+                "occurrences": len(places),
             })
 
     payload = {

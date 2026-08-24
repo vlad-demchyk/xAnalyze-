@@ -148,6 +148,16 @@ def _create_detector(args):
         # only the environment made a key entered in Settings invisible here.
         return DetectorFactory.create(name, api_key=config.get_anthropic_api_key(),
                                       **overrides)
+    if overrides and name == "xformat-llm-judge":
+        # The subscription picks the model on its side, so there is nothing
+        # here to override. Said out loud rather than dropped: a flag that is
+        # accepted and ignored is the defect this file has been fixing all
+        # day, and it is no better when the reason is good.
+        print(f"# note: --{'/--'.join(sorted(overrides))} does not apply to the "
+              f"xFormat subscription; it chooses the model itself",
+              file=sys.stderr, flush=True)
+        overrides = {}
+
     if overrides and name in JUDGE_BY_PROVIDER.values():
         # A provider-backed judge builds its own account client from the
         # settings, so an override has to arrive as a ready provider rather

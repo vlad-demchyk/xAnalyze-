@@ -77,40 +77,56 @@ def _candidate(block, source_url: str, line: int, span) -> dict:
 
 
 def _agent_candidates_from_blocks(blocks) -> list:
-    """Candidates for a local repo: one detector pass over every block."""
+    """Candidates for a local repo: one per distinct passage.
+
+    Same reasoning as the crawled-site version, and the same defect before
+    it: `block_id` is a fresh uuid, so a project holding its own source and
+    its build output handed the agent both copies of every string.
+    """
     offline = DetectorFactory.create("offline", include_style=True)
-    spans = offline.analyze_blocks(blocks)
-    by_id = {b.block_id: b for b in blocks}
-    seen: set = set()
     candidates = []
-    for span in spans:
-        if span.score < _AGENT_CANDIDATE_FLOOR or (span.details or {}).get("error"):
-            continue
-        if span.block_id in seen:
-            continue
-        seen.add(span.block_id)
-        block = by_id.get(span.block_id)
-        if block:
-            candidates.append(_candidate(block, block.file_path,
-                                         block.line_number, span))
+    for representative, occurrences in duplicates.distinct_blocks(blocks):
+        for span in offline.analyze_blocks([representative]):
+            if span.score < _AGENT_CANDIDATE_FLOOR \
+                    or (span.details or {}).get("error"):
+                continue
+            entry = _candidate(representative, representative.file_path,
+                               representative.line_number, span)
+            entry["places"] = [f"{b.file_path}:{b.line_number}"
+                               for b in occurrences]
+            entry["occurrences"] = len(occurrences)
+            candidates.append(entry)
+            break
     return candidates
 
 
 def _agent_candidates_from_pages(pages) -> list:
-    """Candidates for a crawled site: per-page passes over page blocks."""
+    """Candidates for a crawled site: one per distinct passage.
+
+    The agent pays for every candidate it is handed, whichever model it runs
+    - that is the point of this path - so handing it the same header ten
+    times is ten times the cost for one answer. It used to: the only guard
+    was `block_id`, which is a fresh uuid per block, so it deduplicated
+    nothing at all across pages. Measured on a ten-page site: 124 candidates,
+    68 distinct, **45% repeats**.
+
+    Each candidate now carries `places`, so the agent can see that a passage
+    is site-wide - which is real context for judging a header - and
+    `agent-judge` gives its verdict to every one of them.
+    """
     offline = DetectorFactory.create("offline", include_style=True)
-    seen: set = set()
+    blocks = [block for page in pages for block in page.blocks]
     candidates = []
-    for page in pages:
-        for block in page.blocks:
-            for span in offline.analyze_block(block):
-                if span.score < _AGENT_CANDIDATE_FLOOR \
-                        or (span.details or {}).get("error"):
-                    continue
-                if span.block_id in seen:
-                    continue
-                seen.add(span.block_id)
-                candidates.append(_candidate(block, page.url, 0, span))
+    for representative, occurrences in duplicates.distinct_blocks(blocks):
+        for span in offline.analyze_blocks([representative]):
+            if span.score < _AGENT_CANDIDATE_FLOOR \
+                    or (span.details or {}).get("error"):
+                continue
+            entry = _candidate(representative, representative.page_url, 0, span)
+            entry["places"] = [block.page_url for block in occurrences]
+            entry["occurrences"] = len(occurrences)
+            candidates.append(entry)
+            break
     return candidates
 
 

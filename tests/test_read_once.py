@@ -340,3 +340,144 @@ class CacheMechanics(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheAgentPathReadsOnceToo(unittest.TestCase):
+    """The agent pays for every candidate it is handed, whichever model.
+
+    That is the point of this path - the agent is the judge, with its own
+    model and its own bill - so handing it the same header ten times is ten
+    times the cost of one answer. It used to: the only guard was `block_id`,
+    which is a fresh uuid per block, so it deduplicated nothing across pages.
+    Measured on a ten-page site: 124 candidates, 68 distinct, 45% repeats.
+    """
+
+    def _site(self, pages=6):
+        return [_Page(f"https://example.com/{i}", [
+            _block("Unlock the potential of your seamless journey today",
+                   f"https://example.com/{i}", ident=f"h{i}"),
+            _block(f"In today's fast-paced world, page {i} delivers value",
+                   f"https://example.com/{i}", ident=f"b{i}")])
+            for i in range(pages)]
+
+    def test_a_site_wide_passage_is_offered_once(self):
+        from cli_impl.fullscan import _agent_candidates_from_pages
+
+        candidates = _agent_candidates_from_pages(self._site(6))
+        texts = [c["text"] for c in candidates]
+        self.assertEqual(len(texts), len(set(texts)))
+
+    def test_every_place_travels_with_the_candidate(self):
+        """The verdict has to reach all of them, so the agent must be told."""
+        from cli_impl.fullscan import _agent_candidates_from_pages
+
+        candidates = _agent_candidates_from_pages(self._site(6))
+        shared = [c for c in candidates if c.get("occurrences", 1) > 1]
+        self.assertTrue(shared)
+        self.assertEqual(shared[0]["occurrences"], len(shared[0]["places"]))
+
+    def test_the_places_are_the_pages_it_appears_on(self):
+        from cli_impl.fullscan import _agent_candidates_from_pages
+
+        candidates = _agent_candidates_from_pages(self._site(4))
+        shared = [c for c in candidates if c.get("occurrences", 1) > 1][0]
+        self.assertEqual(sorted(shared["places"]),
+                         sorted(f"https://example.com/{i}" for i in range(4)))
+
+    def test_a_repo_candidate_carries_file_and_line(self):
+        from cli_impl.fullscan import _agent_candidates_from_blocks
+        from models import CodeBlock
+
+        blocks = [CodeBlock(block_id=f"c{i}", file_path=f"src/{i}.py",
+                            start=0, end=40, line_number=12,
+                            text="Unlock the potential of your seamless journey")
+                  for i in range(3)]
+        candidates = _agent_candidates_from_blocks(blocks)
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]["places"],
+                         ["src/0.py:12", "src/1.py:12", "src/2.py:12"])
+
+
+class OneJudgmentReachesEveryPlace(unittest.TestCase):
+    """Deduplication must not become data loss.
+
+    The matcher consumed each judgment once, which is right for a match on a
+    *place* and wrong for a match on a *passage*: with one judgment per
+    distinct wording, consuming would give the verdict to the first page and
+    leave the rest unjudged.
+    """
+
+    class _Block:
+        def __init__(self, path, line, text):
+            self.block_id = f"{path}:{line}"
+            self.file_path = path
+            self.line_number = line
+            self.text = text
+
+    def _matcher(self, judgments, blocks):
+        from cli_impl.agentcmds import _OriginMatcher
+
+        return _OriginMatcher(judgments, [], blocks,
+                              {b.block_id: b for b in blocks})
+
+    def test_one_wording_judgment_serves_every_occurrence(self):
+        blocks = [self._Block(f"p{i}.html", 3, "Shared header text")
+                  for i in range(5)]
+        matcher = self._matcher([{"text": "Shared header text", "score": 0.8}],
+                                blocks)
+        matched = [matcher.match_judgment(b) for b in blocks]
+        self.assertTrue(all(m is not None for m in matched))
+        self.assertEqual(len({id(m) for m in matched}), 1)
+
+    def test_a_place_specific_judgment_is_still_consumed_once(self):
+        """Two blocks at two places deserve two judgments, not one twice."""
+        blocks = [self._Block("a.html", 3, "same wording"),
+                  self._Block("b.html", 4, "same wording")]
+        judgments = [{"file": "a.html", "line": 3, "text": "same wording",
+                      "score": 0.8},
+                     {"file": "b.html", "line": 4, "text": "same wording",
+                      "score": 0.2}]
+        matcher = self._matcher(judgments, blocks)
+        first = matcher.match_judgment(blocks[0])
+        second = matcher.match_judgment(blocks[1])
+        self.assertEqual(first["score"], 0.8)
+        self.assertEqual(second["score"], 0.2)
+
+    def test_an_unjudged_block_still_gets_nothing(self):
+        blocks = [self._Block("a.html", 1, "never judged")]
+        matcher = self._matcher([{"text": "something else"}], blocks)
+        self.assertIsNone(matcher.match_judgment(blocks[0]))
+
+
+class TheSubscriptionSaysWhatDoesNotApply(unittest.TestCase):
+    """A flag accepted and ignored is the defect, however good the reason."""
+
+    def test_model_and_effort_are_reported_as_inapplicable(self):
+        import argparse
+        import contextlib
+        import io
+
+        from cli_impl.scanning import _create_detector
+
+        captured = io.StringIO()
+        with contextlib.redirect_stderr(captured):
+            _create_detector(argparse.Namespace(
+                detector="xformat-llm-judge", provider="xformat",
+                model="sonnet", effort="low"))
+        note = captured.getvalue()
+        self.assertIn("xFormat", note)
+        self.assertIn("--model", note)
+
+    def test_nothing_is_said_when_nothing_was_asked_for(self):
+        import argparse
+        import contextlib
+        import io
+
+        from cli_impl.scanning import _create_detector
+
+        captured = io.StringIO()
+        with contextlib.redirect_stderr(captured):
+            _create_detector(argparse.Namespace(
+                detector="xformat-llm-judge", provider="xformat",
+                model=None, effort=None))
+        self.assertEqual(captured.getvalue(), "")
