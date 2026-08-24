@@ -394,3 +394,99 @@ class GeneratedIdentifiersDoNotSplitAProblem(unittest.TestCase):
         from duplicates import mask_generated_ids
 
         self.assertEqual(mask_generated_ids(""), "")
+
+
+class MeasurementsAreNotWork(unittest.TestCase):
+    """A timing that moved is not a defect that was fixed.
+
+    A live pair of runs reported "**11 place(s) corrected**" when nothing had
+    been touched: `perf-first-paint` fired on ten pages in the first run and
+    none in the second, because the second hit a warm cache. That is the one
+    thing a progress document must never get wrong.
+    """
+
+    def _payload(self, now_counts, before_counts, measured=()):
+        return {
+            "root": "https://example.com", "mode": "web",
+            "generated": "2026-08-24 12:00:00 UTC",
+            "summary": {"counts": {"critical": 1}, "total": sum(now_counts.values()),
+                        "distinct_problems": len(now_counts), "documents": 10,
+                        "documents_with_findings": 10,
+                        "rules_triggered": len(now_counts)},
+            "problems": [], "files": [], "changed_this_run": {},
+            "ai_patterns": {}, "typography": {},
+            "measured_rules": sorted(measured),
+            "by_rule": [{"rule": r, "count": c, "severity": "minor",
+                         "category": "performance", "title": "t", "fix": "f",
+                         "where": []} for r, c in now_counts.items()],
+            # Two entries: `_previous_run` drops the last one as this run's
+            # own, so a single-entry history has no previous run at all.
+            "history": [
+                {"at": "2026-08-24 11:00:00 UTC",
+                 "root": "https://example.com", "mode": "web",
+                 "counts": {"minor": sum(before_counts.values())},
+                 "rules": sorted(before_counts),
+                 "rule_counts": dict(before_counts),
+                 "measured_rules": sorted(measured),
+                 "distinct": len(before_counts)},
+                {"at": "2026-08-24 12:00:00 UTC",
+                 "root": "https://example.com", "mode": "web",
+                 "counts": {"minor": sum(now_counts.values())},
+                 "rules": sorted(now_counts),
+                 "rule_counts": dict(now_counts),
+                 "measured_rules": sorted(measured),
+                 "distinct": len(now_counts)},
+            ],
+        }
+
+    def test_a_measurement_that_moved_is_not_counted_as_corrected(self):
+        from cli_impl.reports import compare_runs
+
+        result = compare_runs(self._payload(
+            now_counts={"perf-first-paint": 0, "image-alt": 5},
+            before_counts={"perf-first-paint": 10, "image-alt": 5},
+            measured={"perf-first-paint"}))
+        self.assertEqual(result["places_fixed"], 0)
+
+    def test_a_real_fix_is_still_counted(self):
+        from cli_impl.reports import compare_runs
+
+        result = compare_runs(self._payload(
+            now_counts={"image-alt": 2},
+            before_counts={"image-alt": 5},
+            measured={"perf-first-paint"}))
+        self.assertEqual(result["places_fixed"], 3)
+
+    def test_the_measurement_is_reported_rather_than_hidden(self):
+        """Suppressing it would be its own lie: the number did change."""
+        from cli_impl.reports import compare_runs
+
+        result = compare_runs(self._payload(
+            now_counts={"perf-first-paint": 0},
+            before_counts={"perf-first-paint": 10},
+            measured={"perf-first-paint"}))
+        self.assertEqual(len(result["moved_measurements"]), 1)
+        self.assertEqual(result["moved_rules"], [])
+
+    def test_the_document_says_why_they_are_listed_apart(self):
+        from cli_impl.reports import _comparison_lines, compare_runs
+
+        text = "\n".join(_comparison_lines(compare_runs(self._payload(
+            now_counts={"perf-first-paint": 0},
+            before_counts={"perf-first-paint": 10},
+            measured={"perf-first-paint"}))))
+        self.assertIn("Measurements that moved", text)
+        self.assertIn("counted as corrections", text)
+        self.assertIn("0 place(s) corrected", text)
+
+    def test_a_rule_measured_in_either_run_counts_as_measured(self):
+        """The previous run may predate the marker, or the rule may not have
+        fired this time - either way it is still a measurement."""
+        from cli_impl.reports import compare_runs
+
+        payload = self._payload(
+            now_counts={"perf-load-time": 0},
+            before_counts={"perf-load-time": 1},
+            measured=())
+        payload["history"][0]["measured_rules"] = ["perf-load-time"]
+        self.assertEqual(compare_runs(payload)["places_fixed"], 0)

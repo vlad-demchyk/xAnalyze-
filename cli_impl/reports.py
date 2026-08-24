@@ -87,6 +87,16 @@ def _write_report(result, args, lang: str, fix_outcome=None, ai_findings=None) -
         # when something was actually fixed.
         "rule_counts": {rule: len(issues)
                         for rule, issues in result.by_rule().items()},
+        # Rules that *measure* rather than inspect: first paint, load time,
+        # page weight, request count. Their number moves between runs because
+        # the network did, not because anyone changed the page - so a
+        # comparison that counts them as work reports progress nobody made.
+        # Recorded per run because it is a property of the engine that
+        # produced the finding, and only this run knows that.
+        "measured_rules": sorted({
+            rule for rule, issues in result.by_rule().items()
+            if issues and all(getattr(i, "engine", "") == "browser"
+                              for i in issues)}),
         "documents": len(result.documents),
         "fixed": len(fix_outcome.applied) if fix_outcome else 0,
         "report": str(path),
@@ -164,6 +174,9 @@ def _write_report(result, args, lang: str, fix_outcome=None, ai_findings=None) -
         },
         "ai_patterns": ai_stats,
         "typography": typo_stats,
+        # Same list as the history entry's, at the top level where
+        # `compare_runs` reads this run's half of the question.
+        "measured_rules": entry["measured_rules"],
         "history": history + [entry],
         "changed_this_run": _fix_summary(fix_outcome),
         "files": _file_map(result, render, lang),
@@ -556,13 +569,22 @@ def compare_runs(payload: dict) -> dict | None:
     # about a run we simply do not have the detail for. So the per-rule
     # verdicts are withheld, and the totals still compare.
     comparable = bool(before_rules)
-    moved = [
+    all_moved = [
         {"rule": rule,
          "before": before_counts.get(rule, 0),
          "now": now_counts.get(rule, 0)}
         for rule in sorted(before_rules | now_rules)
         if before_counts.get(rule, 0) != now_counts.get(rule, 0)
     ] if before_counts else []
+    # A measurement that moved is not work done. `perf-first-paint` fired on
+    # ten pages in one run and none in the next because the second run hit a
+    # warm cache - and the document said "11 places corrected", which is the
+    # one thing a comparison must never get wrong. Recorded in both runs, so
+    # a rule counts as measured if either run said so.
+    measured = (set(previous.get("measured_rules") or ())
+                | set(payload.get("measured_rules") or ()))
+    moved = [m for m in all_moved if m["rule"] not in measured]
+    moved_measurements = [m for m in all_moved if m["rule"] in measured]
     return {
         "previous_at": previous.get("at", "?"),
         "at": payload.get("generated", "?"),
@@ -579,6 +601,9 @@ def compare_runs(payload: dict) -> dict | None:
         #: Rules whose number of places changed, in either direction. Empty
         #: for a run recorded before `rule_counts` existed.
         "moved_rules": moved,
+        #: Rules that measure rather than inspect, reported apart so their
+        #: movement is never counted as work.
+        "moved_measurements": moved_measurements,
         "comparable_per_rule": bool(before_counts),
         "comparable_rule_set": comparable,
         "places_fixed": sum(max(0, m["before"] - m["now"]) for m in moved),
@@ -646,7 +671,14 @@ def _comparison_lines(comparison: dict) -> list:
                        f"{_direction(row['before'], row['now'])} |")
         out.append("")
     elif comparison["comparable_per_rule"]:
-        out += ["Every rule fires in exactly as many places as last time: "
+        # Qualified when a measurement moved: "every rule fires in exactly as
+        # many places" would be read as "nothing changed at all", and the
+        # table below it would then look like a contradiction.
+        out += ["Every rule that inspects the page fires in exactly as many "
+                "places as last time: nothing was corrected and nothing "
+                "regressed."
+                if comparison.get("moved_measurements") else
+                "Every rule fires in exactly as many places as last time: "
                 "nothing was corrected and nothing regressed.", ""]
     elif not comparison["comparable_rule_set"]:
         out += ["The previous run recorded only its totals, not which rules "
@@ -654,6 +686,24 @@ def _comparison_lines(comparison: dict) -> list:
                 "for this comparison. The next one will have both.", ""]
     elif not solved and not appeared:
         out += ["The same rules fire as last time.", ""]
+
+    measured = comparison.get("moved_measurements") or []
+    if measured:
+        out += [
+            "### Measurements that moved",
+            "",
+            "These are timings and weights taken while the page loaded, not "
+            "facts about the page. They move because the network did, so "
+            "they are listed apart and are **not** counted as corrections.",
+            "",
+            "| rule | previous | now | change |",
+            "|---|---|---|---|",
+        ]
+        for row in sorted(measured,
+                          key=lambda r: (r["now"] - r["before"], r["rule"])):
+            out.append(f"| `{row['rule']}` | {row['before']} | {row['now']} | "
+                       f"{_direction(row['before'], row['now'])} |")
+        out.append("")
 
     still = comparison["still_open_rules"]
     if still:
