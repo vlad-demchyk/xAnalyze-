@@ -21,7 +21,7 @@ class XAnalyzeApp(App):
         align: center middle;
     }
     #main-menu {
-        width: 60;
+        width: 62;
         height: auto;
         max-height: 90%;
         border: tall $accent;
@@ -39,15 +39,22 @@ class XAnalyzeApp(App):
         margin: 0 0 1 0;
         text-align: left;
     }
-    #version-hint {
+    #version-hint, .hint {
         text-align: center;
         color: $text-muted;
         margin: 1 0 0 0;
     }
-    #scan-form, #audit-form, #fullscan-form, #settings-view, #reports-view, #update-view, #uninstall-view {
-        width: 70;
+    #scan-form, #audit-form, #fullscan-form, #settings-view, #reports-view,
+    #update-view, #uninstall-view {
+        width: 74;
         height: auto;
         max-height: 90%;
+        border: tall $accent;
+        padding: 1 2;
+    }
+    #results-view, #report-detail {
+        width: 96;
+        height: 90%;
         border: tall $accent;
         padding: 1 2;
     }
@@ -64,17 +71,38 @@ class XAnalyzeApp(App):
         color: $text-muted;
         text-style: italic;
     }
-    #report-status, #scan-status, #audit-status, #fullscan-status, #update-status, #uninstall-status {
+    #report-status, #scan-status, #audit-status, #fullscan-status,
+    #update-status, #uninstall-status, #settings-status {
         color: $warning;
+    }
+    .ok {
+        color: $success;
+    }
+    DataTable {
+        height: auto;
+        max-height: 22;
+    }
+    #results-summary {
+        height: auto;
+        max-height: 14;
+    }
+    #results-log, #report-body {
+        height: 1fr;
+        border: round $panel;
     }
     """
 
     BINDINGS = [
         Binding("q", "quit", "Quit", show=True),
-        Binding("escape", "quit", "Quit", show=False),
+        # Arrow keys move between controls, which is what the README has
+        # always promised and what people try first. Textual binds only
+        # `tab`/`shift+tab` by default, so without these a form could be
+        # filled in exactly one order and the menu could not be walked at
+        # all. Bindings are consulted after the focused widget has had the
+        # key, so an Input still gets its own arrow handling.
+        Binding("down", "focus_next", "Next", show=False),
+        Binding("up", "focus_previous", "Previous", show=False),
     ]
-
-    SCREENS = {}
 
     def on_mount(self) -> None:
         from tui.screens.main_menu import MainMenuScreen

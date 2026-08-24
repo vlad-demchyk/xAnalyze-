@@ -5,27 +5,28 @@ import argparse
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.screen import Screen
 from textual.widgets import Button, Checkbox, Input, Label, Select, Static
 
 from cli import cmd_audit
+from tui.screens.base import RunScreen
 
 
-class AuditScreen(Screen):
+class AuditScreen(RunScreen):
     """Form to configure and run an audit."""
 
-    BINDINGS = [
-        ("escape", "back", "Back"),
-        ("q", "back", "Back"),
-    ]
+    status_id = "audit-status"
 
     def compose(self) -> ComposeResult:
+        yield from self.compose_chrome()
         with Vertical(id="audit-form"):
-            yield Label("Audit — accessibility, SEO, performance", classes="menu-title")
+            yield Label("Audit — accessibility, SEO, performance",
+                        classes="menu-title")
             yield Static("")
 
             yield Label("Target (URL, directory, or .html file):")
-            yield Input(placeholder="https://example.com or ./src", id="target")
+            # No scheme needed: `example.com` is accepted, the same as in the
+            # CLI. See `cli_impl.auditpass.looks_like_url`.
+            yield Input(placeholder="example.com or ./src", id="target")
 
             yield Label("Language:")
             yield Select(
@@ -38,10 +39,36 @@ class AuditScreen(Screen):
                 id="language",
             )
 
+            yield Label("Crawl depth (URLs only):")
+            yield Select(
+                [
+                    ("0 — the given page only", "0"),
+                    ("1 — the page and what it links to", "1"),
+                    ("2", "2"),
+                    ("3", "3"),
+                ],
+                value="0",
+                id="depth",
+            )
+
+            yield Label("Breakpoints:")
+            yield Select(
+                [
+                    ("default — one pass", ""),
+                    ("all — desktop + tablet + mobile", "all"),
+                    ("desktop only", "desktop"),
+                    ("desktop + mobile", "desktop,mobile"),
+                    ("mobile only", "mobile"),
+                ],
+                value="",
+                id="breakpoints",
+            )
+
             yield Static("")
             yield Checkbox("Browser rendering (for SPA sites)", id="browser")
             yield Checkbox("AI pass (checks alt text, costs tokens)", id="ai")
-            yield Checkbox("Auto-fix known issues", id="fix")
+            yield Checkbox("Auto-fix known issues (writes files, keeps .bak)",
+                           id="fix")
 
             yield Static("")
             with Horizontal():
@@ -51,55 +78,47 @@ class AuditScreen(Screen):
             yield Static("")
             yield Label("", id="audit-status")
 
-    def action_back(self) -> None:
-        self.app.pop_screen()
-
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "back":
-            self.app.pop_screen()
+            self.action_back()
         elif event.button.id == "run":
+            self._run_audit()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "target":
             self._run_audit()
 
     def _run_audit(self) -> None:
         target = self.query_one("#target", Input).value.strip()
         if not target:
-            self.query_one("#audit-status", Label).update("Enter a target.")
+            self.status("Enter a target.")
             return
 
-        language = self.query_one("#language", Select).value
-        browser = self.query_one("#browser", Checkbox).value
-        ai = self.query_one("#ai", Checkbox).value
-        fix = self.query_one("#fix", Checkbox).value
-
-        self.query_one("#audit-status", Label).update(f"Auditing {target}...")
-
+        breakpoints = self.query_one("#breakpoints", Select).value or None
         args = argparse.Namespace(
             target=target,
             url=False,
-            depth=0,
+            depth=int(self.query_one("#depth", Select).value or 0),
             max_pages=30,
             max_files=5000,
             render=None,
             exclude=None,
             use_default_excludes=True,
+            ext=None,
+            scope="content",
             category=None,
-            language=language,
+            language=self.query_one("#language", Select).value,
             no_ignore=False,
+            no_typography=False,
+            categories=None,
             json=True,
             check=False,
-            ai=ai,
+            ai=self.query_one("#ai", Checkbox).value,
             provider=None,
-            fix=fix,
+            fix=self.query_one("#fix", Checkbox).value,
             report=None,
-            browser=browser,
-            breakpoints=None,
+            browser=self.query_one("#browser", Checkbox).value,
+            breakpoints=breakpoints,
             styled_report=None,
         )
-
-        try:
-            result_code = cmd_audit(args)
-            self.query_one("#audit-status", Label).update(
-                f"Audit complete (exit code {result_code}). See results in terminal."
-            )
-        except Exception as exc:
-            self.query_one("#audit-status", Label).update(f"Error: {exc}")
+        self.start_run(cmd_audit, args, title=f"Audit of {target}")

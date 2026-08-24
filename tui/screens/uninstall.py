@@ -3,18 +3,18 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Vertical
-from textual.screen import Screen
 from textual.widgets import Button, Label, Static
 
 import uninstaller
 
+from tui.screens.base import XScreen
 
-class UninstallScreen(Screen):
+
+class UninstallScreen(XScreen):
     """List what is installed and remove it after an explicit confirm."""
 
     BINDINGS = [
         ("escape", "back", "Back"),
-        ("q", "back", "Back"),
     ]
 
     def __init__(self) -> None:
@@ -22,6 +22,7 @@ class UninstallScreen(Screen):
         self._armed = False
 
     def compose(self) -> ComposeResult:
+        yield from self.compose_chrome()
         with Vertical(id="uninstall-view"):
             yield Label("Uninstall", classes="menu-title")
             yield Static("")
@@ -48,12 +49,9 @@ class UninstallScreen(Screen):
         if notes:
             status.update("Kept: " + "; ".join(notes))
 
-    def action_back(self) -> None:
-        self.app.pop_screen()
-
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "back":
-            self.app.pop_screen()
+            self.action_back()
         elif event.button.id == "remove":
             self._remove()
 

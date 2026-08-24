@@ -1,0 +1,161 @@
+"""What a run found, shown here rather than deferred to the terminal.
+
+Every form used to end with "See results in terminal", which was not true:
+the interface owns the terminal while it runs, so the JSON either vanished
+or drew over the screen. The result is captured (`tui.runner`) and laid out
+here - a summary, the documents that were written, and the full log for
+anything the summary does not cover.
+"""
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+from textual.app import ComposeResult
+from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.widgets import Button, DataTable, Label, RichLog, Static
+
+from tui.screens.base import XScreen
+
+
+def open_in_os(path: str) -> str:
+    """Hand a file or folder to the desktop. Returns a message for the user.
+
+    A report the tool just wrote is only useful if it can be opened, and the
+    interface cannot render a PDF. Nothing is sent anywhere - this is the
+    same double-click the person would do themselves.
+    """
+    target = Path(path)
+    if not target.exists():
+        return f"Not there any more: {path}"
+    try:
+        if sys.platform == "darwin":
+            subprocess.Popen(["open", str(target)])
+        elif os.name == "nt":  # pragma: no cover - not the supported platform
+            os.startfile(str(target))  # type: ignore[attr-defined]
+        else:
+            subprocess.Popen(["xdg-open", str(target)])
+    except OSError as exc:
+        return f"Could not open it: {exc}"
+    return f"Opened {target.name}"
+
+
+def summary_rows(payload: dict | None) -> list:
+    """`(label, value)` pairs for whichever command produced this payload.
+
+    The three commands print three different documents. Rather than a branch
+    per command, each known shape contributes the rows it has - a payload
+    from a future command still renders, just with fewer rows.
+    """
+    if not payload:
+        return []
+    rows: list = []
+    summary = payload.get("summary")
+    if isinstance(summary, dict):
+        # fullscan: one document covering both passes.
+        for key in ("total_findings", "ai_patterns", "characters",
+                    "accessibility", "seo", "performance", "best_practices"):
+            if key in summary:
+                rows.append((key.replace("_", " "), str(summary[key])))
+    counts = payload.get("counts")
+    if isinstance(counts, dict):
+        # scan: findings by detector, plus the totals.
+        for key in ("total", "distinct", "files"):
+            if key in counts:
+                rows.append((key, str(counts[key])))
+        for key, value in counts.items():
+            if key not in ("total", "distinct", "files"):
+                rows.append((f"by {key}", str(value)))
+        for severity in ("critical", "serious", "moderate", "minor"):
+            if severity in counts:
+                rows.append((severity, str(counts[severity])))
+    audit = payload.get("audit")
+    if isinstance(audit, dict) and isinstance(audit.get("counts"), dict):
+        for severity, value in audit["counts"].items():
+            rows.append((f"audit {severity}", str(value)))
+    if "target" in payload:
+        rows.insert(0, ("target", str(payload["target"])))
+    return rows
+
+
+class ResultsScreen(XScreen):
+    """Summary, documents written, and the full log of one run."""
+
+    BINDINGS = [
+        ("escape", "back", "Back"),
+        ("o", "open_first", "Open report"),
+    ]
+
+    def __init__(self, title: str, result) -> None:
+        super().__init__()
+        self._title = title
+        self._result = result
+        self._paths = result.report_paths()
+
+    def compose(self) -> ComposeResult:
+        yield from self.compose_chrome()
+        with Vertical(id="results-view"):
+            yield Label(f"{self._title} — result", classes="menu-title")
+            yield Label(f"exit code {self._result.exit_code}", id="results-exit")
+            yield DataTable(id="results-summary")
+            yield Static("")
+            yield Label("", id="results-paths")
+            with Horizontal(id="results-actions"):
+                yield Button("Open report", id="open-report", variant="primary")
+                yield Button("Open folder", id="open-folder")
+                yield Button("Back", id="back")
+            yield Label("", id="report-status")
+            yield RichLog(id="results-log", highlight=False, markup=False,
+                          wrap=True)
+
+    def on_mount(self) -> None:
+        table = self.query_one("#results-summary", DataTable)
+        table.add_columns("What", "Count")
+        rows = summary_rows(self._result.payload())
+        if rows:
+            for label, value in rows:
+                table.add_row(label, value)
+        else:
+            table.add_row("(no machine-readable summary)", "-")
+
+        paths = self.query_one("#results-paths", Label)
+        if self._paths:
+            paths.update("Written:\n" + "\n".join(f"  {p}" for p in self._paths))
+        else:
+            paths.update("No documents were written by this run.")
+        self.query_one("#open-report", Button).disabled = not self._file_paths()
+        self.query_one("#open-folder", Button).disabled = not self._paths
+
+        log = self.query_one("#results-log", RichLog)
+        for line in (self._result.stderr.splitlines()
+                     + self._result.stdout.splitlines()):
+            log.write(line)
+
+    def _file_paths(self) -> list:
+        return [p for p in self._paths if Path(p).is_file()]
+
+    def _folder(self) -> str:
+        for path in self._paths:
+            candidate = Path(path)
+            if candidate.is_dir():
+                return str(candidate)
+        files = self._file_paths()
+        return str(Path(files[0]).parent) if files else ""
+
+    def action_open_first(self) -> None:
+        files = self._file_paths()
+        if files:
+            self.query_one("#report-status", Label).update(open_in_os(files[0]))
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "back":
+            self.action_back()
+        elif event.button.id == "open-report":
+            self.action_open_first()
+        elif event.button.id == "open-folder":
+            folder = self._folder()
+            if folder:
+                self.query_one("#report-status", Label).update(
+                    open_in_os(folder))
