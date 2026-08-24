@@ -212,9 +212,53 @@ class HtmlTemplateContract(unittest.TestCase):
 
     def test_expected_sections_are_present(self):
         html = render_html(self._model(), lang="en")
-        self.assertIn("Summary", html)
+        self.assertIn("Overview", html)
         self.assertIn("Findings", html)
         self.assertIn("my-project", html)
+
+    def test_the_overview_opens_with_charts(self):
+        """Counts in a table are exact and shapeless.
+
+        A reader opening a report wants to see where the weight is before
+        reading a number, and the bars are what answer that.
+        """
+        html = render_html(self._model(), lang="en")
+        self.assertIn('class="charts"', html)
+        self.assertIn("bar-fill", html)
+
+    def test_the_charts_need_no_script_and_no_image(self):
+        """`printToPdf` is the consumer; anything else prints blank."""
+        html = render_html(self._model(), lang="en")
+        chart = html[html.index('class="charts"'):]
+        chart = chart[:chart.index("</section>")]
+        self.assertNotIn("<script", chart)
+        self.assertNotIn("<img", chart)
+        self.assertNotIn("<canvas", chart)
+
+    def test_what_was_found_is_one_table_not_several(self):
+        """The category counts, the AI bands and the character tallies were
+        three tables in three sections separated by the findings."""
+        html = render_html(self._model(), lang="en")
+        self.assertIn("What was found", html)
+        self.assertIn("find-table", html)
+        overview = html[html.index('class="summary"'):]
+        overview = overview[:overview.index("</section>")]
+        self.assertEqual(overview.count("<table"), 1)
+
+    def test_cards_may_break_across_pages(self):
+        """Forbidding it is what left a third of many pages blank: a card
+        that did not fit moved to the next page whole."""
+        html = render_html(self._model(), lang="en")
+        self.assertIn("break-inside: auto", html)
+        self.assertIn("orphans: 3", html)
+
+    def test_headings_are_never_stranded_at_a_page_foot(self):
+        html = render_html(self._model(), lang="en")
+        self.assertIn("break-after: avoid", html)
+
+    def test_a_table_row_is_never_split(self):
+        html = render_html(self._model(), lang="en")
+        self.assertIn("table.category-table tr { break-inside: avoid;", html)
 
     def test_html_in_a_snippet_is_escaped_not_rendered(self):
         model = self._model(snippet='<img src=x onerror=alert(1)>',
@@ -409,3 +453,97 @@ class LostCallback(unittest.TestCase):
         self.assertIn("loading", pdf_module._timeout_message(state))
         state["phase"] = "printing"
         self.assertIn("printer", pdf_module._timeout_message(state))
+
+
+class ReportReadability(unittest.TestCase):
+    """The layout complaints from a real 192-page report, as assertions.
+
+    That report printed 192 numbered lines of index before the first finding,
+    kept its four count-tables in four places separated by the findings, and
+    left large blank areas wherever a card did not fit in what was left of a
+    page.
+    """
+
+    def _model(self, pages=0, chars=0, ai=None):
+        from report.model import ReportFinding, ReportMeta, ReportModel
+
+        return ReportModel(
+            meta=ReportMeta(target="https://example.com", mode="audit-web"),
+            findings=[
+                ReportFinding(title="Image without alt", category="accessibility",
+                              severity="critical", location="a.html"),
+                ReportFinding(title="Slow font", category="performance",
+                              severity="minor", location="b.html"),
+            ],
+            pages=[{"source": f"https://example.com/page-{i}",
+                    "findings_count": i} for i in range(pages)],
+            ai_patterns=ai or {},
+            typography={"total": sum(range(chars)),
+                        "by_character": {f"char-{i}": i for i in range(chars)}}
+            if chars else {})
+
+    def test_the_page_index_is_a_table_in_small_type(self):
+        html = render_html(self._model(pages=5), lang="en")
+        self.assertIn("pages-table", html)
+        self.assertIn("table.pages-table { font-size: 8pt;", html)
+
+    def test_the_page_index_is_cut_short_rather_than_printed_in_full(self):
+        html = render_html(self._model(pages=200), lang="en")
+        self.assertIn("and 160 more pages", html)
+        self.assertEqual(html.count("https://example.com/page-"), 40)
+
+    def test_the_page_index_leads_with_the_worst_pages(self):
+        """Cut short is only acceptable if what survives is what matters."""
+        html = render_html(self._model(pages=200), lang="en")
+        self.assertIn("page-199", html)
+        self.assertNotIn("page-0<", html)
+
+    def test_the_page_index_comes_after_the_findings(self):
+        """It is context, not content, and it used to precede them."""
+        html = render_html(self._model(pages=5), lang="en")
+        self.assertGreater(html.index('class="pages"'),
+                           html.index('class="findings"'))
+
+    def test_the_page_count_is_still_stated_in_full(self):
+        """Truncating the list must not truncate the fact."""
+        html = render_html(self._model(pages=200), lang="en")
+        self.assertIn("Pages examined (200)", html)
+
+    def test_no_page_index_when_nothing_was_crawled(self):
+        self.assertNotIn('class="pages"', render_html(self._model(), lang="en"))
+
+    def test_ai_bands_and_characters_join_the_one_table(self):
+        model = self._model(chars=3, ai={"total": 9, "high": 2, "medium": 7})
+        html = render_html(model, lang="en")
+        table = html[html.index("find-table"):]
+        table = table[:table.index("</table>")]
+        for expected in ("Accessibility", "Performance", "Confidence: high",
+                         "char-2"):
+            self.assertIn(expected, table)
+
+    def test_a_long_character_tally_is_summarised_rather_than_listed(self):
+        html = render_html(self._model(chars=30), lang="en")
+        table = html[html.index("find-table"):]
+        table = table[:table.index("</table>")]
+        self.assertIn("and 18 more", table)
+
+    def test_the_top_patterns_table_keeps_only_what_a_tally_cannot_hold(self):
+        """The confidence counts moved into the one table; the passages and
+        their explanations are what is left, because they are not counts."""
+        model = self._model(ai={"total": 2, "high": 2, "top_patterns": [
+            {"score": 0.8, "confidence": "high", "text": "a passage",
+             "explanation": "cliché: delve"}]})
+        html = render_html(model, lang="en")
+        self.assertIn("Highest-scoring passages", html)
+        self.assertIn("a passage", html)
+
+    def test_no_top_patterns_section_when_there_are_none(self):
+        model = self._model(ai={"total": 3, "low": 3})
+        self.assertNotIn("ai-patterns", render_html(model, lang="en"))
+
+    def test_every_language_renders_the_new_sections(self):
+        for lang in ("uk", "it", "en"):
+            html = render_html(self._model(pages=3, chars=2), lang=lang)
+            self.assertIn("find-table", html)
+            self.assertIn("pages-table", html)
+            self.assertNotIn("{count}", html)
