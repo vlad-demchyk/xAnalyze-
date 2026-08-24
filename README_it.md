@@ -696,6 +696,44 @@ I segnali statistici senza cliché/pattern strutturali sono limitati a 0.32 per 
 
 ---
 
+### Ogni passaggio viene letto una volta sola
+
+Un crawl di dieci pagine di un sito ha prodotto 573 blocchi di testo e **236
+testi distinti**. Header e footer compaiono su ogni pagina, quindi
+`Tel. +39 0432 924815` è stato letto 26 volte.
+
+I passaggi vengono deduplicati **sull'intera esecuzione**, non dentro una
+pagina: la ripetizione che vale la pena togliere è proprio quella che una
+singola pagina non può vedere. Due passaggi sono lo stesso quando il testo
+coincide dopo aver compresso gli spazi e mascherato gli identificatori generati
+dalla macchina, così un menu con un uuid nuovo a ogni pagina resta un solo
+menu. La lingua fa parte dell'identità, perché la stessa stringa letta come
+italiana e come inglese è una domanda diversa.
+
+Entrambi i detector leggono quell'unico elenco. **Non si perde nulla:** ogni
+occorrenza produce comunque il proprio rilievo con la propria pagina. La
+deduplicazione cambia ciò che viene *chiesto*, mai ciò che viene riportato.
+
+I verdetti restano su disco tra le esecuzioni, e quella parte non è
+un'ottimizzazione. Il giudice **non è deterministico**: due esecuzioni dello
+stesso sito con gli stessi flag hanno dato 6 e poi 24 rilievi, e nessun
+percorso qui espone temperatura o seed, quindi un output identico non si può
+*chiedere*. Si può solo *ricordare*.
+
+Misurato su quel sito, `--detector ai --model sonnet --effort low`:
+
+| | blocchi letti | richieste | tempo |
+|---|---|---|---|
+| prima | 573 | 72 | 8m 33s |
+| prima esecuzione | 242 | 31 | 3m 42s |
+| seconda | 0 | 0 | **3,3s** |
+
+Il report della seconda esecuzione coincide byte per byte con il primo.
+
+`--no-judgment-cache` richiede un parere nuovo, perché una risposta sbagliata
+in cache non deve essere incorreggibile. `XANALYZE_JUDGMENT_CACHE` sposta
+l'archivio; le voci più vecchie di 90 giorni vengono scartate.
+
 ### Caratteri non da tastiera
 
 Rilevamento deterministico di caratteri non prodotti da tastiera:

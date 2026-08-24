@@ -737,6 +737,47 @@ looked at: a real 192-page run reported **10,976 "AI text patterns"** of which
 that run reports 30. The removed rows were also most of the reason its
 artifacts came to 14 MB of JSON and a 117 MB PDF.
 
+#### Each passage is read once, and once only
+
+A crawl of ten pages of one site produced 573 text blocks and **236 distinct
+texts**. A header and a footer appear on every page, so `Tel. +39 0432 924815`
+was read 26 times, the site's email 26 times, a menu label 23 times.
+
+Passages are deduplicated **across the whole run**, not within a page - the
+repetition worth removing is exactly the one a single page cannot see. Two
+passages are the same when their text matches after whitespace is collapsed
+and machine-generated identifiers are masked, so a menu that renders with a
+fresh uuid on every page is still one menu. The language hint is part of the
+identity, because the same string read as Italian and as English is two
+questions and the detectors answer them differently.
+
+Both the offline pass and the judge read that one list. **Nothing is lost:**
+every occurrence still produces its own finding with its own page, because a
+fix has to visit each page. Deduplication changes what is *asked*, never what
+is *reported*.
+
+Verdicts are also kept on disk between runs, and that part is not an
+optimisation. The judge is **not deterministic** - two runs of one site with
+identical flags returned 6 findings and then 24 - and no route here exposes a
+temperature or a seed, so identical output cannot be requested from the model.
+It can only be remembered.
+
+Measured on that site, `--detector ai --model sonnet --effort low`:
+
+| | blocks read | requests | wall clock |
+|---|---|---|---|
+| before | 573 | 72 | 8m 33s |
+| first run | 242 | 31 | 3m 42s |
+| second run | 0 | 0 | **3.3s** |
+
+The second run's report is byte-for-byte the first run's.
+
+An entry is keyed by the passage, the detector, the model, the effort and the
+prompt's own text, so changing any of them invalidates it without anyone
+having to bump a version. `--no-judgment-cache` re-asks, because a cached
+wrong answer must not be un-fixable. `XANALYZE_JUDGMENT_CACHE` moves the
+store; entries older than 90 days are dropped.
+
 #### What this does not do
 
 There is no dependency parser here, and the sentence-structure features named
