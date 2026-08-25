@@ -707,26 +707,55 @@ _NAMED_COLORS = {
 
 
 def _parse_color(value: str) -> tuple | None:
+    """The opaque sRGB triple this declaration paints, or None when the
+    markup alone cannot say.
+
+    None is the honest answer far more often than it looks: `var(--fg)`,
+    `currentColor`, `transparent`, `hsl()`, `color-mix()` and percentage
+    channels all resolve somewhere this pass cannot see. Translucent
+    colours belong in the same group — a ratio computed against a colour
+    that is half the layer underneath is a number nobody measured.
+    """
     value = value.strip().lower()
     if value in _NAMED_COLORS:
         return _NAMED_COLORS[value]
     if value.startswith("#"):
         digits = value[1:]
-        if len(digits) == 3:
+        if len(digits) in (3, 4):
             digits = "".join(c * 2 for c in digits)
+        if len(digits) == 8 and _hex_pair(digits[6:8]) not in (255, None):
+            return None  # translucent: the colour behind it is unknown
         if len(digits) >= 6:
-            try:
-                return tuple(int(digits[i:i + 2], 16) for i in (0, 2, 4))
-            except ValueError:
-                return None
+            channels = tuple(_hex_pair(digits[i:i + 2]) for i in (0, 2, 4))
+            return None if None in channels else channels
     match = re.match(r"rgba?\(([^)]+)\)", value)
     if match:
         parts = [p.strip() for p in match.group(1).replace("/", ",").split(",")]
+        parts = [p for p in parts if p]
+        if len(parts) < 3 and parts and len(parts[0].split()) == 3:
+            parts = parts[0].split() + parts[1:]  # rgb(0 0 0 / 50%) space syntax
         try:
-            return tuple(int(float(p)) for p in parts[:3])
+            channels = tuple(_clamp_channel(float(p)) for p in parts[:3])
+            alpha = float(parts[3]) if len(parts) > 3 else 1.0
         except ValueError:
             return None
+        if len(channels) < 3 or alpha < 1.0:
+            return None
+        return channels
     return None
+
+
+def _hex_pair(digits: str) -> int | None:
+    try:
+        return int(digits, 16)
+    except ValueError:
+        return None
+
+
+def _clamp_channel(value: float) -> int:
+    """CSS channels outside 0-255 are clamped by browsers, not honoured;
+    letting them through produces luminances no screen ever shows."""
+    return max(0, min(255, int(value)))
 
 
 def _channel(value: int) -> float:

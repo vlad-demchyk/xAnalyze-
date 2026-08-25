@@ -10,7 +10,7 @@ import unittest
 
 import audit
 from audit import analyze_document
-from audit.rules.accessibility import contrast_ratio
+from audit.rules.accessibility import contrast_ratio, _parse_color
 
 
 def issues(markup: str, rule_id: str | None = None,
@@ -168,6 +168,49 @@ class Contrast(unittest.TestCase):
 
     def test_sufficient_contrast_is_not_reported(self):
         markup = '<p style="color:#333333;background:#ffffff">text</p>'
+        self.assertEqual(issues(markup, "contrast-inline"), [])
+
+    def test_known_wcag_pairs(self):
+        # Reference ratios from the WCAG 2.x formula: the numbers the rule
+        # acts on have to be the numbers a contrast checker shows.
+        for foreground, background, expected in (
+            ((0x77, 0x77, 0x77), (255, 255, 255), 4.48),
+            ((0x76, 0x76, 0x76), (255, 255, 255), 4.54),
+            ((0x59, 0x59, 0x59), (255, 255, 255), 7.00),
+            ((0, 0, 255), (255, 255, 255), 8.59),
+            ((0x1a, 0x1a, 0x1a), (0xf5, 0xf5, 0xf5), 15.96),
+        ):
+            self.assertAlmostEqual(
+                contrast_ratio(foreground, background), expected, places=2)
+
+    def test_unparsable_colours_are_silent_rather_than_invented(self):
+        # A colour the markup cannot resolve has no ratio. Guessing one
+        # produces a critical finding about a pair nobody ever painted.
+        for colour in ("var(--fg)", "currentcolor", "transparent",
+                       "hsl(0 0% 0%)", "color-mix(in srgb, red, blue)",
+                       "light-dark(#fff, #000)", "inherit", "rgb(100%, 0%, 0%)"):
+            self.assertIsNone(_parse_color(colour), colour)
+
+    def test_translucent_colours_are_not_judged(self):
+        # The ratio depends on the layer underneath, which this pass cannot
+        # see: rgba(0,0,0,.05) read as solid black invents a failure on what
+        # is really an almost-white background.
+        for colour in ("rgba(0, 0, 0, 0.05)", "rgba(0,0,0,0)", "#00000000",
+                       "#ffffff80", "rgb(0 0 0 / 50%)"):
+            self.assertIsNone(_parse_color(colour), colour)
+
+    def test_opaque_colours_still_parse(self):
+        self.assertEqual(_parse_color("#fff"), (255, 255, 255))
+        self.assertEqual(_parse_color("#ffffffff"), (255, 255, 255))
+        self.assertEqual(_parse_color("rgba(0, 0, 0, 1)"), (0, 0, 0))
+        self.assertEqual(_parse_color("rgb(12 34 56)"), (12, 34, 56))
+        self.assertEqual(_parse_color("#ffffff url(bg.png)"), (255, 255, 255))
+
+    def test_out_of_range_channels_are_clamped_like_a_browser(self):
+        self.assertEqual(_parse_color("rgb(300, -20, 0)"), (255, 0, 0))
+
+    def test_a_translucent_pair_is_not_reported(self):
+        markup = '<p style="color:#333333;background:rgba(0,0,0,0.05)">text</p>'
         self.assertEqual(issues(markup, "contrast-inline"), [])
 
     def test_colour_alone_is_not_judged(self):

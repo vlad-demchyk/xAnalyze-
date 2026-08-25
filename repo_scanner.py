@@ -205,6 +205,16 @@ _CODE_COMMENT_RE = re.compile(
 # `#` immediately followed by `{` is left alone.
 _HASH_COMMENT_RE = re.compile(r"(?<!\$)#(?!\{)[^\n]*")
 _HASH_COMMENT_EXTENSIONS = frozenset((".py", ".rb", ".php"))
+# Code quoted inside Markdown: fenced blocks and inline spans. A doc that
+# writes `<audio controls>` in backticks is talking *about* an element, and
+# the audit was reporting the sentence as a media element shipped without
+# captions. Same reason comments are masked, one file type over.
+_MARKDOWN_FENCE_RE = re.compile(
+    r"^[ \t]*(`{3,}|~{3,})[^\n]*\n.*?(?:^[ \t]*\1[^\n]*$|\Z)",
+    re.DOTALL | re.MULTILINE,
+)
+_MARKDOWN_INLINE_CODE_RE = re.compile(r"(?<!`)(`+)(?!`)([^\n]+?)(?<!`)\1(?!`)")
+_MARKDOWN_EXTENSIONS = frozenset((".md", ".markdown", ".mdx"))
 # Text that a browser will render sits between the `>` that closes an element
 # tag and the `<` that opens the next one. Matching a bare `>` instead is what
 # made a `.tsx` file read as copy: `useState<boolean>(false)` and `a > b` end
@@ -838,9 +848,20 @@ def mask_code_comments(raw_text: str, file_path: str) -> str:
     extractor does. A comment that talks about markup - `// on remount ->
     <img> ERR_FILE_NOT_FOUND` - is markup to an HTML parser, and the audit was
     reporting those prose mentions as real elements with no `alt`.
+
+    In Markdown the quoting marks are backticks rather than `//`, and the
+    consequence was the same: a documentation table naming `<audio controls>`
+    was reported as a serious captions failure. HTML written outside a code
+    span is left alone - a `.md` really can ship markup.
     """
     suffix = Path(file_path).suffix.lower()
-    masked = _SCRIPT_STYLE_COMMENT_RE.sub(_blank_but_newlines, raw_text)
+    masked = raw_text
+    if suffix in _MARKDOWN_EXTENSIONS:
+        # Fences first: once a block is blank its backticks cannot pair with
+        # a stray one further down the document.
+        masked = _MARKDOWN_FENCE_RE.sub(_blank_but_newlines, masked)
+        masked = _MARKDOWN_INLINE_CODE_RE.sub(_blank_but_newlines, masked)
+    masked = _SCRIPT_STYLE_COMMENT_RE.sub(_blank_but_newlines, masked)
     masked = _CODE_COMMENT_RE.sub(_blank_but_newlines, masked)
     if suffix in _HASH_COMMENT_EXTENSIONS:
         masked = _HASH_COMMENT_RE.sub(_blank_but_newlines, masked)

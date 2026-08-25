@@ -76,6 +76,10 @@ EMPTY_NOT_HTML = "not-html"
 EMPTY_TOO_SHORT = "too-short"
 EMPTY_NO_TEXT = "no-text"
 EMPTY_REDIRECTED = "redirected"
+# The redirect landed on a page this crawl has already read. Recorded
+# rather than dropped: a URL that vanishes from the report is
+# indistinguishable from one nobody tried.
+EMPTY_ALREADY_SEEN = "already-seen"
 EMPTY_ERROR = "error"
 
 # Markers that identify a client-rendered application shell. Matched against
@@ -344,7 +348,8 @@ def _diagnose(diag: PageDiagnostics, url: str, html: str, blocks: list) -> None:
     diag.js_framework = _detect_framework(html)
     diag.has_noscript_notice = "<noscript" in html.lower()
 
-    if diag.final_url and _normalize(diag.final_url) != _normalize(url):
+    if (diag.final_url and _normalize(diag.final_url) != _normalize(url)
+            and EMPTY_REDIRECTED not in diag.reasons):
         diag.reasons.append(EMPTY_REDIRECTED)
     if blocks:
         return
@@ -443,6 +448,24 @@ def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
                 results.append(PageResult(url=url, depth=depth, diagnostics=diagnostics))
                 continue
             html = resp.text
+            landing = _normalize(resp.url)
+            if landing != _normalize(url):
+                # Three URLs redirecting to one page are one page. Analysing
+                # the landing page once per address counted the same copy
+                # three times, spent three AI calls on it, and reported a
+                # site larger than it is.
+                diagnostics.reasons.append(EMPTY_REDIRECTED)
+                if landing in visited:
+                    diagnostics.reasons.append(EMPTY_ALREADY_SEEN)
+                    results.append(
+                        PageResult(url=url, depth=depth, diagnostics=diagnostics))
+                    continue
+                visited.add(landing)
+                # Links on the page are relative to where it landed, not to
+                # where it was asked for.
+                url_base = resp.url
+            else:
+                url_base = url
         except requests.RequestException as exc:
             diagnostics.reasons.append(EMPTY_ERROR)
             results.append(
@@ -488,7 +511,7 @@ def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
         )
 
         if depth < config.max_depth:
-            for link in _find_links(html, url):
+            for link in _find_links(html, url_base):
                 if link in visited:
                     continue
                 if config.same_domain_only and not _same_domain(link, root_url):

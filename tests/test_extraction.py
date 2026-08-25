@@ -12,7 +12,8 @@ import unittest
 import crawler
 from crawler import _diagnose, _extract_text_blocks
 from models import KIND_INJECTED, KIND_MARKUP, KIND_TECHNICAL, PageDiagnostics
-from repo_scanner import SCOPE_BOTH, SCOPE_CONTENT, SCOPE_TECHNICAL, _extract_blocks
+from repo_scanner import (SCOPE_BOTH, SCOPE_CONTENT, SCOPE_TECHNICAL,
+                          _extract_blocks, mask_code_comments)
 
 
 def extract(html: str):
@@ -193,3 +194,44 @@ class DesignTokens(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MarkdownMasking(unittest.TestCase):
+    """Markdown quotes code in backticks, and quoted markup is not shipped
+    markup. Measured on 596 real `.md` files: every finding above `minor`
+    the audit produced on them came from a backticked example, and all of
+    them were false.
+    """
+
+    DOC = ('# Title\n\n'
+           'Real markup ships here: <img src="x.png">\n\n'
+           '`<img src="quoted.png">` is only mentioned.\n\n'
+           '```html\n'
+           '<img src="fenced.png">\n'
+           '```\n\n'
+           'After the fence: <audio controls></audio>.\n')
+
+    def masked(self) -> str:
+        return mask_code_comments(self.DOC, "docs/guide.md")
+
+    def test_quoted_markup_is_blanked(self):
+        masked = self.masked()
+        self.assertNotIn("quoted.png", masked)
+        self.assertNotIn("fenced.png", masked)
+
+    def test_markup_outside_a_code_span_survives(self):
+        # A `.md` really can ship markup, and silencing the whole file would
+        # trade false findings for missing ones.
+        masked = self.masked()
+        self.assertIn('<img src="x.png">', masked)
+        self.assertIn("<audio controls>", masked)
+
+    def test_offsets_and_lines_are_preserved(self):
+        # Every finding's line number indexes into the original file.
+        masked = self.masked()
+        self.assertEqual(len(masked), len(self.DOC))
+        self.assertEqual(masked.count("\n"), self.DOC.count("\n"))
+
+    def test_backticks_in_other_file_types_are_left_alone(self):
+        source = 'const sql = `SELECT * FROM t`;\n'
+        self.assertEqual(mask_code_comments(source, "db.ts"), source)

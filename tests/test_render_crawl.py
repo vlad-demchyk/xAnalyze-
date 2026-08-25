@@ -7,8 +7,8 @@ import unittest
 from unittest.mock import patch
 
 from crawler import (
-    EMPTY_JS_RENDERED, RENDER_ALWAYS, RENDER_AUTO, RENDER_NEVER, RENDERED,
-    CrawlConfig, _should_render, crawl,
+    EMPTY_ALREADY_SEEN, EMPTY_JS_RENDERED, EMPTY_REDIRECTED, RENDER_ALWAYS,
+    RENDER_AUTO, RENDER_NEVER, RENDERED, CrawlConfig, _should_render, crawl,
 )
 from models import PageDiagnostics
 
@@ -140,3 +140,66 @@ class RenderingACrawl(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class _RedirectingSession:
+    """A site where two addresses land on one page, the way a real site
+    redirects `/a` and `/b` to the page that replaced them."""
+
+    headers: dict = {}
+
+    def __init__(self, pages: dict, redirects: dict):
+        self.pages = pages
+        self.redirects = redirects
+        self.fetched = []
+
+    def update(self, *_a, **_kw):
+        return None
+
+    def get(self, url, timeout=None):
+        self.fetched.append(url)
+        landing = self.redirects.get(url, url)
+        return _Response(landing, self.pages[landing])
+
+
+INDEX = ('<!DOCTYPE html><html lang="en"><head><title>Index</title></head>'
+         '<body><p>An index page carrying enough visible words to be kept.</p>'
+         '<a href="/a">a</a><a href="/b">b</a></body></html>')
+LANDING = ('<!DOCTYPE html><html lang="en"><head><title>Page</title></head>'
+           '<body><p>The one page that both addresses really lead to.</p>'
+           '</body></html>')
+
+
+class RedirectsToOnePage(unittest.TestCase):
+    def _crawl(self):
+        session = _RedirectingSession(
+            pages={"https://example.com/": INDEX,
+                   "https://example.com/page": LANDING},
+            redirects={"https://example.com/a": "https://example.com/page",
+                       "https://example.com/b": "https://example.com/page"},
+        )
+        with patch("crawler.requests.Session", return_value=session):
+            pages = crawl("https://example.com",
+                          CrawlConfig(max_depth=1, max_pages=10,
+                                      render_mode=RENDER_NEVER))
+        return pages, session
+
+    def test_the_landing_page_is_analysed_once(self):
+        # Counting the same copy once per address inflates the page count,
+        # repeats every finding, and spends an AI call per repeat.
+        pages, _ = self._crawl()
+        with_copy = [p for p in pages if p.blocks]
+        self.assertEqual(len(with_copy), 2)  # the index and the landing page
+
+    def test_the_second_address_is_recorded_not_dropped(self):
+        pages, _ = self._crawl()
+        second = [p for p in pages if p.url == "https://example.com/b"][0]
+        self.assertEqual(second.blocks, [])
+        self.assertIn(EMPTY_REDIRECTED, second.diagnostics.reasons)
+        self.assertIn(EMPTY_ALREADY_SEEN, second.diagnostics.reasons)
+        self.assertEqual(second.diagnostics.final_url, "https://example.com/page")
+
+    def test_the_redirect_is_still_reported_on_the_page_that_was_read(self):
+        pages, _ = self._crawl()
+        first = [p for p in pages if p.url == "https://example.com/a"][0]
+        self.assertEqual(first.diagnostics.reasons.count(EMPTY_REDIRECTED), 1)

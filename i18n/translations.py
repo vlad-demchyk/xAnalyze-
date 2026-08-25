@@ -1690,6 +1690,11 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "La richiesta è stata reindirizzata a {final_url}.",
         "en": "The request was redirected to {final_url}.",
     },
+    "crawl_reason_already_seen": {
+        "uk": "Ця сторінка вже прочитана під іншою адресою, тож удруге її не аналізовано.",
+        "it": "Questa pagina è già stata letta a un altro indirizzo, quindi non è stata analizzata di nuovo.",
+        "en": "This page was already read at another address, so it was not analysed twice.",
+    },
     "crawl_reason_error": {
         "uk": "Запит не вдався: {error}",
         "it": "Richiesta fallita: {error}",
