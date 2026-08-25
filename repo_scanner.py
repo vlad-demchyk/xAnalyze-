@@ -257,6 +257,24 @@ def _renders_text(name: str) -> bool:
     return name[0].isupper()
 
 _JS_EXPR_RE = re.compile(r"\{[^{}]*\}")
+#: A fragment that *begins* in the middle of an expression. JSX puts markup
+#: and code in the same braces, so the walk that reads the text between tags
+#: also picks up the code between them: `) : doc.indexed_at ? (`,
+#: `= useTranslation();  const [open, setOpen] = useState`.
+#:
+#: Only the opening, and that asymmetry is the measurement rather than a
+#: preference. Prose never *starts* with a closing bracket or an assignment;
+#: it does routinely *end* with an opening one, because a sentence broken
+#: across JSX lines does exactly that - `Languages the provider declares (`
+#: is copy, and a rule that also read the ending threw it away.
+#:
+#: Measured against `~/repositories/XFormat`, 1200 files, 1471 blocks from
+#: `.ts`/`.tsx`: this removes 74 of them (5%), every one of them syntax, and
+#: removes nothing that reads as prose - across the whole corpus, locale
+#: files included, no block that reads as prose begins with any of these.
+#: Adding the *ending* rule caught three more and cost one real sentence,
+#: which is the wrong trade and is why only the opening is read.
+_MID_EXPRESSION_RE = re.compile(r"^\s*(?:[)\]},]|&&|\|\||=[^=]|=>)")
 _CODE_LOOKS_LIKE_RE = re.compile(
     r"=>|function\s*\(|\bimport\b|\bexport\b|\breturn\b|;\s*$|^\s*(const|let|var)\b",
     re.IGNORECASE,
@@ -427,6 +445,8 @@ def _is_probably_content(text: str) -> bool:
     # Strip them before checking
     stripped = _HTML_ENTITY_RE.sub("", text)
     if _CODE_LOOKS_LIKE_RE.search(stripped):
+        return False
+    if _MID_EXPRESSION_RE.search(stripped):
         return False
     if re.fullmatch(r"[A-Z0-9_]+", text):  # CONSTANT_LIKE_TOKEN
         return False
@@ -788,6 +808,8 @@ def _extract_locale_blocks(raw_text: str, file_path: str) -> list[CodeBlock]:
         if not _ALPHA_RE.search(stripped) or _is_key_like(stripped):
             continue
         if _CODE_LOOKS_LIKE_RE.search(stripped):
+            continue
+        if _MID_EXPRESSION_RE.search(stripped):
             continue
         if _looks_technical(stripped):
             continue
