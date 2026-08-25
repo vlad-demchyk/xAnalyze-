@@ -321,6 +321,29 @@ _STRINGS: dict[str, dict[str, str]] = {
     # The run summary strip under the controls (artboard 3a). The counted
     # nouns stay plural in every form: the strip is only ever shown after a
     # run, and a run with one finding still reads as a tally, not a sentence.
+    # The run-in-progress column (artboard 3g). "Stages" is a section label
+    # over a list, so it stays a bare noun in every language.
+    "progress_title": {
+        "uk": "Прогін іде", "it": "Esecuzione in corso", "en": "Run in progress",
+    },
+    "progress_stages": {"uk": "Етапи", "it": "Fasi", "en": "Stages"},
+    "progress_log": {"uk": "Лог", "it": "Log", "en": "Log"},
+    "stage_crawl": {
+        "uk": "Обхід посилань", "it": "Scansione dei link", "en": "Crawling links",
+    },
+    "stage_extract": {
+        "uk": "Витяг тексту", "it": "Estrazione del testo", "en": "Extracting text",
+    },
+    "stage_browser": {
+        "uk": "Прохід у браузері", "it": "Passaggio nel browser",
+        "en": "Browser pass",
+    },
+    "stage_detect": {
+        "uk": "Пошук у тексті", "it": "Ricerca nel testo", "en": "Checking the text",
+    },
+    "stage_scan": {
+        "uk": "Читання файлів", "it": "Lettura dei file", "en": "Reading files",
+    },
     "summary_findings": {
         "uk": "{count} знахідок",
         "it": "{count} riscontri",

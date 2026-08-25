@@ -59,6 +59,9 @@ from ui.window_parts.report_export import (
     ReportExportMixin, _styled_report_text,
 )
 from ui.window_parts.findings_panel import FindingsPanelMixin
+from ui.window_parts.run_progress import (
+    DONE, PENDING, RUNNING, RunProgressPanel,
+)
 from ui.window_parts.runs_panel import RunsPanel
 from ui.window_parts.shared import (
     MODE_AUDIT, MODE_FILE, MODE_REPO, MODE_WEB, _SEVERITY_BADGE,
@@ -336,8 +339,90 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
     def _on_busy_changed(self, busy: bool) -> None:
         self.analyze_btn.setEnabled(not busy)
         self.cancel_btn.setEnabled(busy)
-        if not busy:
+        if busy:
+            self._begin_run_progress()
+        else:
             self._stop_devserver_if_any()
+            self._end_run_progress()
+
+    def _begin_run_progress(self) -> None:
+        """Declare the stages this run will have, and show them.
+
+        Declared from the request rather than discovered as they happen: a
+        stage that has not started is still on the list, which is what makes
+        the panel say how much is left. Discovering them would grow the list
+        as the run went, and a list that only ever shows the past cannot
+        answer "how much longer".
+        """
+        self.run_progress.reset()
+        self.run_progress.set_stages(self._stages_for_run())
+        self.col1_stack.setCurrentIndex(2)
+        # The width switcher belongs to the preview, and there is no preview
+        # while the panel is up - three buttons that change nothing are worse
+        # than no buttons.
+        self.breakpoint_row.setVisible(False)
+        self.col1_header.setText(t("progress_title", self.lang))
+
+    def _end_run_progress(self) -> None:
+        """Back to the preview once there is something to preview.
+
+        The panel is left populated rather than cleared: the run that just
+        finished is the one someone is about to ask questions about, and its
+        log is the answer to most of them.
+        """
+        self._mark_remaining_stages_done()
+        self.col1_stack.setCurrentIndex(
+            1 if self.source == SOURCE_REPO else 0)
+        # `_apply_mode_visibility` owns the width switcher; calling it back
+        # is how it returns to whatever the current source says it should be,
+        # rather than to what it happened to be before the run. The header is
+        # not its business, so it is put back here - one line, and the column
+        # would otherwise keep saying "Run in progress" over a finished one.
+        self._apply_mode_visibility()
+        self.col1_header.setText(t("site_preview_header", self.lang))
+
+    def _stages_for_run(self) -> list:
+        """Which stages this run actually has, in the order it does them."""
+        lang = self.lang
+        if self.source == SOURCE_REPO:
+            # No crawl and no browser: a repository is read off disk.
+            return [("scan", t("stage_scan", lang)),
+                    ("detect", t("stage_detect", lang))]
+
+        stages = [("crawl", t("stage_crawl", lang)),
+                  ("extract", t("stage_extract", lang))]
+        if CHECK_ACCESSIBILITY in self._chosen_checks():
+            stages.append(("browser", t("stage_browser", lang)))
+        if CHECK_AI_PATTERNS in self._chosen_checks():
+            stages.append(("detect", t("stage_detect", lang)))
+        return stages
+
+    def _mark_remaining_stages_done(self) -> None:
+        """A finished run has no stage still running.
+
+        The workers report that a stage *started*, never that it ended, so
+        the last one would sit on "running" forever after the run came back.
+        Closing them here keeps the panel honest without asking four workers
+        to each learn a new signal.
+        """
+        for key, _label in self._stages_for_run():
+            if self.run_progress.stage_state(key) == RUNNING:
+                self.run_progress.mark(key, DONE)
+
+    def _advance_stage(self, key: str, detail: str, message: str) -> None:
+        """One stage becomes the current one, and the log records why.
+
+        Everything before it is done: the workers run their stages in order
+        and only ever report the one they are in, so hearing about a later
+        stage is the only signal that an earlier one finished.
+        """
+        keys = [stage for stage, _label in self._stages_for_run()]
+        if key in keys:
+            for earlier in keys[:keys.index(key)]:
+                if self.run_progress.stage_state(earlier) != DONE:
+                    self.run_progress.mark(earlier, DONE)
+            self.run_progress.mark(key, RUNNING, detail)
+        self.run_progress.add_log(message)
 
     def _stop_devserver_if_any(self) -> None:
         if self._devserver_proc is not None:
@@ -972,6 +1057,14 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         mono.setFamily(self.palette_tokens.font_mono)
         self.code_view.setFont(mono)
         self.col1_stack.addWidget(self.code_view)  # index 1: repo
+
+        # Index 2: what the run is doing, shown in the preview column while
+        # there is nothing to preview yet. The column is empty for the whole
+        # crawl otherwise, and the run's own progress is the most useful
+        # thing that can stand there - it is the question being asked at
+        # exactly that moment.
+        self.run_progress = RunProgressPanel(self.palette_tokens, self.lang)
+        self.col1_stack.addWidget(self.run_progress)  # index 2: a run in flight
 
         # The width switcher, above the preview rather than beside it: the
         # audit now runs at three widths (see `audit/responsive.py`), and a
@@ -2212,6 +2305,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
 
     def _on_auditing(self, target: str) -> None:
         self.status_bar.showMessage(t("status_auditing", self.lang, target=target))
+        self._advance_stage("browser", target, f"browser {target}")
 
     def _on_audit_finished(self, result) -> None:
         self.audit_result = result
@@ -2405,12 +2499,15 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
 
     def _on_crawling(self, url: str, depth: int) -> None:
         self.status_bar.showMessage(t("status_crawling", self.lang, url=url, depth=depth))
+        self._advance_stage("crawl", url, f"crawl {url} (depth {depth})")
 
     def _on_scanning_repo(self, rel_path: str) -> None:
         self.status_bar.showMessage(t("status_scanning_repo", self.lang, path=rel_path))
+        self._advance_stage("scan", rel_path, f"read {rel_path}")
 
     def _on_detecting(self, detector_label: str) -> None:
         self.status_bar.showMessage(t("status_detecting", self.lang, detector=detector_label))
+        self._advance_stage("detect", detector_label, f"detect {detector_label}")
 
     def _on_web_finished(self, result: AnalysisResult) -> None:
         self.result = result
