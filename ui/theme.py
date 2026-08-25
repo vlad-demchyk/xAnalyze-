@@ -583,6 +583,33 @@ QListWidget::item:selected {{
     color: {c(p.text)};
 }}
 
+/* The file column of a repository scan is a tree, and Qt paints an
+   unstyled one with the platform's own selection blue - the one colour in
+   the window that belongs to no palette. It gets the list's treatment,
+   which is what it is. */
+
+QTreeWidget, QTreeView {{
+    background-color: {c(p.bg_card)};
+    border: none;
+    outline: none;
+    padding: {p.space_sm // 2}px;
+}}
+
+QTreeWidget::item, QTreeView::item {{
+    border-radius: {p.radius_md}px;
+    padding: {p.space_sm // 2}px {p.space_sm}px;
+    color: {c(p.text)};
+}}
+
+QTreeWidget::item:hover, QTreeView::item:hover {{
+    background-color: {c(p.bg_hover)};
+}}
+
+QTreeWidget::item:selected, QTreeView::item:selected {{
+    background-color: {selection_bg};
+    color: {c(p.text)};
+}}
+
 /* --------------------------------------------------------------- chrome */
 
 QSplitter::handle {{

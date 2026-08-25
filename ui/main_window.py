@@ -61,6 +61,7 @@ from ui.window_parts.report_export import (
 from ui.window_parts.findings_panel import FindingsPanelMixin
 from ui.window_parts.diagnosis_strip import DiagnosisStripMixin
 from ui.window_parts.report_documents import RunDocumentsPanel
+from ui.window_parts.repo_files import RepoFilesMixin
 from ui.window_parts.run_comparison import RunComparisonPanel
 from ui.window_parts.run_progress import (
     DONE, PENDING, RUNNING, RunProgressPanel,
@@ -135,8 +136,8 @@ ASSETS = Path(__file__).resolve().parent / "design" / "assets"
 
 
 class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
-                 FindingsPanelMixin, ReportExportMixin, BulkRewriteMixin,
-                 RunsPanel, QMainWindow):
+                 FindingsPanelMixin, RepoFilesMixin, ReportExportMixin,
+                 BulkRewriteMixin, RunsPanel, QMainWindow):
     def __init__(self, palette=None):
         super().__init__()
         self.settings = config.Settings.load()
@@ -460,10 +461,13 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self.col1_header.setText(t("comparison_title", self.lang))
 
     def _show_preview_column(self) -> None:
-        """Give the column back to the preview it belongs to."""
-        self.col1_stack.setCurrentIndex(1 if self.source == SOURCE_REPO else 0)
+        """Give the column back to the preview it belongs to.
+
+        `_apply_mode_visibility` owns both the page and the head, so it is
+        the one that puts the head back - naming the head here as well is
+        how it came to say "Page preview" over a repository.
+        """
         self._apply_mode_visibility()
-        self.col1_header.setText(t("site_preview_header", self.lang))
 
     def _stop_devserver_if_any(self) -> None:
         if self._devserver_proc is not None:
@@ -511,9 +515,15 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self._populate_flagged_list()
         n_flags = sum(1 for s in result.spans if s.confidence != Confidence.LOW)
         self.status_bar.showMessage(
-            t("status_done", self.lang, pages=len(result.files),
+            t("status_done_repo", self.lang, pages=len(result.files),
               blocks=len(result.blocks()), flags=n_flags))
         self._update_repo_buttons_enabled()
+        self.refresh_repo_files()
+        # A repository scan never showed the summary strip. It was not a
+        # decision: this line was missing, and had it been here it would
+        # have raised - `_summary_line` asked a `RepoAnalysisResult` for
+        # `pages`, which is the web result's word.
+        self._refresh_summary()
 
     #: How an audit severity is counted into the bar. The audit's four
     #: levels and the design's four-step ramp are the same four, in the same
@@ -563,15 +573,45 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self.summary_bar.setVisible(True)
 
     def _summary_line(self) -> str:
-        """What was scanned, in the row's quietest ink."""
+        """What was scanned, in the row's quietest ink.
+
+        A repository is described by its own counts rather than by a page
+        count it does not have (artboard 3f). The two skip numbers are the
+        interesting half: a walk that read 412 files and skipped 38 of them
+        by `.xanalyze-ignore` is a different result from one that read 450,
+        and "no findings" means something different in each.
+        """
         parts = [self._current_target() or ""]
         if self.audit_result is not None:
             parts.append(t("summary_documents", self.lang,
                            count=len(self.audit_result.documents)))
+        elif isinstance(self.result, RepoAnalysisResult):
+            parts.extend(self._repo_summary_parts(self.result))
         elif self.result is not None:
             parts.append(t("summary_pages", self.lang,
                            count=len(self.result.pages)))
         return " · ".join(part for part in parts if part)
+
+    def _repo_summary_parts(self, result) -> list:
+        """Files read, files deliberately skipped, and where the findings are."""
+        walk = result.diagnostics
+        # `files_read` when the walk recorded it, and the length of the list
+        # otherwise: a result assembled by something that did not fill in
+        # diagnostics would report zero files read next to its own findings,
+        # which is a contradiction on one line.
+        read = walk.files_read or len(result.files)
+        parts = [t("summary_files", self.lang, count=read)]
+        if walk.skipped_ignored:
+            parts.append(t("summary_skipped_ignored", self.lang,
+                           count=walk.skipped_ignored))
+        flagged = {span.block_id for span in result.spans
+                   if span.confidence != Confidence.LOW}
+        blocks = {block.block_id: block for block in result.blocks()}
+        files = {blocks[block_id].file_path for block_id in flagged
+                 if block_id in blocks}
+        if files:
+            parts.append(t("summary_in_files", self.lang, count=len(files)))
+        return parts
 
     def _on_vm_audit_result(self, result) -> None:
         """ViewModel finished an audit - update the UI."""
@@ -1108,7 +1148,23 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         # when that family isn't installed.
         mono.setFamily(self.palette_tokens.font_mono)
         self.code_view.setFont(mono)
-        self.col1_stack.addWidget(self.code_view)  # index 1: repo
+
+        # The files over the file. Which files a repository scan found
+        # things in is the question a repository is actually asking, and the
+        # column used to answer a narrower one: whichever file the selected
+        # finding happened to be in. Split rather than stacked, because the
+        # two are read together - the shape of the work, and the passage.
+        self.repo_split = QSplitter(Qt.Orientation.Vertical)
+        self.repo_split.addWidget(self._build_repo_files())
+        self.repo_split.addWidget(self.code_view)
+        # Nearly even. The file list is the navigation on a repository -
+        # it is how you get anywhere - so giving the preview twice its space
+        # makes the thing you steer with the smaller of the two.
+        self.repo_split.setStretchFactor(0, 1)
+        self.repo_split.setStretchFactor(1, 1)
+        self.repo_split.setSizes([320, 380])
+        self.repo_split.setChildrenCollapsible(False)
+        self.col1_stack.addWidget(self.repo_split)  # index 1: repo
 
         # Index 2: what the run is doing, shown in the preview column while
         # there is nothing to preview yet. The column is empty for the whole
@@ -1279,8 +1335,13 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
     def _retranslate_ui(self) -> None:
         lang = self.lang
         self.setWindowTitle(t("app_title", lang))
+        # The preview column's head is owned by `_apply_mode_visibility`,
+        # because what it says depends on the source. Called from here too,
+        # or a language change leaves that one head in the old language.
+        self._apply_mode_visibility()
         self.run_progress.retranslate(lang)
         self.run_documents.retranslate(lang)
+        self.repo_files.retranslate(lang)
         self.run_comparison.retranslate(lang)
         self.mode_label.setText(t("mode_label", lang))
         self.mode_combo.set_label(t("mode_label", lang))
@@ -1367,7 +1428,6 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             t("advanced_hide", lang) if self.advanced_toggle.isChecked()
             else t("advanced_show", lang))
         self.flagged_header.setText(t("flagged_list_header", lang))
-        self.col1_header.setText(t("site_preview_header", lang))
         self.detail_header.setText(t("detail_header", lang))
         # The action row is icons, and the words move into the tooltips: six
         # buttons of six different widths read as a heap rather than as a row,
@@ -1842,6 +1902,10 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         # A single file is previewed as a rendered page, not as source: it is
         # a page, and its markup is what the third column already shows.
         self.col1_stack.setCurrentIndex(1 if is_repo else 0)
+        # And the head says which. It read "Page preview" over a list of a
+        # repository's files, which is the column naming the wrong source.
+        self.col1_header.setText(t("repo_preview_header" if is_repo
+                                   else "site_preview_header", self.lang))
         # The width switcher belongs to the rendered preview. A repository is
         # previewed as source, which has no layout to look at narrow.
         self.breakpoint_row.setVisible(not is_repo)
@@ -2628,9 +2692,16 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self._populate_flagged_list()
         n_flags = sum(1 for s in result.spans if s.confidence != Confidence.LOW)
         self.status_bar.showMessage(
-            t("status_done", self.lang, pages=len(result.files), blocks=len(result.blocks()), flags=n_flags)
+            t("status_done_repo", self.lang, pages=len(result.files),
+              blocks=len(result.blocks()), flags=n_flags)
         )
         self._update_repo_buttons_enabled()
+        # The same three lines as the view-model path. There are two ways a
+        # repo result reaches this window and only one of them was doing
+        # this, which is how a scan started one way had a file column and a
+        # summary and a scan started the other way had neither.
+        self.refresh_repo_files()
+        self._refresh_summary()
 
     def _on_failed(self, message: str) -> None:
         """A run that raised, shown as something a person can act on.

@@ -115,6 +115,19 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Fatto: {pages} pagine, {blocks} blocchi, {flags} segnalati",
         "en": "Done: {pages} pages, {blocks} blocks, {flags} flagged",
     },
+    # A repository is measured in files, not pages. The web wording was
+    # being used for both, so a scan of four hundred files reported "318
+    # pages" - the same slip as the summary line asking a repo result for
+    # `pages`.
+    "status_done_repo": {
+        "uk": "Готово: {pages} файлів, {blocks} фрагментів, {flags} позначено",
+        "it": "Fatto: {pages} file, {blocks} blocchi, {flags} segnalati",
+        "en": "Done: {pages} files, {blocks} blocks, {flags} flagged",
+    },
+    "repo_preview_header": {
+        "uk": "Файли репозиторія", "it": "File del repository",
+        "en": "Repository files",
+    },
     "status_error": {
         "uk": "Помилка: {error}",
         "it": "Errore: {error}",
@@ -547,6 +560,27 @@ _STRINGS: dict[str, dict[str, str]] = {
         "uk": "{count} знахідок",
         "it": "{count} riscontri",
         "en": "{count} findings",
+    },
+    # The file column of a repository scan (artboard 3f). Files with
+    # nothing in them are counted, not listed: four hundred rows with a zero
+    # beside them is a directory listing.
+    "repo_files_title": {"uk": "Файли", "it": "File", "en": "Files"},
+    "repo_files_clean": {
+        "uk": "{count} файлів без знахідок",
+        "it": "{count} file senza riscontri",
+        "en": "{count} files with no findings",
+    },
+    "summary_files": {
+        "uk": "{count} файлів", "it": "{count} file", "en": "{count} files",
+    },
+    "summary_skipped_ignored": {
+        "uk": "{count} пропущено за .xanalyze-ignore",
+        "it": "{count} saltati per .xanalyze-ignore",
+        "en": "{count} skipped by .xanalyze-ignore",
+    },
+    "summary_in_files": {
+        "uk": "у {count} файлах", "it": "in {count} file",
+        "en": "in {count} files",
     },
     "summary_pages": {
         "uk": "{count} стор.",
