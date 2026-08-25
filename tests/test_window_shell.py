@@ -1,4 +1,4 @@
-"""The one window: a controls column on the left, all of the work behind it.
+"""The one window: a controls row across the top, all of the work under it.
 
 Replaces `test_modern_ui.py`, which tested a second `MainWindow` that used to
 live in `main.py` - the redesign made the entry point in `31fe7f2`. Those 66
@@ -10,7 +10,15 @@ coverage.
 
 So these assert two things instead. That the entry point launches the
 complete window - the regression that started it - and that the complete
-window's controls are in the left column the redesign was reaching for.
+window's controls are where the current design puts them.
+
+That second half was written for a left-hand column and is now written for a
+top row: the Claude Design bundle (2026-08-24) replaces the column with a
+strip of inline values above the results. The intent of each case survived
+the move, including the one that matters most - a controls area must never
+raise the window's own minimum width, because that is what puts the narrow
+layouts out of reach. It did exactly that when the row was first built, at a
+1271px floor, which is why the case below measures it directly.
 """
 from __future__ import annotations
 
@@ -20,14 +28,12 @@ import unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 try:
-    from PySide6.QtWidgets import QApplication, QScrollArea
+    from PySide6.QtWidgets import QApplication
     from analysis_modes import (
         CHECK_ACCESSIBILITY, CHECK_AI_PATTERNS, METHOD_AI, METHOD_LOCAL,
         SOURCE_FILE, SOURCE_REPO, SOURCE_SITE,
     )
-    from ui.main_window import (
-        MEDIUM_BREAKPOINT, SIDEBAR_WIDTH, SIDEBAR_WIDTH_NARROW, MainWindow,
-    )
+    from ui.main_window import MEDIUM_BREAKPOINT, TOP_ROW_HEIGHT, MainWindow
 except Exception:  # noqa: BLE001 - no Qt here is a skip, not a failure
     QApplication = None
 
@@ -73,56 +79,103 @@ class WindowCase(unittest.TestCase):
         self.app.processEvents()
 
 
-class SidebarColumn(WindowCase):
-    def test_controls_are_in_a_scrollable_left_column(self):
-        self.assertIsInstance(self.window.sidebar_scroll, QScrollArea)
-        self.assertIs(self.window.sidebar_scroll.widget(), self.window.toolbar)
+class TopRow(WindowCase):
+    """The controls strip above the results."""
 
-    def test_the_column_can_scroll_rather_than_clip(self):
-        """Its content is taller than a small window; nothing may be lost."""
-        self.assertTrue(self.window.sidebar_scroll.widgetResizable())
+    #: The width the design draws the row at, and the width the window opens
+    #: at. One line is the whole point of the inline values; if the row needs
+    #: two here, the sentence has stopped fitting.
+    DESIGN_WIDTH = 1300
 
-    def test_the_column_opens_at_its_designed_width(self):
-        self.assertEqual(self.window.body_splitter.sizes()[0], SIDEBAR_WIDTH)
+    def test_the_controls_are_in_the_top_row(self):
+        for name in ("mode_combo", "checks_combo", "source_controls_stack",
+                     "analyze_btn"):
+            with self.subTest(control=name):
+                self.assertTrue(
+                    self.window.toolbar.isAncestorOf(getattr(self.window, name)))
+
+    def test_the_row_wraps_rather_than_clips(self):
+        """Its content is wider than a small window; nothing may be lost.
+
+        The column scrolled for the same reason. A row cannot scroll - a
+        control you have to scroll sideways to reach is one you will not find
+        - so it wraps onto a second line instead, which is what the design
+        asks for at 1000px too.
+        """
+        self.window.resize(self.DESIGN_WIDTH, 800)
+        self.app.processEvents()
+        one_line = self.window.toolbar.height()
+
+        self.window.resize(MEDIUM_BREAKPOINT + 60, 800)
+        self.app.processEvents()
+        self.assertGreater(self.window.toolbar.height(), one_line,
+                           "the row did not wrap; something was clipped")
+
+    def test_the_row_is_one_line_at_the_design_width(self):
+        self.window.resize(self.DESIGN_WIDTH, 800)
+        self.app.processEvents()
+        self.assertLessEqual(self.window.toolbar.height(), TOP_ROW_HEIGHT + 4)
 
     def test_widening_the_window_widens_the_results_not_the_form(self):
-        before = self.window.body_splitter.sizes()
-        self.window.resize(self.window.width() + 300, self.window.height())
+        """The row keeps its one line and hands the extra width to the body,
+        the way the column kept its 268px."""
+        self.window.resize(self.DESIGN_WIDTH, 800)
         self.app.processEvents()
-        after = self.window.body_splitter.sizes()
-        self.assertEqual(after[0], before[0])
-        self.assertGreater(after[1], before[1])
+        before = self.window.toolbar.height()
+        body_before = self.window.columns_splitter.width()
 
-    def test_the_column_can_be_squeezed(self):
-        """A hard minimum here raises the whole window's minimum width.
+        self.window.resize(self.DESIGN_WIDTH + 300, 800)
+        self.app.processEvents()
+        self.assertEqual(self.window.toolbar.height(), before)
+        self.assertGreater(self.window.columns_splitter.width(), body_before)
 
-        That is what broke the narrow layout the first time this column was
-        built: with a fixed width and no horizontal scrolling, the window
-        could not shrink far enough to reach its own breakpoints.
+    def test_the_row_does_not_raise_the_window_minimum_width(self):
+        """The regression this file exists to catch, in its second form.
+
+        A `QHBoxLayout` hands its parent the sum of its children's minimum
+        widths, so the first version of this row put a 1271px floor under the
+        window and both narrow layouts became unreachable - the same defect
+        the column once had, arriving from the other direction. The window
+        has to be able to shrink past its own narrowest breakpoint.
         """
-        self.assertEqual(self.window.sidebar_scroll.minimumWidth(), 0)
+        self.assertLess(self.window.minimumSizeHint().width(),
+                        MEDIUM_BREAKPOINT)
 
-    def test_the_body_sits_beside_the_column_not_under_it(self):
-        splitter = self.window.body_splitter
-        self.assertEqual(
-            [splitter.widget(i) for i in range(splitter.count())],
-            [self.window.sidebar_scroll, self.window.columns_splitter])
-
-    def test_the_column_is_the_only_thing_in_the_central_layout(self):
+    def test_the_body_sits_under_the_row_not_beside_it(self):
         layout = self.window.centralWidget().layout()
         widgets = [layout.itemAt(i).widget() for i in range(layout.count())]
-        self.assertEqual(widgets, [self.window.body_splitter])
+        self.assertEqual(widgets,
+                         [self.window.toolbar, self.window.columns_splitter])
 
-    def test_every_per_scan_control_is_in_the_column(self):
-        column = self.window.sidebar_scroll
-        for name in ("mode_combo", "checks_combo", "method_combo",
-                     "provider_combo", "source_controls_stack",
-                     "analyze_btn", "cancel_btn", "settings_btn",
-                     "advanced_toggle", "advanced_row"):
-            widget = getattr(self.window, name)
-            with self.subTest(control=name):
-                self.assertTrue(column.isAncestorOf(widget),
-                                f"{name} is not in the controls column")
+    def test_the_run_history_is_behind_a_button_not_in_the_row(self):
+        """A list cannot live on a one-line row. It moved into a popup, and
+        the button that opens it took its place."""
+        self.assertFalse(self.window.toolbar.isAncestorOf(self.window.runs_list))
+        self.assertTrue(self.window.toolbar.isAncestorOf(self.window.runs_btn))
+        self.assertFalse(self.window.runs_popup.isVisible())
+
+    def test_the_run_history_opens_and_closes_from_its_button(self):
+        self.window._on_runs_clicked()
+        self.assertTrue(self.window.runs_popup.isVisible())
+        self.window._on_runs_clicked()
+        self.assertFalse(self.window.runs_popup.isVisible())
+
+    def test_no_label_is_printed_twice(self):
+        """Each selector carries its own label now. The standalone QLabels
+        are kept for `_retranslate_ui` and must stay out of sight, or every
+        setting reads as "глибина глибина 2"."""
+        for name in ("mode_label", "checks_label", "method_label",
+                     "provider_label", "url_label", "depth_label"):
+            with self.subTest(label=name):
+                self.assertTrue(getattr(self.window, name).isHidden())
+
+    def test_the_source_stack_asks_only_for_the_page_it_shows(self):
+        """A `QStackedWidget` asks for the widest of all its pages. Left
+        alone it reserved 462px of the row for the repository fields during a
+        site scan, which pushed the row onto a second line at every width."""
+        stack = self.window.source_controls_stack
+        shown = stack.currentWidget().sizeHint().width()
+        self.assertLessEqual(stack.sizeHint().width(), max(shown, 1) + 40)
 
     def test_the_advanced_block_starts_hidden(self):
         self.assertFalse(self.window.advanced_row.isVisibleTo(self.window))
@@ -148,17 +201,23 @@ class SidebarColumn(WindowCase):
             self.window.resize(current, 700)
             self.app.processEvents()
 
-    def test_the_column_narrows_once_the_body_has_folded(self):
+    def test_the_row_grows_once_the_body_has_folded(self):
+        """The column shrank to give the findings list room. The row cannot
+        shrink sideways, so what it does instead is wrap - and the cost is
+        height taken from the body, which is the trade the design makes."""
+        self.window.resize(1400, 800)
+        self.app.processEvents()
+        wide = self.window.toolbar.height()
         self._drag_to(MEDIUM_BREAKPOINT - 100)
-        self.assertEqual(self.window.body_splitter.sizes()[0],
-                         SIDEBAR_WIDTH_NARROW)
+        self.assertGreater(self.window.toolbar.height(), wide)
 
-    def test_the_column_widens_again(self):
+    def test_the_row_returns_to_one_line(self):
+        """Wrapping must be reversible: a row that stayed two lines high
+        after the window was widened again would keep the space it borrowed."""
         self._drag_to(MEDIUM_BREAKPOINT - 100)
         self.window.resize(1400, 800)
         self.app.processEvents()
-        self.window._update_layout_mode(force=True)
-        self.assertEqual(self.window.body_splitter.sizes()[0], SIDEBAR_WIDTH)
+        self.assertLessEqual(self.window.toolbar.height(), TOP_ROW_HEIGHT + 4)
 
 
 class SourceFields(WindowCase):

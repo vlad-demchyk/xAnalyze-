@@ -1,0 +1,138 @@
+/* XAnalyze desktop overlay
+ * =========================
+ *
+ * The desktop window's own layer, applied *on top of* the shared xFormat
+ * token file rather than instead of it. Only the values that genuinely
+ * differ live here; everything else (type scale, spacing, radii, the
+ * scrollbar, every token the window does not paint with) keeps coming from
+ * `tokens.css`, so a change made in the frontend still reaches the window.
+ *
+ * Why a separate layer at all: `tokens.css` is shared by the web app, the
+ * landing page and the admin console. The desktop design (Claude Design
+ * bundle, 17 artboards, 2026-08-24) deliberately mutes every semantic hue -
+ * the same red is #c0564f here and #e5484d on the web - and muting it in the
+ * shared file would repaint all three web surfaces. So the desktop states
+ * its own values here and leaves the shared ones alone.
+ *
+ * The values below are read out of the bundle's artboards, which carry no
+ * custom properties of their own: the mockups are inline-styled HTML, so
+ * each colour is the literal one the design uses, counted by frequency
+ * across the file (`--text-muted` alone appears 225 times).
+ *
+ * Light comes from artboard 3a, dark from 3e. Dark is a warm graphite in its
+ * own right, not an inversion of light - the design says so explicitly, and
+ * the two ramps are measured separately below.
+ */
+
+:root {
+  /* ── Surfaces: three levels, separated by tone rather than by borders ── */
+  --page-bg: #efece7;      /* the window canvas */
+  --bg: #fbfaf8;           /* a section sitting on the canvas */
+  --bg-card: #fbfaf8;
+  --bg-muted: #f2efeb;     /* a block nested inside a section */
+  --bg-hover: #f6f4f0;
+
+  /* ── Text ── */
+  --text: #1c1b19;
+  --text-muted: #8b877f;   /* labels, secondary values, icons */
+  --text-subtle: #a8a49c;  /* carets, tertiary hints - desktop-only */
+  --text-ghost: #7d7a73;   /* the label of a ghost button - desktop-only */
+
+  /* ── Lines ── */
+  --border: #e2ded7;
+  --border-strong: #c9c4ba;
+  --divider: #e2ded7;      /* the hairline between inline values - desktop-only */
+
+  /* ── Accent: the muted indigo of the bundle, not the web's brand indigo ── */
+  --brand-accent: #4b46b8;
+  --bg-brand-muted: #e8e5f7;
+  --avatar-bg: #dedaf7;
+
+  /* ── Primary action: near-black fill, the window's one solid button ── */
+  --primary: #1c1b19;
+  --primary-hover: #34322e;
+  --on-primary: #fbfaf8;
+
+  /* ── Severity: a real four-step ramp. The shared tokens have no such
+   *    scale - they map both "high" and "medium" onto the same amber, which
+   *    is why the two read as one level in the findings list today. ── */
+  --sev-critical: #c0564f;
+  --sev-high: #cf7a52;
+  --sev-medium: #d6a94e;
+  --sev-none: #c9c4ba;
+
+  /* The confidence badge's fill, and deliberately NOT restated in the dark
+   * block below: white ink sits on this badge in both themes, so a fill that
+   * followed the sheet would put white on the dark theme's lighter red and
+   * lose the contrast the light theme had. The rest of the ramp above does
+   * follow the sheet, because those are bars and dots with no ink on them.
+   * `tests/test_palette_contrast.py` asserts this stays theme-independent. */
+  --sev-badge: #c0564f;
+
+  /* ── The soft shadow that separates the three surfaces ──
+   *
+   * The design draws no borders at all: a section is told apart from the
+   * canvas by tone and by this shadow. QSS has no `box-shadow`, and Qt's
+   * `QGraphicsDropShadowEffect` draws exactly one layer, so the bundle's two
+   * (`0 1px 2px rgba(28,27,25,.03), 0 6px 18px rgba(28,27,25,.04)`) are
+   * stated here as the single blur/offset/colour that stands in for both.
+   * Declared as three plain values rather than as a CSS shadow string so the
+   * desktop reads them straight, instead of parsing a syntax it cannot use.
+   */
+  --surface-shadow-color: rgba(28, 27, 25, 0.07);
+  --surface-shadow-blur: 18px;
+  --surface-shadow-y: 3px;
+
+  /* ── Status ── */
+  --error: #c0564f;
+  --amber: #d6a94e;
+  --success: #3f7a58;
+  --green: #3f7a58;
+  --success-bg: #e6efe8;
+}
+
+[data-theme="dark"] {
+  --page-bg: #191816;
+  --bg: #211f1d;
+  --bg-card: #211f1d;
+  --bg-muted: #292724;
+  --bg-hover: #2b2825;
+
+  --text: #ece9e4;
+  --text-muted: #a09a91;
+  --text-subtle: #8d877e;
+  --text-ghost: #5f5a53;
+
+  --border: #3a3631;
+  --border-strong: #5f5a53;
+  --divider: #3a3631;
+
+  --brand-accent: #b6b1f0;
+  --bg-brand-muted: #332e4d;
+  --avatar-bg: #3a3556;
+
+  /* The solid button inverts on the dark sheet: a near-black fill on a
+     near-black canvas would not read as a button at all. */
+  --primary: #ece9e4;
+  --primary-hover: #cfcbc4;
+  --on-primary: #191816;
+
+  /* A drop shadow on a near-black canvas is close to invisible, and the
+   * tonal step (#191816 -> #211f1d) is doing the separating on this sheet.
+   * Kept rather than zeroed: a trace of depth still reads at the corners,
+   * and zero would make the surfaces meet as flat bands of colour. */
+  --surface-shadow-color: rgba(0, 0, 0, 0.28);
+  --surface-shadow-blur: 14px;
+  --surface-shadow-y: 2px;
+
+  --sev-critical: #d97a72;
+  --sev-high: #d9976a;
+  --sev-medium: #cfae66;
+  --sev-none: #5f5a53;
+
+  --error: #d97a72;
+  --amber: #cfae66;
+  --success: #84bb9a;
+  --green: #84bb9a;
+  --success-bg: #26332c;
+}

@@ -15,7 +15,10 @@ Where the web app and the desktop app deliberately differ:
 * `box-shadow` doesn't exist in QSS. The web app's monolithic-card-on-soft-
   shadow look is approximated with a hairline border in `--border`, which
   reads as the same "surface floating on the canvas" separation without
-  drawing fake shadows into the pixmap.
+  drawing fake shadows into the pixmap. The desktop design draws no borders
+  at all, so the surfaces it introduces (`CLASS_SURFACE`, `CLASS_INSET`)
+  take a real `QGraphicsDropShadowEffect` from `soft_shadow` instead - see
+  the note there for why one effect stands in for the design's two layers.
 * Qt needs an explicit widget-by-widget selector list where CSS would
   inherit; the shape of this file follows Qt's needs, the values follow the
   design system's.
@@ -61,6 +64,97 @@ CLASS_CODE = "code"
 #: The window's own header: the mark, the product name, the mode.
 CLASS_BRAND = "brand"
 
+#: The desktop design's three surface levels. The canvas is the window
+#: itself; `CLASS_SURFACE` is a section sitting on it, `CLASS_INSET` a block
+#: nested inside a section. Separated by tone and by `soft_shadow` rather
+#: than by a border - which is the whole difference from `CLASS_CARD` above,
+#: and why they are separate classes instead of a change to that one: the
+#: two coexist while the window is migrated screen by screen.
+CLASS_SURFACE = "surface"
+CLASS_INSET = "inset"
+
+#: The parts of an inline selector: the word that names the setting, the
+#: value itself, and the small caret that says the value can be changed.
+#: Three classes rather than one because they are three different inks -
+#: muted, full, and subtle - and that difference is what makes the row read
+#: as a sentence instead of as a form.
+CLASS_INLINE_LABEL = "inline-label"
+CLASS_INLINE_VALUE = "inline-value"
+CLASS_INLINE_CARET = "inline-caret"
+#: The hairline standing between two inline values.
+CLASS_HAIRLINE = "hairline"
+#: The whole selector, which is what takes keyboard focus.
+CLASS_INLINE_FIELD = "inline-field"
+#: The fillable area of a `panel()`, under its head.
+CLASS_PANEL_BODY = "panel-body"
+
+
+def qcolor(value: str):
+    """A palette colour as a `QColor`, alpha included.
+
+    `qss_color` exists to hand colours to a *style sheet*; this hands one to
+    a widget API, which needs the alpha as a number rather than as text.
+    Accepts what the token file actually contains: `#rgb`, `#rrggbb`,
+    `#rrggbbaa` and `rgba(r, g, b, a)`.
+    """
+    from PySide6.QtGui import QColor
+
+    text = (value or "").strip()
+    # `#rrggbbaa` first, and by hand: Qt reads an 8-digit hex as `#aarrggbb`,
+    # alpha *first*, which is the opposite of the CSS form the token file is
+    # written in. Handing xFormat's `--sb-thumb: #d8d6d0a3` straight to
+    # QColor yields alpha 0xd8 and a colour shifted a channel over - wrong
+    # in a way that still renders, which is the kind that survives review.
+    match = re.fullmatch(r"#([0-9a-fA-F]{8})", text)
+    if match:
+        from PySide6.QtGui import QColor
+
+        digits = match.group(1)
+        r, g, b, a = (int(digits[i:i + 2], 16) for i in (0, 2, 4, 6))
+        return QColor(r, g, b, a)
+
+    match = re.fullmatch(r"rgba?\(([^)]+)\)", text)
+    if match:
+        parts = [p.strip() for p in match.group(1).split(",")]
+        try:
+            r, g, b = (int(float(p)) for p in parts[:3])
+            alpha = float(parts[3]) if len(parts) > 3 else 1.0
+        except (ValueError, IndexError):
+            return QColor(0, 0, 0, 0)
+        # CSS writes alpha 0..1; Qt wants 0..255.
+        return QColor(r, g, b, max(0, min(255, round(alpha * 255))))
+    colour = QColor(text)
+    return colour if colour.isValid() else QColor(0, 0, 0, 0)
+
+
+def soft_shadow(widget, p: Palette):
+    """Give `widget` the design's surface shadow, or take it away.
+
+    The bundle stacks two shadows on every surface - a 1px contact shadow and
+    a wide ambient one. `QGraphicsDropShadowEffect` draws exactly one, so the
+    palette carries a single blur/offset/colour tuned to stand in for both,
+    and this applies it. A palette with `shadow_blur == 0` (any token file
+    without the desktop overlay) clears the effect instead, which leaves the
+    widget on the hairline-border look the rest of the window still uses.
+
+    Returns the effect, or None when none was applied. Qt takes ownership of
+    the effect, and setting a new one deletes the old, so this is safe to
+    call again on every theme change - which `MainWindow.apply_palette` does,
+    because the shadow colour differs between the two sheets.
+    """
+    from PySide6.QtWidgets import QGraphicsDropShadowEffect
+
+    if p.shadow_blur <= 0:
+        widget.setGraphicsEffect(None)
+        return None
+    effect = QGraphicsDropShadowEffect(widget)
+    effect.setBlurRadius(p.shadow_blur)
+    effect.setXOffset(0)
+    effect.setYOffset(p.shadow_y)
+    effect.setColor(qcolor(p.shadow_color))
+    widget.setGraphicsEffect(effect)
+    return effect
+
 
 def qss_color(value: str) -> str:
     """Qt style sheets accept `#rgb`/`#rrggbb` and `rgba(...)`, but not the
@@ -85,14 +179,20 @@ def build_qss(p: Palette) -> str:
     return f"""
 /* Generated from xFormat design tokens — edit tokens.css, not this string. */
 
+/* No background here on purpose. A blanket fill on `QWidget` paints every
+   plain container in the window with the canvas colour - including the
+   unnamed wrappers inside a panel, which then cover the surface the panel
+   just painted. That is what flattened the three surface levels back into
+   one: the panel drew #fbfaf8 and an anonymous child drew #efece7 straight
+   over it. The canvas belongs to the window; everything above it is either
+   transparent or declares a surface of its own. */
 QWidget {{
-    background-color: {c(p.page_bg)};
     color: {c(p.text)};
     font-family: "{p.font}";
     font-size: {p.font_size}px;
 }}
 
-QMainWindow, QDialog {{
+QMainWindow, QDialog, QMainWindow > QWidget {{
     background-color: {c(p.page_bg)};
 }}
 
@@ -108,6 +208,51 @@ QWidget[class="{CLASS_TOOLBAR}"] {{
     background-color: {c(p.bg_card)};
     border: 1px solid {c(p.border)};
     border-radius: {p.radius}px;
+}}
+
+/* The desktop design's surfaces. No border on purpose: the separation is
+   tone plus `soft_shadow`, and a hairline on top of both reads as a seam. */
+QWidget[class="{CLASS_SURFACE}"] {{
+    background-color: {c(p.bg)};
+    border: none;
+    border-radius: {p.radius}px;
+}}
+
+QWidget[class="{CLASS_INSET}"] {{
+    background-color: {c(p.bg_muted)};
+    border: none;
+    border-radius: {p.radius_lg - 1}px;
+}}
+
+/* ------------------------------------------------------- inline selectors */
+
+QLabel[class="{CLASS_INLINE_LABEL}"] {{
+    color: {c(p.text_muted)};
+    font-size: {p.font_size_sm}px;
+}}
+
+QLabel[class="{CLASS_INLINE_VALUE}"] {{
+    color: {c(p.text)};
+    font-weight: 500;
+}}
+
+QLabel[class="{CLASS_INLINE_CARET}"] {{
+    color: {c(p.text_subtle)};
+    font-size: {max(9, p.font_size_sm - 3)}px;
+}}
+
+QFrame[class="{CLASS_HAIRLINE}"] {{
+    background-color: {c(p.divider)};
+    border: none;
+}}
+
+/* The focus ring. An inline selector has no box of its own, so without this
+   there is nothing at all to say which one the keyboard is on - and this
+   window is the one that reports missing focus indicators on other people's
+   pages. */
+QWidget[class="{CLASS_INLINE_FIELD}"]:focus {{
+    background-color: {c(p.bg_hover)};
+    border-radius: {p.radius_sm}px;
 }}
 
 QLabel {{
@@ -259,6 +404,16 @@ QWidget[class="{CLASS_PANEL}"] {{
     background-color: {c(p.bg_card)};
     border: 1px solid {c(p.border)};
     border-radius: {p.radius}px;
+}}
+
+/* Transparent, so the panel's own surface shows through it. Without this
+   the blanket `QWidget` rule at the top of this sheet paints the canvas
+   colour over the panel that contains it, and the three surface levels
+   collapse into one flat sheet - which is exactly what a screenshot of the
+   rebuilt window showed: canvas #efece7 where the panel had painted its
+   #fbfaf8. The head below keeps its own fill and is matched after this. */
+QWidget[class="{CLASS_PANEL_BODY}"] {{
+    background: transparent;
 }}
 
 QWidget[class="{CLASS_PANEL_HEAD}"] {{

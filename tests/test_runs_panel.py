@@ -74,16 +74,21 @@ class RunsCatalogue(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_an_empty_disk_shows_an_empty_state_not_an_empty_list(self):
+        # `isHidden`, not `isVisible`: the panel now lives inside the runs
+        # popup, which is closed until someone asks for it, and a widget
+        # inside a closed window is never `isVisible()` however it was set.
+        # What is being asserted is the panel's own choice between the two,
+        # which is exactly what `isHidden` reports.
         self.assertEqual(self.window.refresh_runs(), 0)
-        self.assertTrue(self.window.runs_empty.isVisible())
-        self.assertFalse(self.window.runs_list.isVisible())
+        self.assertFalse(self.window.runs_empty.isHidden())
+        self.assertTrue(self.window.runs_list.isHidden())
 
     def test_a_run_on_disk_is_listed(self):
         _make_run(self.root, "2026-08-24-1200", "https://example.com",
                   failed=True)
         self.assertEqual(self.window.refresh_runs(), 1)
-        self.assertTrue(self.window.runs_list.isVisible())
-        self.assertFalse(self.window.runs_empty.isVisible())
+        self.assertFalse(self.window.runs_list.isHidden())
+        self.assertTrue(self.window.runs_empty.isHidden())
 
     def test_the_row_says_the_target_and_the_state(self):
         _make_run(self.root, "2026-08-24-1200", "https://example.com",
@@ -285,13 +290,15 @@ class TheColumnStaysNarrow(unittest.TestCase):
         os.environ.pop("XANALYZE_REPORT_ROOT", None)
         self.tmp.cleanup()
 
-    def test_the_panel_fits_the_sidebar(self):
-        from ui.main_window import SIDEBAR_WIDTH
-
+    def test_the_panel_fits_the_popup_it_now_lives_in(self):
+        """The panel used to sit in a 268px column and was measured against
+        it. There is no column any more: it opens in a popup under the Runs
+        button, and the popup states its own width. A panel wider than that
+        would be clipped, with the run dates as the part that goes."""
         self.window.refresh_runs()
         self.app.processEvents()
-        self.assertLessEqual(self.window.toolbar.minimumSizeHint().width(),
-                             SIDEBAR_WIDTH)
+        self.assertLessEqual(self.window.runs_list.minimumSizeHint().width(),
+                             self.window.runs_popup.width())
 
     def test_the_list_never_scrolls_sideways(self):
         """A scrollbar here eats a row and widens the whole column."""

@@ -15,11 +15,11 @@ Kept out of `main_window.py` for one reason each:
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, QRect, QSize, Qt
+from PySide6.QtCore import QPoint, QRect, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath
 from PySide6.QtWidgets import (
-    QLabel, QLayout, QSizePolicy, QStyle, QStyledItemDelegate, QVBoxLayout,
-    QWidget,
+    QHBoxLayout, QLabel, QLayout, QSizePolicy, QStyle, QStyledItemDelegate,
+    QVBoxLayout, QWidget,
 )
 
 from i18n.translations import t
@@ -247,11 +247,277 @@ def panel(title: str = "", trailing=None) -> tuple:
     outer.addWidget(head)
 
     body = QWidget()
+    body.setProperty("class", theme.CLASS_PANEL_BODY)
+    body.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     body_layout = QVBoxLayout(body)
     body_layout.setContentsMargins(0, 0, 0, 0)
     body_layout.setSpacing(0)
     outer.addWidget(body, stretch=1)
     return container, body_layout, label
+
+
+def hairline(height: int = 13):
+    """The 1px rule that stands between two inline values.
+
+    Its own helper rather than a reuse of `divider()` below: that one is the
+    full-width horizontal rule between sections, this one is a short vertical
+    tick inside a filled strip, and they take their colour from different
+    tokens (`--divider` against `--border`) because the design separates the
+    two ideas.
+    """
+    from PySide6.QtWidgets import QFrame
+
+    line = QFrame()
+    line.setProperty("class", theme.CLASS_HAIRLINE)
+    line.setFixedWidth(1)
+    line.setFixedHeight(height)
+    return line
+
+
+class InlineValue(QWidget):
+    """A selector drawn as part of a sentence instead of as a combo box.
+
+    The design's top row reads "аналізувати Сайт · xformat.net · глибина 2",
+    where every emphasised word is actually a control. So this paints three
+    inks - the label muted, the value at full strength, a subtle caret - and
+    opens a menu when activated.
+
+    Why not a restyled `QComboBox`: a combo box insists on a frame, a fixed
+    popup geometry and a size hint built from its longest item, and the three
+    are exactly what this must not have. What it *does* keep from one is the
+    behaviour - focusable, arrow keys and Space/Enter open the menu - because
+    an app that reports missing keyboard access on other people's pages
+    cannot ship a control reachable only by mouse.
+    """
+    #: The index the user picked. Named like `QComboBox.currentIndexChanged`
+    #: so the wiring in `main_window` reads the same for both.
+    currentIndexChanged = Signal(int)  # noqa: N815 - matches Qt's spelling
+
+    def __init__(self, label: str = "", parent=None):
+        super().__init__(parent)
+        self.setProperty("class", theme.CLASS_INLINE_FIELD)
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.setCursor(Qt.PointingHandCursor)
+        self._items: list = []
+        #: Per-item tooltips, index-aligned with `_items`. A parallel list
+        #: rather than a third element in the tuple: only one selector in
+        #: the window sets them, and every other read of `_items` unpacks
+        #: exactly two values.
+        self._tips: list = []
+        self._index = -1
+
+        row = QHBoxLayout(self)
+        row.setContentsMargins(2, 1, 2, 1)
+        row.setSpacing(3)
+
+        self._label = QLabel(label)
+        self._label.setProperty("class", theme.CLASS_INLINE_LABEL)
+        row.addWidget(self._label)
+        self._label.setVisible(bool(label))
+
+        self._value = QLabel()
+        self._value.setProperty("class", theme.CLASS_INLINE_VALUE)
+        row.addWidget(self._value)
+
+        # A down-pointing triangle rather than an icon: it has to sit on the
+        # text baseline at 9px, which an SVG at that size renders as mush.
+        self._caret = QLabel("▾")
+        self._caret.setProperty("class", theme.CLASS_INLINE_CARET)
+        row.addWidget(self._caret)
+
+    # -- content ---------------------------------------------------------
+
+    def set_label(self, text: str) -> None:
+        self._label.setText(text)
+        self._label.setVisible(bool(text))
+
+    def set_items(self, items, index: int = 0) -> None:
+        """`items` is a sequence of (text, data) pairs or plain strings."""
+        self._items = [(item, item) if isinstance(item, str) else tuple(item)
+                       for item in items]
+        self._tips = [""] * len(self._items)
+        self._index = -1
+        self.set_index(index if self._items else -1, notify=False)
+
+    def set_index(self, index: int, notify: bool = True) -> None:
+        if not self._items:
+            self._index = -1
+            self._value.setText("")
+            self._caret.setVisible(False)
+            return
+        index = max(0, min(len(self._items) - 1, index))
+        self._caret.setVisible(len(self._items) > 1)
+        if index == self._index:
+            return
+        self._index = index
+        self._value.setText(self._items[index][0])
+        self.setAccessibleName(f"{self._label.text()} {self._items[index][0]}".strip())
+        if notify:
+            self.currentIndexChanged.emit(index)
+
+    def current_index(self) -> int:
+        return self._index
+
+    def current_data(self):
+        return self._items[self._index][1] if 0 <= self._index < len(self._items) else None
+
+    def set_value_text(self, text: str) -> None:
+        """Show a value that is not one of the items - the scanned URL, say.
+
+        Kept separate from `set_items` so a free-text value cannot be
+        mistaken for a choice: with no items there is no caret and no menu,
+        and the widget is a label that happens to live in the same strip.
+        """
+        self._items = []
+        self._tips = []
+        self._index = -1
+        self._value.setText(text)
+        self._caret.setVisible(False)
+        self.setFocusPolicy(Qt.NoFocus)
+        self.setCursor(Qt.ArrowCursor)
+
+    # -- QComboBox compatibility -----------------------------------------
+    #
+    # The window addresses its selectors by name (`self.mode_combo`,
+    # `self.method_combo`, ...) and so do the mixins, the panels and four
+    # test files. Giving this widget the same handful of methods a combo box
+    # is actually asked for lets it be swapped in without renaming any of
+    # them - the alternative was a hidden combo box shadowing every visible
+    # selector, kept in sync by hand, which is two sources of truth for one
+    # value. The Qt spelling is kept deliberately, including the camelCase.
+
+    def addItem(self, text: str, userData=None) -> None:  # noqa: N802,N803 - Qt's spelling
+        # `userData`, not `data`: call sites pass it by keyword, in Qt's
+        # spelling, and a parameter named anything else fails only at the
+        # ones that do - which is a handful of lines in the whole window.
+        self._items.append((text, text if userData is None else userData))
+        self._tips.append("")
+        if self._index < 0:
+            self.set_index(0, notify=False)
+        else:
+            # A second item turns a fixed value into a choice.
+            self._caret.setVisible(len(self._items) > 1)
+
+    def clear(self) -> None:
+        self._items = []
+        self._tips = []
+        self._index = -1
+        self._value.setText("")
+        self._caret.setVisible(False)
+
+    def count(self) -> int:
+        return len(self._items)
+
+    def itemData(self, index: int,  # noqa: N802 - Qt's spelling
+                 role=Qt.ItemDataRole.UserRole):
+        if not 0 <= index < len(self._items):
+            return None
+        if role == Qt.ItemDataRole.ToolTipRole:
+            return self._tips[index]
+        return self._items[index][1]
+
+    def itemText(self, index: int) -> str:  # noqa: N802 - Qt's spelling
+        return self._items[index][0] if 0 <= index < len(self._items) else ""
+
+    def setItemData(self, index: int, value,  # noqa: N802 - Qt's spelling
+                    role=Qt.ItemDataRole.UserRole) -> None:
+        """Repoint an existing row's payload, leaving its text alone.
+
+        The `role` argument is Qt's, and both roles the window actually uses
+        are honoured: `UserRole` is the value the row stands for, and
+        `ToolTipRole` is the long form of a scope name, which the menu shows
+        on hover. Any other role is accepted and dropped rather than stored
+        under a key nothing will ever read.
+        """
+        if not 0 <= index < len(self._items):
+            return
+        if role == Qt.ItemDataRole.ToolTipRole:
+            self._tips[index] = value
+        elif role == Qt.ItemDataRole.UserRole:
+            self._items[index] = (self._items[index][0], value)
+
+    def setItemText(self, index: int, text: str) -> None:  # noqa: N802 - Qt's spelling
+        if 0 <= index < len(self._items):
+            self._items[index] = (text, self._items[index][1])
+            if index == self._index:
+                self._value.setText(text)
+                self.setAccessibleName(f"{self._label.text()} {text}".strip())
+
+    def findData(self, data) -> int:  # noqa: N802 - Qt's spelling
+        """The index holding `data`, or -1. Same contract as Qt's, including
+        the -1: callers already branch on it."""
+        for position, (_text, value) in enumerate(self._items):
+            if value == data:
+                return position
+        return -1
+
+    def currentIndex(self) -> int:  # noqa: N802 - Qt's spelling
+        return self._index
+
+    def setCurrentIndex(self, index: int) -> None:  # noqa: N802 - Qt's spelling
+        self.set_index(index)
+
+    def currentData(self):  # noqa: N802 - Qt's spelling
+        return self.current_data()
+
+    def currentText(self) -> str:  # noqa: N802 - Qt's spelling
+        return self._value.text()
+
+    def setSizeAdjustPolicy(self, _policy) -> None:  # noqa: N802 - Qt's spelling
+        """Accepted and ignored. A combo box sizes itself from its longest
+        item; an inline value is as wide as the value it is showing, which is
+        the whole point of it. Kept so the call sites read the same for both
+        and nobody has to remember which selector is which."""
+
+    def setMinimumContentsLength(self, _chars: int) -> None:  # noqa: N802 - Qt's spelling
+        """Accepted and ignored, for the same reason as above."""
+
+    # -- interaction -----------------------------------------------------
+
+    def _open_menu(self) -> None:
+        if len(self._items) < 2:
+            return
+        from PySide6.QtWidgets import QMenu
+
+        menu = QMenu(self)
+        # Qt hides action tooltips in menus unless asked; the scope names are
+        # abbreviations, and the long form is the only thing that says what
+        # they mean.
+        menu.setToolTipsVisible(True)
+        for position, (text, _data) in enumerate(self._items):
+            action = menu.addAction(text)
+            action.setCheckable(True)
+            action.setChecked(position == self._index)
+            if self._tips[position]:
+                action.setToolTip(self._tips[position])
+            action.triggered.connect(
+                lambda _checked=False, chosen=position: self.set_index(chosen))
+        menu.exec(self.mapToGlobal(QPoint(0, self.height())))
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt override
+        if event.button() == Qt.LeftButton:
+            self._open_menu()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt override
+        key = event.key()
+        if key in (Qt.Key_Space, Qt.Key_Return, Qt.Key_Enter, Qt.Key_Down):
+            self._open_menu()
+            event.accept()
+            return
+        # Left/right step through the choices without opening anything, the
+        # way a native combo does when it has focus.
+        if key == Qt.Key_Left and self._index > 0:
+            self.set_index(self._index - 1)
+            event.accept()
+            return
+        if key == Qt.Key_Right and 0 <= self._index < len(self._items) - 1:
+            self.set_index(self._index + 1)
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
 
 def divider():

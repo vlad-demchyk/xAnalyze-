@@ -41,6 +41,15 @@ TOKEN_SEARCH_PATHS = (
     _REPO_ROOT / "ui" / "design" / "xformat-tokens.css",
 )
 
+#: The desktop's own layer, applied *on top of* whichever file above was
+#: found rather than instead of it. `tokens.css` is shared with the web app,
+#: the landing page and the admin console; the desktop design mutes every
+#: semantic hue, and muting them in the shared file would repaint all three.
+#: So the window states its differences here and leaves the shared file
+#: alone. Overriding it (or pointing it at nothing) falls back to the plain
+#: xFormat palette, which is a complete theme in its own right.
+OVERLAY_PATH = _REPO_ROOT / "ui" / "design" / "xanalyze-desktop.css"
+
 # Stop at the first closing brace rather than requiring one at the start of a
 # line: the shipped file happens to be formatted that way, but a hand-edited
 # or minified copy is not, and silently parsing nothing out of it would leave
@@ -65,6 +74,23 @@ def token_file() -> Path | None:
         if candidate.is_file():
             return candidate
     return None
+
+
+def overlay_file() -> Path | None:
+    """The desktop overlay actually in use, or None when there is none.
+
+    `$XANALYZE_DESKTOP_CSS` points it elsewhere; setting it to an empty
+    string turns the overlay off and leaves the window on the plain xFormat
+    palette, which is the quickest way to see what the shared tokens alone
+    look like.
+    """
+    override = os.environ.get("XANALYZE_DESKTOP_CSS")
+    if override is not None:
+        if not override.strip():
+            return None
+        path = Path(override).expanduser()
+        return path if path.is_file() else None
+    return OVERLAY_PATH if OVERLAY_PATH.is_file() else None
 
 
 # ------------------------------------------------------------------ parsing
@@ -148,14 +174,31 @@ def _to_rgb(value: str) -> tuple | None:
     return {"white": (255, 255, 255), "black": (0, 0, 0)}.get(value)
 
 
-def load_tokens(path: Path | None = None) -> dict:
-    """Return {"light": {...}, "dark": {...}} of fully resolved tokens."""
-    path = path or token_file()
+def _read(path: Path | None) -> str:
     if path is None:
-        return {"light": {}, "dark": {}}
+        return ""
     try:
-        text = path.read_text(encoding="utf-8")
+        return path.read_text(encoding="utf-8")
     except OSError:
+        return ""
+
+
+def load_tokens(path: Path | None = None, overlay: Path | None = None) -> dict:
+    """Return {"light": {...}, "dark": {...}} of fully resolved tokens.
+
+    `overlay` is layered on top of `path`. The two files are concatenated
+    before parsing rather than merged after it, which is what makes the
+    layering behave like the CSS it is written as: a later `:root` wins over
+    an earlier one, a later `[data-theme="dark"]` wins over an earlier one,
+    and the dark theme still inherits from the *merged* light theme instead
+    of from the base file's light theme alone. Resolving each file on its own
+    and merging the results would break `var()` across the boundary, so an
+    overlay could never refer to a token the base file declares.
+    """
+    text = "\n".join(
+        part for part in (_read(path or token_file()), _read(overlay)) if part
+    )
+    if not text:
         return {"light": {}, "dark": {}}
 
     out = {}
@@ -205,6 +248,80 @@ def _darken(value: str, amount: float) -> str:
     return "#" + "".join(f"{channel:02x}" for channel in scaled)
 
 
+def _lighten(value: str, amount: float) -> str:
+    """A hex colour, `amount` of the way towards white.
+
+    The dark sheet's counterpart to `_darken`: the same idea of deriving a
+    value the design system does not declare, in the direction that actually
+    adds contrast when the surface underneath is dark.
+    """
+    text = (value or "").strip()
+    if not text.startswith("#") or len(text) not in (4, 7):
+        return text
+    if len(text) == 4:
+        text = "#" + "".join(ch * 2 for ch in text[1:])
+    channels = [int(text[index:index + 2], 16) for index in (1, 3, 5)]
+    scaled = [max(0, min(255, round(channel + (255 - channel) * amount)))
+              for channel in channels]
+    return "#" + "".join(f"{channel:02x}" for channel in scaled)
+
+
+def _luminance(value: str) -> float | None:
+    """WCAG relative luminance, or None when the value is not a colour.
+
+    Duplicated from `audit.rules.accessibility` on purpose: this module is
+    deliberately import-light so that a failure anywhere in the audit engine
+    cannot stop the window from starting. `tests/test_palette_contrast.py`
+    measures the finished palette with the audit's own function, so the two
+    are held to agreeing.
+    """
+    rgb = _to_rgb(value)
+    if rgb is None:
+        return None
+
+    def channel(raw: int) -> float:
+        c = raw / 255.0
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+    r, g, b = (channel(v) for v in rgb)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def _contrast(foreground: str, background: str) -> float | None:
+    first, second = _luminance(foreground), _luminance(background)
+    if first is None or second is None:
+        return None
+    high, low = max(first, second), min(first, second)
+    return (high + 0.05) / (low + 0.05)
+
+
+def toward_contrast(value: str, backgrounds: tuple, target: float) -> str:
+    """`value`, stepped away from `backgrounds` until it clears `target`.
+
+    The design bundle states its colours as literal hexes, and several of the
+    ones it uses for text do not reach WCAG AA on the surfaces it puts them
+    on - the muted label, its single most-used colour, measures 3.04:1 on the
+    window canvas. XAnalyze reports exactly that as an accessibility finding
+    on other people's pages, so it cannot paint its own window that way.
+
+    This is measured rather than tuned: the alternative is a table of
+    darkening percentages fitted to one palette, which silently stops being
+    correct the moment a token changes. The direction follows the sheet - on
+    a light background the colour darkens, on a dark one it lightens - so the
+    same call is right in both themes.
+    """
+    usable = tuple(b for b in backgrounds if _luminance(b) is not None)
+    if not usable or _luminance(value) is None:
+        return value
+    average = sum(_luminance(b) for b in usable) / len(usable)
+    step = _darken if average > 0.2 else _lighten
+    for percent in range(0, 101):
+        candidate = step(value, percent / 100)
+        if all((_contrast(candidate, b) or 0) >= target for b in usable):
+            return candidate
+    return step(value, 1.0)  # black or white; nothing else is left to try
+
+
 def first_font_family(value: str | None, fallback: str) -> str:
     """The first family in a CSS font stack, unquoted. Qt resolves its own
     fallbacks, so passing the whole stack through would just give Qt a
@@ -231,8 +348,21 @@ class Palette:
     bg_hover: str = "#eceae6"
     text: str = "#141416"
     text_muted: str = "#6f6d68"
+    #: The two levels below `text_muted`, which the desktop design uses and
+    #: the shared token file does not declare at all.
+    #:
+    #: `text_subtle` is decoration - the caret beside an inline value, a
+    #: tertiary hint - and is held to 3:1, not 4.5:1, with the reason written
+    #: down in `tests/test_palette_contrast.py`. `text_ghost` is the *label*
+    #: of a ghost button, so it is a word and clears 4.5:1 like any other.
+    text_subtle: str = "#8a877f"
+    text_ghost: str = "#6f6d68"
     border: str = "#e9e7e2"
     border_strong: str = "#d9d6d0"
+    #: The hairline between inline values in the top bar. Its own token
+    #: because the design separates it from `border`: a divider inside a
+    #: filled block, not the edge of a surface.
+    divider: str = "#e9e7e2"
     primary: str = "#000000"
     primary_hover: str = "#262626"
     on_primary: str = "#ffffff"
@@ -268,8 +398,31 @@ class Palette:
     error_strong: str = "#d24246"
     error_text: str = "#d24246"
     success_text: str = "#13865b"
+    #: Amber as a *word* rather than as a fill. The design's amber is a mid
+    #: yellow (2.09:1 on the section surface), so the one place it is used
+    #: for text - a severity label outside a badge - needs its own value for
+    #: the same reason `error_text` exists. The fill keeps the design's hue.
+    amber_text: str = "#8a6d34"
+
+    #: The four-step severity ramp. The shared token file has no such scale,
+    #: which is why `high` and `medium` both resolved to the same amber and
+    #: read as one level in the findings list. These are fills - a segment of
+    #: the severity bar, a dot beside a row - and are not held to a text
+    #: threshold; the words beside them are painted in `text`.
+    sev_critical: str = "#d24246"
+    sev_high: str = "#d97706"
+    sev_medium: str = "#f59e0b"
+    sev_none: str = "#d9d6d0"
     scrollbar: str = "#cfcdc7"
     scrollbar_hover: str = "#b4b2ab"
+
+    #: The one drop shadow that stands in for the design's two-layer
+    #: `box-shadow`. A blur of 0 means "no shadow" and is what a token file
+    #: without these values falls back to, which is the look the window had
+    #: before: surfaces told apart by a hairline border instead.
+    shadow_color: str = "rgba(20, 20, 22, 0.08)"
+    shadow_blur: int = 0
+    shadow_y: int = 0
 
     font: str = "Geist"
     font_mono: str = "Geist Mono"
@@ -345,19 +498,19 @@ class Palette:
 
     @property
     def critical(self) -> str:
-        return self.error
+        return self.sev_critical
 
     @property
     def high(self) -> str:
-        return self.amber
+        return self.sev_high
 
     @property
     def medium(self) -> str:
-        return self.amber
+        return self.sev_medium
 
     @property
     def low(self) -> str:
-        return self.success
+        return self.sev_none
 
     @property
     def info(self) -> str:
@@ -451,6 +604,18 @@ class Palette:
             value = tokens.get(key)
             return value if value else fallback
 
+        # Every surface a word can land on. Text derived below has to clear
+        # its threshold on the worst of them, not just on the panel it was
+        # designed against - the same label is painted on the canvas, on a
+        # section and inside a nested block.
+        surfaces = (
+            color("--page-bg", defaults.page_bg),
+            color("--bg", defaults.bg),
+            color("--bg-card", defaults.bg_card),
+            color("--bg-muted", defaults.bg_muted),
+            color("--bg-hover", defaults.bg_hover),
+        )
+
         return cls(
             name=name,
             page_bg=color("--page-bg", defaults.page_bg),
@@ -459,9 +624,22 @@ class Palette:
             bg_muted=color("--bg-muted", defaults.bg_muted),
             bg_hover=color("--bg-hover", defaults.bg_hover),
             text=color("--text", defaults.text),
-            text_muted=color("--text-muted", defaults.text_muted),
+            # Words, so AA applies. The design's own muted grey is 3.04:1 on
+            # the canvas; this keeps its hue and moves it just far enough.
+            text_muted=toward_contrast(
+                color("--text-muted", defaults.text_muted), surfaces, 4.5),
+            # Decoration - the caret beside an inline value - so the 3:1
+            # threshold for non-text visual information is the right one.
+            # Held to *something* rather than to nothing: below 3:1 the caret
+            # stops being findable, which is the whole job it has.
+            text_subtle=toward_contrast(
+                color("--text-subtle", defaults.text_subtle), surfaces, 3.0),
+            # A ghost button's label is a word like any other.
+            text_ghost=toward_contrast(
+                color("--text-ghost", defaults.text_ghost), surfaces, 4.5),
             border=color("--border", defaults.border),
             border_strong=color("--border-strong", defaults.border_strong),
+            divider=color("--divider", color("--border", defaults.divider)),
             primary=color("--primary", defaults.primary),
             primary_hover=color("--primary-hover", defaults.primary_hover),
             on_primary=color("--on-primary", defaults.on_primary),
@@ -472,13 +650,43 @@ class Palette:
             success=color("--success", defaults.success),
             error=color("--error", defaults.error),
             amber=color("--amber", defaults.amber),
-            error_strong=_darken(color("--error", defaults.error), 0.10),
-            # Words, not fills: on the dark sheet the brand hues already
-            # clear 4.5:1, and darkening them there would take that away.
-            error_text=(color("--error", defaults.error) if name == "dark"
-                        else _darken(color("--error", defaults.error), 0.10)),
-            success_text=(color("--success", defaults.success) if name == "dark"
-                          else _darken(color("--success", defaults.success), 0.17)),
+            # A fill with white ink on it, so it is measured against the ink
+            # rather than against the sheet - and it reads `--sev-badge`,
+            # which the overlay declares once for both themes, so the badge
+            # does not flip with the theme underneath it.
+            error_strong=toward_contrast(
+                color("--sev-badge", color("--error", defaults.error)),
+                (color("--on-error", defaults.on_error),), 4.5),
+            # Words, not fills, so these follow the sheet: on the dark one
+            # the hues already clear 4.5:1 and are left where they are, which
+            # `toward_contrast` arrives at on its own by stepping zero.
+            #
+            # Measured against the panel alone, not against `surfaces` like
+            # the muted text above. These two are painted in exactly one
+            # place - the status line in Settings - and that line sits on a
+            # panel. Holding them to the whole set would move the dark hue
+            # off the value `test_status_words_do_follow_the_theme` pins it
+            # to, to buy contrast on surfaces they are never painted on.
+            error_text=toward_contrast(
+                color("--error", defaults.error), (color("--bg", defaults.bg),), 4.5),
+            success_text=toward_contrast(
+                color("--success", defaults.success),
+                (color("--bg", defaults.bg),), 4.5),
+            # Amber as a word. Measured like the two above rather than
+            # darkened by a fixed step: the design's amber needs to travel a
+            # long way (2.09:1 as it stands) and xFormat's needs less.
+            amber_text=toward_contrast(
+                color("--amber", defaults.amber), surfaces, 4.5),
+            # Fills, not words. The four levels are a scale, and the shared
+            # token file declares no such scale - without the overlay these
+            # fall back to the ramp built out of the tokens that do exist.
+            sev_critical=color("--sev-critical", color("--error", defaults.sev_critical)),
+            sev_high=color("--sev-high", color("--amber-d", defaults.sev_high)),
+            sev_medium=color("--sev-medium", color("--amber", defaults.sev_medium)),
+            sev_none=color("--sev-none", color("--border-strong", defaults.sev_none)),
+            shadow_color=color("--surface-shadow-color", defaults.shadow_color),
+            shadow_blur=px(tokens.get("--surface-shadow-blur"), defaults.shadow_blur),
+            shadow_y=px(tokens.get("--surface-shadow-y"), defaults.shadow_y),
             scrollbar=color("--sb-thumb", defaults.scrollbar),
             scrollbar_hover=color("--sb-thumb-hover", defaults.scrollbar_hover),
             font=first_font_family(tokens.get("--font"), defaults.font),
@@ -499,7 +707,7 @@ class Palette:
 
 def palettes() -> dict:
     """Both themes, ready to use."""
-    tokens = load_tokens()
+    tokens = load_tokens(overlay=overlay_file())
     return {
         "light": Palette.from_tokens(tokens.get("light", {}), "light"),
         "dark": Palette.from_tokens(tokens.get("dark", {}), "dark"),

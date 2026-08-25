@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Qt, QUrl
+from PySide6.QtCore import QPoint, QSize, QUrl, Qt
 from PySide6.QtGui import QColor, QIcon, QKeySequence, QShortcut
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
@@ -65,8 +65,8 @@ from ui.window_parts.shared import (
     _SEVERITY_CONFIDENCE, _SUPPRESSED_NOTE, _browser_url,
 )
 from ui.widgets import (
-    ROW_ROLE, EmptyState, FindingDelegate, FlowLayout, RowData, chip,
-    diagnostics_message, divider, field, heading, muted, panel, restyle,
+    ROW_ROLE, EmptyState, FindingDelegate, FlowLayout, InlineValue, RowData,
+    chip, diagnostics_message, divider, field, heading, muted, panel, restyle,
 )
 from ui.worker import (
     AnalysisWorker, RepoAnalysisWorker, RewriteAllWorker,
@@ -80,15 +80,12 @@ from ui.worker import (
 #: shows it in full.
 _COMBO_CHARS = 10
 
-#: Width of the controls column. Wide enough that a URL field and a
-#: provider name are both readable without abbreviation, narrow enough to
-#: leave a three-column body room at 1300px - the window's default width.
-SIDEBAR_WIDTH = 268
-
-#: What the column shrinks to once the body has folded to a single column.
-#: At that point the window is being used as a list of findings, and a
-#: full-width form beside it would leave the list unusable.
-SIDEBAR_WIDTH_NARROW = 200
+#: The height of the top controls row when it fits on one line. Not a width
+#: any more: the controls used to be a 268px column beside the results, and
+#: are now a strip above them, so what they cost the body is height. The row
+#: wraps to a second line rather than forcing the window wider - see
+#: `_build_ui` - which is why this is what it fits into, not what it demands.
+TOP_ROW_HEIGHT = 42
 
 # Below this window width, the detail panel collapses from a persistent
 # third column into an inline panel that expands under the clicked list row.
@@ -382,62 +379,77 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         self._populate_flagged_list()
 
     def _build_brand_header(self) -> QWidget:
-        """The mark, the name, and the one line that says what the app does."""
+        """The mark, and nothing else that needs a line of its own.
+
+        This used to be a stacked block - mark, name, tagline, account - which
+        is what a 268px column had room for. In a top row it has room for one
+        thing, and the mark is the thing worth keeping: it is what says at a
+        glance that this is one application in a family. The name is beside it
+        only while there is width for it.
+
+        `brand_tagline`, `account_label` and `account_btn` are still built and
+        still named, because `_retranslate_ui` and `_refresh_account_control`
+        write to all three. The tagline is simply not shown here - a sentence
+        explaining the app belongs on the empty state, which is where someone
+        who needs it is actually looking. The account moves to the right end
+        of the row; see `_build_account_control`.
+        """
         from PySide6.QtSvgWidgets import QSvgWidget
 
         bar = QWidget()
         bar.setProperty("class", theme.CLASS_BRAND)
-        # Four things in one row need about 500px; the column has 268. So the
-        # header stacks: the mark and the name on one line, then the tagline,
-        # then the account. Each of those wraps rather than clipping - a
-        # tagline cut mid-word is worse than a tagline on two lines.
-        layout = QVBoxLayout(bar)
-        layout.setContentsMargins(4, 0, 4, 0)
-        layout.setSpacing(self.palette_tokens.space_1)
-
-        title_row = QWidget()
-        title_layout = QHBoxLayout(title_row)
-        title_layout.setContentsMargins(0, 0, 0, 0)
-        title_layout.setSpacing(self.palette_tokens.space_sm)
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(self.palette_tokens.space_sm)
 
         mark = ASSETS / ("logo-dark.svg" if theme.resolve_mode(self.settings.theme) == "dark"
                          else "logo-light.svg")
         if mark.is_file():
             self.brand_mark = QSvgWidget(str(mark))
-            self.brand_mark.setFixedSize(QSize(22, 22))
-            title_layout.addWidget(self.brand_mark)
+            self.brand_mark.setFixedSize(QSize(20, 20))
+            layout.addWidget(self.brand_mark)
         else:
             self.brand_mark = None
 
         self.brand_name = QLabel("XAnalyze")
         self.brand_name.setProperty("class", theme.CLASS_HEADING)
-        title_layout.addWidget(self.brand_name)
-        title_layout.addStretch(1)
-        layout.addWidget(title_row)
+        layout.addWidget(self.brand_name)
 
+        # Built, named, written to by `_retranslate_ui` - and not in the row.
         self.brand_tagline = muted()
         self.brand_tagline.setWordWrap(True)
-        layout.addWidget(self.brand_tagline)
+        self.brand_tagline.setVisible(False)
+        return bar
 
-        # Account state belongs where it can be seen. It used to live inside
-        # the settings dialog, which meant the one fact that decides whether
-        # the AI assessment is available at all was three clicks away and
-        # invisible from the window that offers it.
-        account_row = QWidget()
-        account_layout = QHBoxLayout(account_row)
-        account_layout.setContentsMargins(0, 0, 0, 0)
-        account_layout.setSpacing(self.palette_tokens.space_sm)
+    def _build_account_control(self) -> QWidget:
+        """The account, at the right end of the top row.
+
+        Account state belongs where it can be seen: it is the one fact that
+        decides whether the AI assessment is available at all, and it used to
+        be three clicks away inside the settings dialog.
+
+        The label keeps its text for `_refresh_account_control` and for the
+        tooltip, but the row shows the button alone - a whole sentence about
+        who is signed in cannot share a line with five selectors.
+        """
+        box = QWidget()
+        layout = QHBoxLayout(box)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(self.palette_tokens.space_1)
+
         self.account_label = muted()
-        self.account_label.setWordWrap(True)
-        account_layout.addWidget(self.account_label, stretch=1)
+        self.account_label.setVisible(False)
+        layout.addWidget(self.account_label)
+
         self.account_btn = QPushButton()
+        self.account_btn.setProperty("class", theme.CLASS_QUIET)
         self.account_btn.clicked.connect(self._on_account_clicked)
-        account_layout.addWidget(self.account_btn)
-        layout.addWidget(account_row)
+        layout.addWidget(self.account_btn)
+
         # Drawn from what is known, which at build time is nothing. The real
         # answer is asked once the window exists; see `_ask_account_later`.
         self._refresh_account_control(ask=False)
-        return bar
+        return box
 
     #: Which Lucide icon stands for which action. Kept next to the row it
     #: draws rather than in `ui/icons.py`: the file knows how to render an
@@ -498,8 +510,18 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         # that has to wrap to fit eleven controls reads in no direction at
         # all. The sidebar also gives each control room for its label, which
         # the wrapping row could only afford by abbreviating them away.
-        root = QHBoxLayout(central)
-        gap = self.palette_tokens.space_md
+        # A top row of controls above the results, not a column beside them.
+        # The column existed because eleven *labelled* controls cannot share a
+        # row: four combo boxes side by side need about 520px, and a row that
+        # wraps to fit them reads in no direction at all. The design answers
+        # that objection rather than argues with it - every selector is now an
+        # inline value (`ui/widgets.py::InlineValue`), which is as wide as the
+        # word it shows instead of as wide as its longest choice, so the whole
+        # set reads as one sentence and fits. What the column cost was the
+        # width it took from the results for the entire life of the window,
+        # to hold a form that is read once per run.
+        root = QVBoxLayout(central)
+        gap = self.palette_tokens.space_sm
         root.setContentsMargins(gap, gap, gap, gap)
         root.setSpacing(gap)
 
@@ -507,11 +529,24 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         # page canvas — the same "monolithic card on a warm canvas" the web
         # app uses to separate chrome from content.
         self.toolbar = QWidget()
-        self.toolbar.setProperty("class", theme.CLASS_TOOLBAR)
+        self.toolbar.setProperty("class", theme.CLASS_SURFACE)
         self.toolbar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        controls = QVBoxLayout(self.toolbar)
-        controls.setContentsMargins(gap, gap, gap, gap)
-        controls.setSpacing(self.palette_tokens.space_sm)
+        self.toolbar.setSizePolicy(QSizePolicy.Policy.Preferred,
+                                   QSizePolicy.Policy.Minimum)
+        # A flow layout, not a box. A `QHBoxLayout` hands the widget the sum
+        # of its children's minimum widths as its own, and a top row is as
+        # wide as the window - so the row set a 1271px floor under the whole
+        # window and made both narrow layouts unreachable. That is the exact
+        # failure the sidebar was once shaped to avoid, arriving from the
+        # other direction.
+        #
+        # `FlowLayout` wraps instead of pushing, which is also what the design
+        # asks for at 1000px: the row keeps the target and the action, and the
+        # rest goes onto a second line rather than off the screen.
+        controls = FlowLayout(self.toolbar, margin=0,
+                              spacing=self.palette_tokens.space_sm)
+        controls.setContentsMargins(10, 8, 10, 8)
+        self.toolbar.setMinimumWidth(0)
 
         # A header strip with the mark and the product name. Not decoration:
         # this is one application in a family, and the thing that says so at a
@@ -520,7 +555,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         controls.addWidget(self._build_brand_header())
 
         self.mode_label = QLabel()
-        self.mode_combo = QComboBox()
+        self.mode_combo = InlineValue()
         self.mode_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.mode_combo.setMinimumContentsLength(_COMBO_CHARS)
         self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
@@ -530,7 +565,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         # to stay readable, which is twice the column's width - the row fitted
         # only by squeezing the URL field down to a few characters.
         web_controls = QWidget()
-        web_layout = QVBoxLayout(web_controls)
+        web_layout = QHBoxLayout(web_controls)
         web_layout.setContentsMargins(0, 0, 0, 0)
         web_layout.setSpacing(self.palette_tokens.space_1)
         self.url_label = QLabel()
@@ -548,7 +583,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
 
         # --- repo-mode controls ---
         repo_controls = QWidget()
-        repo_layout = QVBoxLayout(repo_controls)
+        repo_layout = QHBoxLayout(repo_controls)
         repo_layout.setContentsMargins(0, 0, 0, 0)
         repo_layout.setSpacing(self.palette_tokens.space_1)
         self.repo_path_edit = QLineEdit()
@@ -558,7 +593,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         self.exclusions_btn = QPushButton()
         self.exclusions_btn.clicked.connect(self._on_exclusions_clicked)
         self.scope_label = QLabel()
-        self.scope_combo = QComboBox()
+        self.scope_combo = InlineValue()
         self.scope_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
         )
@@ -581,7 +616,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
 
         # --- single-file controls ---
         file_controls = QWidget()
-        file_layout = QVBoxLayout(file_controls)
+        file_layout = QHBoxLayout(file_controls)
         file_layout.setContentsMargins(0, 0, 0, 0)
         file_layout.setSpacing(self.palette_tokens.space_1)
         self.file_path_edit = QLineEdit()
@@ -606,7 +641,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         # said nothing. The method decides *what runs* now, and this decides
         # *who pays* - see `_detector_for_request`.
         self.provider_label = QLabel()
-        self.provider_combo = QComboBox()
+        self.provider_combo = InlineValue()
         # Provider labels can be long ("Claude Code session"). Without this,
         # the combo's minimum size hint is set to fit its longest item, which
         # alone can keep the whole window from ever shrinking below ~1300px
@@ -629,12 +664,12 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         # Reader combo hidden - auto-determined by source
         self.reader_label = QLabel()
         self.reader_label.setVisible(False)
-        self.reader_combo = QComboBox()
+        self.reader_combo = InlineValue()
         self.reader_combo.setVisible(False)
         self.checks_label = QLabel()
-        self.checks_combo = QComboBox()
+        self.checks_combo = InlineValue()
         self.method_label = QLabel()
-        self.method_combo = QComboBox()
+        self.method_combo = InlineValue()
         for combo in (self.checks_combo, self.method_combo):
             combo.setSizeAdjustPolicy(
                 QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
@@ -664,9 +699,19 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         self.source_controls_stack.setMinimumWidth(0)
         self.source_controls_stack.setSizePolicy(
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-        for widget in (self.mode_label, self.mode_combo,
-                       self.source_controls_stack,
-                       self.checks_label, self.checks_combo):
+        # The separate label widgets are built, translated and hidden: every
+        # selector now carries its own label inside itself, so putting the
+        # QLabel in the row too would print the word twice. They stay because
+        # `_retranslate_ui` writes to them and because the settings dialog
+        # reads their text, and because a label that is merely not shown is a
+        # smaller change than one that no longer exists.
+        for spare in (self.mode_label, self.checks_label, self.method_label,
+                      self.provider_label, self.reader_label, self.scope_label,
+                      self.url_label, self.depth_label):
+            spare.setVisible(False)
+
+        for widget in (self.mode_combo, self.source_controls_stack,
+                       self.checks_combo):
             controls.addWidget(widget)
 
         # The advanced controls: a container rather than a second row, so
@@ -674,7 +719,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         # down. Same widget, same name, same `setVisible` from
         # `_on_advanced_toggle`.
         self.advanced_row = QWidget()
-        adv_layout = QVBoxLayout(self.advanced_row)
+        adv_layout = QHBoxLayout(self.advanced_row)
         adv_layout.setContentsMargins(0, 0, 0, 0)
         adv_layout.setSpacing(self.palette_tokens.space_sm)
         for w in (self.method_label, self.method_combo,
@@ -689,50 +734,45 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         # it is about work that already happened, so it must not sit between
         # the target and Analyze, and it must not be the thing that scrolls
         # off the bottom either.
-        controls.addWidget(self._build_runs_panel())
-        controls.addStretch(1)
+        # Previous runs are a list, and a list cannot live in a one-line row.
+        # It moves behind a button, which is where the design puts it too: the
+        # row says what the *next* run will be, and history is one click away
+        # rather than permanently occupying a third of a column.
+        #
+        # A `Qt.Popup` rather than a dialog: it closes when you click away,
+        # which is the behaviour of every other "show me the list" control in
+        # the window, and it does not steal focus from the row behind it.
+        self.runs_popup = QWidget(self, Qt.WindowType.Popup)
+        self.runs_popup.setProperty("class", theme.CLASS_SURFACE)
+        self.runs_popup.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        popup_layout = QVBoxLayout(self.runs_popup)
+        popup_layout.setContentsMargins(gap, gap, gap, gap)
+        popup_layout.addWidget(self._build_runs_panel())
+        self.runs_popup.setFixedWidth(320)
+
+        self.runs_btn = QPushButton()
+        self.runs_btn.setProperty("class", theme.CLASS_QUIET)
+        self.runs_btn.clicked.connect(self._on_runs_clicked)
+
         controls.addWidget(self.analyze_btn)
         controls.addWidget(self.cancel_btn)
+        controls.addWidget(self.runs_btn)
         controls.addWidget(self.settings_btn)
+        controls.addWidget(self._build_account_control())
         self.analyze_btn.setProperty("class", theme.CLASS_PRIMARY)
 
-        # Scrolled, because the column's content grows: the advanced block,
-        # the repository fields and a long provider list together are taller
-        # than a laptop window in its smallest usable size, and controls that
-        # fall off the bottom of a fixed column cannot be reached at all.
-        self.sidebar_scroll = QScrollArea()
-        self.sidebar_scroll.setWidgetResizable(True)
-        self.sidebar_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        # Both scrollbars are allowed rather than suppressed, and that is
-        # what keeps the window resizable. With `widgetResizable` on, a
-        # scroll area that may not scroll horizontally inherits its
-        # content's minimum width as its own - so a fixed-width column of
-        # combos raised the *window's* minimum width and the narrow layout
-        # became unreachable, taking the responsive fold with it.
-        self.sidebar_scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.sidebar_scroll.setWidget(self.toolbar)
-        # Max, not fixed: the column keeps its comfortable width whenever
-        # there is room and gives way when there is not.
-        self.sidebar_scroll.setMinimumWidth(0)
-        self.sidebar_scroll.setSizePolicy(QSizePolicy.Policy.Preferred,
-                                          QSizePolicy.Policy.Expanding)
-
-        # --- controls column beside the body -----------------------------------
+        # The top row is a fixed strip, not a scrolled column: it holds one
+        # line of inline values, so there is nothing for it to scroll. The
+        # scroll area that used to wrap the sidebar is gone with it - it
+        # existed because a column of stacked combo boxes grew taller than a
+        # laptop window, which a single row cannot do.
         #
-        # A splitter rather than two items in the box layout, for two
-        # reasons. A box layout gives a non-stretching child exactly its
-        # size hint, so the column came out at whatever width its widgets
-        # happened to need (184px) instead of the width it was designed for -
-        # and forcing the hint up with a minimum width raised the *window's*
-        # minimum width with it, which is what made the narrow layout
-        # unreachable the first time. A splitter takes an explicit size,
-        # squeezes to a child's minimum when the window shrinks, and lets
-        # someone widen the column if they want to see a long path in full.
-        self.body_splitter = QSplitter(Qt.Orientation.Horizontal)
-        self.body_splitter.setHandleWidth(gap)
-        self.body_splitter.addWidget(self.sidebar_scroll)
-        root.addWidget(self.body_splitter, stretch=1)
+        # `sidebar_scroll` and `body_splitter` are gone too. The body no
+        # longer shares its width with a form, so there are no two panes to
+        # split; the columns splitter is now the only one, and it is added
+        # straight to the root box below.
+        theme.soft_shadow(self.toolbar, self.palette_tokens)
+        root.addWidget(self.toolbar)
 
         # --- three-column body -------------------------------------------------
         self.columns_splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -741,13 +781,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         # look the surfaces exist to avoid.
         self.columns_splitter.setHandleWidth(gap)
         self.columns_splitter.setChildrenCollapsible(False)
-        self.body_splitter.addWidget(self.columns_splitter)
-        # The controls column keeps its width; everything else goes to the
-        # body. Index 1 is the only stretching child, so widening the window
-        # widens the results rather than the form.
-        self.body_splitter.setStretchFactor(0, 0)
-        self.body_splitter.setStretchFactor(1, 1)
-        self.body_splitter.setSizes([SIDEBAR_WIDTH, 1000])
+        root.addWidget(self.columns_splitter, stretch=1)
 
         # Column 1: graphical copy of the site OR the raw source file being
         # analyzed, depending on mode.
@@ -918,6 +952,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         lang = self.lang
         self.setWindowTitle(t("app_title", lang))
         self.mode_label.setText(t("mode_label", lang))
+        self.mode_combo.set_label(t("mode_label", lang))
         self.brand_tagline.setText(t("app_tagline", lang))
         current_mode_data = self.mode_combo.currentData() if self.mode_combo.count() else None
         self.mode_combo.blockSignals(True)
@@ -945,6 +980,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         self.exclusions_btn.setToolTip(t("exclusions_button_full", lang))
 
         self.scope_label.setText(t("scope_label", lang))
+        self.scope_combo.set_label(t("scope_label", lang))
         self.scope_label.setToolTip(t("scope_label_full", lang))
         current_scope = self.scope_combo.currentData() if self.scope_combo.count() else None
         self.scope_combo.blockSignals(True)
@@ -969,19 +1005,29 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         # Refilled, not just relabelled: the entries themselves are words.
         self._populate_providers()
         self.provider_label.setText(t("provider_label", lang))
+        self.provider_combo.set_label(t("provider_label", lang))
         self.provider_label.setToolTip(t("provider_label_full", lang))
         self.provider_combo.setToolTip(t("provider_label_full", lang))
         self.file_path_edit.setPlaceholderText(t("file_path_placeholder", lang))
         self.file_browse_btn.setText(t("browse_button", lang))
         self.reader_label.setText(t("reader_label", lang))
+        self.reader_combo.set_label(t("reader_label", lang))
         self.reader_label.setToolTip(t("reader_label_full", lang))
         self.checks_label.setText(t("checks_label", lang))
+        self.checks_combo.set_label(t("checks_label", lang))
         self.checks_label.setToolTip(t("checks_label_full", lang))
         self.method_label.setText(t("method_label", lang))
+        self.method_combo.set_label(t("method_label", lang))
         self.method_label.setToolTip(t("method_label_full", lang))
         self.analyze_btn.setText(t("analyze_button", lang))
         self.cancel_btn.setText(t("cancel_button", lang))
         self.settings_btn.setText(t("settings_button", lang))
+        # The button that opens the run history. The panel's own heading is
+        # "Runs:", with the colon that introduces a list under it - on a
+        # button the colon is a promise of something that is not there, so
+        # it is stripped rather than given a second translation key to drift
+        # apart from the first.
+        self.runs_btn.setText(t("runs_title", lang).rstrip(":").strip())
         self.advanced_toggle.setText(
             t("advanced_hide", lang) if self.advanced_toggle.isChecked()
             else t("advanced_show", lang))
@@ -1075,6 +1121,17 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
             restyle(widget)
         self.flagged_list.viewport().update()
 
+    def _on_runs_clicked(self) -> None:
+        """Show the run history under the button that asked for it."""
+        if self.runs_popup.isVisible():
+            self.runs_popup.hide()
+            return
+        corner = self.runs_btn.mapToGlobal(
+            QPoint(0, self.runs_btn.height() + self.palette_tokens.space_1))
+        self.runs_popup.move(corner)
+        self.runs_popup.adjustSize()
+        self.runs_popup.show()
+
     def _on_settings_clicked(self) -> None:
         from ui.settings_dialog import SettingsDialog
         dlg = SettingsDialog(self.settings, self.lang, parent=self)
@@ -1140,12 +1197,11 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         # collapsing both together is the jump from three columns to one that
         # this second breakpoint exists to remove.
         self.col1.setVisible(medium)
-        # The controls column narrows with the body. A fixed 268px form
-        # beside a single 350px findings list is a window where neither half
-        # works.
-        wanted = SIDEBAR_WIDTH if medium else SIDEBAR_WIDTH_NARROW
-        self.body_splitter.setSizes(
-            [wanted, max(1, self.width() - wanted - self.palette_tokens.space_md)])
+        # Nothing to resize here any more: the controls are a strip across
+        # the top, so they take height rather than width, and the body gets
+        # the whole window at every breakpoint. What used to happen at this
+        # point - narrowing a 268px form so a 350px findings list could
+        # breathe - is a problem the top row does not have.
         self._collapse_inline_detail()
         self._reset_detail_panel()
 
@@ -1389,6 +1445,30 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         combo.setCurrentIndex(max(index, 0))
         combo.blockSignals(False)
 
+    def _size_stack_to_its_page(self) -> None:
+        """Make the source stack as wide as the page it is showing.
+
+        A `QStackedWidget` asks for the widest of *all* its pages, always.
+        In a column that cost nothing - the column was a fixed width anyway.
+        In the top row it costs 462px of the 1284 available, most of it
+        reserved for the repository fields while a site scan is running, and
+        that alone is enough to push the row onto a second line.
+
+        The fix is the usual one: every hidden page is given an ignored size
+        policy, so it stops contributing a size hint, and the current page
+        gets its own back.
+        """
+        stack = self.source_controls_stack
+        for index in range(stack.count()):
+            page = stack.widget(index)
+            if index == stack.currentIndex():
+                page.setSizePolicy(QSizePolicy.Policy.Preferred,
+                                   QSizePolicy.Policy.Fixed)
+            else:
+                page.setSizePolicy(QSizePolicy.Policy.Ignored,
+                                   QSizePolicy.Policy.Ignored)
+        stack.adjustSize()
+
     def _apply_mode_visibility(self) -> None:
         is_repo = self.source == SOURCE_REPO
         is_file = self.source == SOURCE_FILE
@@ -1402,6 +1482,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         # them. Auditing one file needs a path and nothing else.
         self.source_controls_stack.setCurrentIndex(
             2 if is_file else (1 if is_repo else 0))
+        self._size_stack_to_its_page()
         # A single file is previewed as a rendered page, not as source: it is
         # a page, and its markup is what the third column already shows.
         self.col1_stack.setCurrentIndex(1 if is_repo else 0)
