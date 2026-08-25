@@ -72,6 +72,11 @@ CLASS_BRAND = "brand"
 #: two coexist while the window is migrated screen by screen.
 CLASS_SURFACE = "surface"
 CLASS_INSET = "inset"
+#: The top controls row. A surface like any other, plus the compact button
+#: metrics the design draws it with - stated here rather than on every
+#: button in the window, because a 28px button is right in a one-line row
+#: and wrong in a panel where it stands on its own.
+CLASS_TOP_ROW = "top-row"
 
 #: The parts of an inline selector: the word that names the setting, the
 #: value itself, and the small caret that says the value can be changed.
@@ -147,7 +152,12 @@ def soft_shadow(widget, p: Palette):
     if p.shadow_blur <= 0:
         widget.setGraphicsEffect(None)
         return None
-    effect = QGraphicsDropShadowEffect(widget)
+    # No parent. `setGraphicsEffect` takes ownership on its own, and giving
+    # the effect the widget as a parent as well hands the same object to two
+    # owners - which Qt frees twice when the window goes away. It survived
+    # every test that built one window and segfaulted in the full suite,
+    # where windows are built and destroyed in the dozens.
+    effect = QGraphicsDropShadowEffect()
     effect.setBlurRadius(p.shadow_blur)
     effect.setXOffset(0)
     effect.setYOffset(p.shadow_y)
@@ -218,10 +228,41 @@ QWidget[class="{CLASS_SURFACE}"] {{
     border-radius: {p.radius}px;
 }}
 
+QWidget[class="{CLASS_TOP_ROW}"] {{
+    background-color: {c(p.bg)};
+    border: none;
+    border-radius: {p.radius}px;
+}}
+
+QWidget[class="{CLASS_TOP_ROW}"] QPushButton {{
+    padding: 5px 13px;
+    border-radius: {p.radius_md}px;
+}}
+
 QWidget[class="{CLASS_INSET}"] {{
     background-color: {c(p.bg_muted)};
     border: none;
     border-radius: {p.radius_lg - 1}px;
+}}
+
+/* Controls inside the strip lose their own box. In the design the scanned
+   address is text sitting in the filled strip, not a field drawn on top of
+   one - a bordered input inside a bordered block is two nested boxes saying
+   the same thing, and it is what made the row 68px tall against the 44px
+   the design draws. The focus ring below is what still says which control
+   the keyboard is on, since the border no longer can. */
+QWidget[class="{CLASS_INSET}"] QLineEdit,
+QWidget[class="{CLASS_INSET}"] QSpinBox {{
+    background: transparent;
+    border: none;
+    border-radius: {p.radius_sm}px;
+    padding: 1px 3px;
+}}
+
+QWidget[class="{CLASS_INSET}"] QLineEdit:focus,
+QWidget[class="{CLASS_INSET}"] QSpinBox:focus {{
+    background-color: {c(p.bg)};
+    border: none;
 }}
 
 /* ------------------------------------------------------- inline selectors */

@@ -125,12 +125,12 @@ class SurfacesReachThePixels(unittest.TestCase):
         cls.app = QApplication.instance() or QApplication([])
         from ui.main_window import MainWindow
 
-        # Saved and put back in tearDownClass: `apply_theme` sets the style
-        # sheet on the *application*, which outlives this class and would
-        # otherwise re-style every widget test that runs after it.
-        cls._sheet_before = cls.app.styleSheet()
-        theme.apply_theme(cls.app, "light")
         cls.window = MainWindow()
+        # On the window, not on the application: setting the sheet on the
+        # QApplication re-polishes every live widget in the process and
+        # segfaults a full run. See the same note in `test_window_shell.py`.
+        cls.window.setStyleSheet(
+            theme.build_qss(theme.current_palette("light")))
         cls.window.resize(1300, 800)
         cls.window.show()
         cls.app.processEvents()
@@ -141,7 +141,6 @@ class SurfacesReachThePixels(unittest.TestCase):
     def tearDownClass(cls):
         cls.window.close()
         cls.window.deleteLater()
-        cls.app.setStyleSheet(cls._sheet_before)
 
     def pixel(self, x: int, y: int) -> str:
         colour = self.shot.pixelColor(x, y)
@@ -154,7 +153,15 @@ class SurfacesReachThePixels(unittest.TestCase):
 
     def test_the_top_row_sits_on_a_surface(self):
         palette = theme.current_palette("light")
-        self.assertEqual(self.pixel(650, 20), palette.bg)
+        # Above the inline strip, in the row's own padding.
+        self.assertEqual(self.pixel(1000, 14), palette.bg)
+
+    def test_the_inline_strip_is_the_level_below_the_row(self):
+        """The selectors sit in a filled block inside the row. Two levels, so
+        a caret reads as "this word can be changed" rather than as a stray
+        glyph floating on the surface."""
+        palette = theme.current_palette("light")
+        self.assertEqual(self.pixel(400, 25), palette.bg_muted)
 
     def test_a_column_sits_on_a_surface_not_on_the_canvas(self):
         """The failure this class exists for: the columns rendered in the

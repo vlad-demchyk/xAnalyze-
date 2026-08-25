@@ -33,6 +33,7 @@ try:
         CHECK_ACCESSIBILITY, CHECK_AI_PATTERNS, METHOD_AI, METHOD_LOCAL,
         SOURCE_FILE, SOURCE_REPO, SOURCE_SITE,
     )
+    from ui import theme
     from ui.main_window import MEDIUM_BREAKPOINT, TOP_ROW_HEIGHT, MainWindow
 except Exception:  # noqa: BLE001 - no Qt here is a skip, not a failure
     QApplication = None
@@ -67,9 +68,19 @@ class WindowCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
-
     def setUp(self):
         self.window = MainWindow()
+        # Styled, the way the app actually runs. It matters for anything
+        # measured: the top row is 52px styled and 42px bare, because QSS
+        # padding is what gives a control its height, so measuring the bare
+        # window meant asserting a geometry no user ever sees.
+        #
+        # On the *window*, never on the application. `apply_theme` sets the
+        # sheet on the QApplication, which re-polishes every live widget in
+        # the process - including the ones earlier tests have closed but not
+        # yet collected - and that segfaults the run. Scoped here, it reaches
+        # this window's tree and nothing else.
+        self.window.setStyleSheet(theme.build_qss(theme.current_palette("light")))
         self.window.show()
         self.app.processEvents()
 

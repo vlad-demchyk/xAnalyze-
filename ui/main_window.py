@@ -66,7 +66,8 @@ from ui.window_parts.shared import (
 )
 from ui.widgets import (
     ROW_ROLE, EmptyState, FindingDelegate, FlowLayout, InlineValue, RowData,
-    chip, diagnostics_message, divider, field, heading, muted, panel, restyle,
+    chip, diagnostics_message, divider, field, hairline, heading, muted,
+    panel, restyle,
 )
 from ui.worker import (
     AnalysisWorker, RepoAnalysisWorker, RewriteAllWorker,
@@ -85,7 +86,13 @@ _COMBO_CHARS = 10
 #: are now a strip above them, so what they cost the body is height. The row
 #: wraps to a second line rather than forcing the window wider - see
 #: `_build_ui` - which is why this is what it fits into, not what it demands.
-TOP_ROW_HEIGHT = 42
+#:
+#: The design draws this row at 44px, from a 28px control inside 8px of
+#: padding. Qt reaches 52px at the same paddings, because its buttons and
+#: labels are taller than the browser's at the same font size. Measured
+#: rather than decreed: trimming the padding to land on 44 would distort the
+#: design's spacing to pay for a difference in font metrics.
+TOP_ROW_HEIGHT = 52
 
 # Below this window width, the detail panel collapses from a persistent
 # third column into an inline panel that expands under the clicked list row.
@@ -529,7 +536,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         # page canvas — the same "monolithic card on a warm canvas" the web
         # app uses to separate chrome from content.
         self.toolbar = QWidget()
-        self.toolbar.setProperty("class", theme.CLASS_SURFACE)
+        self.toolbar.setProperty("class", theme.CLASS_TOP_ROW)
         self.toolbar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.toolbar.setSizePolicy(QSizePolicy.Policy.Preferred,
                                    QSizePolicy.Policy.Minimum)
@@ -710,9 +717,29 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
                       self.url_label, self.depth_label):
             spare.setVisible(False)
 
-        for widget in (self.mode_combo, self.source_controls_stack,
-                       self.checks_combo):
-            controls.addWidget(widget)
+        # One filled block holding the whole sentence, with hairlines between
+        # its clauses - the design's own shape for it. Grouping them is not
+        # decoration: a caret floating on the surface reads as a stray glyph,
+        # while the same caret inside a filled strip reads as "this word can
+        # be changed".
+        #
+        # `setMinimumWidth(0)` and the shrinkable field inside it are what
+        # keep this from putting a floor under the window again: a box layout
+        # hands its parent the sum of its children's minimums, and this box
+        # now holds most of the row. `test_window_shell.py` measures it.
+        self.inline_strip = QWidget()
+        self.inline_strip.setProperty("class", theme.CLASS_INSET)
+        self.inline_strip.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        strip = QHBoxLayout(self.inline_strip)
+        strip.setContentsMargins(10, 5, 10, 5)
+        strip.setSpacing(7)
+        strip.addWidget(self.mode_combo)
+        strip.addWidget(hairline())
+        strip.addWidget(self.source_controls_stack)
+        strip.addWidget(hairline())
+        strip.addWidget(self.checks_combo)
+        self.inline_strip.setMinimumWidth(0)
+        controls.addWidget(self.inline_strip)
 
         # The advanced controls: a container rather than a second row, so
         # showing them extends the column instead of pushing the results
