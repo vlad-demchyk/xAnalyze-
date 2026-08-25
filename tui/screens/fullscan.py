@@ -28,41 +28,56 @@ class FullscanScreen(RunScreen):
             # `example.com` is enough - the scheme is added for you.
             yield Input(placeholder="example.com or ./repo", id="target")
 
-            yield Label("Report language:")
-            yield Select(
-                [
-                    ("auto — detect from the content", ""),
-                    ("English", "en"),
-                    ("Українська", "uk"),
-                    ("Italiano", "it"),
-                ],
-                value="",
-                id="language",
-            )
-
-            yield Label("Crawl depth (URLs only):")
-            yield Select(
-                [
-                    ("1 — the page and what it links to", "1"),
-                    ("0 — the given page only", "0"),
-                    ("2", "2"),
-                    ("3", "3"),
-                ],
-                value="1",
-                id="depth",
-            )
-
-            yield Label("Breakpoints:")
-            yield Select(
-                [
-                    ("Desktop only", "desktop"),
-                    ("All (desktop + tablet + mobile)", "all"),
-                    ("Desktop + mobile", "desktop,mobile"),
-                    ("Mobile only", "mobile"),
-                ],
-                value="desktop",
-                id="breakpoints",
-            )
+            # The design's toolbar (artboard 3a) reads "analyze Site ·
+            # depth 2" - one sentence with the choices inline rather than a
+            # label above every one of them. `Select(compact=True)` is
+            # Textual's own version of that: no frame, sized to its current
+            # value, opens the same way. Three selectors read as one
+            # sentence this way where three stacked "Label: dropdown" rows
+            # read as a form - which is the whole difference the redesign
+            # was for.
+            with Horizontal(classes="sentence"):
+                yield Static("language", classes="inline-label")
+                yield Select(
+                    [
+                        ("auto", ""),
+                        ("English", "en"),
+                        ("Українська", "uk"),
+                        ("Italiano", "it"),
+                    ],
+                    value="",
+                    id="language",
+                    compact=True,
+                    classes="inline-select",
+                )
+                yield Static("·", classes="inline-sep")
+                yield Static("depth", classes="inline-label")
+                yield Select(
+                    [
+                        ("1", "1"),
+                        ("0 — this page only", "0"),
+                        ("2", "2"),
+                        ("3", "3"),
+                    ],
+                    value="1",
+                    id="depth",
+                    compact=True,
+                    classes="inline-select",
+                )
+                yield Static("·", classes="inline-sep")
+                yield Static("breakpoints", classes="inline-label")
+                yield Select(
+                    [
+                        ("desktop", "desktop"),
+                        ("all", "all"),
+                        ("desktop + mobile", "desktop,mobile"),
+                        ("mobile", "mobile"),
+                    ],
+                    value="desktop",
+                    id="breakpoints",
+                    compact=True,
+                    classes="inline-select",
+                )
 
             yield Static("")
             yield Checkbox("Agent mode (offline + agent judges)", id="agent")

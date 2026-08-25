@@ -78,6 +78,47 @@ class XAnalyzeApp(App):
     Checkbox {
         margin: 0 0 0 0;
     }
+    /* The inline sentence a form's stacked "Label: dropdown" rows became -
+       see FullscanScreen.compose. `Select { margin }` above is for the
+       stacked form and would space these out over two lines, so it is
+       overridden back to zero here rather than left to fight the
+       browser-style wrap a Horizontal gives a too-wide row. */
+    .sentence {
+        height: auto;
+        align: left middle;
+        margin: 0 0 1 0;
+    }
+    /* `width: auto` is not Static's default (a bare Static fills the row,
+       which is right for a status line and wrong for a word in a sentence)
+       - without it every label below claimed the row's full width and
+       pushed everything after the first one off screen. */
+    .sentence .inline-label {
+        width: auto;
+        color: $inline-label;
+        margin: 0 1 0 0;
+    }
+    .sentence .inline-sep {
+        width: auto;
+        color: $inline-label;
+        margin: 0 1 0 0;
+    }
+    /* `Select`'s own default CSS is `width: auto`, but the `SelectCurrent`
+       it composes itself asks for `width: 1fr` - "fill whatever I am
+       given" - which is right for a stand-alone dropdown and wrong for one
+       word in a sentence. Both the box and the label inside it have to be
+       told to size to content, or the widest option in the list keeps
+       claiming the row's full width and pushing the selectors after it
+       past the edge of the screen. */
+    .sentence Select.inline-select {
+        width: auto;
+        margin: 0 0 0 0;
+    }
+    .sentence Select.inline-select SelectCurrent {
+        width: auto;
+    }
+    .sentence Select.inline-select SelectCurrent Static#label {
+        width: auto;
+    }
     #config-path {
         color: $text-muted;
         text-style: italic;
@@ -125,11 +166,20 @@ class XAnalyzeApp(App):
         Binding("up", "focus_previous", "Previous", show=False),
     ]
 
-    def on_mount(self) -> None:
+    def __init__(self) -> None:
+        super().__init__()
+        # Registered here rather than in `on_mount`: the CSS above already
+        # references custom variables (`$inline-label` and friends), and the
+        # first stylesheet parse - which resolves every `$name` against
+        # whatever theme is current - happens while the widget tree is being
+        # registered, before `on_mount` ever runs. A theme picked in
+        # `on_mount` is a theme that arrives one parse too late, and the CSS
+        # fails to load at all rather than falling back to something close.
         for theme in build_textual_themes().values():
             self.register_theme(theme)
         self.theme = DEFAULT_THEME
 
+    def on_mount(self) -> None:
         from tui.screens.main_menu import MainMenuScreen
         from tui.screens.scan import ScanScreen
         from tui.screens.audit import AuditScreen

@@ -706,5 +706,55 @@ class DevServerConfirm(unittest.TestCase):
         self.assertEqual(len(captured), 1)
 
 
+class FullscanReadsAsASentence(unittest.TestCase):
+    """The redesign's toolbar (artboard 3a) reads "analyze Site · depth 2"
+    instead of a form of labelled dropdowns. FullscanScreen's language/
+    depth/breakpoints selectors moved into one such sentence; this pins the
+    part that actually matters - that they are still the same three
+    controls under the same three ids, so nothing about running a scan
+    changed underneath the new layout."""
+
+    def test_the_three_selectors_still_answer_to_their_old_ids(self):
+        async def body():
+            app = XAnalyzeApp()
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                await pilot.press("3")
+                await pilot.pause()
+                screen = app.screen
+                return (
+                    screen.query_one("#language", Select).value,
+                    screen.query_one("#depth", Select).value,
+                    screen.query_one("#breakpoints", Select).value,
+                )
+
+        language, depth, breakpoints = run(body())
+        self.assertEqual(language, "")
+        self.assertEqual(depth, "1")
+        self.assertEqual(breakpoints, "desktop")
+
+    def test_the_selectors_size_to_their_value_not_to_the_full_row(self):
+        """Regression for a real defect found while building this screen:
+        `SelectCurrent`'s own default CSS is `width: 1fr`, so without an
+        explicit override each selector claimed the sentence's entire
+        width and pushed everything after the first one off screen -
+        `debug`-rendering the screen showed only the word "language" and
+        nothing else in the row."""
+        async def body():
+            app = XAnalyzeApp()
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                await pilot.press("3")
+                await pilot.pause()
+                sentence = app.screen.query_one(".sentence")
+                return sentence.query(Select), sentence.size.width
+
+        selects, row_width = run(body())
+        for select in selects:
+            self.assertLess(
+                select.size.width, row_width // 2,
+                f"#{select.id} claimed {select.size.width} of a {row_width}-wide row")
+
+
 if __name__ == "__main__":
     unittest.main()
