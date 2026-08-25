@@ -56,9 +56,10 @@ from ui.window_parts.account import (
 from ui.window_parts.audit_panel import AuditPanelMixin
 from ui.window_parts.bulk_rewrite import BulkRewriteMixin
 from ui.window_parts.report_export import (
-    ReportExportMixin, _styled_report_text,
+    ReportExportMixin,
 )
 from ui.window_parts.findings_panel import FindingsPanelMixin
+from ui.window_parts.report_documents import RunDocumentsPanel
 from ui.window_parts.run_progress import (
     DONE, PENDING, RUNNING, RunProgressPanel,
 )
@@ -143,6 +144,11 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         # the window is still usable when constructed directly (tests, or a
         # future second window).
         self.palette_tokens = palette or theme.current_palette(self.settings.theme)
+        #: When the current run began. Set for real at the start of each run;
+        #: None means the documents are being written without one, in which
+        #: case `Timings` measures from itself, which is the best that can be
+        #: said honestly.
+        self._run_began = None
         #: The source being examined. What used to be `self.mode` is now
         #: derived from this and from the chosen checks, so downstream code
         #: that asks "which kind of run is this" still gets an answer.
@@ -354,6 +360,11 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         as the run went, and a list that only ever shows the past cannot
         answer "how much longer".
         """
+        import time
+
+        # When the run began, so `timings.md` can report a total that is the
+        # run's wall clock rather than the age of the object that writes it.
+        self._run_began = time.monotonic()
         self.run_progress.reset()
         self.run_progress.set_stages(self._stages_for_run())
         self.col1_stack.setCurrentIndex(2)
@@ -371,15 +382,12 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         log is the answer to most of them.
         """
         self._mark_remaining_stages_done()
-        self.col1_stack.setCurrentIndex(
-            1 if self.source == SOURCE_REPO else 0)
         # `_apply_mode_visibility` owns the width switcher; calling it back
         # is how it returns to whatever the current source says it should be,
         # rather than to what it happened to be before the run. The header is
-        # not its business, so it is put back here - one line, and the column
-        # would otherwise keep saying "Run in progress" over a finished one.
-        self._apply_mode_visibility()
-        self.col1_header.setText(t("site_preview_header", self.lang))
+        # not its business, so it is put back too - the column would
+        # otherwise keep saying "Run in progress" over a finished one.
+        self._show_preview_column()
 
     def _stages_for_run(self) -> list:
         """Which stages this run actually has, in the order it does them."""
@@ -423,6 +431,22 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
                     self.run_progress.mark(earlier, DONE)
             self.run_progress.mark(key, RUNNING, detail)
         self.run_progress.add_log(message)
+
+    def _show_run_documents(self, documents) -> None:
+        """Hand the preview column over to what the run produced."""
+        self.run_documents.show_documents(documents)
+        self.run_documents.set_timings(self.run_progress.durations())
+        self.col1_stack.setCurrentIndex(3)
+        # Same reasoning as during the run: the width switcher constrains a
+        # preview, and there is no preview under it while this panel is up.
+        self.breakpoint_row.setVisible(False)
+        self.col1_header.setText(t("documents_title", self.lang))
+
+    def _show_preview_column(self) -> None:
+        """Give the column back to the preview it belongs to."""
+        self.col1_stack.setCurrentIndex(1 if self.source == SOURCE_REPO else 0)
+        self._apply_mode_visibility()
+        self.col1_header.setText(t("site_preview_header", self.lang))
 
     def _stop_devserver_if_any(self) -> None:
         if self._devserver_proc is not None:
@@ -1066,6 +1090,14 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         self.run_progress = RunProgressPanel(self.palette_tokens, self.lang)
         self.col1_stack.addWidget(self.run_progress)  # index 2: a run in flight
 
+        # Index 3: what the run produced (artboard 3h). The same column
+        # again, and for the same reason: right after a run ends, "where are
+        # the documents" is the question being asked, and the preview is
+        # what the person has just spent the whole run looking at.
+        self.run_documents = RunDocumentsPanel(self.palette_tokens, self.lang)
+        self.run_documents.back_btn.clicked.connect(self._show_preview_column)
+        self.col1_stack.addWidget(self.run_documents)  # index 3: what it produced
+
         # The width switcher, above the preview rather than beside it: the
         # audit now runs at three widths (see `audit/responsive.py`), and a
         # finding labelled "found at mobile only" is not checkable in a
@@ -1207,6 +1239,8 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
     def _retranslate_ui(self) -> None:
         lang = self.lang
         self.setWindowTitle(t("app_title", lang))
+        self.run_progress.retranslate(lang)
+        self.run_documents.retranslate(lang)
         self.mode_label.setText(t("mode_label", lang))
         self.mode_combo.set_label(t("mode_label", lang))
         self.brand_tagline.setText(t("app_tagline", lang))
@@ -1371,6 +1405,12 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         """
         self.palette_tokens = palette
         self.finding_delegate.set_palette(palette)
+        # Both of these paint their own inks, per state and per row, which
+        # is exactly what QSS cannot reach - a theme switch would otherwise
+        # leave the stage list and the document list in the old sheet's
+        # colours, on the new sheet's background.
+        self.run_progress.apply_palette(palette)
+        self.run_documents.apply_palette(palette)
         self._repaint_preview_background()
         self._repaint_brand()
         self._apply_action_icons()
@@ -2562,24 +2602,15 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         self._reaudit_after_fix()
 
     def _on_download_choice_needed(self, has_audit: bool, has_text: bool) -> None:
-        if not has_audit:
-            self._on_styled_report_clicked()
-            return
-        box = QMessageBox(self)
-        box.setWindowTitle(t("download_button", self.lang))
-        box.setText(t("download_which", self.lang))
-        styled = box.addButton(_styled_report_text(self.lang, "button"),
-                               QMessageBox.ButtonRole.AcceptRole)
-        agent = box.addButton(t("export_report_button", self.lang),
-                              QMessageBox.ButtonRole.AcceptRole)
-        box.setDefaultButton(styled)
-        box.addButton(QMessageBox.StandardButton.Cancel)
-        box.exec()
-        clicked = box.clickedButton()
-        if clicked is styled:
-            self._on_styled_report_clicked()
-        elif clicked is agent:
-            self._on_export_report_clicked()
+        """Both reports, one folder. There is no longer a choice to make.
+
+        This used to ask which of the two reports to save, which is a
+        question with no good answer: the report a person reads and the
+        briefing an agent reads are not alternatives, they are two documents
+        of one run. Writing the folder produces both, so the dialog was
+        asking someone to give one of them up for no reason.
+        """
+        self._on_styled_report_clicked()
 
     def _on_unicode_fixed(self, filled: int) -> None:
         self._populate_flagged_list()

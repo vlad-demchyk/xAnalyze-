@@ -344,6 +344,48 @@ _STRINGS: dict[str, dict[str, str]] = {
     "stage_scan": {
         "uk": "Читання файлів", "it": "Lettura dei file", "en": "Reading files",
     },
+    # The run's documents (artboard 3h). The panel names four files and
+    # says which are there, so the strings that explain an absent one carry
+    # the reason rather than the fact - "not written" is the part the reader
+    # can already see.
+    "documents_title": {
+        "uk": "Документи прогону", "it": "Documenti dell'esecuzione",
+        "en": "Run documents",
+    },
+    "documents_open": {
+        "uk": "Відкрити теку", "it": "Apri la cartella", "en": "Open folder",
+    },
+    "documents_back": {
+        "uk": "До перегляду", "it": "Torna all'anteprima",
+        "en": "Back to preview",
+    },
+    "documents_timings": {
+        "uk": "Скільки тривали етапи", "it": "Quanto sono durate le fasi",
+        "en": "Where the time went",
+    },
+    "documents_handoff": {
+        "uk": "report.pdf читає людина, report.md читає агент, timings.md "
+              "пояснює тривалість. Один прогін, одна тека: наступний ляже "
+              "поруч і додасть changes.md.",
+        "it": "report.pdf si legge, report.md lo legge un agente, timings.md "
+              "spiega la durata. Un'esecuzione, una cartella: la prossima si "
+              "affianca e aggiunge changes.md.",
+        "en": "report.pdf is for a person, report.md is for an agent, "
+              "timings.md explains the duration. One run, one folder: the "
+              "next one lands beside it and adds changes.md.",
+    },
+    "documents_absent_first_run": {
+        "uk": "перший прогін цієї цілі", "it": "prima esecuzione di questo obiettivo",
+        "en": "first run of this target",
+    },
+    "documents_absent_not_comparable": {
+        "uk": "немає порівнянного прогону", "it": "nessuna esecuzione confrontabile",
+        "en": "no comparable run",
+    },
+    "documents_absent_no_audit": {
+        "uk": "доступність не перевірялась", "it": "accessibilita non verificata",
+        "en": "accessibility was not checked",
+    },
     "summary_findings": {
         "uk": "{count} знахідок",
         "it": "{count} riscontri",

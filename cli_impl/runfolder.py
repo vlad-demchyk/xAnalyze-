@@ -109,6 +109,35 @@ class RunFolder:
         return sorted(others, key=lambda p: p.name)
 
 
+class RunDocuments:
+    """What one run's folder ended up containing, and what it did not.
+
+    `absent` carries a reason per missing document rather than leaving it
+    off the list. The four documents are a fixed set - a reader who knows
+    there should be a `changes.md` and sees no mention of one cannot tell
+    whether the comparison failed or whether this is simply the first run of
+    this target, and those are opposite pieces of news.
+    """
+
+    def __init__(self, folder: "RunFolder", target: str,
+                 written: dict, absent: dict) -> None:
+        self.folder = folder
+        self.target = target
+        #: name -> Path, for documents actually on disk.
+        self.written = written
+        #: name -> reason, one of "no_audit", "first_run", "not_comparable".
+        self.absent = absent
+
+    #: The order they are listed in, which is the order they were written and
+    #: the order of decreasing usefulness to a person opening the folder.
+    ORDER = ("report.pdf", "report.md", "changes.md", "timings.md")
+
+    def documents(self) -> list:
+        """`(name, path_or_None, reason_or_None)` for all four, in order."""
+        return [(name, self.written.get(name), self.absent.get(name))
+                for name in self.ORDER]
+
+
 #: Overrides where project folders are created. For a machine with no
 #: Desktop worth writing to - a CI runner, a container - and for tests,
 #: which must not write into the person's actual Desktop.
@@ -154,8 +183,14 @@ class Timings:
     between runs.
     """
 
-    def __init__(self) -> None:
-        self._started = time.monotonic()
+    def __init__(self, started: float | None = None) -> None:
+        #: `started` lets a caller that timed the stages elsewhere say when
+        #: the run actually began. Without it the total would be measured
+        #: from this object's construction, and a `Timings` built after the
+        #: run to record what already happened would report a total of
+        #: nothing - which turns every stage's share of it into a number in
+        #: the thousands.
+        self._started = time.monotonic() if started is None else started
         self._stages: list = []
         self._open: tuple | None = None
 

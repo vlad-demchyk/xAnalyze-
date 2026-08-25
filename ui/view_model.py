@@ -651,21 +651,40 @@ class MainViewModel(QObject):
             return
         self.download_choice_needed.emit(has_audit, has_text)
 
-    def export_styled_report(self, path: str):
-        from report.export import write_styled_report
+    def _report_model(self):
+        """The findings of this run as one report model, or None.
+
+        An audit and a copy scan can both be asked for in the same run, and
+        the report is of the run, not of one of its halves - so the two sets
+        of findings go into one model rather than producing two documents
+        that each omit half of what was found.
+        """
         from report.model import from_accessibility, from_text_analysis
+        lang = self.settings.ui_language
         has_text = bool(self.result and self.result.spans)
         has_audit = bool(self.audit_result and self.audit_result.documents)
-        model = from_accessibility(self.audit_result, lang=self.settings.ui_language) if has_audit else None
+        model = from_accessibility(self.audit_result, lang=lang) if has_audit else None
         if has_text:
-            text_model = from_text_analysis(self.result, lang=self.settings.ui_language)
+            # No `lang`: the copy adapter does not take one - it was being
+            # passed one anyway, which raised `TypeError` the moment a run
+            # with copy findings reached this line.
+            text_model = from_text_analysis(self.result)
             if model:
                 model.findings.extend(text_model.findings)
             else:
                 model = text_model
+        return model
+
+    def export_styled_report(self, path: str):
+        from report.export import write_styled_report
+        model = self._report_model()
         if model is None:
             return
-        write_styled_report(model, path)
+        # `path` first, then the model: they were the other way round here,
+        # which meant `Path(model)` and a TypeError every time the button was
+        # pressed. The language was missing too, so an Italian window would
+        # have printed an English report if it had printed one at all.
+        write_styled_report(path, model, self.settings.ui_language)
         self.status_message.emit(f"Report saved: {path}")
 
     def export_agent_report(self, path: str):
@@ -676,6 +695,81 @@ class MainViewModel(QObject):
             report = path
         cli._write_report(self.audit_result, _Args(), self.settings.ui_language, None)
         self.status_message.emit(f"Report saved: {path}")
+
+    def save_run_documents(self, stage_timings=None, run_began=None):
+        """Write this run's folder, and say what ended up in it.
+
+        The window used to have one report button and a save dialog behind
+        it, which asks the wrong question: a run does not produce *a file*,
+        it produces a set of documents that only make sense together, and
+        where they go is already decided - one folder per target, one
+        sub-folder per run (`cli_impl.runfolder`). Asking where to put each
+        one is how the four documents of a run end up in four places.
+
+        The same folder layout the CLI writes, through the same functions:
+        `report.md` and its history come from `cli_impl.reports`, so a run
+        started from the window and a run started from `xanalyze fullscan`
+        share one history and each can be the previous run of the other.
+
+        Returns a `RunDocuments`. `changes.md` is absent on a first run,
+        deliberately: an empty comparison reads as a broken comparison.
+        """
+        from cli_impl import runfolder
+        from cli_impl.runfolder import RunDocuments
+        from report.export import write_styled_report
+
+        model = self._report_model()
+        if model is None:
+            return None
+        lang = self.settings.ui_language
+        target = self.state.target or (
+            getattr(self.result, "root_url", None) or "scan")
+        folder = runfolder.prepare(target)
+        written, absent = {}, {}
+
+        payload = None
+        if self.audit_result is not None:
+            import cli
+
+            class _Args:
+                report = str(folder.report)
+
+            payload = cli._write_report(self.audit_result, _Args(), lang, None)
+            written["report.md"] = folder.report
+        else:
+            # A copy scan has no rule-by-rule briefing to write. Named as
+            # absent with its reason rather than left off the list: a
+            # document that is missing for a knowable reason is information,
+            # a document that is silently not mentioned is not.
+            absent["report.md"] = "no_audit"
+
+        write_styled_report(str(folder.styled_report), model, lang,
+                            markdown_path=str(folder.report) if payload else None)
+        written["report.pdf"] = folder.styled_report
+
+        timings = runfolder.Timings(started=run_began)
+        for label, seconds in (stage_timings or []):
+            timings.note(label, seconds)
+        timings.write(folder.timings, target, extra={
+            "findings": len(model.findings),
+            "run folder": str(folder.run),
+        })
+        written["timings.md"] = folder.timings
+
+        if payload is not None:
+            from cli_impl.reports import write_comparison_document
+            if write_comparison_document(folder.changes, payload):
+                written["changes.md"] = folder.changes
+            else:
+                absent["changes.md"] = (
+                    "first_run" if not folder.previous_runs() else "not_comparable")
+        else:
+            absent["changes.md"] = "no_audit"
+
+        documents = RunDocuments(folder=folder, target=target,
+                                 written=written, absent=absent)
+        self.status_message.emit(f"Run documents: {folder.run}")
+        return documents
 
     # -- suppression -------------------------------------------------------
     def ignore_span(self, span: TextSpan, block):

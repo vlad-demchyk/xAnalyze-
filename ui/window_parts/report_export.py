@@ -5,21 +5,23 @@ from PySide6.QtWidgets import QFileDialog, QMessageBox
 
 from i18n.translations import t
 
-#: This panel's own tiny trilingual vocabulary for the styled-report button,
+#: This panel's own tiny trilingual vocabulary for the run-documents button,
 #: kept local rather than added to `i18n/translations.py`: this feature's
 #: task boundary deliberately excludes that module, and three short strings
 #: do not need the shared table's machinery (pluralisation, `t()` lookup) to
 #: stay correct in uk/it/en.
 _STYLED_REPORT_STRINGS = {
-    "uk": dict(button="Стильний звіт", tooltip="Зберегти брендований звіт "
-               "(PDF або HTML) для читання чи друку",
-               done="Звіт збережено: {path}"),
-    "it": dict(button="Report firmato", tooltip="Salva un report firmato "
-               "(PDF o HTML) da leggere o stampare",
-               done="Report salvato: {path}"),
-    "en": dict(button="Styled report", tooltip="Save a branded report "
-               "(PDF or HTML) to read or print",
-               done="Report saved: {path}"),
+    "uk": dict(button="Зберегти звіт", tooltip="Записати теку прогону: "
+               "звіт для читання, звіт для агента і тривалість етапів",
+               done="Документи прогону: {path}"),
+    "it": dict(button="Salva il report", tooltip="Scrive la cartella "
+               "dell'esecuzione: report da leggere, report per l'agente e "
+               "durata delle fasi",
+               done="Documenti dell'esecuzione: {path}"),
+    "en": dict(button="Save report", tooltip="Write the run's folder: a "
+               "report to read, a report for an agent, and where the time "
+               "went",
+               done="Run documents: {path}"),
 }
 
 
@@ -57,22 +59,29 @@ class ReportExportMixin:
                                 t("export_report_done", self.lang, path=path))
 
     def _on_styled_report_clicked(self) -> None:
+        """Write the run's folder, then show what is in it.
+
+        No save dialog. A run produces four documents that only mean
+        something together, and their home is already decided - one folder
+        per target, one sub-folder per run. Asking where to put each of them
+        is how they end up in four places, and it asks the person to make a
+        decision the tool has already made correctly.
+        """
         has_text = bool(self.result and self.result.spans)
         has_audit = bool(self.audit_result and self.audit_result.documents)
         if not has_text and not has_audit:
             return
-        path, _filter = QFileDialog.getSaveFileName(
-            self, _styled_report_text(self.lang, "button"), "scan-report.pdf",
-            "PDF (*.pdf);;HTML (*.html)")
-        if not path:
-            return
+        title = _styled_report_text(self.lang, "button")
         try:
-            self.view_model.export_styled_report(path)
+            documents = self.view_model.save_run_documents(
+                stage_timings=self.run_progress.durations(),
+                run_began=self._run_began)
         except (OSError, RuntimeError) as exc:
-            QMessageBox.warning(self, _styled_report_text(self.lang, "button"), str(exc))
+            QMessageBox.warning(self, title, str(exc))
             return
-        QMessageBox.information(self, _styled_report_text(self.lang, "button"),
-                                _styled_report_text(self.lang, "done", path=path))
+        if documents is None:
+            return
+        self._show_run_documents(documents)
 
     def _report_fix_outcome(self, outcome, written_by_model) -> None:
         lines = [t("fix_done", self.lang, applied=len(outcome.applied),

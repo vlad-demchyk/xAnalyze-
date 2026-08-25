@@ -19,6 +19,7 @@ progressed, which tells you nothing about what remains.
 """
 from __future__ import annotations
 
+import time
 from datetime import datetime
 
 from PySide6.QtCore import Qt
@@ -53,6 +54,14 @@ class StageRow(QWidget):
         super().__init__(parent)
         self.palette_ = palette
         self.state = PENDING
+        self.label = label
+        #: When this stage went RUNNING, and how long it ran for once it is
+        #: DONE. Measured rather than estimated, because it is what
+        #: `timings.md` reports and what someone asking "why did this take an
+        #: hour" is owed - a made-up number would answer the question wrongly
+        #: and look exactly the same.
+        self.began: float | None = None
+        self.elapsed: float | None = None
 
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 2, 0, 2)
@@ -72,7 +81,17 @@ class StageRow(QWidget):
 
         self.apply_palette(palette)
 
-    def set_state(self, state: str, detail: str = "") -> None:
+    def set_state(self, state: str, detail: str = "", now=None) -> None:
+        previous = self.state
+        if now is None:
+            now = time.monotonic()
+        if state == RUNNING and previous != RUNNING:
+            self.began = now
+            self.elapsed = None
+        elif state == DONE and previous == RUNNING and self.began is not None:
+            self.elapsed = now - self.began
+        elif state == PENDING:
+            self.began = self.elapsed = None
         self.state = state
         self.mark.setText(self.MARKS.get(state, self.MARKS[PENDING]))
         if detail:
@@ -163,7 +182,7 @@ class RunProgressPanel(QWidget):
             self._rows[key] = row
             self.stages_layout.addWidget(row)
 
-    def mark(self, key: str, state: str, detail: str = "") -> None:
+    def mark(self, key: str, state: str, detail: str = "", now=None) -> None:
         """Move one stage to a state. Unknown keys are ignored.
 
         Ignored rather than raised: the signals that drive this come from
@@ -172,7 +191,7 @@ class RunProgressPanel(QWidget):
         """
         row = self._rows.get(key)
         if row is not None:
-            row.set_state(state, detail)
+            row.set_state(state, detail, now)
 
     def stage_state(self, key: str) -> str:
         row = self._rows.get(key)
@@ -185,6 +204,16 @@ class RunProgressPanel(QWidget):
         self.log.insertItem(0, f"{stamp}  {message}")
         while self.log.count() > LOG_LIMIT:
             self.log.takeItem(self.log.count() - 1)
+
+    def durations(self) -> list:
+        """`(label, seconds)` for every stage that actually ran.
+
+        A stage that never started is left out rather than reported as zero:
+        a run without the browser pass did not do it in no time, it did not
+        do it at all, and a `0.0s` row says the opposite.
+        """
+        return [(row.label, row.elapsed) for row in self._rows.values()
+                if row.elapsed is not None]
 
     def reset(self) -> None:
         self.log.clear()
