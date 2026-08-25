@@ -354,6 +354,90 @@ _STRINGS: dict[str, dict[str, str]] = {
     # what was fixed, what appeared and what has not moved are acted on
     # differently - the last one is the list that says whether the current
     # approach to it is working at all.
+    # What went wrong, in words (artboard 3m). The body says what it means
+    # for the result, because that is the part a person decides on - the
+    # evidence line beside it carries the numbers and is not translated.
+    "diagnosis_blocked_title": {
+        "uk": "Сайт не віддає сторінки",
+        "it": "Il sito non restituisce le pagine",
+        "en": "The site is not serving pages",
+    },
+    "diagnosis_blocked_body": {
+        "uk": "На {refused} з {total} адрес сервер відмовив. Ці сторінки ніхто не "
+              "прочитав, тож чистий результат по них нічого не означає.",
+        "it": "Il server ha rifiutato {refused} indirizzi su {total}. Quelle "
+              "pagine non sono state lette, quindi un risultato pulito su di "
+              "esse non significa nulla.",
+        "en": "The server refused {refused} of {total} addresses. Nobody read "
+              "those pages, so a clean result on them means nothing.",
+    },
+    "diagnosis_unreachable_title": {
+        "uk": "Частина адрес не відповіла",
+        "it": "Alcuni indirizzi non hanno risposto",
+        "en": "Some addresses did not answer",
+    },
+    "diagnosis_unreachable_body": {
+        "uk": "{count} з {total} сторінок не вдалося завантажити. Решта пройшла; "
+              "ці лишились непрочитаними.",
+        "it": "{count} pagine su {total} non si sono caricate. Le altre sono "
+              "passate; queste sono rimaste non lette.",
+        "en": "{count} of {total} pages would not load. The rest went through; "
+              "these stayed unread.",
+    },
+    "diagnosis_render_failed_title": {
+        "uk": "Браузер не зміг відкрити сторінку",
+        "it": "Il browser non ha aperto la pagina",
+        "en": "The browser could not open the page",
+    },
+    "diagnosis_render_failed_body": {
+        "uk": "Рендер {count} з {total} сторінок не завершився. Вони лишились "
+              "тільки з кодовим проходом, тож текст, який домальовує JavaScript, "
+              "там не перевірявся.",
+        "it": "Il rendering di {count} pagine su {total} non e riuscito. Restano "
+              "solo con la lettura del codice, quindi il testo aggiunto da "
+              "JavaScript non e stato controllato.",
+        "en": "Rendering did not finish for {count} of {total} pages. They are "
+              "left with the code pass only, so any text JavaScript draws was "
+              "not checked.",
+    },
+    "diagnosis_truncated_title": {
+        "uk": "Обхід обрізано лімітом",
+        "it": "La scansione si e fermata al limite",
+        "en": "The crawl stopped at its limit",
+    },
+    "diagnosis_truncated_body": {
+        "uk": "Прочитано {read} сторінок, а знайдено щонайменше {at_least}. "
+              "Чистий результат по решті нічого не означає: їх ніхто не читав.",
+        "it": "Lette {read} pagine su almeno {at_least} trovate. Un risultato "
+              "pulito sulle altre non significa nulla: nessuno le ha lette.",
+        "en": "Read {read} pages of at least {at_least} found. A clean result on "
+              "the rest means nothing: nobody read them.",
+    },
+    "diagnosis_truncated_evidence": {
+        "uk": "максимум сторінок за прогін: {limit}",
+        "it": "massimo di pagine per esecuzione: {limit}",
+        "en": "max pages per run: {limit}",
+    },
+    "diagnosis_unknown_failure_title": {
+        "uk": "Прогін зупинився", "it": "L'esecuzione si e fermata",
+        "en": "The run stopped",
+    },
+    "diagnosis_unknown_failure_body": {
+        "uk": "Причина не розпізнана, тож нижче те, що сказав сам прогін.",
+        "it": "La causa non e riconosciuta, quindi sotto c'e cio che ha detto "
+              "l'esecuzione stessa.",
+        "en": "The cause was not recognised, so below is what the run itself "
+              "said.",
+    },
+    "diagnosis_retry": {
+        "uk": "Спробувати ще раз", "it": "Riprova", "en": "Try again",
+    },
+    "diagnosis_raise_limit": {
+        "uk": "Підняти до {n}", "it": "Alza a {n}", "en": "Raise to {n}",
+    },
+    "diagnosis_dismiss": {
+        "uk": "Сховати", "it": "Nascondi", "en": "Dismiss",
+    },
     "comparison_fixed": {
         "uk": "Виправлено", "it": "Corretto", "en": "Fixed",
     },

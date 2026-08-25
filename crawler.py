@@ -382,7 +382,7 @@ def page_from_html(html: str, url: str, depth: int = 0) -> PageResult:
 
 
 def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
-          render=None) -> list[PageResult]:
+          render=None, walk=None) -> list[PageResult]:
     """Breadth-first crawl starting at root_url up to config.max_depth hops.
 
     progress_cb, if given, is called as progress_cb(url, depth) right before
@@ -393,6 +393,20 @@ def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
     crawler keeps no opinion about which browser, and stays importable without
     Qt: the walk is the crawler's job, and rendering is one way of reading a
     page. `config.render_mode` decides when it is called at all.
+
+    walk, if given, is a `models.CrawlDiagnostics` filled in as the crawl
+    ends. Passed in rather than returned so every existing caller keeps
+    working unchanged - the same shape `PageDiagnostics` already uses. What
+    it records is what the crawl did *not* reach: one that stopped at its
+    page limit leaves a queue behind, and once the results are a list of
+    `PageResult` those addresses are gone. "30 pages, no findings" then
+    reads as a verdict on the site rather than on the thirty.
+
+    Named `walk` and not `diagnostics` for a reason worth keeping: the loop
+    below binds `diagnostics` to a fresh `PageDiagnostics` on every page, so
+    a parameter of that name is shadowed by the first iteration. It was, and
+    the end-of-crawl numbers went onto the last page's diagnostics instead -
+    silently, because both objects take an attribute assignment happily.
     """
     config = config or CrawlConfig()
     root_url = _normalize(root_url)
@@ -481,4 +495,13 @@ def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
                     continue
                 queue.append((link, depth + 1))
 
+    if walk is not None:
+        walk.pages_read = len(results)
+        walk.limit = config.max_pages
+        # What is still queued, minus anything already visited: the queue
+        # holds links as they were found, and a page linked from three
+        # others is in it three times. Counting the raw length would report
+        # a site three times larger than it is.
+        remaining = {url for url, _depth in queue if url not in visited}
+        walk.queued_when_stopped = len(remaining)
     return results

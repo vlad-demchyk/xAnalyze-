@@ -101,10 +101,42 @@ class PageResult:
 
 
 @dataclass
+class CrawlDiagnostics:
+    """What the crawl reached, and what it did not.
+
+    The web counterpart of `ScanDiagnostics`, and it exists for the same
+    reason: a clean result over pages nobody read is not a clean result. The
+    walk stops at `limit` and the queue it stops on leaves no trace - by the
+    time a caller holds a list of `PageResult`, the addresses that were
+    found and never fetched are gone, and "30 pages, no findings" reads as a
+    verdict on the site rather than on the thirty.
+    """
+    #: Pages actually fetched.
+    pages_read: int = 0
+    #: The ceiling this crawl ran under; 0 means there was none.
+    limit: int = 0
+    #: Addresses found and still queued when the walk stopped. A lower
+    #: bound on what was missed, not a total: the pages never fetched would
+    #: have contributed links of their own.
+    queued_when_stopped: int = 0
+
+    @property
+    def truncated(self) -> bool:
+        return self.queued_when_stopped > 0
+
+    @property
+    def at_least(self) -> int:
+        """Pages the crawl knew about: read, plus still queued."""
+        return self.pages_read + self.queued_when_stopped
+
+
+@dataclass
 class AnalysisResult:
     root_url: str
     pages: list[PageResult] = field(default_factory=list)
     spans: list[TextSpan] = field(default_factory=list)
+    #: How the crawl went as a whole, as opposed to page by page.
+    crawl: CrawlDiagnostics = field(default_factory=CrawlDiagnostics)
 
     def blocks(self) -> list[TextBlock]:
         out: list[TextBlock] = []

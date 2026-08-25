@@ -153,13 +153,17 @@ class TopRow(WindowCase):
                         MEDIUM_BREAKPOINT)
 
     def test_the_body_sits_under_the_row_not_beside_it(self):
-        """Controls, then the run summary, then the results - in that order.
-        The summary is between them because it describes the run the controls
-        set up and the list underneath shows."""
+        """Controls, the run summary, what went wrong, then the results.
+
+        The summary and the diagnoses are between them because both describe
+        the run the controls set up and the list underneath shows: "the
+        server refused seven of twelve addresses" belongs beside "27
+        findings", not inside the list of the 27."""
         layout = self.window.centralWidget().layout()
         widgets = [layout.itemAt(i).widget() for i in range(layout.count())]
         self.assertEqual(widgets, [self.window.toolbar,
                                    self.window.summary_bar,
+                                   self.window.diagnosis_strip,
                                    self.window.columns_splitter])
 
     def test_the_run_history_is_behind_a_button_not_in_the_row(self):

@@ -88,11 +88,14 @@ class AnalysisWorker(QThread):
             def progress_cb(url: str, depth: int) -> None:
                 self.crawling.emit(url, depth)
 
+            from models import CrawlDiagnostics
+            walk = CrawlDiagnostics()
             if self.pages is not None:
                 pages: list[PageResult] = self.pages
             else:
                 config = CrawlConfig(max_depth=self.depth, max_pages=self.max_pages)
-                pages = crawl(self.root_url, config, progress_cb=progress_cb)
+                pages = crawl(self.root_url, config, progress_cb=progress_cb,
+                              walk=walk)
             if self._cancelled:
                 return
 
@@ -104,7 +107,8 @@ class AnalysisWorker(QThread):
 
             self.detecting.emit(detector.display_name)
 
-            result = AnalysisResult(root_url=self.root_url, pages=pages)
+            result = AnalysisResult(root_url=self.root_url, pages=pages,
+                                    crawl=walk)
             all_blocks = result.blocks()
             try:
                 result.spans = detector.analyze_blocks(all_blocks)

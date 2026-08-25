@@ -59,6 +59,7 @@ from ui.window_parts.report_export import (
     ReportExportMixin,
 )
 from ui.window_parts.findings_panel import FindingsPanelMixin
+from ui.window_parts.diagnosis_strip import DiagnosisStripMixin
 from ui.window_parts.report_documents import RunDocumentsPanel
 from ui.window_parts.run_comparison import RunComparisonPanel
 from ui.window_parts.run_progress import (
@@ -133,9 +134,9 @@ ASSETS = Path(__file__).resolve().parent / "design" / "assets"
 # language sat next to eight that were.
 
 
-class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
-                 ReportExportMixin, BulkRewriteMixin, RunsPanel,
-                 QMainWindow):
+class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
+                 FindingsPanelMixin, ReportExportMixin, BulkRewriteMixin,
+                 RunsPanel, QMainWindow):
     def __init__(self, palette=None):
         super().__init__()
         self.settings = config.Settings.load()
@@ -366,6 +367,10 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         # When the run began, so `timings.md` can report a total that is the
         # run's wall clock rather than the age of the object that writes it.
         self._run_began = time.monotonic()
+        # The previous run's diagnoses describe the previous run. Leaving
+        # them up over a new one is how "the server refused seven addresses"
+        # comes to be read about a run that had no trouble at all.
+        self.clear_diagnoses()
         self.run_progress.reset()
         self.run_progress.set_stages(self._stages_for_run())
         self.col1_stack.setCurrentIndex(2)
@@ -1062,6 +1067,12 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         self.summary_bar.setVisible(False)
         theme.soft_shadow(self.summary_bar, self.palette_tokens)
         root.addWidget(self.summary_bar)
+
+        # Under the summary and above the results, because it is about the
+        # run rather than about a finding: "the server refused seven of
+        # twelve addresses" belongs beside "27 findings", not inside the
+        # list of the 27.
+        root.addWidget(self._build_diagnosis_strip())
 
         # --- three-column body -------------------------------------------------
         self.columns_splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -2598,6 +2609,11 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         # Remembered on success only: a cancelled or failed fetch has nothing
         # worth answering the next question from.
         self._remember_extraction(self._last_request, pages=result.pages)
+        # A run can finish and still have failed to read most of the site.
+        # Refused addresses and a truncated crawl were both recorded and
+        # then never mentioned, so a clean result stood for pages nobody
+        # had opened.
+        self.diagnose_finished_run(result)
         self._populate_flagged_list()
         n_flags = sum(1 for s in result.spans if s.confidence != Confidence.LOW)
         self.status_bar.showMessage(
@@ -2617,8 +2633,17 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         self._update_repo_buttons_enabled()
 
     def _on_failed(self, message: str) -> None:
+        """A run that raised, shown as something a person can act on.
+
+        Not a modal any more. It had one empty title bar for every kind of
+        failure, and - the part that cost something - once it was dismissed
+        the explanation was gone and the window looked exactly as it does
+        after a run that went fine.
+        """
+        import diagnosis as dx
+
         self.status_bar.showMessage(t("status_error", self.lang, error=message))
-        QMessageBox.critical(self, "", message)
+        self.show_diagnoses([dx.diagnose_failure(message)])
 
     def _on_worker_thread_finished(self) -> None:
         self.analyze_btn.setEnabled(True)
