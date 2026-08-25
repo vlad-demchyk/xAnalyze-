@@ -44,18 +44,22 @@ class Choices(unittest.TestCase):
                    for i in range(self.window.mode_combo.count())]
         self.assertEqual(offered, [SOURCE_SITE, SOURCE_REPO, SOURCE_FILE])
 
-    def test_a_repository_offers_no_browser_reading(self):
-        self._select_raw(self.window.mode_combo, SOURCE_REPO)
-        offered = [self.window.reader_combo.itemData(i)
-                   for i in range(self.window.reader_combo.count())]
-        self.assertEqual(offered, [MainWindow.choice_key((READER_CODE,))])
-        self.assertFalse(self.window.reader_combo.isEnabled())
+    def test_a_repository_is_read_from_disk_only(self):
+        """Asked of the state, which is what decides the run.
 
-    def test_a_site_offers_code_browser_and_both(self):
+        This used to be asked of a hidden reader selector that nothing
+        consulted - so it asserted the contents of a control whose value
+        never reached a scan, and would have gone on passing after the
+        readers stopped being a choice at all."""
+        self._select_raw(self.window.mode_combo, SOURCE_REPO)
+        self.assertEqual(self.window._chosen_readers(), (READER_CODE,))
+
+    def test_a_site_is_read_both_ways(self):
+        """Not a preference: copy that only exists after hydration is a
+        finding, and it takes both readings to see it."""
         self._select_raw(self.window.mode_combo, SOURCE_SITE)
-        offered = [self.window.reader_combo.itemData(i)
-                   for i in range(self.window.reader_combo.count())]
-        self.assertIn(MainWindow.choice_key((READER_CODE, READER_BROWSER)), offered)
+        self.assertEqual(set(self.window._chosen_readers()),
+                         {READER_CODE, READER_BROWSER})
 
     def test_both_questions_are_the_default(self):
         window = MainWindow()

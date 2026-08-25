@@ -752,25 +752,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Pagine già scaricate ({count}), nessuna nuova scansione",
         "en": "Pages already fetched ({count}), no new crawl",
     },
-    "reader_label": {
-        "uk": "Читати:", "it": "Leggere:", "en": "Read:",
-    },
-    "reader_label_full": {
-        "uk": "Що читати: код у тому вигляді, як він написаний, сторінку в "
-              "тому вигляді, як її показує браузер, або і те, і те.",
-        "it": "Cosa leggere: il codice come è scritto, la pagina come la "
-              "mostra un browser, o entrambi.",
-        "en": "What to read: the code as written, the page as a browser "
-              "renders it, or both.",
-    },
-    "reader_code": {
-        "uk": "Код", "it": "Codice", "en": "Code",
-    },
     "reader_browser": {
         "uk": "У браузері", "it": "Nel browser", "en": "In a browser",
-    },
-    "reader_both": {
-        "uk": "Код і браузер", "it": "Codice e browser", "en": "Code and browser",
     },
     "reader_browser_unavailable": {
         "uk": "Репозиторій нічим не віддає сторінку, тож рендерити нічого: "

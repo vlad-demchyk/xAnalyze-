@@ -37,9 +37,9 @@ def responsive_breakpoints():
     return BREAKPOINTS
 from file_writer import apply_replacements, build_plans
 from analysis_modes import (
-    CHECKS, CHECK_ACCESSIBILITY, CHECK_AI_PATTERNS, METHOD_AI, METHOD_EMBEDDING, METHOD_LOCAL,
-    METHODS, READER_BROWSER, READER_CODE, SOURCE_FILE, SOURCE_REPO,
-    SOURCE_SITE, AnalysisRequest, available_readers, supports_browser,
+    CHECKS, CHECK_ACCESSIBILITY, CHECK_AI_PATTERNS, METHOD_AI, METHOD_EMBEDDING,
+    METHOD_LOCAL, METHODS, SOURCE_FILE, SOURCE_REPO, SOURCE_SITE,
+    AnalysisRequest,
 )
 from i18n.translations import t
 from models import AnalysisResult, CodeBlock, Confidence, RepoAnalysisResult, TextBlock, TextSpan
@@ -936,11 +936,6 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         # source. Kept as three combos rather than one list of combinations:
         # the combinations multiply (3 x 3 x 3), and the point of separating
         # them is that the user changes one without restating the other two.
-        # Reader combo hidden - auto-determined by source
-        self.reader_label = QLabel()
-        self.reader_label.setVisible(False)
-        self.reader_combo = InlineValue()
-        self.reader_combo.setVisible(False)
         self.checks_label = QLabel()
         self.checks_combo = InlineValue()
         self.method_label = QLabel()
@@ -981,7 +976,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         # reads their text, and because a label that is merely not shown is a
         # smaller change than one that no longer exists.
         for spare in (self.mode_label, self.checks_label, self.method_label,
-                      self.provider_label, self.reader_label, self.scope_label,
+                      self.provider_label, self.scope_label,
                       self.url_label, self.depth_label):
             spare.setVisible(False)
 
@@ -1406,9 +1401,6 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self.provider_combo.setToolTip(t("provider_label_full", lang))
         self.file_path_edit.setPlaceholderText(t("file_path_placeholder", lang))
         self.file_browse_btn.setText(t("browse_button", lang))
-        self.reader_label.setText(t("reader_label", lang))
-        self.reader_combo.set_label(t("reader_label", lang))
-        self.reader_label.setToolTip(t("reader_label_full", lang))
         self.checks_label.setText(t("checks_label", lang))
         self.checks_combo.set_label(t("checks_label", lang))
         self.checks_label.setToolTip(t("checks_label_full", lang))
@@ -1805,16 +1797,15 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         control that exists only to be refused.
         """
         lang = self.lang
-        readers = available_readers(self.source)
-        options = [(t("reader_code", lang), self.choice_key((READER_CODE,)))]
-        if READER_BROWSER in readers:
-            options.append((t("reader_browser", lang), self.choice_key((READER_BROWSER,))))
-            options.append((t("reader_both", lang), self.choice_key((READER_CODE, READER_BROWSER))))
-        self._fill_combo(self.reader_combo, options)
-        self.reader_combo.setEnabled(len(options) > 1)
-        self.reader_combo.setToolTip(
-            t("reader_label_full", lang) if len(options) > 1
-            else t("reader_browser_unavailable", lang))
+        # No reader selector. There used to be one, hidden, filled on every
+        # source change and read by nothing: `ui.mode_rules.auto_readers`
+        # decides how a source is read, and a site is always read both ways
+        # because the difference between the two readings is itself a
+        # finding. A control whose value nothing consults is worse than an
+        # absent one - it looks like the answer to "how is this being read"
+        # and is not, which is exactly how it misled the empty-state work
+        # into offering a "re-read in a browser" button for a pass that had
+        # already run.
 
         # Both by default: one pass over the fetched pages answers both
         # questions, and a first run that silently examined only half of what

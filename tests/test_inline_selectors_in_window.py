@@ -29,7 +29,7 @@ except Exception:  # noqa: BLE001 - no Qt here is a skip, not a failure
     QApplication = None
 
 #: Every selector the window builds, by the name it is addressed through.
-SELECTORS = ("mode_combo", "scope_combo", "provider_combo", "reader_combo",
+SELECTORS = ("mode_combo", "scope_combo", "provider_combo",
              "checks_combo", "method_combo")
 
 
