@@ -152,21 +152,46 @@ class FindingDelegate(QStyledItemDelegate):
         painter.restore()
 
 
+#: The three situations that produce no rows, as a mark and an ink. Drawn
+#: rather than only written, because the difference between them is the
+#: whole point: "nothing found" and "nothing was read" are opposite pieces
+#: of news, and two grey paragraphs of the same weight hide that.
+TONE_IDLE, TONE_CLEAN, TONE_PROBLEM = "idle", "clean", "problem"
+
+_TONE_MARK = {TONE_IDLE: "\u25ce", TONE_CLEAN: "\u2713", TONE_PROBLEM: "!"}
+_TONE_INK = {
+    TONE_IDLE: "text_subtle",
+    TONE_CLEAN: "success_text",
+    TONE_PROBLEM: "amber_text",
+}
+
+
 class EmptyState(QWidget):
-    """A heading, an explanation and (optionally) a list of specifics.
+    """A mark, a heading, an explanation, and what to do next.
 
     Used for the three "nothing to show" situations, which need to look
     different from each other: nothing scanned yet, scanned and clean, and
-    scanned but the crawler got no text — the last one being the case that
+    scanned but the crawler got no text - the last one being the case that
     actually needs explaining.
+
+    The actions are the part that took longest to arrive (artboard 3i). A
+    state that explains and stops leaves the reader holding a diagnosis and
+    no way to act on it: "the markup is drawn by JavaScript" is only useful
+    next to the button that re-reads the page in a browser. So each state
+    carries the move that follows from it, and only moves that are real -
+    a button offering something this run cannot do is worse than no button.
     """
 
-    def __init__(self, parent=None):
+    def __init__(self, palette=None, parent=None):
         super().__init__(parent)
+        self.palette_ = palette
         self.setProperty("class", theme.CLASS_CARD)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(8)
+
+        self.mark = QLabel()
+        self.mark.setVisible(False)
 
         self.title = QLabel()
         self.title.setProperty("class", theme.CLASS_HEADING)
@@ -178,14 +203,64 @@ class EmptyState(QWidget):
         self.body.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
         self.body.setOpenExternalLinks(False)
 
+        self.actions = QWidget()
+        # Wrapping, not a row: this pane narrows with the window, and a
+        # `QHBoxLayout` would answer that by putting a floor under the
+        # column rather than by using a second line.
+        self.actions_layout = FlowLayout(self.actions, margin=0, spacing=6)
+
+        layout.addWidget(self.mark)
         layout.addWidget(self.title)
         layout.addWidget(self.body)
+        layout.addWidget(self.actions)
         layout.addStretch(1)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
-    def show_message(self, title: str, body: str) -> None:
+    def show_message(self, title: str, body: str, tone: str = "",
+                     actions=()) -> None:
+        """`actions` is a sequence of `(label, callback)`, left to right."""
         self.title.setText(title)
         self.body.setText(body)
+        self._set_tone(tone)
+        self._set_actions(actions)
+
+    def _set_tone(self, tone: str) -> None:
+        self.tone = tone
+        mark = _TONE_MARK.get(tone, "")
+        self.mark.setText(mark)
+        self.mark.setVisible(bool(mark))
+        self._paint_mark()
+
+    def _paint_mark(self) -> None:
+        if self.palette_ is None or not self.mark.text():
+            return
+        ink = getattr(self.palette_, _TONE_INK.get(getattr(self, "tone", ""), ""),
+                      self.palette_.text_subtle)
+        self.mark.setStyleSheet(f"color: {ink}; font-size: 22px;")
+
+    def _set_actions(self, actions) -> None:
+        while self.actions_layout.count():
+            item = self.actions_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                # Unparented *before* `deleteLater`, which only schedules the
+                # deletion: until the event loop gets round to it the widget
+                # is still a visible child at its old geometry, so the
+                # previous state's buttons stay on screen underneath the
+                # current state's. The layout's count says one; the window
+                # shows two.
+                widget.setParent(None)
+                widget.deleteLater()
+        for label, callback in actions:
+            from PySide6.QtWidgets import QPushButton
+            button = QPushButton(label)
+            button.clicked.connect(callback)
+            self.actions_layout.addWidget(button)
+        self.actions.setVisible(bool(actions))
+
+    def apply_palette(self, palette) -> None:
+        self.palette_ = palette
+        self._paint_mark()
 
 
 def card(widget: QWidget) -> QWidget:

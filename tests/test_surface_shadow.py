@@ -198,9 +198,13 @@ class RenderedWindow:
         """The failure this class exists for: the columns rendered in the
         canvas colour, so the window read as one flat sheet with lines drawn
         on it."""
+        # Below everything the empty state draws. It grew a mark and two
+        # buttons (artboard 3i), and y=300 landed on one of them - a test
+        # that samples wherever content happens not to be is a test that
+        # breaks whenever the content is right.
         for x in (700, 1100):
             with self.subTest(column_at=x):
-                self.assertEqual(self.pixel(x, 300), self.palette.bg)
+                self.assertEqual(self.pixel(x, 500), self.palette.bg)
 
     def test_a_panel_head_is_the_level_between(self):
         self.assertEqual(self.pixel(700, 90), self.palette.bg_muted)

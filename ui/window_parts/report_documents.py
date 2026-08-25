@@ -291,6 +291,10 @@ class RunDocumentsPanel(QWidget):
             item = self.timings_layout.takeAt(0)
             widget = item.widget()
             if widget is not None:
+                # Unparented before deleting: `deleteLater` only schedules
+                # it, and until then the previous run's rows are still
+                # visible children at their old geometry.
+                widget.setParent(None)
                 widget.deleteLater()
         self._timing_widgets = []
         stages = [(label, seconds) for label, seconds in stages

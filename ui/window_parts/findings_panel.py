@@ -18,7 +18,10 @@ from repo_scanner import SCOPE_BOTH
 from ui import theme
 from ui.code_preview import highlight_range
 from ui.site_preview import build_highlight_js
-from ui.widgets import ROW_ROLE, RowData, diagnostics_message, muted
+from ui.widgets import (
+    ROW_ROLE, TONE_CLEAN, TONE_IDLE, TONE_PROBLEM, RowData,
+    diagnostics_message, muted,
+)
 from ui.worker import SingleBlockWorker, SingleRewriteWorker
 from ui.window_parts.shared import MODE_AUDIT, MODE_REPO, MODE_WEB, _SUPPRESSED_NOTE
 
@@ -163,16 +166,21 @@ class FindingsPanelMixin:
         answers. "Nothing scanned yet" is an instruction. "Scanned, nothing
         flagged" is a result, and has to say plainly that it is not proof of
         anything. "Scanned but the crawler got no text" is the one that is
-        actually a problem, and it is the reason `PageDiagnostics` exists —
+        actually a problem, and it is the reason `PageDiagnostics` exists -
         without it, a JavaScript-rendered site is indistinguishable from a
         clean one.
+
+        Each of the three now carries the move that follows from it
+        (artboard 3i). A diagnosis with no way to act on it is half an
+        answer: "the markup is drawn by JavaScript" is only useful beside
+        the button that re-reads the page in a browser.
         """
         self.results_stack.setCurrentIndex(1)
         if not self.result:
             self.empty_state.show_message(
                 t("empty_no_scan_title", self.lang),
                 t("empty_no_scan_body", self.lang),
-            )
+                tone=TONE_IDLE, actions=self._idle_actions())
             return
 
         blocks = len(self.result.blocks())
@@ -185,20 +193,107 @@ class FindingsPanelMixin:
             # this pane is what a reader is looking at when they conclude the
             # repository is fine.
             body += self._truncation_notice()
-            self.empty_state.show_message(t("empty_clean_title", self.lang), body)
+            self.empty_state.show_message(t("empty_clean_title", self.lang), body,
+                                          tone=TONE_CLEAN,
+                                          actions=self._clean_actions())
             return
 
         if isinstance(self.result, RepoAnalysisResult):
             self.empty_state.show_message(
                 t("empty_repo_no_text_title", self.lang),
                 t("empty_repo_no_text_body", self.lang, files=len(self.result.files)),
-            )
+                tone=TONE_PROBLEM)
             return
 
         self.empty_state.show_message(
-            t("empty_no_text_title", self.lang),
-            self._crawl_diagnosis(),
-        )
+            t("empty_no_text_title", self.lang), self._crawl_diagnosis(),
+            tone=TONE_PROBLEM, actions=self._no_text_actions())
+
+    # -- what to do next, per empty state --------------------------------
+    #
+    # Only offered when the move is real. A button that leads to a control
+    # this run cannot use is worse than no button: it promises a way out and
+    # then refuses, which is how someone concludes the tool is broken rather
+    # than that the option does not apply.
+
+    def _idle_actions(self) -> list:
+        return [(t("empty_action_target", self.lang), self._focus_target),
+                (t("empty_action_runs", self.lang), self._on_runs_clicked)]
+
+    def _clean_actions(self) -> list:
+        from analysis_modes import METHOD_AI
+
+        actions = []
+        # Asked of the control, not of `_ai_available()`. The account check
+        # is asynchronous, so it can answer "yes" while the method selector
+        # was filled before it came back and has no AI entry to select -
+        # which would put a button on screen that quietly does nothing.
+        if self._ai_choice_index() >= 0 and METHOD_AI not in self._chosen_methods():
+            # The local pass found nothing; a model reading the same text is
+            # the one remaining question, and it is the question this state
+            # is most often the prompt for.
+            actions.append((t("empty_action_ai", self.lang), self._rerun_with_ai))
+        actions.append((t("empty_action_report", self.lang),
+                        self._on_styled_report_clicked))
+        return actions
+
+    def _ai_choice_index(self) -> int:
+        """Where "with the AI pass" sits in the method selector, or -1."""
+        from analysis_modes import METHOD_AI, METHOD_LOCAL
+
+        for values in ((METHOD_LOCAL, METHOD_AI), (METHOD_AI,)):
+            index = self.method_combo.findData(self.choice_key(values))
+            if index >= 0:
+                return index
+        return -1
+
+    def _no_text_actions(self) -> list:
+        """Deliberately not "re-read in a browser", which artboard 3i draws.
+
+        The mockup assumes the reader is a choice. In this build it is not:
+        `ui.mode_rules.auto_readers` reads every site both ways, HTTP fetch
+        and browser render, because the difference between them is itself a
+        finding. So the browser pass has already run by the time this state
+        is on screen, and a button offering it would re-run the pass that
+        just produced nothing.
+
+        What is left is real: the diagnosis says the page is 41KB of markup
+        with 0.4% text, and the move that follows is to go and look at it.
+        """
+        if not self._target_url():
+            return []
+        return [(t("empty_action_open_page", self.lang), self._open_target_page)]
+
+    def _target_url(self) -> str:
+        from analysis_modes import SOURCE_SITE
+
+        if self.source != SOURCE_SITE:
+            return ""
+        url = (self.url_edit.text() or "").strip()
+        return url if url.startswith(("http://", "https://")) else ""
+
+    def _open_target_page(self) -> None:
+        from PySide6.QtGui import QDesktopServices
+
+        url = self._target_url()
+        if url:
+            QDesktopServices.openUrl(QUrl(url))
+
+    def _focus_target(self) -> None:
+        """Put the cursor where the answer goes, rather than only saying so."""
+        from analysis_modes import SOURCE_REPO
+
+        widget = (self.repo_path_edit if self.source == SOURCE_REPO
+                  else self.url_edit)
+        widget.setFocus()
+        widget.selectAll()
+
+    def _rerun_with_ai(self) -> None:
+        index = self._ai_choice_index()
+        if index < 0:
+            return
+        self.method_combo.setCurrentIndex(index)
+        self._on_analyze_clicked()
 
     def _truncation_notice(self) -> str:
         """The sentence a partial walk owes the reader, or "" when it read

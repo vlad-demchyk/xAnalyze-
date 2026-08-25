@@ -348,6 +348,24 @@ _STRINGS: dict[str, dict[str, str]] = {
     # says which are there, so the strings that explain an absent one carry
     # the reason rather than the fact - "not written" is the part the reader
     # can already see.
+    # What to do next, per empty state (artboard 3i). Verbs, because each
+    # one is the move that follows from the sentence above it.
+    "empty_action_target": {
+        "uk": "Обрати ціль", "it": "Scegli un obiettivo", "en": "Choose a target",
+    },
+    "empty_action_runs": {
+        "uk": "Минулий прогін", "it": "Esecuzione precedente", "en": "A past run",
+    },
+    "empty_action_ai": {
+        "uk": "Додати AI-прохід", "it": "Aggiungi il passaggio AI",
+        "en": "Add the AI pass",
+    },
+    "empty_action_report": {
+        "uk": "Зберегти звіт", "it": "Salva il report", "en": "Save the report",
+    },
+    "empty_action_open_page": {
+        "uk": "Відкрити сторінку", "it": "Apri la pagina", "en": "Open the page",
+    },
     "documents_title": {
         "uk": "Документи прогону", "it": "Documenti dell'esecuzione",
         "en": "Run documents",

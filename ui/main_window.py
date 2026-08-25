@@ -1104,9 +1104,13 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         # preview that is always desktop-shaped. These buttons constrain the
         # preview itself, so the reader sees the layout the finding came from.
         self.breakpoint_row = QWidget()
-        breakpoint_layout = QHBoxLayout(self.breakpoint_row)
-        breakpoint_layout.setContentsMargins(0, 0, 0, 6)
-        breakpoint_layout.setSpacing(self.palette_tokens.space_sm)
+        # Wrapping, for the third time and the same reason: a `QHBoxLayout`
+        # hands its parent the sum of its children's minimums, so three
+        # buttons here were a 278px floor under the preview column and
+        # therefore under the whole window - which left five pixels of slack
+        # under the narrowest breakpoint the window is required to reach.
+        breakpoint_layout = FlowLayout(self.breakpoint_row, margin=0,
+                                       spacing=self.palette_tokens.space_sm)
         self.breakpoint_buttons = {}
         #: Which width the preview is pinned to, or None for the full column.
         self._preview_width_name = None
@@ -1117,7 +1121,6 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
                 lambda _checked=False, chosen=name: self._on_breakpoint_clicked(chosen))
             breakpoint_layout.addWidget(button)
             self.breakpoint_buttons[name] = (button, width)
-        breakpoint_layout.addStretch(1)
         col1_layout.addWidget(self.breakpoint_row)
 
         col1_layout.addWidget(self.col1_stack, stretch=1)
@@ -1136,7 +1139,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         # An empty findings list is ambiguous — clean, not-yet-scanned and
         # "the crawler got nothing" all look identical as a blank list — so
         # the list is one page of a stack and an explanation is the other.
-        self.empty_state = EmptyState()
+        self.empty_state = EmptyState(self.palette_tokens)
         self.results_stack = QStackedWidget()
         self.results_stack.addWidget(self.flagged_list)   # index 0
         self.results_stack.addWidget(self.empty_state)    # index 1
@@ -1417,6 +1420,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         mono = self.code_view.font()
         mono.setFamily(palette.font_mono)
         self.code_view.setFont(mono)
+        self.empty_state.apply_palette(palette)
         for widget in (self.toolbar, self.empty_state):
             restyle(widget)
         self.flagged_list.viewport().update()

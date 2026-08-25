@@ -175,6 +175,10 @@ class RunProgressPanel(QWidget):
             item = self.stages_layout.takeAt(0)
             widget = item.widget()
             if widget is not None:
+                # Unparented before deleting: `deleteLater` only schedules
+                # it, so the previous run's stage rows would otherwise stay
+                # on screen under the new ones.
+                widget.setParent(None)
                 widget.deleteLater()
         self._rows = {}
         for key, label in stages:
