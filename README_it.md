@@ -33,6 +33,8 @@ Desktop e headless analyzer: rilevamento di testi generati da AI, caratteri non 
   - [Best practice](#best-practice)
   - [Passaggio browser](#passaggio-browser)
 - [Detector](#detector)
+- [Provenienza dei media](#provenienza-dei-media)
+- [Fatti del repository](#fatti-del-repository)
 - [Report](#report)
 - [Per agenti AI](#per-agenti-ai)
 - [GUI](#gui)
@@ -51,6 +53,9 @@ Desktop e headless analyzer: rilevamento di testi generati da AI, caratteri non 
 - **Audit accessibilità** — regole WCAG, SEO, performance, best practice (52 regole)
 - **Scansione completa** — pattern AI + accessibilità in un comando con rendering browser automatico
 - **Rilevamento server di sviluppo** — `fullscan --devserver` avvia il server Node/Django/Rails del repo e scansiona il rendering, opzionale ovunque (CLI/TUI/GUI) perché uno potrebbe già essere in esecuzione
+- **Provenienza dei media** — legge cosa un'immagine dichiara sulla propria creazione: campi IPTC/XMP, blocco del prompt del generatore e il manifesto C2PA firmato quando un lettore è installato. È una dichiarazione del file su se stesso, mai un verdetto sui suoi pixel
+- **Fatti del repository** — cosa il repository rivela di sé: commit che nominano un assistente come autore, configurazione degli assistenti versionata e un `.env` che nessuna regola di esclusione copre
+- **Blame su una segnalazione** — ogni segnalazione può nominare il commit che ha toccato per ultimo la sua riga, così "chi ha scritto questo" è un dato registrato e non una supposizione
 - **Report stilizzati** — PDF/HTML brandizzati per persone
 - **Briefing per agenti** — markdown/JSON per coding agent
 - **CLI + GUI + TUI** — un binario, tre interfacce
@@ -995,6 +1000,81 @@ Una scoperta vista a più larghezze diventa una riga che registra dove è stata 
 
 ---
 
+## Provenienza dei media
+
+Le immagini vengono lette per ciò che dichiarano sulla propria creazione.
+Questo **non** è un rilevatore di immagini generate, e la distinzione è tutto:
+non esiste un modo onesto di guardare i pixel e dire che li ha disegnati un
+modello. Ciò che esiste è l'insieme di campi che i generatori scrivono da sé
+dentro al file.
+
+| Segnalazione | Cosa significa |
+|---|---|
+| `bp-ai-media-declared` | Il file dichiara di essere stato prodotto da un modello: `digitalSourceType: trainedAlgorithmicMedia`, oppure un blocco di prompt che solo uno stack di generazione locale scrive |
+| `bp-ai-media-tool` | Il nome di un generatore in un campo strumento. Più debole: un'immagine soltanto **modificata** nell'app di un generatore porta la stessa stringa |
+| `bp-ai-media-signed` | Un manifesto C2PA è presente ma non verificato: o non è installato alcun lettore, o il manifesto non ha superato la validazione. Il motivo viene stampato accanto alla segnalazione |
+
+**L'assenza di tutti i campi qui sopra non significa nulla.** Uno screenshot,
+un nuovo salvataggio o un caricamento attraverso la maggior parte delle
+piattaforme li elimina tutti. Un'immagine silenziosa non è un verdetto che
+l'abbia fatta una persona.
+
+### Content Credentials (C2PA)
+
+Un manifesto firmato è la provenienza più forte che esista, quindi viene
+segnalato che si riesca o meno a leggerlo: passarci accanto in silenzio
+mostrerebbe un file che documenta se stesso come un file che non lo fa.
+
+Per leggerlo servono due pacchetti opzionali, entrambi con una componente
+nativa:
+
+```bash
+pip install c2pa-python cryptography
+```
+
+Senza di essi la segnalazione lo dice, invece di fingere che il file taccia.
+**I bundle scaricabili non contengono il lettore**: un'app congelata non ha
+pip, quindi un `.app` o un tarball CLI riporta le Content Credentials come
+presenti e non lette. Se serve il manifesto stesso, esegui dal sorgente.
+
+Quando il manifesto viene letto, tre esiti restano distinti, perché sono tre
+affermazioni diverse:
+
+- **Il file dichiara contenuto prodotto da un modello** -
+  `trainedAlgorithmicMedia`, cercato sia in cima al payload di un'asserzione
+  sia **dentro ogni** voce `c2pa.actions`, che è dove lo scrive un generatore
+  che firma il proprio output.
+- **Il manifesto non regge** - i byte non corrispondono più a quanto è stato
+  firmato (`assertion.*`, `claimSignature.*`). Riportato come non verificato
+  con il codice, mai come dichiarazione: la firma è tutto il valore di C2PA.
+- **Il firmatario non è in una lista di fiducia di questa build**
+  (`signingCredential.untrusted`) - è un'affermazione sulla build, non sul
+  file, quindi non ritira la dichiarazione del file.
+
+---
+
+## Fatti del repository
+
+Una scansione del repository legge anche ciò che il repository dice di **sé**,
+che è una domanda diversa da cosa fanno le sue pagine. Qui non si giudica
+nulla: ogni voce è un fatto presente oppure assente.
+
+| Segnalazione | Gravità | Cosa legge |
+|---|---|---|
+| `sec-env-tracked` | Critical | Un `.env` già tracciato da git: credenziali **pubblicate**, da ruotare e non da cancellare |
+| `sec-env-not-ignored` | Serious | Un `.env` che nessuna regola di esclusione copre: credenziali in attesa del prossimo `git add .` |
+| `bp-assistant-commits` | Minor | Commit il cui messaggio nomina un assistente come autore |
+| `bp-assistant-artifacts` | Minor | Configurazione degli assistenti versionata: `CLAUDE.md`, `.cursor/`, istruzioni Copilot |
+| `bp-assistant-touched` | Minor | Segnalazioni su righe toccate per ultime da un commit scritto da un assistente |
+
+Scrivere codice con un assistente non è un difetto, e questi risultati sono
+riportati come provenienza, non come problemi. Una cartella che non è un
+repository git non produce **alcuna** segnalazione sui commit: "nessun commit
+di assistenti trovato" e "non c'è storia da guardare" sono affermazioni
+opposte, e solo una delle due è vera.
+
+---
+
 ## Report
 
 ### Un problema, per quante pagine lo portino
@@ -1510,10 +1590,13 @@ rm -rf ~/.xanalyze
 
 ## Requisiti
 
-- Python 3.9+
+- Python 3.14+ - sulle versioni precedenti il lettore C2PA non si installa:
+  `c2pa-python` dichiara `Requires-Python >=3.7` e poi usa sintassi che
+  richiede 3.10+, quindi pip installa una versione che fallisce all'import
 - PySide6 (per GUI)
 - sentence-transformers (per detector embedding)
 - QtWebEngine (per passaggio browser)
+- `c2pa-python` e `cryptography` - opzionali, per leggere un manifesto firmato
 
 ---
 

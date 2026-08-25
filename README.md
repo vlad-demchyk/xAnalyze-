@@ -39,6 +39,8 @@ Desktop and headless analyzer: AI-generated text detection, non-keyboard charact
   - [Best Practices](#best-practices)
   - [Browser Pass](#browser-pass)
 - [Detectors](#detectors)
+- [Media Provenance](#media-provenance)
+- [Repository Facts](#repository-facts)
 - [Reports](#reports)
 - [For AI Agents](#for-ai-agents)
   - [How Users Ask](#how-users-ask)
@@ -61,6 +63,9 @@ Desktop and headless analyzer: AI-generated text detection, non-keyboard charact
 - **Accessibility Audit** — WCAG rules, SEO, performance, best practices (52 rules)
 - **Full Scan** — combined AI patterns + accessibility in one command with automatic browser rendering
 - **Dev Server Detection** — `fullscan --devserver` starts a repo's own Node/Django/Rails dev server and scans the render, opt-in everywhere (CLI/TUI/GUI) since one may already be running
+- **Media Provenance** — reads what an image says about how it was made: IPTC/XMP fields, generator prompt blocks, and a signed C2PA manifest when a reader is installed. A statement the file makes about itself, never a verdict on its pixels
+- **Repository Facts** — what the repo reveals about itself: commits naming an assistant as author, committed assistant configuration, and a `.env` no ignore rule covers
+- **Blame on a Finding** — each finding can name the commit that last touched its line, so "who wrote this" is a record rather than a guess
 - **Styled Reports** — branded PDF/HTML for humans
 - **Agent Briefings** — markdown/JSON for coding agents
 - **CLI + GUI + TUI** — one binary, three interfaces
@@ -1076,6 +1081,76 @@ A finding seen at multiple widths becomes one row recording where it was seen. A
 
 ---
 
+## Media Provenance
+
+Images are read for what they say about their own making. This is not an
+AI-image detector, and the distinction is the whole point: there is no honest
+way to look at pixels and say a model drew them. What there is, is a set of
+fields generators write into the file themselves.
+
+| Finding | What it means |
+|---|---|
+| `bp-ai-media-declared` | The file states a model made it — `digitalSourceType: trainedAlgorithmicMedia`, or a prompt block only a local generation stack writes |
+| `bp-ai-media-tool` | A generator's name in a tool field. Weaker: an image merely *edited* in a generator's app carries the same string |
+| `bp-ai-media-signed` | A C2PA manifest is present but not verified — either no reader is installed, or the manifest failed validation. The reason is printed with the finding |
+
+**The absence of every field above means nothing at all.** A screenshot, a
+re-save, or an upload through most platforms strips all of them. A quiet
+image is not a verdict that a person made it.
+
+### Content Credentials (C2PA)
+
+A signed manifest is the strongest provenance there is, so it is reported
+whether or not it can be read: passing over one silently would show a file
+that documents itself as a file that does not.
+
+Reading one needs two optional packages, which carry a native component:
+
+```bash
+pip install c2pa-python cryptography
+```
+
+Without them the finding says so, in those words, instead of pretending the
+file is quiet. **The downloadable bundles do not carry the reader**: a frozen
+app has no pip, so a `.app` or a CLI tarball reports Content Credentials as
+present-and-unread. Run from source if you need the manifest itself.
+
+When the manifest is read, three outcomes are kept apart, because they are
+three different statements:
+
+- **The file declares model-made content** — `trainedAlgorithmicMedia`, read
+  both at the top of an assertion payload and inside each `c2pa.actions`
+  entry, which is where a generator signing its own output writes it.
+- **The manifest does not hold** — the bytes no longer match what was signed
+  (`assertion.*`, `claimSignature.*`). Reported as unverified with the code,
+  never as a declaration: the signature is the entire value of C2PA.
+- **The signer is not on a trust list this build carries**
+  (`signingCredential.untrusted`) — a statement about the build, not about
+  the file, so it does not withdraw the file's claim.
+
+---
+
+## Repository Facts
+
+A repository scan also reads what the repository says about *itself*, which
+is a different question from what its pages do. Nothing here is judged; each
+is a fact that is either present or absent.
+
+| Finding | Severity | What it reads |
+|---|---|---|
+| `sec-env-tracked` | Critical | A `.env` that is already tracked by git — a credential that has been published and needs rotating, not deleting |
+| `sec-env-not-ignored` | Serious | A `.env` no ignore rule covers — a credential waiting for the next `git add .` |
+| `bp-assistant-commits` | Minor | Commits whose message names an assistant as author |
+| `bp-assistant-artifacts` | Minor | Committed assistant configuration: `CLAUDE.md`, `.cursor/`, Copilot instructions |
+| `bp-assistant-touched` | Minor | Findings sitting on lines an assistant-authored commit last touched |
+
+Writing code with an assistant is not a defect, and these are reported as
+provenance rather than as problems. A folder that is not a git repository
+produces no commit findings at all: "no assistant commits found" and "no
+history to look at" are opposite statements, and only one of them is true.
+
+---
+
 ## Reports
 
 ### One problem, however many pages carry it
@@ -1699,10 +1774,13 @@ rm -rf ~/.xanalyze
 
 ## Requirements
 
-- Python 3.9+
+- Python 3.14+ — earlier versions cannot install the C2PA reader: `c2pa-python`
+  declares `Requires-Python >=3.7` and then uses syntax that needs 3.10+, so pip
+  installs a version that fails at import
 - PySide6 (for GUI)
 - sentence-transformers (for embedding detector)
 - QtWebEngine (for browser pass)
+- `c2pa-python` and `cryptography` — optional, for reading a signed manifest
 
 ---
 
