@@ -126,7 +126,15 @@
   --surface-shadow-y: 2px;
 
   --sev-critical: #d97a72;
-  --sev-high: #d9976a;
+  /* Nudged from #d9976a: identical to --sev-critical once a 256-colour
+     terminal quantizes both to its nearest cube entry (215,135,95) - the
+     TUI's whole reason for a four-step ramp collapsed back into three
+     wherever it actually ships. The truecolor difference is a hair (the
+     blue channel moves from 0x6a to 0x74) so the desktop window is
+     unaffected; see tests/test_textual_theme.py, which downgrades the ramp
+     the way Rich - and so Textual - actually renders it and would have
+     caught this before it shipped. */
+  --sev-high: #d89874;
   --sev-medium: #cfae66;
   --sev-none: #5f5a53;
 

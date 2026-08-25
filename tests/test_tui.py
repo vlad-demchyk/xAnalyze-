@@ -293,6 +293,41 @@ class ResultsScreenShowsTheResult(unittest.TestCase):
 
         self.assertIn("Not there", open_in_os("/tmp/definitely-not-here-42"))
 
+    def test_severity_rows_get_four_different_colours_not_one(self):
+        """Before this, "critical" and "minor" were the table's default
+        foreground - the same colour a run with no findings at all used for
+        "target". The severity ramp existing in the palette does nothing for
+        anyone if the one screen that lists severities by name never reads
+        it."""
+        from tui.screens.results import ResultsScreen
+
+        result = RunResult(
+            0,
+            json.dumps({"counts": {"critical": 3, "serious": 8,
+                                    "moderate": 15, "minor": 14}}),
+            "",
+        )
+
+        async def body():
+            app = XAnalyzeApp()
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                app.push_screen(ResultsScreen("Scan of x", result))
+                await pilot.pause()
+                table = app.screen.query_one("#results-summary", DataTable)
+                styles = {}
+                for row_key, _ in table.rows.items():
+                    cell = table.get_cell(row_key, table.ordered_columns[0].key)
+                    label = str(cell)
+                    if label in ("critical", "serious", "moderate", "minor"):
+                        styles[label] = cell.style
+                return styles
+
+        styles = run(body())
+        self.assertEqual(set(styles), {"critical", "serious", "moderate", "minor"})
+        self.assertEqual(len(set(styles.values())), 4,
+                         f"expected four distinct colours, got {styles}")
+
 
 class ReportsScreenReacts(unittest.TestCase):
     """Defect 4: clicking a row did nothing."""
@@ -669,6 +704,100 @@ class DevServerConfirm(unittest.TestCase):
 
         captured = run(body())
         self.assertEqual(len(captured), 1)
+
+
+async def _selector_widths_in_sentence(menu_key: str):
+    """`([(select_id, width), ...], row_width)` for the `.sentence` row on
+    the screen `menu_key` opens from the main menu.
+
+    Textual's `query()` result is a `DOMQuery`, which walks the live DOM the
+    first time something reads `.nodes` and caches that - it does not hold a
+    snapshot taken at query time. Returning the `DOMQuery` itself out of
+    `run_test()`'s `async with` block, the way an early version of this test
+    did, defers that first read to *after* the app has torn down and its
+    widgets are unmounted, so the query silently finds nothing and every
+    assertion in a `for select in (that empty query)` loop never runs - a
+    test that always passes without ever having tested anything. Reading the
+    widths here, while the app is still mounted, and returning plain tuples
+    is what makes the caller's assertions real.
+    """
+    app = XAnalyzeApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press(menu_key)
+        await pilot.pause()
+        sentence = app.screen.query_one(".sentence")
+        widths = [(select.id, select.size.width)
+                  for select in sentence.query(Select)]
+        return widths, sentence.size.width
+
+
+class FullscanReadsAsASentence(unittest.TestCase):
+    """The redesign's toolbar (artboard 3a) reads "analyze Site · depth 2"
+    instead of a form of labelled dropdowns. FullscanScreen's language/
+    depth/breakpoints selectors moved into one such sentence; this pins the
+    part that actually matters - that they are still the same three
+    controls under the same three ids, so nothing about running a scan
+    changed underneath the new layout."""
+
+    def test_the_three_selectors_still_answer_to_their_old_ids(self):
+        async def body():
+            app = XAnalyzeApp()
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                await pilot.press("3")
+                await pilot.pause()
+                screen = app.screen
+                return (
+                    screen.query_one("#language", Select).value,
+                    screen.query_one("#depth", Select).value,
+                    screen.query_one("#breakpoints", Select).value,
+                )
+
+        language, depth, breakpoints = run(body())
+        self.assertEqual(language, "")
+        self.assertEqual(depth, "1")
+        self.assertEqual(breakpoints, "desktop")
+
+    def test_the_selectors_size_to_their_value_not_to_the_full_row(self):
+        """Regression for a real defect found while building this screen:
+        `SelectCurrent`'s own default CSS is `width: 1fr`, so without an
+        explicit override each selector claimed the sentence's entire
+        width and pushed everything after the first one off screen -
+        `debug`-rendering the screen showed only the word "language" and
+        nothing else in the row."""
+        widths, row_width = run(_selector_widths_in_sentence("3"))
+        self.assertTrue(widths, "no Select found in the sentence row at all")
+        for select_id, width in widths:
+            self.assertLess(
+                width, row_width // 2,
+                f"#{select_id} claimed {width} of a {row_width}-wide row")
+
+
+class TheOtherFormsBecameSentencesToo(unittest.TestCase):
+    """Scan (detector/scope) and Audit (language/depth/breakpoints) got the
+    same treatment as Fullscan, for the same reason: one inline sentence
+    instead of a stack of labelled dropdowns. This is the width regression
+    from `FullscanReadsAsASentence` run against the other two screens,
+    because the defect it guards against (`SelectCurrent`'s `width: 1fr`
+    swallowing the row) is a property of the shared `.sentence` CSS, not of
+    any one screen, and a screen added after this file was last read would
+    hit it the same way if that CSS regressed.
+    """
+
+    def _selectors_fit_their_row(self, menu_key):
+        widths, row_width = run(_selector_widths_in_sentence(menu_key))
+        self.assertTrue(widths, "no Select found in the sentence row at all")
+        for select_id, width in widths:
+            self.assertLess(
+                width, row_width // 2,
+                f"#{select_id} claimed {width} of a {row_width}-wide row")
+
+    def test_scan_screen_detector_and_scope_fit_their_row(self):
+        self._selectors_fit_their_row("1")
+
+    def test_audit_screen_language_depth_and_breakpoints_fit_their_row(self):
+        self._selectors_fit_their_row("2")
 
 
 if __name__ == "__main__":
