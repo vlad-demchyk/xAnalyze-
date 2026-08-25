@@ -321,14 +321,16 @@ def read_manifest(data: bytes):
     entire value of C2PA; reading the payload without checking it would
     throw away the only thing that makes it worth more than an EXIF field.
 
-    **Partly unverified, and here is exactly which part.** The library
-    imports and runs on this project's Python now (it could not on 3.9; see
-    `_c2pa_module`), and `_from_manifest` below is tested against manifests
-    of both shapes the format defines. What has *not* been checked against a
-    real file is this function's own plumbing - producing one needs a
-    certificate meeting C2PA's signing profile, which a self-signed test
-    certificate does not satisfy, so no signed sample was available to read
-    back. It fails into "unverified" rather than loudly, because the caller
+    **Checked against a real signed file, and that is how the hole was
+    found.** Until it was, this plumbing had never once run, and it did not
+    work: the reader was entered as a context manager it does not implement,
+    so every signed file on earth came back as "carries a manifest this
+    build cannot read". The sample is produced in
+    `tests/test_media_provenance.sign_a_jpeg`; the earlier blocker - that a
+    self-signed certificate does not meet C2PA's signing profile - is real,
+    and a two-certificate chain from a local test CA is the way past it.
+
+    It still fails into "unverified" rather than loudly, because the caller
     already has a correct answer without it.
     """
     module = _c2pa_module()
@@ -341,11 +343,37 @@ def read_manifest(data: bytes):
         import io
         import json
 
-        with reader("image/jpeg", io.BytesIO(data)) as opened:
+        opened = reader(_mime_of(data), io.BytesIO(data))
+        try:
             manifest = json.loads(opened.json())
+        finally:
+            close = getattr(opened, "close", None)
+            if callable(close):
+                close()
     except Exception:  # noqa: BLE001 - an unreadable manifest is unverified
         return None
     return _from_manifest(manifest)
+
+
+#: The magic bytes each container starts with. The reader is told which
+#: format it is holding, and telling it "image/jpeg" for a PNG is telling
+#: it something false.
+_MAGIC = (
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"GIF8", "image/gif"),
+)
+
+
+def _mime_of(data: bytes) -> str:
+    for magic, mime in _MAGIC:
+        if data.startswith(magic):
+            return mime
+    if data[4:12] in (b"ftypavif", b"ftypheic", b"ftypmif1"):
+        return "image/avif" if data[8:12] == b"avif" else "image/heic"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return "image/jpeg"
 
 
 def _from_manifest(manifest: dict):
@@ -358,6 +386,18 @@ def _from_manifest(manifest: dict):
     active = (manifest or {}).get("active_manifest")
     manifests = (manifest or {}).get("manifests") or {}
     entry = manifests.get(active) or {}
+
+    # The signature is the whole value of C2PA, so a manifest that does not
+    # hold is not a claim - it is a claim that failed. Reported as a
+    # manifest this build could not verify, with the code that says why:
+    # a file whose pixels no longer match what was signed used to come back
+    # as a verified declaration, which is the loudest thing this module can
+    # say and it was saying it about a broken file.
+    broken = _validation_failures(manifest)
+    if broken:
+        return Provenance(kind=SIGNED_UNVERIFIED, marker="container:c2pa",
+                          detail=_clip("manifest failed validation: "
+                                       + ", ".join(broken)))
     # Both spellings, because both are in the format rather than because
     # either is a guess: `claim_generator` is the flat string a v1 manifest
     # carries, `claim_generator_info` the list of `{name, version}` a v2 one
@@ -370,16 +410,64 @@ def _from_manifest(manifest: dict):
     for assertion in entry.get("assertions") or []:
         label = str(assertion.get("label", ""))
         payload = assertion.get("data") or {}
-        source = str(payload.get("digitalSourceType", ""))
-        if _TRAINED_ALGORITHMIC in source.lower().replace(" ", ""):
-            return Provenance(kind=DECLARED_AI, marker=f"c2pa:{label}",
-                              tool=_generator_in(tool) or tool.lower(),
-                              detail=_clip(f"{tool} · {source}"))
+        for source in _source_types_in(payload):
+            if _TRAINED_ALGORITHMIC in source.lower().replace(" ", ""):
+                return Provenance(kind=DECLARED_AI, marker=f"c2pa:{label}",
+                                  tool=_generator_in(tool) or tool.lower(),
+                                  detail=_clip(f"{tool} · {source}"))
     if tool:
         return Provenance(kind=GENERATOR_TOOL, marker="c2pa:claim_generator",
                           tool=_generator_in(tool) or tool.lower(),
                           detail=_clip(tool))
     return None
+
+
+#: Validation codes that mean the manifest itself does not hold: the bytes
+#: no longer match what was signed, or the signature does not verify.
+#: `signingCredential.untrusted` is deliberately not here - it means this
+#: build carries no trust list for the signer, which is a statement about
+#: us, not about the file.
+_FATAL_VALIDATION = ("assertion.", "claimSignature.", "signingCredential.invalid",
+                     "signingCredential.revoked", "signingCredential.expired",
+                     "timeStamp.mismatch")
+
+
+def _validation_failures(manifest: dict) -> list:
+    """The codes on which the active manifest failed to validate.
+
+    Two shapes, because readers report in two: `validation_results` groups
+    by manifest and by outcome, and older readers hand back a flat
+    `validation_status` list where every entry is a failure.
+    """
+    results = (manifest or {}).get("validation_results") or {}
+    entries = list(((results.get("activeManifest") or {}).get("failure")) or [])
+    entries += list((manifest or {}).get("validation_status") or [])
+    codes = []
+    for entry in entries:
+        code = str((entry or {}).get("code", ""))
+        if code.startswith(_FATAL_VALIDATION) and code not in codes:
+            codes.append(code)
+    return codes
+
+
+def _source_types_in(payload: dict) -> list:
+    """Every `digitalSourceType` an assertion payload carries.
+
+    Two places, because the format puts it in two: a
+    `stds.iptc.photo-metadata` assertion states it once at the top of the
+    payload, and `c2pa.actions` states it **per action**, which is where a
+    generator signing its own output actually writes it. Reading only the
+    top level was the difference between "a model made this file" and "some
+    tool touched it" on every real manifest.
+    """
+    found = []
+    top = payload.get("digitalSourceType")
+    if top:
+        found.append(str(top))
+    for action in payload.get("actions") or []:
+        if isinstance(action, dict) and action.get("digitalSourceType"):
+            found.append(str(action["digitalSourceType"]))
+    return found
 
 
 @dataclass

@@ -598,3 +598,186 @@ class TheSignedManifest(Temp):
             kind=media.SIGNED_UNVERIFIED, marker="container:c2pa",
             detail="no C2PA reader available (python 3.9)"))
         self.assertIn("no C2PA reader", render(issue, "en").found)
+
+
+# --------------------------------------------------------------- C2PA
+
+def _c2pa_available() -> bool:
+    """Both halves of the optional path: reading needs `c2pa`, and making a
+    file to read needs `cryptography` to issue the signing certificate."""
+    if media._c2pa_module() is None:
+        return False
+    try:
+        import cryptography  # noqa: F401
+    except Exception:  # noqa: BLE001
+        return False
+    return True
+
+
+def sign_a_jpeg(directory: Path) -> Path:
+    """A genuinely C2PA-signed JPEG, declaring itself model-made.
+
+    The plan recorded this step as blocked because a self-signed
+    certificate does not meet C2PA's signing profile. It does not - but a
+    two-certificate chain from a local test CA does: the profile wants a
+    leaf that is not itself a CA, carries `emailProtection` as its extended
+    key usage, and carries the subject and authority key identifiers - the
+    chain is rejected as "the certificate is invalid" without those last
+    two. Without a real signed file the plumbing in `read_manifest` had
+    never once run, and it turned out not to work.
+    """
+    import datetime
+    import c2pa
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from PIL import Image
+
+    now = datetime.datetime.now(datetime.UTC)
+    ca_key = ec.generate_private_key(ec.SECP256R1())
+    ca_name = x509.Name([x509.NameAttribute(x509.NameOID.COMMON_NAME, "Test CA"),
+                         x509.NameAttribute(x509.NameOID.ORGANIZATION_NAME, "XAnalyze")])
+    ca = (x509.CertificateBuilder().subject_name(ca_name).issuer_name(ca_name)
+          .public_key(ca_key.public_key()).serial_number(x509.random_serial_number())
+          .not_valid_before(now - datetime.timedelta(days=1))
+          .not_valid_after(now + datetime.timedelta(days=30))
+          .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+          .add_extension(x509.KeyUsage(True, False, False, False, False, True, True,
+                                       False, False), critical=True)
+          .add_extension(x509.SubjectKeyIdentifier.from_public_key(ca_key.public_key()),
+                         critical=False)
+          .sign(ca_key, hashes.SHA256()))
+    leaf_key = ec.generate_private_key(ec.SECP256R1())
+    leaf = (x509.CertificateBuilder()
+            .subject_name(x509.Name([
+                x509.NameAttribute(x509.NameOID.COMMON_NAME, "Test Signer"),
+                x509.NameAttribute(x509.NameOID.ORGANIZATION_NAME, "XAnalyze")]))
+            .issuer_name(ca_name).public_key(leaf_key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now - datetime.timedelta(days=1))
+            .not_valid_after(now + datetime.timedelta(days=29))
+            .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+            .add_extension(x509.KeyUsage(True, False, False, False, False, False, False,
+                                         False, False), critical=True)
+            .add_extension(x509.ExtendedKeyUsage([x509.ExtendedKeyUsageOID.EMAIL_PROTECTION]),
+                           critical=False)
+            .add_extension(x509.SubjectKeyIdentifier.from_public_key(leaf_key.public_key()),
+                           critical=False)
+            .add_extension(
+                x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()),
+                critical=False)
+            .sign(ca_key, hashes.SHA256()))
+    chain = (leaf.public_bytes(serialization.Encoding.PEM)
+             + ca.public_bytes(serialization.Encoding.PEM))
+
+    plain = directory / "plain.jpg"
+    Image.new("RGB", (48, 48), (30, 90, 160)).save(plain, "JPEG")
+    signer = c2pa.create_signer(
+        lambda payload: leaf_key.sign(payload, ec.ECDSA(hashes.SHA256())),
+        c2pa.SigningAlg.ES256, chain, None)
+    builder = c2pa.Builder({
+        "claim_generator_info": [{"name": "Imaginary Generator", "version": "1.0"}],
+        "assertions": [{"label": "c2pa.actions", "data": {"actions": [
+            {"action": "c2pa.created",
+             "digitalSourceType": TRAINED}]}}],
+    })
+    signed = directory / "signed.jpg"
+    with open(plain, "rb") as source, open(signed, "wb") as target:
+        builder.sign(signer, "image/jpeg", source, target)
+    return signed
+
+
+TRAINED = "http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia"
+
+
+class AManifestThisModuleParses(unittest.TestCase):
+    """What a manifest means, without a library in the room. The reader's
+    job is getting hold of one; deciding what it says is this module's."""
+
+    def manifest(self, assertions, validation=None) -> dict:
+        entry = {"claim_generator": "imaginary_generator/1.0",
+                 "assertions": assertions}
+        out = {"active_manifest": "urn:x", "manifests": {"urn:x": entry}}
+        if validation is not None:
+            out["validation_results"] = {"activeManifest": {"failure": validation}}
+        return out
+
+    def test_the_source_type_is_read_from_inside_an_action(self):
+        # Where a generator signing its own output actually writes it. Read
+        # only at the top of the payload, a real manifest came back as
+        # "some tool touched this" instead of "a model made this".
+        found = media._from_manifest(self.manifest(
+            [{"label": "c2pa.actions",
+              "data": {"actions": [{"action": "c2pa.created",
+                                    "digitalSourceType": TRAINED}]}}]))
+        self.assertEqual(found.kind, media.DECLARED_AI)
+
+    def test_the_source_type_is_still_read_at_the_top_of_a_payload(self):
+        found = media._from_manifest(self.manifest(
+            [{"label": "stds.iptc.photo-metadata",
+              "data": {"digitalSourceType": TRAINED}}]))
+        self.assertEqual(found.kind, media.DECLARED_AI)
+
+    def test_a_manifest_that_fails_validation_is_not_a_declaration(self):
+        # The signature is the whole value of C2PA. A file whose pixels no
+        # longer match what was signed must not get the loudest verdict
+        # this module can give.
+        found = media._from_manifest(self.manifest(
+            [{"label": "c2pa.actions",
+              "data": {"actions": [{"action": "c2pa.created",
+                                    "digitalSourceType": TRAINED}]}}],
+            validation=[{"code": "assertion.dataHash.mismatch"}]))
+        self.assertEqual(found.kind, media.SIGNED_UNVERIFIED)
+        self.assertIn("assertion.dataHash.mismatch", found.detail)
+
+    def test_an_untrusted_signer_is_not_a_failed_manifest(self):
+        # "We carry no trust list for this signer" is a statement about this
+        # build, not about the file. Treating it as failure would silence
+        # every real Content Credential.
+        found = media._from_manifest(self.manifest(
+            [{"label": "c2pa.actions",
+              "data": {"actions": [{"action": "c2pa.created",
+                                    "digitalSourceType": TRAINED}]}}],
+            validation=[{"code": "signingCredential.untrusted"}]))
+        self.assertEqual(found.kind, media.DECLARED_AI)
+
+    def test_the_flat_status_shape_is_read_too(self):
+        manifest = self.manifest([{"label": "c2pa.actions", "data": {}}])
+        manifest["validation_status"] = [{"code": "claimSignature.mismatch"}]
+        self.assertEqual(media._from_manifest(manifest).kind,
+                         media.SIGNED_UNVERIFIED)
+
+
+class WhichFormatTheReaderIsTold(unittest.TestCase):
+    def test_the_container_decides_not_a_guess(self):
+        # The reader is handed a MIME type; handing it "image/jpeg" for a
+        # PNG is telling it something false.
+        self.assertEqual(media._mime_of(b"\x89PNG\r\n\x1a\n rest"), "image/png")
+        self.assertEqual(media._mime_of(b"\xff\xd8\xff\xe0 rest"), "image/jpeg")
+        self.assertEqual(media._mime_of(b"RIFF\x00\x00\x00\x00WEBPVP8 "), "image/webp")
+
+
+@unittest.skipUnless(_c2pa_available(),
+                     "needs the optional c2pa-python and cryptography")
+class ARealSignedFile(Temp):
+    """The one thing the C2PA path could never be checked against before.
+
+    Everything below runs the module's own plumbing end to end on a file
+    that carries a real signature, which is how the two defects above were
+    found: the reader was called as a context manager it does not support,
+    so every signed file in the world came back as unreadable.
+    """
+
+    def test_the_manifest_is_read_and_says_what_it_says(self):
+        found = media.read_provenance(sign_a_jpeg(self.dir))
+        self.assertEqual(found.kind, media.DECLARED_AI)
+        self.assertIn("c2pa.actions", found.marker)
+        self.assertIn("imaginary", found.tool)
+
+    def test_tampering_with_the_pixels_costs_the_declaration(self):
+        signed = sign_a_jpeg(self.dir)
+        raw = bytearray(signed.read_bytes())
+        raw[-200] ^= 0xFF
+        found = media.read_provenance_bytes(bytes(raw))
+        self.assertEqual(found.kind, media.SIGNED_UNVERIFIED)
+        self.assertIn("failed validation", found.detail)

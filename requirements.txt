@@ -26,3 +26,6 @@ Pillow>=10
 # Content Credentials and says it could not read them - which is true and
 # useful - so this stays a choice rather than a cost every install pays.
 #   pip install c2pa-python cryptography
+# Both are also what `tests/test_media_provenance.ARealSignedFile` needs to
+# run at all: it signs its own sample, because reading a real signed file is
+# the only thing that catches a reader wired up wrongly.
