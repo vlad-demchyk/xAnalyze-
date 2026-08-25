@@ -265,14 +265,108 @@ def read_provenance_bytes(data: bytes, *, whole: bool = True) -> Provenance:
             return Provenance(kind=GENERATOR_TOOL, marker=label, tool=name,
                               detail=_clip(value))
 
-    # 4. Signed, and not by us. Reported rather than skipped: a manifest is
-    #    the strongest provenance there is, and silently ignoring one would
+    # 4. Signed. A manifest is the strongest provenance there is, so it is
+    #    reported whether or not it can be read: silently ignoring one would
     #    make a file that documents itself look like a file that does not.
     if any(marker in data[:_MARKER_BYTES] for marker in _C2PA_MARKERS):
+        signed = read_manifest(data)
+        if signed is not None:
+            return signed
         return Provenance(kind=SIGNED_UNVERIFIED, marker="container:c2pa",
-                          detail="Content Credentials present, not verified "
-                                 "by this build")
+                          detail=_no_reader_reason())
     return Provenance(kind=NOTHING)
+
+
+def _c2pa_module():
+    """The C2PA reader, or None, with every way it can fail to arrive caught.
+
+    `except ImportError` is not enough here, and that is not a hypothetical:
+    installing the current `c2pa-python` on this project's Python raises
+    **SyntaxError** at import (the package declares `Requires-Python >=3.7`
+    and then uses `match`, which is 3.10+), and the last version that parses
+    on 3.9 raises `ModuleNotFoundError` from a transitive import of
+    `cryptography`. An optional dependency that takes a scan down with it is
+    worse than one that is absent, so anything the import raises is treated
+    as "no reader".
+    """
+    try:
+        import c2pa  # noqa: F401 - probed, not used here
+    except Exception:  # noqa: BLE001 - see above; absence is the answer
+        return None
+    return c2pa
+
+
+def _no_reader_reason() -> str:
+    """Why the manifest was not read, in the evidence line.
+
+    "Not verified by this build" is true and useless. Whether nothing is
+    installed, or something is installed and unusable, is the difference
+    between a person adding a package and a person filing a bug.
+    """
+    import sys
+
+    if _c2pa_module() is None:
+        return (f"no C2PA reader available "
+                f"(python {sys.version_info.major}.{sys.version_info.minor})")
+    return "C2PA reader present but the manifest could not be read"
+
+
+def read_manifest(data: bytes):
+    """The manifest's own claim, when a reader is installed. None otherwise.
+
+    Deliberately a wiring point rather than a parser, and for the same
+    reason `detectors/claude_watermark_stub.py` is one: the store is signed
+    CBOR inside JUMBF boxes, and picking strings out of it by hand would
+    produce a claim that looks verified and is not. The signature is the
+    entire value of C2PA; reading the payload without checking it would
+    throw away the only thing that makes it worth more than an EXIF field.
+
+    **Unexercised in this build.** No C2PA reader can be installed on
+    Python 3.9 (see `_c2pa_module`), so this path has never run here. It is
+    written to fail into "unverified" rather than to fail loudly, because
+    the caller already has a correct answer without it.
+    """
+    module = _c2pa_module()
+    if module is None:
+        return None
+    reader = getattr(module, "Reader", None)
+    if reader is None:
+        return None
+    try:
+        import io
+        import json
+
+        with reader("image/jpeg", io.BytesIO(data)) as opened:
+            manifest = json.loads(opened.json())
+    except Exception:  # noqa: BLE001 - an unreadable manifest is unverified
+        return None
+    return _from_manifest(manifest)
+
+
+def _from_manifest(manifest: dict):
+    """A parsed manifest as a `Provenance`, or None when it says nothing.
+
+    Split out from `read_manifest` so the shape this module expects from a
+    reader is testable without one installed: what a manifest means is this
+    module's business, and getting hold of it is the library's.
+    """
+    active = (manifest or {}).get("active_manifest")
+    manifests = (manifest or {}).get("manifests") or {}
+    entry = manifests.get(active) or {}
+    tool = str(entry.get("claim_generator", "")).split("/")[0].strip()
+    for assertion in entry.get("assertions") or []:
+        label = str(assertion.get("label", ""))
+        payload = assertion.get("data") or {}
+        source = str(payload.get("digitalSourceType", ""))
+        if _TRAINED_ALGORITHMIC in source.lower().replace(" ", ""):
+            return Provenance(kind=DECLARED_AI, marker=f"c2pa:{label}",
+                              tool=_generator_in(tool) or tool.lower(),
+                              detail=_clip(f"{tool} · {source}"))
+    if tool:
+        return Provenance(kind=GENERATOR_TOOL, marker="c2pa:claim_generator",
+                          tool=_generator_in(tool) or tool.lower(),
+                          detail=_clip(tool))
+    return None
 
 
 @dataclass

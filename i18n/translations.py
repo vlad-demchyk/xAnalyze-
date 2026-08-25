@@ -2716,10 +2716,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Content Credentials present, unread",
     },
     "a11y_bp_ai_media_signed_found": {
-        "uk": "Файл несе маніфест C2PA, який ця збірка не вміє перевірити.",
-        "it": "Il file contiene un manifesto C2PA che questa build non sa "
-              "verificare.",
-        "en": "The file carries a C2PA manifest this build cannot verify.",
+        "uk": "Файл несе маніфест C2PA. Не прочитано: {value}.",
+        "it": "Il file contiene un manifesto C2PA. Non letto: {value}.",
+        "en": "The file carries a C2PA manifest. Not read: {value}.",
     },
     "a11y_bp_ai_media_signed_why": {
         "uk": "Підписаний маніфест є найсильнішим доказом походження, який "

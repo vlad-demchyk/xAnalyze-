@@ -158,7 +158,7 @@ class WhatAFileSays(Temp):
         path = with_png_chunk(png(self.dir / "h.png"), b"caBX", b"manifest")
         found = media.read_provenance(path)
         self.assertEqual(found.kind, media.SIGNED_UNVERIFIED)
-        self.assertIn("not verified", found.detail)
+        self.assertIn("no C2PA reader", found.detail)
 
     def test_a_broken_file_is_an_answer_not_a_crash(self):
         (self.dir / "i.png").write_bytes(b"not a png at all")
@@ -510,3 +510,79 @@ class TheAuditSaysWhatItDidNotOpen(unittest.TestCase):
             with self.subTest(lang=lang):
                 for key in (item.title_key, item.body_key, item.evidence_key):
                     self.assertNotIn("diagnosis_", t(key, lang, **item.fields))
+
+
+class TheSignedManifest(Temp):
+    """C2PA: the strongest provenance there is, and the one this build
+    cannot check.
+
+    No reader can be installed on this project's Python. `c2pa-python`
+    declares `Requires-Python >=3.7` and then uses `match` (3.10+), so pip
+    installs a version that raises `SyntaxError` on import; the last version
+    that parses on 3.9 raises `ModuleNotFoundError` from a transitive import
+    of `cryptography`. Both were tried, in this venv, before this was
+    written.
+
+    Two things follow, and both are pinned here. The import has to survive
+    anything, not just `ImportError` - an optional dependency that takes a
+    scan down with it is worse than one that is absent. And what a manifest
+    *means* is this module's business, so it is testable without a library:
+    getting hold of the manifest is the library's job, reading it is ours.
+    """
+
+    def manifest(self, generator: str = "", source: str = "") -> dict:
+        assertions = ([{"label": "stds.schema-org.CreativeWork",
+                        "data": {"digitalSourceType": source}}] if source else [])
+        return {"active_manifest": "a",
+                "manifests": {"a": {"claim_generator": generator,
+                                    "assertions": assertions}}}
+
+    def test_a_manifest_claiming_a_model_made_it_is_a_declaration(self):
+        found = media._from_manifest(self.manifest(
+            "Adobe Firefly/2.0",
+            "http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia"))
+        self.assertEqual(found.kind, media.DECLARED_AI)
+        self.assertEqual(found.tool, "adobe firefly")
+
+    def test_a_camera_manifest_is_not_a_declaration(self):
+        """A signed manifest is not evidence of generation - cameras write
+        them too, and that is rather the point of the standard."""
+        found = media._from_manifest(self.manifest("Leica M11"))
+        self.assertEqual(found.kind, media.GENERATOR_TOOL)
+
+    def test_a_manifest_that_says_nothing_useful_is_not_a_finding(self):
+        self.assertIsNone(media._from_manifest(self.manifest()))
+        self.assertIsNone(media._from_manifest({}))
+
+    def test_a_reader_that_will_not_import_is_absence_not_a_crash(self):
+        """The case that actually happened: `import c2pa` raised
+        `SyntaxError`, which `except ImportError` would not have caught."""
+        import builtins
+
+        real = builtins.__import__
+
+        def exploding(name, *args, **kwargs):
+            if name == "c2pa":
+                raise SyntaxError("invalid syntax")
+            return real(name, *args, **kwargs)
+
+        with mock.patch.object(builtins, "__import__", exploding):
+            self.assertIsNone(media._c2pa_module())
+            self.assertIsNone(media.read_manifest(b"x"))
+
+    def test_the_unread_finding_says_why_it_was_not_read(self):
+        """"Not verified by this build" is true and useless: whether nothing
+        is installed or something is installed and broken is the difference
+        between adding a package and filing a bug."""
+        path = with_png_chunk(png(self.dir / "signed.png"), b"caBX", b"manifest")
+        found = media.read_provenance(path)
+        self.assertEqual(found.kind, media.SIGNED_UNVERIFIED)
+        self.assertIn("no C2PA reader", found.detail)
+
+    def test_the_reason_reaches_the_reader_of_the_report(self):
+        from audit.explanations import render
+
+        issue = media.as_issue("a.png", media.Provenance(
+            kind=media.SIGNED_UNVERIFIED, marker="container:c2pa",
+            detail="no C2PA reader available (python 3.9)"))
+        self.assertIn("no C2PA reader", render(issue, "en").found)
