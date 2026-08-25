@@ -331,7 +331,19 @@ def _build_matcher(patterns: list[str]):
     """
     try:
         import pathspec
-        spec = pathspec.PathSpec.from_lines("gitwildmatch", patterns)
+        # `gitignore`, not `gitwildmatch`: the latter is deprecated in
+        # pathspec and warns once per matcher built, which a scan does per
+        # walk. Not swapped on the strength of the warning, though - this
+        # decides what every scan reads, and two pattern dialects that
+        # disagree about one line would silently change what a run examines.
+        # Checked differentially first, over the 36 patterns in
+        # `DEFAULT_IGNORE_PATTERNS` and a set of edge cases the project does
+        # not use but a user's own `.xanalyze-ignore` might (negation,
+        # anchoring, `**`, character classes, escaped `#`, trailing space):
+        # zero disagreements. `tests/test_ignore_patterns.py` keeps the
+        # behaviour pinned as a table so a future pathspec cannot move it
+        # quietly.
+        spec = pathspec.PathSpec.from_lines("gitignore", patterns)
 
         def matcher(rel_path: str, is_dir: bool) -> bool:
             check = rel_path + "/" if is_dir else rel_path
