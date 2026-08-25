@@ -13,6 +13,8 @@ Desktop and headless analyzer: AI-generated text detection, non-keyboard charact
 - [CLI Commands](#cli-commands)
   - [fullscan](#fullscan---full-scan)
   - [The four things people actually ask for](#the-four-things-people-actually-ask-for)
+  - [Scanning a site you also have the code for](#scanning-a-site-you-also-have-the-code-for)
+  - [There's no live site, but there is a checkout](#theres-no-live-site-but-there-is-a-checkout---fullscan-can-run-it)
   - [scan](#scan---ai-patterns-detection)
   - [audit](#audit---accessibility-seo-performance)
   - [fix](#fix---apply-fixes)
@@ -58,6 +60,7 @@ Desktop and headless analyzer: AI-generated text detection, non-keyboard charact
 - **Non-keyboard Characters** — zero-width spaces, curly quotes, em dashes, homoglyphs
 - **Accessibility Audit** — WCAG rules, SEO, performance, best practices (52 rules)
 - **Full Scan** — combined AI patterns + accessibility in one command with automatic browser rendering
+- **Dev Server Detection** — `fullscan --devserver` starts a repo's own Node/Django/Rails dev server and scans the render, opt-in everywhere (CLI/TUI/GUI) since one may already be running
 - **Styled Reports** — branded PDF/HTML for humans
 - **Agent Briefings** — markdown/JSON for coding agents
 - **CLI + GUI + TUI** — one binary, three interfaces

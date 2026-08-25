@@ -50,6 +50,7 @@ Desktop e headless analyzer: rilevamento di testi generati da AI, caratteri non 
 - **Caratteri non da tastiera** — spazi zero-width, virgolette curly, em dash, omoglifi
 - **Audit accessibilità** — regole WCAG, SEO, performance, best practice (52 regole)
 - **Scansione completa** — pattern AI + accessibilità in un comando con rendering browser automatico
+- **Rilevamento server di sviluppo** — `fullscan --devserver` avvia il server Node/Django/Rails del repo e scansiona il rendering, opzionale ovunque (CLI/TUI/GUI) perché uno potrebbe già essere in esecuzione
 - **Report stilizzati** — PDF/HTML brandizzati per persone
 - **Briefing per agenti** — markdown/JSON per coding agent
 - **CLI + GUI + TUI** — un binario, tre interfacce
