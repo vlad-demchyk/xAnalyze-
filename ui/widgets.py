@@ -681,9 +681,16 @@ class FlowLayout(QLayout):
 
     def minimumSize(self) -> QSize:  # noqa: N802
         # The widest single item, not the sum: a row that can wrap is only as
-        # wide as the one thing that cannot be broken.
+        # wide as the one thing that cannot be broken. A hidden item cannot
+        # be "the one thing" - it contributes no pixels to any line, which is
+        # exactly what `_layout` below already assumes; this skips it for the
+        # same reason, so a collapsed "Advanced" section never sets a floor
+        # under the row that shows it.
         size = QSize(0, 0)
         for item in self._items:
+            widget = item.widget()
+            if widget is not None and widget.isHidden():
+                continue
             size = size.expandedTo(item.minimumSize())
         margins = self.contentsMargins()
         return size + QSize(margins.left() + margins.right(),

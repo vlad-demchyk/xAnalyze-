@@ -77,6 +77,24 @@ class AppState(QObject):
         self._emit_mode_if_changed(old_mode)
         self.any_changed.emit()
 
+    def set_source_and_target_for_resolved_run(
+            self, source: str, target: str) -> tuple[str, str]:
+        """Set source and target for one run, without `source_changed`.
+
+        Returns `(previous_source, previous_target)` so the caller can put
+        them back once the run this was for has started. For a repo whose
+        dev server was just started and is now read as a site: the widgets
+        must keep showing "Repository" - the user's actual choice - not flip
+        to "Website" because a server answered behind the scenes. `target`
+        already has no signal to suppress (see `set_target`); `source` does,
+        which is the only reason this method exists alongside the ordinary
+        setters.
+        """
+        previous = (self._source, self._target)
+        self._source = source
+        self._target = target
+        return previous
+
     # -- readers (auto-determined from source) -----------------------------
     @property
     def readers(self) -> tuple[str, ...]:

@@ -135,6 +135,13 @@ class Settings:
     backend_url: str = ""
     backend_enabled: bool = False
 
+    # Off by default: a repo target's dev server may already be running
+    # (someone's own `npm run dev` in another terminal), and starting a
+    # second one on a different port would be the confusing outcome, not the
+    # helpful one. On, Analyze detects and starts it automatically, exactly
+    # as the toolbar's "Start server" button does on its own when clicked.
+    auto_start_devserver: bool = False
+
     @classmethod
     def load(cls) -> "Settings":
         if CONFIG_FILE.exists():

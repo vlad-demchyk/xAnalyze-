@@ -160,6 +160,12 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         # the full set so it can stop them — Qt aborts the process with
         # "QThread: Destroyed while thread is still running" otherwise.
         self._active_workers: list = []
+        #: The repo's own dev server, started for the run in progress - a
+        #: plain subprocess wrapper, not a QThread, so it outlives the worker
+        #: that started it. Stopped when the analysis it was started for
+        #: finishes (`_on_busy_changed`) and again on close, in case neither
+        #: ever ran.
+        self._devserver_proc = None
         self.result: AnalysisResult | RepoAnalysisResult | None = None
         #: The audit's own result, kept apart from `self.result` rather than
         #: unioned into it: the two carry different objects, and a single
@@ -321,6 +327,13 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
     def _on_busy_changed(self, busy: bool) -> None:
         self.analyze_btn.setEnabled(not busy)
         self.cancel_btn.setEnabled(busy)
+        if not busy:
+            self._stop_devserver_if_any()
+
+    def _stop_devserver_if_any(self) -> None:
+        if self._devserver_proc is not None:
+            self._devserver_proc.stop()
+            self._devserver_proc = None
 
     def _on_vm_error(self, message: str) -> None:
         QMessageBox.warning(self, "", message)
@@ -621,6 +634,26 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         self.repo_error.setProperty("class", "field-error")
         self.repo_error.setVisible(False)
 
+        # Off by default (`Settings.auto_start_devserver`): a repo's own dev
+        # server may already be running in another terminal, and Analyze
+        # starting a second one on a different port is a confusing outcome,
+        # not a helpful one. Checking this restores the one-click behaviour;
+        # unchecked, the button below is the explicit, one-time equivalent.
+        #
+        # Not placed in `repo_controls`: that page is one of three sharing
+        # `source_controls_stack`'s width budget (`_size_stack_to_its_page`
+        # explains the constraint), and it is already the tightest of the
+        # three - two more widgets there reintroduced the exact regression
+        # this file's own tests exist to catch (`toolbar.height() 52 -> 89`
+        # even in site mode, `repo_controls` hidden or not). The advanced row
+        # is a widget of its own, invisible by default, so it cannot
+        # contaminate a measurement of the row it is not part of.
+        self.auto_devserver_check = QCheckBox()
+        self.auto_devserver_check.setChecked(self.settings.auto_start_devserver)
+        self.auto_devserver_check.toggled.connect(self._on_auto_devserver_toggled)
+        self.start_server_btn = QPushButton()
+        self.start_server_btn.clicked.connect(self._on_start_server_clicked)
+
         # --- single-file controls ---
         file_controls = QWidget()
         file_layout = QHBoxLayout(file_controls)
@@ -750,7 +783,8 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         adv_layout.setContentsMargins(0, 0, 0, 0)
         adv_layout.setSpacing(self.palette_tokens.space_sm)
         for w in (self.method_label, self.method_combo,
-                  self.provider_label, self.provider_combo):
+                  self.provider_label, self.provider_combo,
+                  self.auto_devserver_check, self.start_server_btn):
             adv_layout.addWidget(w)
         self.advanced_row.setVisible(False)
 
@@ -1005,6 +1039,10 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         self.browse_btn.setText(t("browse_button", lang))
         self.exclusions_btn.setText(t("exclusions_button", lang))
         self.exclusions_btn.setToolTip(t("exclusions_button_full", lang))
+        self.auto_devserver_check.setText(t("auto_devserver_check", lang))
+        self.auto_devserver_check.setToolTip(t("auto_devserver_check_full", lang))
+        self.start_server_btn.setText(t("start_server_button", lang))
+        self.start_server_btn.setToolTip(t("start_server_button_full", lang))
 
         self.scope_label.setText(t("scope_label", lang))
         self.scope_combo.set_label(t("scope_label", lang))
@@ -1187,6 +1225,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
             self._active_workers.remove(worker)
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        self._stop_devserver_if_any()
         self.view_model.shutdown()
         for worker in list(self._active_workers):
             if hasattr(worker, "cancel"):
@@ -1525,6 +1564,10 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         wants_model = METHOD_AI in self._chosen_methods()
         self.provider_label.setVisible(wants_copy and wants_model)
         self.provider_combo.setVisible(wants_copy and wants_model)
+        # A repo-only pair: a URL or a single file has no dev server of its
+        # own to start.
+        self.auto_devserver_check.setVisible(is_repo)
+        self.start_server_btn.setVisible(is_repo)
         # The row is shared, but the two halves never appear together: three
         # buttons rewrite prose, three act on an audit, and offering both at
         # once would mean six buttons of which half do nothing.
@@ -1591,9 +1634,137 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         self._sync_state_from_ui()
         self._reset_scan_ui()
         self._save_settings_from_combos()
+
+        stack = self._devserver_stack_for_repo()
+        if stack is not None and self.settings.auto_start_devserver:
+            self._begin_devserver_flow(stack)
+            return
+        if stack is not None:
+            # Not started: said once, not blocked on - the static scan below
+            # still runs. A repo that happens to have a start command is the
+            # ordinary case, not something worth a dialog every time.
+            self.status_bar.showMessage(
+                t("devserver_available", self.lang, stack=stack.name))
+
         error = self.view_model.analyze()
         if error and error != "browser_failed":
             QMessageBox.warning(self, "", error)
+
+    def _on_start_server_clicked(self) -> None:
+        """The explicit, one-time equivalent of the auto-start toggle."""
+        if not self._validate_target():
+            return
+        stack = self._devserver_stack_for_repo()
+        if stack is None:
+            self.status_bar.showMessage(t("devserver_none_detected", self.lang))
+            return
+        self._sync_state_from_ui()
+        self._reset_scan_ui()
+        self._save_settings_from_combos()
+        self._begin_devserver_flow(stack)
+
+    def _on_auto_devserver_toggled(self, checked: bool) -> None:
+        self.settings.auto_start_devserver = checked
+        self.settings.save()
+
+    def _devserver_stack_for_repo(self):
+        """The detected stack for the current repo target, or `None`.
+
+        Cheap filesystem checks only - detection, not the server itself.
+        Deliberately says nothing about whether deps are satisfied: that
+        distinction belongs to `_begin_devserver_flow`, which is the one
+        place that decides whether to ask before installing. Conflating the
+        two here once meant a repo whose deps were already installed never
+        started a server at all - `deps_satisfied() == True` returned `None`
+        just like `deps_satisfied() == False` did once the user declined,
+        and both read the same to the caller.
+        """
+        if self.app_state.source != SOURCE_REPO:
+            return None
+        import devserver
+
+        repo = Path(self.repo_path_edit.text().strip())
+        if not repo.is_dir():
+            return None
+        return devserver.detect_stack(repo)
+
+    def _begin_devserver_flow(self, stack) -> None:
+        """Confirm an install if (and only if) one is needed, then start."""
+        repo = Path(self.repo_path_edit.text().strip())
+        if stack.deps_satisfied(repo):
+            self._start_devserver_then_analyze(True)  # nothing to install
+            return
+        answer = QMessageBox.question(
+            self, "",
+            t("devserver_confirm", self.lang, stack=stack.name, repo=str(repo)))
+        self._start_devserver_then_analyze(
+            answer == QMessageBox.StandardButton.Yes)
+
+    def _start_devserver_then_analyze(self, install_confirmed: bool) -> None:
+        """Install (if confirmed) and start the dev server, then run the
+        analysis the confirm dialog was already asked for.
+
+        The window does not flip the source selector to "Website" for this -
+        `_on_devserver_ready` builds a resolved request instead of touching
+        `AppState`, so the user's actual choice (Repository) stays what the
+        UI shows throughout.
+        """
+        from ui.worker import DevServerWorker
+
+        repo_path = self.repo_path_edit.text().strip()
+        self.status_bar.showMessage(t("devserver_starting", self.lang))
+        # `busy_changed` has not fired yet - `analyze()` has not been called -
+        # so the button is disabled by hand for this phase, exactly as
+        # `_on_busy_changed` would do once it has.
+        self.analyze_btn.setEnabled(False)
+        worker = DevServerWorker(repo_path, install_confirmed)
+        worker.ready.connect(self._on_devserver_ready)
+        worker.failed.connect(self._on_devserver_failed)
+        worker.finished.connect(self._on_worker_thread_finished)
+        self._track_worker(worker)
+        worker.start()
+
+    def _on_devserver_ready(self, url: str, proc) -> None:
+        self._devserver_proc = proc
+        self.status_bar.showMessage(t("devserver_ready", self.lang, url=url))
+        # Source and target are set for the duration of this one call only:
+        # `analyze()` -> `_start_audit`/`_start_copy_pass` read them straight
+        # from `AppState` (not from a request object), and both capture what
+        # they need into the worker they start before this method returns -
+        # nothing downstream keeps reading `AppState` afterward, which is
+        # what makes restoring it immediately safe.
+        previous = self.app_state.set_source_and_target_for_resolved_run(
+            SOURCE_SITE, url)
+        try:
+            error = self.view_model.analyze()
+        finally:
+            self.app_state.set_source_and_target_for_resolved_run(*previous)
+        self._recover_button_if_nothing_started(error)
+        if error and error != "browser_failed":
+            QMessageBox.warning(self, "", error)
+
+    def _on_devserver_failed(self, reason: str) -> None:
+        # Falls back to the static repo scan rather than stopping here,
+        # exactly like the CLI path: a server that could not start must not
+        # cost the analysis that could still run.
+        self.status_bar.showMessage(t("devserver_failed", self.lang, reason=reason))
+        error = self.view_model.analyze()
+        self._recover_button_if_nothing_started(error)
+        if error and error != "browser_failed":
+            QMessageBox.warning(self, "", error)
+
+    def _recover_button_if_nothing_started(self, error: str | None) -> None:
+        """Undo the manual disable from `_start_devserver_then_analyze`.
+
+        `analyze()` returns an error - "browser_failed" included - on every
+        path that never called `_start_audit`/`_start_copy_pass`, which is
+        also every path that will never emit `busy_changed(False)` to
+        re-enable the button on its own. `error is None` means a worker is
+        now running and that signal is coming; anything else means one is
+        not, and this is the only re-enable that will ever happen.
+        """
+        if error is not None:
+            self.analyze_btn.setEnabled(True)
 
     def _validate_target(self) -> bool:
         """Validate the current target field inline. Returns True if valid."""

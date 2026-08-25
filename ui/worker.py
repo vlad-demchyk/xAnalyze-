@@ -458,3 +458,56 @@ class SingleRewriteWorker(QThread):
             return
         if not self._cancelled:
             self.finished_ok.emit(result)
+
+
+class DevServerWorker(QThread):
+    """Installs (if confirmed) and starts a repo's own dev server.
+
+    Off the UI thread because either half can take well over a minute -
+    `npm install` on a real project, or a bundler's cold start - and the
+    window must not freeze for either. The confirmation itself is not this
+    worker's job: it is asked on the UI thread, synchronously, before this
+    is even constructed (see `MainWindow._on_analyze_clicked`), exactly like
+    the cheap detection that decides whether to ask at all. This worker only
+    ever does the part that has to run in the background.
+    """
+    ready = Signal(str, object)  # local URL, the running DevServerProcess
+    failed = Signal(str)         # why it never became ready
+
+    def __init__(self, repo_path: str, install_confirmed: bool, parent=None):
+        super().__init__(parent)
+        self.repo_path = repo_path
+        self.install_confirmed = install_confirmed
+        self.proc = None
+
+    def run(self) -> None:
+        import devserver
+        from pathlib import Path
+
+        try:
+            repo = Path(self.repo_path)
+            stack = devserver.detect_stack(repo)
+            if stack is None:
+                self.failed.emit("no dev server detected")
+                return
+            plan = devserver.build_plan(stack, repo)
+            if plan.install_argv is not None:
+                if not self.install_confirmed:
+                    self.failed.emit(
+                        f"{stack.name}: dependencies missing, install declined")
+                    return
+                try:
+                    devserver.run_install(plan)
+                except devserver.DevServerInstallFailed as exc:
+                    self.failed.emit(str(exc))
+                    return
+            self.proc = devserver.DevServerProcess.start(plan)
+            try:
+                url = self.proc.wait_ready(60)
+            except devserver.DevServerNeverReady as exc:
+                self.proc.stop()
+                self.failed.emit(str(exc))
+                return
+            self.ready.emit(url, self.proc)
+        except Exception as exc:  # noqa: BLE001 - surfaced, not swallowed
+            self.failed.emit(str(exc))
