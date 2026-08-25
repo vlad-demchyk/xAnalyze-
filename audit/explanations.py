@@ -16,11 +16,15 @@ than standing in for it.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from i18n.translations import plural, t
 
 from .base import NEEDS_BROWSER, RuleRegistry
+
+#: `{name}` in a translation string.
+_PLACEHOLDER_RE = re.compile(r"\{(\w+)\}")
 
 
 @dataclass
@@ -204,6 +208,34 @@ def _add_count_noun(stem: str, fields: dict, lang: str) -> None:
     noun_key = {"perf_render_blocking": "files_noun",
                "perf_preconnect": "domains_noun"}[stem]
     fields[noun_key] = plural(count, lang, **forms)
+
+
+def template_fields_for(rule_id: str) -> tuple:
+    """Which detail names the sentences for this rule actually interpolate.
+
+    Exported so `duplicates` can decide when two findings are the same
+    problem *to a reader*: two that feed the same values into the same
+    template render the same sentence, and a list where one row repeats the
+    previous one is a list nobody reads to the bottom.
+
+    Language-independent, and that is load-bearing rather than lucky. Every
+    translation of one key carries the same `{placeholders}` - it has to, or
+    `.format()` would raise - so this returns the same answer in uk, it and
+    en. Keying on the *rendered* sentence instead would make the shape of a
+    report depend on the language it was read in.
+    """
+    from i18n.translations import t
+
+    stem = str(rule_id or "").replace("-", "_")
+    names: set = set()
+    for part in ("title", "found"):
+        key = f"a11y_{stem}_{part}"
+        # `t` returns the key when there is no entry, which has no
+        # placeholders - so an unknown rule contributes nothing and falls
+        # back to grouping on everything else.
+        for lang in ("uk", "it", "en"):
+            names.update(_PLACEHOLDER_RE.findall(t(key, lang)))
+    return tuple(sorted(names))
 
 
 def _template_fields(details: dict) -> dict:

@@ -39,6 +39,30 @@ class AuditPanelMixin:
             return
         self.results_stack.setCurrentIndex(0)
 
+    #: How much of a distinguishing value a row carries. Long enough to
+    #: recognise an address, short enough that it stays one line.
+    _APART_CHARS = 42
+
+    @staticmethod
+    def _what_tells_it_apart(issue) -> str:
+        """The one detail that makes this finding not the one above it.
+
+        Taken from the fields the rule's own sentences interpolate, so it is
+        the value the explanation would have shown anyway rather than a
+        second vocabulary invented for the list. Falls back to the selector,
+        which is what a rule with nothing to interpolate has instead.
+        """
+        from audit.explanations import template_fields_for
+
+        details = getattr(issue, "details", None) or {}
+        for name in template_fields_for(getattr(issue, "rule_id", "")):
+            value = details.get(name)
+            if value:
+                text = " ".join(str(value).split())
+                limit = AuditPanelMixin._APART_CHARS
+                return text if len(text) <= limit else "…" + text[-(limit - 1):]
+        return " ".join((getattr(issue, "selector", "") or "").split())
+
     def _add_audit_rows(self) -> int:
         """Append the audit findings to the list and say how many there were.
 
@@ -61,10 +85,29 @@ class AuditPanelMixin:
         # nobody reads to the bottom. Nothing is dropped: the grouped issues
         # travel with the row, so clicking it can still name every page.
         rows = 0
-        for issue, others in duplicates.group_issues(issues):
+        grouped = list(duplicates.group_issues(issues))
+        # Which titles are about to appear more than once. A page with twenty
+        # images in an old format produced twenty rows reading "Image with no
+        # dimensions set" and nothing else - the src that tells them apart is
+        # in the finding, and was not on the row. Grouping is not the fix:
+        # they are twenty different images, and merging them would lose which.
+        # The row has to say what it is about.
+        titles: dict = {}
+        for issue, _others in grouped:
+            title = audit_explanations.render(issue, self.lang).title
+            titles[title] = titles.get(title, 0) + 1
+
+        for issue, others in grouped:
             explanation = audit_explanations.render(issue, self.lang)
             places = duplicates.places_of(issue, others)
             label = explanation.title
+            if titles.get(label, 0) > 1:
+                # Only when it repeats. Adding it always would push the same
+                # detail onto every row of every rule, which is how a list
+                # stops being scannable in the other direction.
+                distinguishing = self._what_tells_it_apart(issue)
+                if distinguishing:
+                    label += "   ·   " + distinguishing
             if len(places) > 1:
                 label += "   ·   " + t("finding_copies", self.lang,
                                        n=len(places) - 1)
