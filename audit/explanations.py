@@ -217,7 +217,8 @@ def _template_fields(details: dict) -> dict:
     # legitimately has nothing to say for one of them still renders.
     for key in ("src", "alt", "text", "href", "element", "id", "attribute",
                 "missing", "value", "count", "rows", "tracks", "ratio",
-                "required", "foreground", "background", "content", "from", "to"):
+                "required", "foreground", "background", "content", "from", "to",
+                "marker", "tool"):
         fields.setdefault(key, "")
     return fields
 

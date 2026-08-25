@@ -301,6 +301,29 @@ def _parse_ignore_text(text: str) -> list[str]:
     return [line.strip() for line in text.splitlines() if line.strip() and not line.strip().startswith("#")]
 
 
+def is_ignored(rel_path: str, matcher) -> bool:
+    """Is this path excluded, by itself or by a folder above it?
+
+    Every ancestor is checked, not just the file: gitignore-style folder
+    patterns (`node_modules/`) exclude everything underneath, and matching
+    only the file would read a hundred megabytes of dependencies.
+
+    Public because the media pass walks the same tree for image files and
+    has to agree with this one about what is out of bounds. Two walks with
+    two opinions about `node_modules/` is one walk too many.
+    """
+    parts = Path(rel_path).parts
+    for i in range(1, len(parts)):
+        if matcher("/".join(parts[:i]), is_dir=True):
+            return True
+    return matcher(rel_path, is_dir=False)
+
+
+def build_matcher(patterns: list[str]):
+    """Public name for `_build_matcher`; see `is_ignored`."""
+    return _build_matcher(patterns)
+
+
 def _build_matcher(patterns: list[str]):
     """Returns a callable(relative_posix_path, is_dir) -> bool.
     Uses `pathspec` (gitignore-semantics) when available, falls back to a
@@ -920,17 +943,7 @@ def scan_repo(root_dir: str, config: ScanConfig | None = None, progress_cb=None,
         except ValueError:
             continue
 
-        # Check every ancestor directory too, not just the file itself,
-        # since gitignore-style dir patterns (e.g. "node_modules/") should
-        # exclude everything underneath.
-        parts = Path(rel).parts
-        skip = False
-        for i in range(1, len(parts)):
-            ancestor = "/".join(parts[:i])
-            if matcher(ancestor, is_dir=True):
-                skip = True
-                break
-        if skip or matcher(rel, is_dir=False):
+        if is_ignored(rel, matcher):
             diagnostics.skipped_ignored += 1
             continue
 

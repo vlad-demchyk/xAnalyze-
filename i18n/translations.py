@@ -2613,6 +2613,118 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Questa segnalazione riguarda il documento nel suo insieme: non c'è un elemento da evidenziare.",
         "en": "This finding is about the document as a whole - there is no single element to highlight.",
     },
+    # Media provenance (`audit/media.py`). Every one of these is worded as
+    # "the file says", never as "this is AI": what was read is a statement
+    # the file makes about itself, and the absence of one means nothing at
+    # all - a screenshot or a re-save strips every field involved.
+    "a11y_bp_ai_media_declared_title": {
+        "uk": "Файл каже, що його згенеровано",
+        "it": "Il file dichiara di essere generato",
+        "en": "The file states it was generated",
+    },
+    "a11y_bp_ai_media_declared_found": {
+        "uk": "У полі {marker} записано, що зображення зробила модель.",
+        "it": "Il campo {marker} dichiara che l'immagine e stata prodotta da "
+              "un modello.",
+        "en": "The {marker} field records that a model produced this image.",
+    },
+    "a11y_bp_ai_media_declared_why": {
+        "uk": "Це заява самого файлу, а не висновок перевірки: так його "
+              "підписав генератор. Зворотне не діє. Відсутність такого поля "
+              "не означає, що зображення зняла людина: скріншот, "
+              "пересохранення або завантаження через більшість соцмереж "
+              "стирають усі ці поля.",
+        "it": "E una dichiarazione del file stesso, non una conclusione "
+              "dell'analisi: cosi l'ha firmato il generatore. Il contrario "
+              "non vale. L'assenza di questo campo non significa che la foto "
+              "sia di una persona: uno screenshot, un nuovo salvataggio o il "
+              "caricamento su molte piattaforme cancellano tutti questi campi.",
+        "en": "This is the file's own statement, not a conclusion the check "
+              "drew: the generator signed it that way. The reverse does not "
+              "hold. The absence of such a field does not mean a person took "
+              "the picture - a screenshot, a re-save, or an upload through "
+              "most platforms strips every one of these fields.",
+    },
+    "a11y_bp_ai_media_declared_fix": {
+        "uk": "Дія залежить від контексту, а не від інструмента: якщо "
+              "зображення має бути позначене як згенероване, позначте його; "
+              "якщо ні, лишіть. Прибирати саме поле не варто, бо воно і є "
+              "тим, що робить походження перевірним.",
+        "it": "Cosa fare dipende dal contesto, non dallo strumento: se "
+              "l'immagine va dichiarata come generata, dichiaratela; "
+              "altrimenti lasciatela. Non conviene rimuovere il campo: e "
+              "proprio cio che rende verificabile la provenienza.",
+        "en": "What to do depends on the context, not on the tool: if the "
+              "image should be labelled as generated, label it; if not, leave "
+              "it. Removing the field itself is rarely right - it is the "
+              "thing that makes the provenance checkable at all.",
+    },
+    "a11y_bp_ai_media_tool_title": {
+        "uk": "У файлі є назва генератора",
+        "it": "Il file contiene il nome di un generatore",
+        "en": "The file names a generator",
+    },
+    "a11y_bp_ai_media_tool_found": {
+        "uk": "Поле {marker} називає {tool}.",
+        "it": "Il campo {marker} nomina {tool}.",
+        "en": "The {marker} field names {tool}.",
+    },
+    "a11y_bp_ai_media_tool_why": {
+        "uk": "Слабший факт, ніж попередній: поле каже, яка програма "
+              "торкалась файлу, а не звідки взялись пікселі. Зображення, "
+              "відредаговане в застосунку генератора, несе той самий рядок.",
+        "it": "Un fatto piu debole del precedente: il campo dice quale "
+              "programma ha toccato il file, non da dove vengono i pixel. "
+              "Un'immagine modificata nell'app di un generatore porta la "
+              "stessa stringa.",
+        "en": "A weaker fact than the one above: the field says which program "
+              "touched the file, not where the pixels came from. An image "
+              "edited in a generator's own app carries the same string.",
+    },
+    "a11y_bp_ai_media_tool_fix": {
+        "uk": "Перевірте, чи це те, чим ви вважали цей файл. Правки в коді "
+              "тут немає.",
+        "it": "Verificate che sia cio che pensavate fosse questo file. Non "
+              "c'e una correzione nel codice.",
+        "en": "Check whether this is what you took the file to be. There is "
+              "no code change here.",
+    },
+    "a11y_bp_ai_media_signed_title": {
+        "uk": "Є підписані Content Credentials, не прочитані",
+        "it": "Content Credentials presenti, non lette",
+        "en": "Content Credentials present, unread",
+    },
+    "a11y_bp_ai_media_signed_found": {
+        "uk": "Файл несе маніфест C2PA, який ця збірка не вміє перевірити.",
+        "it": "Il file contiene un manifesto C2PA che questa build non sa "
+              "verificare.",
+        "en": "The file carries a C2PA manifest this build cannot verify.",
+    },
+    "a11y_bp_ai_media_signed_why": {
+        "uk": "Підписаний маніфест є найсильнішим доказом походження, який "
+              "взагалі буває, і мовчазно його пропустити означало б показати "
+              "файл, що сам себе документує, як файл без документів. Прочитати "
+              "підпис ця збірка не може, тож вона каже, що він є, і не вдає, "
+              "що знає його зміст.",
+        "it": "Un manifesto firmato e la prova di provenienza piu forte che "
+              "esista, e ignorarlo in silenzio farebbe sembrare un file che si "
+              "documenta da solo un file senza documenti. Questa build non sa "
+              "leggere la firma, quindi dice che c'e e non finge di conoscerne "
+              "il contenuto.",
+        "en": "A signed manifest is the strongest provenance there is, and "
+              "passing over it silently would show a file that documents "
+              "itself as a file that does not. This build cannot read the "
+              "signature, so it says one is there and does not pretend to "
+              "know what it says.",
+    },
+    "a11y_bp_ai_media_signed_fix": {
+        "uk": "Відкрийте файл переглядачем Content Credentials, щоб побачити "
+              "підписаний ланцюг.",
+        "it": "Aprite il file con un lettore di Content Credentials per vedere "
+              "la catena firmata.",
+        "en": "Open the file in a Content Credentials viewer to see the signed "
+              "chain.",
+    },
     "a11y_bp_ai_markup_artifact_title": {
         "uk": "Слід генератора в розмітці",
         "it": "Traccia del generatore nel markup",

@@ -242,12 +242,21 @@ def analyze_page_file(path: str, rules=None, ai_review=None) -> AccessibilityRes
     return result
 
 
-def analyze_files(file_results, root: str, rules=None, ai_review=None) -> AccessibilityResult:
+def analyze_files(file_results, root: str, rules=None, ai_review=None,
+                  media: bool = True) -> AccessibilityResult:
     """Repo mode: run over the markup files the scanner read.
 
     Only files that actually contain markup are examined. A `.py` opened for
     its comments has no elements to check, and reporting "no issues" for it
     would pad the report with meaningless rows.
+
+    `media` also reads what the project's image files say about how they
+    were made (`audit.media`). A second walk rather than a filter over
+    `file_results`, because the scanner never opens an image: its extension
+    list is the list of files that hold *text*, so the assets are not in
+    that list to be filtered. On by default because a repository's images
+    are part of the repository, and off is there for a caller that has
+    already read them or does not want the walk.
     """
     rules = rules if rules is not None else RuleRegistry.all_rules()
     result = AccessibilityResult(root=root, mode="repo",
@@ -279,4 +288,12 @@ def analyze_files(file_results, root: str, rules=None, ai_review=None) -> Access
                                   source_text=file_result.raw_text)
         if report.issues or report.error:
             result.documents.append(report)
+    if media:
+        from audit import media as media_pass
+
+        # Appended, not merged into a document: an image is a document of
+        # its own, and the rest of the pipeline - the report, the grouping,
+        # the file list in the window - already works in documents.
+        result.documents.extend(
+            media_pass.as_documents(media_pass.scan_media(root)))
     return result
