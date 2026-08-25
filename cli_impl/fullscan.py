@@ -1303,6 +1303,11 @@ def _run_phases_body(args, state, folder, timings, target, lang, is_url, is_page
         print(f"# run folder: {folder.run}", file=sys.stderr)
 
     if state is not None:
+        # Before `finish`, so a run that ends here carries its own headline
+        # number. Nothing else can answer it afterwards: the catalogue is
+        # built by walking folders, and re-reading every report to list five
+        # rows would be a second scan rather than a list.
+        state.record_findings(combined.get("summary", {}).get("total_findings", 0))
         if state.next_phase() is None:
             state.finish()
         state.write_feedback()

@@ -999,7 +999,12 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         popup_layout = QVBoxLayout(self.runs_popup)
         popup_layout.setContentsMargins(gap, gap, gap, gap)
         popup_layout.addWidget(self._build_runs_panel())
-        self.runs_popup.setFixedWidth(320)
+        # A floor, not a fixed width. The catalogue is a table now (artboard
+        # 3c) and a table's width follows its columns; pinning it to the 320
+        # the old two-line list wanted would clip the action column, which is
+        # the half of a row that does anything. `_on_runs_clicked` caps it
+        # against the window, so it can grow without leaving the screen.
+        self.runs_popup.setMinimumWidth(320)
 
         self.runs_btn = QPushButton()
         self.runs_btn.setProperty("class", theme.CLASS_QUIET)
@@ -1453,10 +1458,22 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         if self.runs_popup.isVisible():
             self.runs_popup.hide()
             return
+        # Resized, not `adjustSize`d. `adjustSize` clamps a top-level widget
+        # against the screen and settled on a width narrower than the popup
+        # asked for, which clipped the action column off the right of the
+        # table - the half of a row that does anything.
+        hint = self.runs_popup.sizeHint()
+        cap = max(320, self.width() - 40)
+        self.runs_popup.resize(min(hint.width(), cap), hint.height())
         corner = self.runs_btn.mapToGlobal(
             QPoint(0, self.runs_btn.height() + self.palette_tokens.space_1))
+        # Kept on screen. The popup opens under a button near the right edge
+        # of a wrapping row, and a table wide enough to hold six columns
+        # would otherwise open with half of itself past the window - with the
+        # action column, which is the far right one, as the half that goes.
+        right = self.mapToGlobal(QPoint(self.width(), 0)).x()
+        corner.setX(min(corner.x(), right - self.runs_popup.width() - 8))
         self.runs_popup.move(corner)
-        self.runs_popup.adjustSize()
         self.runs_popup.show()
 
     def _on_settings_clicked(self) -> None:

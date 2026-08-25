@@ -209,6 +209,23 @@ class RunState:
         self.data["status"] = DONE
         self.save()
 
+    def record_findings(self, count: int) -> None:
+        """How many findings this run ended with.
+
+        Recorded because nothing else can answer it later. The catalogue of
+        runs is built by walking the folders, and "36 findings, now 27" is
+        the single most useful thing to know about a run you are deciding
+        whether to reopen - but a finished run's count lives only inside its
+        report, and re-reading every report to list five rows is not a list,
+        it is a second scan.
+
+        Absent rather than zero when it was never recorded: a run that
+        stopped in the crawl found nothing *yet*, and a catalogue that
+        prints 0 for it says it came back clean.
+        """
+        self.data["findings"] = int(count)
+        self.save()
+
     # --------------------------------------------------------------- pause
     def paused_requested(self) -> bool:
         return (self.run_dir / PAUSE_FILE).exists()

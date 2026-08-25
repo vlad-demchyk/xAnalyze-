@@ -73,36 +73,40 @@ class RunsCatalogue(unittest.TestCase):
         os.environ.pop("XANALYZE_REPORT_ROOT", None)
         self.tmp.cleanup()
 
+    def rows(self) -> list:
+        layout = self.window.runs_rows_layout
+        return [layout.itemAt(i).widget() for i in range(layout.count())]
+
     def test_an_empty_disk_shows_an_empty_state_not_an_empty_list(self):
-        # `isHidden`, not `isVisible`: the panel now lives inside the runs
-        # popup, which is closed until someone asks for it, and a widget
-        # inside a closed window is never `isVisible()` however it was set.
-        # What is being asserted is the panel's own choice between the two,
-        # which is exactly what `isHidden` reports.
+        # `isHidden`, not `isVisible`: the panel lives inside the runs popup,
+        # which is closed until someone asks for it, and a widget inside a
+        # closed window is never `isVisible()` however it was set. What is
+        # asserted is the panel's own choice between the two, which is
+        # exactly what `isHidden` reports.
         self.assertEqual(self.window.refresh_runs(), 0)
         self.assertFalse(self.window.runs_empty.isHidden())
-        self.assertTrue(self.window.runs_list.isHidden())
+        self.assertTrue(self.window.runs_scroll.isHidden())
 
     def test_a_run_on_disk_is_listed(self):
         _make_run(self.root, "2026-08-24-1200", "https://example.com",
                   failed=True)
         self.assertEqual(self.window.refresh_runs(), 1)
-        self.assertFalse(self.window.runs_list.isHidden())
+        self.assertFalse(self.window.runs_scroll.isHidden())
         self.assertTrue(self.window.runs_empty.isHidden())
 
     def test_the_row_says_the_target_and_the_state(self):
         _make_run(self.root, "2026-08-24-1200", "https://example.com",
                   failed=True)
         self.window.refresh_runs()
-        text = self.window.runs_list.item(0).text()
-        self.assertIn("example.com", text)
-        self.assertIn("ago", text)
+        row = self.rows()[0]
+        self.assertIn("example.com", row.target_label.text())
+        self.assertIn("ago", row.age_label.text())
 
     def test_the_row_carries_its_data_rather_than_a_parsed_label(self):
         _make_run(self.root, "2026-08-24-1200", "https://example.com",
                   failed=True)
         self.window.refresh_runs()
-        row = self.window.runs_list.item(0).data(Qt.ItemDataRole.UserRole)
+        row = self.rows()[0].row
         self.assertEqual(row["target"], "https://example.com")
         self.assertTrue(row["resumable"])
 
@@ -112,56 +116,116 @@ class RunsCatalogue(unittest.TestCase):
         _make_run(self.root, "2026-08-24-1200", "https://new.example",
                   failed=True)
         self.window.refresh_runs()
-        rows = [self.window.runs_list.item(i).data(Qt.ItemDataRole.UserRole)
-                for i in range(self.window.runs_list.count())]
-        self.assertEqual(len(rows), 2)
+        self.assertEqual(len(self.rows()), 2)
 
-    def test_resume_is_offered_only_where_it_would_do_something(self):
-        """A button that is enabled and then says "nothing to resume"
-        teaches people to distrust the buttons."""
-        _make_run(self.root, "2026-08-24-1200", "https://example.com",
-                  finished=True)
-        self.window.refresh_runs()
-        self.window.runs_list.setCurrentRow(0)
-        self.assertFalse(self.window.resume_run_btn.isEnabled())
+    # -- the one action a row can actually take --------------------------
+    #
+    # The row used to carry Resume and Pause side by side, and one of the
+    # two was always wrong for it: a finished run cannot be paused, a
+    # running one cannot be resumed. Half the buttons on screen existed to
+    # be refused, and a control that is enabled and then says "nothing to
+    # resume" teaches people to distrust the controls.
 
-    def test_resume_is_offered_for_a_stopped_run(self):
+    def test_a_stopped_run_offers_to_continue(self):
         _make_run(self.root, "2026-08-24-1200", "https://example.com",
                   failed=True)
         self.window.refresh_runs()
-        self.window.runs_list.setCurrentRow(0)
-        self.assertTrue(self.window.resume_run_btn.isEnabled())
+        from i18n.translations import t
+        self.assertEqual(self.rows()[0].primary_btn.text(),
+                         t("runs_resume", self.window.lang))
 
-    def test_pause_is_offered_only_while_a_run_is_going(self):
+    def test_a_running_run_offers_to_pause(self):
         _make_run(self.root, "2026-08-24-1200", "https://example.com",
                   running=True)
         self.window.refresh_runs()
-        self.window.runs_list.setCurrentRow(0)
-        self.assertTrue(self.window.pause_run_btn.isEnabled())
+        from i18n.translations import t
+        self.assertEqual(self.rows()[0].primary_btn.text(),
+                         t("runs_pause", self.window.lang))
 
-    def test_pause_is_not_offered_for_a_finished_run(self):
+    def test_a_finished_run_offers_neither_of_those(self):
+        """It offers what it does have: the documents it produced."""
+        from i18n.translations import t
         _make_run(self.root, "2026-08-24-1200", "https://example.com",
                   finished=True)
         self.window.refresh_runs()
-        self.window.runs_list.setCurrentRow(0)
-        self.assertFalse(self.window.pause_run_btn.isEnabled())
-
-    def test_nothing_is_offered_with_no_selection(self):
-        _make_run(self.root, "2026-08-24-1200", "https://example.com",
-                  failed=True)
-        self.window.refresh_runs()
-        self.window.runs_list.setCurrentRow(-1)
-        self.window._on_run_selected()
-        self.assertFalse(self.window.resume_run_btn.isEnabled())
-        self.assertFalse(self.window.open_run_btn.isEnabled())
+        label = self.rows()[0].primary_btn.text()
+        self.assertEqual(label, t("runs_report", self.window.lang))
+        self.assertNotEqual(label, t("runs_resume", self.window.lang))
+        self.assertNotEqual(label, t("runs_pause", self.window.lang))
 
     def test_pausing_writes_the_request_where_the_run_will_see_it(self):
         state = _make_run(self.root, "2026-08-24-1200", "https://example.com",
                           running=True)
         self.window.refresh_runs()
-        self.window.runs_list.setCurrentRow(0)
-        self.window._on_pause_run_clicked()
+        self.rows()[0].primary_btn.click()
         self.assertTrue(state.paused_requested())
+
+    def test_the_menu_offers_only_what_the_row_can_do(self):
+        """Everything else moved behind "...", and a menu entry that would
+        be refused is the same broken promise as a dead button."""
+        from i18n.translations import t
+        _make_run(self.root, "2026-08-24-1200", "https://example.com",
+                  finished=True)
+        self.window.refresh_runs()
+        # `menu()`, not `_on_more()`: showing it would block on the event
+        # loop, and what is being asserted is what it offers, not that it
+        # opens.
+        labels = [action.text() for action in self.rows()[0].menu().actions()]
+        self.assertIn(t("runs_open", self.window.lang), labels)
+        self.assertNotIn(t("runs_resume", self.window.lang), labels)
+        self.assertNotIn(t("runs_pause", self.window.lang), labels)
+
+    # -- what the table says ---------------------------------------------
+
+    def test_a_run_that_never_recorded_a_count_shows_a_dash(self):
+        """"0" would say it came back clean, which is the opposite of what
+        happened to a crawl that stopped in its first phase."""
+        _make_run(self.root, "2026-08-24-1200", "https://example.com",
+                  failed=True)
+        self.window.refresh_runs()
+        self.assertEqual(self.rows()[0].found_label.text(), "-")
+
+    def test_a_recorded_count_reaches_the_row(self):
+        state = _make_run(self.root, "2026-08-24-1200", "https://example.com",
+                          finished=True)
+        state.record_findings(27)
+        self.window.refresh_runs()
+        self.assertEqual(self.rows()[0].found_label.text(), "27")
+
+    def test_a_zero_is_shown_as_zero_not_as_a_dash(self):
+        """A run that finished and found nothing is a real answer."""
+        state = _make_run(self.root, "2026-08-24-1200", "https://example.com",
+                          finished=True)
+        state.record_findings(0)
+        self.window.refresh_runs()
+        self.assertEqual(self.rows()[0].found_label.text(), "0")
+
+    def test_the_subtitle_tells_two_runs_of_one_target_apart(self):
+        _make_run(self.root, "2026-08-24-1200", "https://example.com",
+                  failed=True)
+        self.window.refresh_runs()
+        from i18n.translations import t
+        self.assertIn(t("runs_kind_site", self.window.lang),
+                      self.rows()[0].subtitle.text())
+
+    def test_a_folder_scan_is_not_called_a_site(self):
+        _make_run(self.root, "2026-08-24-1200", "/Users/me/code/shop",
+                  failed=True)
+        self.window.refresh_runs()
+        from i18n.translations import t
+        self.assertIn(t("runs_kind_repo", self.window.lang),
+                      self.rows()[0].subtitle.text())
+
+    def test_the_footer_says_where_the_rest_of_them_are(self):
+        """The list is a window onto the disk, not the whole of it."""
+        _make_run(self.root, "2026-08-24-1200", "https://example.com",
+                  failed=True)
+        self.window.refresh_runs()
+        self.assertIn(str(self.root), self.window.runs_footer.text())
+
+    def test_an_empty_disk_has_no_footer_to_show(self):
+        self.window.refresh_runs()
+        self.assertTrue(self.window.runs_footer.isHidden())
 
     def test_the_panel_and_the_cli_read_the_same_disk(self):
         """One fact, one owner.
@@ -175,8 +239,7 @@ class RunsCatalogue(unittest.TestCase):
         _make_run(self.root, "2026-08-24-1200", "https://example.com",
                   failed=True)
         self.window.refresh_runs()
-        panel = [self.window.runs_list.item(i).data(Qt.ItemDataRole.UserRole)
-                 for i in range(self.window.runs_list.count())]
+        panel = [widget.row for widget in self.rows()]
         cli = run_rows(runstate.all_runs(self.root))
         self.assertEqual([r["run"] for r in panel], [r["run"] for r in cli])
 
@@ -186,23 +249,41 @@ class RunsCatalogue(unittest.TestCase):
         self.assertEqual(self.window.refresh_runs(), 0)
 
     def test_the_labels_follow_the_interface_language(self):
+        _make_run(self.root, "2026-08-24-1200", "https://example.com",
+                  failed=True)
         for lang in ("uk", "it", "en"):
-            self.window.lang = lang
-            self.window._retranslate_runs()
-            self.assertTrue(self.window.resume_run_btn.text())
-            self.assertNotIn("runs_", self.window.resume_run_btn.text())
+            with self.subTest(lang=lang):
+                self.window.lang = lang
+                self.window._retranslate_runs()
+                label = self.rows()[0].primary_btn.text()
+                self.assertTrue(label)
+                self.assertNotIn("runs_", label)
+
+    def test_a_refresh_leaves_no_rows_from_the_last_one_on_screen(self):
+        """`deleteLater` only schedules the deletion, so an unparented row
+        would keep rendering under the new list."""
+        from PySide6.QtWidgets import QWidget
+        _make_run(self.root, "2026-08-24-1000", "https://a.example",
+                  finished=True)
+        _make_run(self.root, "2026-08-24-1200", "https://b.example",
+                  finished=True)
+        self.window.refresh_runs()
+        import shutil
+        shutil.rmtree(self.root / "example.com" / "2026-08-24-1000")
+        self.window.refresh_runs()
+        live = [child for child in self.window.runs_rows.findChildren(QWidget)
+                if child.parent() is self.window.runs_rows]
+        self.assertEqual(len(live), 1)
 
     def test_an_unknown_status_shows_the_word_not_a_translation_key(self):
         """`t` returns its key when it has no entry, and a user must never
         be shown `runs_status_whatever`."""
-        label = self.window._run_label(
-            {"target": "x", "status": "surprising", "age": "1m ago"})
-        self.assertIn("surprising", label)
-        self.assertNotIn("runs_status_", label)
+        from ui.window_parts.runs_panel import _state_text
 
-
-if __name__ == "__main__":
-    unittest.main()
+        text = _state_text({"target": "x", "status": "surprising"},
+                           self.window.lang)
+        self.assertIn("surprising", text)
+        self.assertNotIn("runs_status_", text)
 
 
 @unittest.skipIf(QApplication is None, "PySide6 not available")
@@ -261,12 +342,13 @@ class SourcePickerLabels(unittest.TestCase):
 
 @unittest.skipIf(QApplication is None, "PySide6 not available")
 class TheColumnStaysNarrow(unittest.TestCase):
-    """The runs panel must fit the column it was added to.
+    """The runs panel must fit the popup it was moved into.
 
-    Three buttons abreast needed 284px in a 268px column. That raised the
-    whole sidebar's minimum width to 308, which turned on a horizontal
+    Three buttons abreast once needed 284px in a 268px column. That raised
+    the whole sidebar's minimum width to 308, turned on a horizontal
     scrollbar and clipped every control above it - "Sign in" rendered as
-    "Sign i". Found by rendering the window and looking at it.
+    "Sign i". Found by rendering the window and looking at it, which is why
+    the width is asserted here rather than trusted.
     """
 
     @classmethod
@@ -290,34 +372,74 @@ class TheColumnStaysNarrow(unittest.TestCase):
         os.environ.pop("XANALYZE_REPORT_ROOT", None)
         self.tmp.cleanup()
 
-    def test_the_panel_fits_the_popup_it_now_lives_in(self):
-        """The panel used to sit in a 268px column and was measured against
-        it. There is no column any more: it opens in a popup under the Runs
-        button, and the popup states its own width. A panel wider than that
-        would be clipped, with the run dates as the part that goes."""
+    def rows(self) -> list:
+        layout = self.window.runs_rows_layout
+        return [layout.itemAt(i).widget() for i in range(layout.count())]
+
+    def test_the_panel_fits_the_popup_it_lives_in(self):
+        """Opened the way it is actually opened. The popup sizes itself in
+        `_on_runs_clicked`, and a test that sizes it by hand would pass over
+        a window that clips."""
+        self.window.resize(1300, 800)
         self.window.refresh_runs()
+        self.window._on_runs_clicked()
         self.app.processEvents()
-        self.assertLessEqual(self.window.runs_list.minimumSizeHint().width(),
+        self.assertLessEqual(self.window.runs_rows.sizeHint().width(),
                              self.window.runs_popup.width())
+        self.window._on_runs_clicked()
 
     def test_the_list_never_scrolls_sideways(self):
-        """A scrollbar here eats a row and widens the whole column."""
-        self.assertEqual(self.window.runs_list.horizontalScrollBarPolicy(),
+        """A scrollbar here eats a row and widens the whole popup."""
+        self.assertEqual(self.window.runs_scroll.horizontalScrollBarPolicy(),
                          Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
     def test_a_long_address_is_trimmed_from_the_left(self):
         """An address is recognised by its tail."""
         self.window.refresh_runs()
-        first = self.window.runs_list.item(0).text().split("\n")[0]
+        first = self.rows()[0].target_label.text()
         self.assertTrue(first.startswith("…"))
         self.assertTrue(first.endswith("cloudwaysapps.com/x"))
 
-    def test_the_status_line_is_not_trimmed_from_the_left(self):
-        """`ElideLeft` turned "complete · 34m ago" into "…mplete · 34m ago"."""
-        self.assertEqual(self.window.runs_list.textElideMode(),
-                         Qt.TextElideMode.ElideRight)
-
     def test_nothing_trimmed_is_lost(self):
         self.window.refresh_runs()
-        tip = self.window.runs_list.item(0).toolTip()
+        tip = self.rows()[0].toolTip()
         self.assertIn("a-very-long-host-name.cloudwaysapps.com", tip)
+
+    def test_the_popup_opens_inside_the_window(self):
+        """It opens under a button near the right edge of a wrapping row,
+        and a table wide enough for six columns would otherwise open with
+        its action column past the edge of the screen."""
+        self.window.resize(1300, 800)
+        self.app.processEvents()
+        self.window._on_runs_clicked()
+        self.app.processEvents()
+        right = self.window.mapToGlobal(
+            self.window.rect().topRight()).x()
+        self.assertLessEqual(
+            self.window.runs_popup.x() + self.window.runs_popup.width(), right)
+        self.window._on_runs_clicked()
+
+    def test_the_popup_is_never_wider_than_the_window(self):
+        self.window.resize(700, 800)
+        self.app.processEvents()
+        self.window._on_runs_clicked()
+        self.app.processEvents()
+        self.assertLessEqual(self.window.runs_popup.width(),
+                             self.window.width())
+        self.window._on_runs_clicked()
+
+    def test_a_long_list_scrolls_rather_than_growing_the_popup(self):
+        """Twelve rows is taller than the popup wants to be on a small
+        screen, and a list simply cut off hides the oldest runs - which are
+        the ones someone opened this to find."""
+        for minute in range(10, 22):
+            _make_run(Path(self.tmp.name), f"2026-08-24-12{minute}",
+                      "https://example.com", finished=True)
+        self.window.refresh_runs()
+        self.assertGreater(
+            self.window.runs_rows.sizeHint().height(),
+            self.window.runs_scroll.maximumHeight())
+
+
+if __name__ == "__main__":
+    unittest.main()

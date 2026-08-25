@@ -39,6 +39,31 @@ def _age(created: str) -> str:
     return f"{int(seconds // 86400)}d ago"
 
 
+def _depth_of(argv: list) -> int | None:
+    """The crawl depth this run was started with, or None.
+
+    Read out of the recorded invocation rather than stored separately: the
+    invocation is already kept verbatim so `resume` reproduces the run, and
+    a second copy of one flag is a second thing that can disagree with it.
+    None when the run did not name a depth - the default is not the same
+    statement as an explicit choice, and this is a row in a catalogue, not
+    a form.
+    """
+    for index, item in enumerate(argv):
+        text = str(item)
+        if text.startswith("--depth="):
+            value = text.split("=", 1)[1]
+        elif text == "--depth" and index + 1 < len(argv):
+            value = str(argv[index + 1])
+        else:
+            continue
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return None
+
+
 def run_rows(states) -> list:
     """One row per run, as data. Shared with the GUI catalogue."""
     rows = []
@@ -63,6 +88,16 @@ def run_rows(states) -> list:
             "created": data.get("created", ""),
             "age": _age(data.get("created", "")),
             "artifacts": len(state.artifacts()),
+            # None, not 0, when the run never got far enough to record one:
+            # a crawl that stopped found nothing *yet*, and printing 0 for
+            # it says it came back clean.
+            "findings": data.get("findings"),
+            # What kind of thing was scanned, and how deep. The catalogue
+            # holds several runs of the same target more often than not, and
+            # the address alone does not tell two of them apart.
+            "kind": "site" if str(data.get("target", "")).startswith(
+                ("http://", "https://")) else "repo",
+            "depth": _depth_of(data.get("argv") or []),
             "resumable": state.resumable(),
         })
     return rows
@@ -80,13 +115,16 @@ def cmd_runs(args) -> int:
         return EXIT_OK
     width = max(len(r["target"]) for r in rows)
     width = min(max(width, 6), 48)
-    print(f"{'run':<17} {'status':<12} {'stage':<9} {'age':<9} target")
+    print(f"{'run':<17} {'status':<12} {'stage':<9} {'found':>6} "
+          f"{'age':<9} target")
     for row in rows:
         target = row["target"]
         if len(target) > width:
             target = target[:width - 1] + "…"
+        # A dash, not a zero, for a run that never recorded a count.
+        found = "-" if row["findings"] is None else str(row["findings"])
         print(f"{row['name']:<17} {row['status']:<12} {row['stage']:<9} "
-              f"{row['age']:<9} {target}")
+              f"{found:>6} {row['age']:<9} {target}")
     unfinished = [r for r in rows if r["resumable"]]
     if unfinished:
         print()

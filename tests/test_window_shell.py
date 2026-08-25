@@ -165,7 +165,8 @@ class TopRow(WindowCase):
     def test_the_run_history_is_behind_a_button_not_in_the_row(self):
         """A list cannot live on a one-line row. It moved into a popup, and
         the button that opens it took its place."""
-        self.assertFalse(self.window.toolbar.isAncestorOf(self.window.runs_list))
+        self.assertFalse(
+            self.window.toolbar.isAncestorOf(self.window.runs_scroll))
         self.assertTrue(self.window.toolbar.isAncestorOf(self.window.runs_btn))
         self.assertFalse(self.window.runs_popup.isVisible())
 

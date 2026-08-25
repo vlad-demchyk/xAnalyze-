@@ -528,6 +528,32 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Server non avviato ({reason}); scansionato come codice statico",
         "en": "The dev server did not start ({reason}); scanned statically instead",
     },
+    # The catalogue as a table (artboard 3c). Column heads, the subtitle
+    # that tells two runs of one target apart, and the footer that says the
+    # list is a window onto the disk rather than the whole of it.
+    "runs_col_target": {"uk": "ЦІЛЬ", "it": "OBIETTIVO", "en": "TARGET"},
+    "runs_col_state": {"uk": "СТАН", "it": "STATO", "en": "STATE"},
+    "runs_col_stage": {"uk": "ЕТАП", "it": "FASE", "en": "STAGE"},
+    "runs_col_found": {"uk": "ЗНАХІДОК", "it": "RISCONTRI", "en": "FOUND"},
+    "runs_col_when": {"uk": "КОЛИ", "it": "QUANDO", "en": "WHEN"},
+    "runs_kind_site": {"uk": "сайт", "it": "sito", "en": "site"},
+    "runs_kind_repo": {"uk": "репозиторій", "it": "repository",
+                       "en": "repository"},
+    "runs_depth": {"uk": "глибина {n}", "it": "profondita {n}",
+                   "en": "depth {n}"},
+    "runs_source": {
+        "uk": "читається з тек на диску",
+        "it": "letto dalle cartelle su disco",
+        "en": "read from the folders on disk",
+    },
+    "runs_footer": {
+        "uk": "Показано {shown} останніх, решта у {root}",
+        "it": "Mostrate le ultime {shown}, il resto in {root}",
+        "en": "The last {shown} shown, the rest in {root}",
+    },
+    "runs_more": {"uk": "Ще", "it": "Altro", "en": "More"},
+    "runs_report": {"uk": "Звіт", "it": "Report", "en": "Report"},
+    "runs_compare": {"uk": "Порівняти", "it": "Confronta", "en": "Compare"},
     "runs_pause_requested": {
         "uk": "Пауза запрошена: прогін спиниться на межі наступного етапу",
         "it": "Pausa richiesta: si fermerà al confine della fase successiva",
