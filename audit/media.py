@@ -321,10 +321,15 @@ def read_manifest(data: bytes):
     entire value of C2PA; reading the payload without checking it would
     throw away the only thing that makes it worth more than an EXIF field.
 
-    **Unexercised in this build.** No C2PA reader can be installed on
-    Python 3.9 (see `_c2pa_module`), so this path has never run here. It is
-    written to fail into "unverified" rather than to fail loudly, because
-    the caller already has a correct answer without it.
+    **Partly unverified, and here is exactly which part.** The library
+    imports and runs on this project's Python now (it could not on 3.9; see
+    `_c2pa_module`), and `_from_manifest` below is tested against manifests
+    of both shapes the format defines. What has *not* been checked against a
+    real file is this function's own plumbing - producing one needs a
+    certificate meeting C2PA's signing profile, which a self-signed test
+    certificate does not satisfy, so no signed sample was available to read
+    back. It fails into "unverified" rather than loudly, because the caller
+    already has a correct answer without it.
     """
     module = _c2pa_module()
     if module is None:
@@ -353,7 +358,15 @@ def _from_manifest(manifest: dict):
     active = (manifest or {}).get("active_manifest")
     manifests = (manifest or {}).get("manifests") or {}
     entry = manifests.get(active) or {}
+    # Both spellings, because both are in the format rather than because
+    # either is a guess: `claim_generator` is the flat string a v1 manifest
+    # carries, `claim_generator_info` the list of `{name, version}` a v2 one
+    # does, and a reader hands back whichever the file had.
     tool = str(entry.get("claim_generator", "")).split("/")[0].strip()
+    if not tool:
+        info = entry.get("claim_generator_info") or []
+        if info and isinstance(info, list) and isinstance(info[0], dict):
+            tool = str(info[0].get("name", "")).strip()
     for assertion in entry.get("assertions") or []:
         label = str(assertion.get("label", ""))
         payload = assertion.get("data") or {}

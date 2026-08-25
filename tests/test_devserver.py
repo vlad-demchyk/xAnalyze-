@@ -286,10 +286,22 @@ class WaitReadyLoop(unittest.TestCase):
 
     def test_stalled_output_raises_before_the_full_timeout(self):
         """No new line for `STALL_SECONDS`, well inside a much longer
-        overall timeout - the stall clock is what fires, not the deadline."""
+        overall timeout - the stall clock is what fires, not the deadline.
+
+        `_last_line_at` is moved into the fake clock's frame of reference,
+        and that is the whole point of this line. It is stamped at
+        construction with the *real* `time.monotonic`, whose reference point
+        Python explicitly leaves undefined - and the two interpreters this
+        project has run on disagree about it: 3.9 starts near zero per
+        process, 3.14 returns seconds since boot. Left alone, the idle time
+        this test measures is `0 - 351537`, the stall never fires, and the
+        failure reads like a bug in the server loop rather than a test
+        comparing two different clocks.
+        """
         proc = _process()
         proc._lines.append("starting up...")
         clock = [0.0]
+        proc._last_line_at = clock[0]
 
         def fake_monotonic():
             clock[0] += devserver.STALL_SECONDS  # one poll past the stall window

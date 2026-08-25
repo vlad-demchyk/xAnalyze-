@@ -12,3 +12,17 @@ textual>=8.0,<9
 # Optional but recommended: stores xformat.net tokens and your Anthropic key
 # in the OS keychain instead of a local file. See llm/credentials.py.
 keyring>=25.0
+
+# Reading what a media file says about how it was made (`audit/media.py`).
+# Declared because it was not: the module shipped depending on Pillow being
+# present transitively, which it was on the old interpreter and is not on a
+# clean one - the check simply vanished, without an error, on a fresh
+# install.
+Pillow>=10
+
+# Optional, and deliberately not pinned here: verifying a signed C2PA
+# manifest needs `c2pa-python` and `cryptography`, both of which carry a
+# native component. Without them XAnalyze still reports that a file carries
+# Content Credentials and says it could not read them - which is true and
+# useful - so this stays a choice rather than a cost every install pays.
+#   pip install c2pa-python cryptography

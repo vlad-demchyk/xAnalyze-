@@ -158,7 +158,13 @@ class WhatAFileSays(Temp):
         path = with_png_chunk(png(self.dir / "h.png"), b"caBX", b"manifest")
         found = media.read_provenance(path)
         self.assertEqual(found.kind, media.SIGNED_UNVERIFIED)
-        self.assertIn("no C2PA reader", found.detail)
+        # Both outcomes are live now: the reader is installable on this
+        # project's Python and may or may not be present, so the assertion
+        # is on which sentence was chosen and not on which environment is
+        # running the suite.
+        expected = ("no C2PA reader" if media._c2pa_module() is None
+                    else "could not be read")
+        self.assertIn(expected, found.detail)
 
     def test_a_broken_file_is_an_answer_not_a_crash(self):
         (self.dir / "i.png").write_bytes(b"not a png at all")
@@ -577,7 +583,13 @@ class TheSignedManifest(Temp):
         path = with_png_chunk(png(self.dir / "signed.png"), b"caBX", b"manifest")
         found = media.read_provenance(path)
         self.assertEqual(found.kind, media.SIGNED_UNVERIFIED)
-        self.assertIn("no C2PA reader", found.detail)
+        # Both outcomes are live now: the reader is installable on this
+        # project's Python and may or may not be present, so the assertion
+        # is on which sentence was chosen and not on which environment is
+        # running the suite.
+        expected = ("no C2PA reader" if media._c2pa_module() is None
+                    else "could not be read")
+        self.assertIn(expected, found.detail)
 
     def test_the_reason_reaches_the_reader_of_the_report(self):
         from audit.explanations import render
