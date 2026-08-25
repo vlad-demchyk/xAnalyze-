@@ -350,6 +350,61 @@ _STRINGS: dict[str, dict[str, str]] = {
     # can already see.
     # What to do next, per empty state (artboard 3i). Verbs, because each
     # one is the move that follows from the sentence above it.
+    # Two runs against each other (artboard 3n). Three sections, because
+    # what was fixed, what appeared and what has not moved are acted on
+    # differently - the last one is the list that says whether the current
+    # approach to it is working at all.
+    "comparison_fixed": {
+        "uk": "Виправлено", "it": "Corretto", "en": "Fixed",
+    },
+    "comparison_appeared": {
+        "uk": "Зʼявилось", "it": "Comparso", "en": "Appeared",
+    },
+    "comparison_unchanged": {
+        "uk": "Лишилось без змін", "it": "Invariato", "en": "Unchanged",
+    },
+    "comparison_places": {
+        "uk": "{n} місць", "it": "{n} punti", "en": "{n} places",
+    },
+    "comparison_runs": {
+        "uk": "{n} прогонів", "it": "{n} esecuzioni", "en": "{n} runs",
+    },
+    "comparison_solved": {
+        "uk": "Перестали спрацьовувати повністю: {rules}",
+        "it": "Non si attivano piu affatto: {rules}",
+        "en": "Stopped firing entirely: {rules}",
+    },
+    "comparison_new_rules": {
+        "uk": "Правила, яких раніше не було: {rules}",
+        "it": "Regole che prima non c'erano: {rules}",
+        "en": "Rules that were not there before: {rules}",
+    },
+    "comparison_oldest_first": {
+        "uk": "Спершу те, що висить найдовше: саме воно є приводом змінити підхід, "
+              "а не спробувати ще раз",
+        "it": "Prima cio che dura da piu tempo: e questo il motivo per cambiare "
+              "approccio, non per riprovare",
+        "en": "Longest-standing first: that is what argues for changing the "
+              "approach rather than trying again",
+    },
+    "comparison_measurements": {
+        "uk": "Вимірювання, а не перевірки, тому не рахуються ні як виправлене, "
+              "ні як нове: {rules}",
+        "it": "Misurazioni, non controlli, quindi non contano ne come corretto "
+              "ne come nuovo: {rules}",
+        "en": "Measurements, not checks, so they count as neither fixed nor "
+              "new: {rules}",
+    },
+    "comparison_document": {
+        "uk": "Відкрити changes.md", "it": "Apri changes.md",
+        "en": "Open changes.md",
+    },
+    "comparison_title": {
+        "uk": "Що змінилось", "it": "Cosa e cambiato", "en": "What changed",
+    },
+    "comparison_open": {
+        "uk": "Що змінилось", "it": "Cosa e cambiato", "en": "What changed",
+    },
     "empty_action_target": {
         "uk": "Обрати ціль", "it": "Scegli un obiettivo", "en": "Choose a target",
     },

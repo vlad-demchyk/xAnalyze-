@@ -221,6 +221,11 @@ class RunDocumentsPanel(QWidget):
         # Not in the mockup, which is one screen with nowhere else to be.
         # In the window this panel takes over a column that has another job,
         # so there has to be a way to give it back.
+        # Only when there is one. A second run is what makes a comparison
+        # exist, and a button offering to show the difference between one
+        # run and nothing is the same empty promise as an empty changes.md.
+        self.comparison_btn = QPushButton()
+        button_row.addWidget(self.comparison_btn)
         self.back_btn = QPushButton()
         self.back_btn.setProperty("class", theme.CLASS_QUIET)
         button_row.addWidget(self.back_btn)
@@ -250,6 +255,7 @@ class RunDocumentsPanel(QWidget):
         self.lang = lang
         self.timings_title.setText(t("documents_timings", lang))
         self.open_folder_btn.setText(t("documents_open", lang))
+        self.comparison_btn.setText(t("comparison_open", lang))
         self.back_btn.setText(t("documents_back", lang))
         self.handoff.setText(t("documents_handoff", lang))
         for row in self._rows.values():
@@ -262,6 +268,7 @@ class RunDocumentsPanel(QWidget):
         self.documents = documents
         self.target_label.setText(self._title_for(documents))
         self.folder_label.setText(str(documents.folder.run))
+        self.comparison_btn.setVisible(documents.comparison is not None)
         for name, path, reason in documents.documents():
             row = self._rows.get(name)
             if row is not None:

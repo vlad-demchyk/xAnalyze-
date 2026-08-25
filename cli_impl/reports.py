@@ -620,6 +620,104 @@ def compare_runs(payload: dict) -> dict | None:
     }
 
 
+def runs_open(history: list, rule: str, root: str, mode: str) -> int:
+    """How many consecutive runs, ending with the latest, this rule fired in.
+
+    The number the design puts beside a finding that has not moved. It is
+    the difference between "this appeared last week" and "this has survived
+    six rounds of work", and only the second one is an argument for changing
+    how it is being approached.
+
+    Counted backwards from the newest run and stopped at the first run that
+    did not have it, so a rule fixed and then broken again reports the
+    current streak rather than its whole career. Runs recorded before
+    `rule_counts` existed end the streak instead of extending it: they
+    cannot say whether the rule fired, and guessing would inflate exactly
+    the number that is supposed to be evidence.
+    """
+    mine = [e for e in history
+            if e.get("root") == root and e.get("mode") == mode]
+    streak = 0
+    for entry in reversed(mine):
+        counts = entry.get("rule_counts")
+        if not counts or not counts.get(rule):
+            break
+        streak += 1
+    return streak
+
+
+def comparison_view(payload: dict) -> dict | None:
+    """`compare_runs` arranged as the three answers a person asks for.
+
+    What was fixed, what appeared, and what is still there - which is the
+    shape of the comparison document and of artboard 3n, and not the shape
+    of `compare_runs`, whose job is to be correct rather than readable.
+
+    Rule titles come from this run's `by_rule`, so a rule that stopped
+    firing entirely has none: it is not in this run. Those are listed by id
+    under `solved`, which is also the more useful fact about them - the
+    point is that the rule is gone, not what it used to be called.
+
+    Measurements are kept apart and never counted into either total. A
+    `perf-first-paint` that fired on ten pages and then none did not get
+    fixed; the second run hit a warm cache.
+    """
+    comparison = compare_runs(payload)
+    if comparison is None:
+        return None
+    titles = {row["rule"]: row["title"] for row in payload.get("by_rule") or []}
+    counts = {row["rule"]: row["count"] for row in payload.get("by_rule") or []}
+    where = {row["rule"]: row.get("where") or [] for row in payload.get("by_rule") or []}
+    history = payload.get("history") or []
+    root, mode = payload.get("root", ""), payload.get("mode", "")
+
+    fixed, appeared = [], []
+    for moved in comparison["moved_rules"]:
+        rule = moved["rule"]
+        delta = moved["now"] - moved["before"]
+        row = {"rule": rule, "title": titles.get(rule, rule), "delta": delta}
+        if delta < 0:
+            fixed.append(row)
+        elif delta > 0:
+            row["where"] = where.get(rule, [])[:3]
+            appeared.append(row)
+
+    # `still_open_rules` means "present in both runs", which includes every
+    # rule whose count moved - so a rule fixed from seven places to two was
+    # listed as fixed *and* as unchanged. Unchanged has to mean unchanged:
+    # the section is read as the list of things the last round of work did
+    # not touch, and a rule that moved does not belong on it.
+    moved_rules = ({m["rule"] for m in comparison["moved_rules"]}
+                   | {m["rule"] for m in comparison["moved_measurements"]})
+    still = [{"rule": rule, "title": titles.get(rule, rule),
+              "count": counts.get(rule, 0),
+              "runs": runs_open(history, rule, root, mode)}
+             for rule in comparison["still_open_rules"]
+             if rule not in moved_rules]
+    # Longest-standing first: a rule that has survived six rounds of work is
+    # the one worth talking about, and sorting by count would put a fresh
+    # thirty-place rule above it.
+    still.sort(key=lambda row: (-row["runs"], -row["count"], row["rule"]))
+
+    return {
+        "target": root,
+        "before_at": comparison["previous_at"],
+        "now_at": comparison["at"],
+        "findings_before": comparison["findings_before"],
+        "findings_now": comparison["findings_now"],
+        "fixed": {"places": comparison["places_fixed"],
+                  "rules": sorted(fixed, key=lambda r: r["delta"]),
+                  "solved": comparison["solved_rules"]},
+        "appeared": {"places": comparison["places_added"],
+                     "rules": sorted(appeared, key=lambda r: -r["delta"]),
+                     "new": comparison["new_rules"]},
+        "unchanged": {"places": sum(row["count"] for row in still),
+                      "rules": still},
+        "measurements": comparison["moved_measurements"],
+        "comparable_per_rule": comparison["comparable_per_rule"],
+    }
+
+
 def _direction(before: int, now: int) -> str:
     if now < before:
         return f"down {before - now}"

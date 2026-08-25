@@ -60,6 +60,7 @@ from ui.window_parts.report_export import (
 )
 from ui.window_parts.findings_panel import FindingsPanelMixin
 from ui.window_parts.report_documents import RunDocumentsPanel
+from ui.window_parts.run_comparison import RunComparisonPanel
 from ui.window_parts.run_progress import (
     DONE, PENDING, RUNNING, RunProgressPanel,
 )
@@ -441,6 +442,17 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         # preview, and there is no preview under it while this panel is up.
         self.breakpoint_row.setVisible(False)
         self.col1_header.setText(t("documents_title", self.lang))
+
+    def _show_run_comparison(self) -> None:
+        """The last run and this one, side by side."""
+        documents = self.run_documents.documents
+        if documents is None or documents.comparison is None:
+            return
+        self.run_comparison.show_comparison(
+            documents.comparison, documents.written.get("changes.md"))
+        self.col1_stack.setCurrentIndex(4)
+        self.breakpoint_row.setVisible(False)
+        self.col1_header.setText(t("comparison_title", self.lang))
 
     def _show_preview_column(self) -> None:
         """Give the column back to the preview it belongs to."""
@@ -1096,7 +1108,16 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         # what the person has just spent the whole run looking at.
         self.run_documents = RunDocumentsPanel(self.palette_tokens, self.lang)
         self.run_documents.back_btn.clicked.connect(self._show_preview_column)
+        self.run_documents.comparison_btn.clicked.connect(
+            self._show_run_comparison)
         self.col1_stack.addWidget(self.run_documents)  # index 3: what it produced
+
+        # Index 4: this run against the last one (artboard 3n). Reached from
+        # the documents rather than shown instead of them: the comparison is
+        # a reading of `changes.md`, and the folder is where that lives.
+        self.run_comparison = RunComparisonPanel(self.palette_tokens, self.lang)
+        self.run_comparison.back_btn.clicked.connect(self._show_preview_column)
+        self.col1_stack.addWidget(self.run_comparison)  # index 4: what changed
 
         # The width switcher, above the preview rather than beside it: the
         # audit now runs at three widths (see `audit/responsive.py`), and a
@@ -1244,6 +1265,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         self.setWindowTitle(t("app_title", lang))
         self.run_progress.retranslate(lang)
         self.run_documents.retranslate(lang)
+        self.run_comparison.retranslate(lang)
         self.mode_label.setText(t("mode_label", lang))
         self.mode_combo.set_label(t("mode_label", lang))
         self.brand_tagline.setText(t("app_tagline", lang))
@@ -1414,6 +1436,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         # colours, on the new sheet's background.
         self.run_progress.apply_palette(palette)
         self.run_documents.apply_palette(palette)
+        self.run_comparison.apply_palette(palette)
         self._repaint_preview_background()
         self._repaint_brand()
         self._apply_action_icons()

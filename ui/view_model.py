@@ -756,10 +756,15 @@ class MainViewModel(QObject):
         })
         written["timings.md"] = folder.timings
 
+        comparison = None
         if payload is not None:
-            from cli_impl.reports import write_comparison_document
+            from cli_impl.reports import comparison_view, write_comparison_document
             if write_comparison_document(folder.changes, payload):
                 written["changes.md"] = folder.changes
+                # Built from the same payload that produced the document, so
+                # the panel and the file are two renderings of one comparison
+                # rather than two comparisons that can drift apart.
+                comparison = comparison_view(payload)
             else:
                 absent["changes.md"] = (
                     "first_run" if not folder.previous_runs() else "not_comparable")
@@ -767,7 +772,8 @@ class MainViewModel(QObject):
             absent["changes.md"] = "no_audit"
 
         documents = RunDocuments(folder=folder, target=target,
-                                 written=written, absent=absent)
+                                 written=written, absent=absent,
+                                 comparison=comparison)
         self.status_message.emit(f"Run documents: {folder.run}")
         return documents
 

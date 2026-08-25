@@ -120,9 +120,14 @@ class RunDocuments:
     """
 
     def __init__(self, folder: "RunFolder", target: str,
-                 written: dict, absent: dict) -> None:
+                 written: dict, absent: dict, comparison=None) -> None:
         self.folder = folder
         self.target = target
+        #: `cli_impl.reports.comparison_view` of this run against the last
+        #: one, or None when there was no comparable previous run. The same
+        #: condition that decides whether `changes.md` exists, held once so
+        #: the panel and the document cannot disagree about it.
+        self.comparison = comparison
         #: name -> Path, for documents actually on disk.
         self.written = written
         #: name -> reason, one of "no_audit", "first_run", "not_comparable".
