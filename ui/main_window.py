@@ -66,8 +66,8 @@ from ui.window_parts.shared import (
 )
 from ui.widgets import (
     ROW_ROLE, EmptyState, FindingDelegate, FlowLayout, InlineValue, RowData,
-    chip, diagnostics_message, divider, field, hairline, heading, muted,
-    panel, restyle,
+    SeverityBar, chip, diagnostics_message, divider, field, hairline, heading,
+    muted, panel, restyle,
 )
 from ui.worker import (
     AnalysisWorker, RepoAnalysisWorker, RewriteAllWorker,
@@ -93,6 +93,15 @@ _COMBO_CHARS = 10
 #: rather than decreed: trimming the padding to land on 44 would distort the
 #: design's spacing to pay for a difference in font metrics.
 TOP_ROW_HEIGHT = 52
+
+#: Where a copy-scan confidence lands on the severity ramp. Three levels onto
+#: four, by consequence rather than by position: a high-confidence flag is the
+#: one worth acting on first. `LOW` never reaches this table - the window does
+#: not count it as a finding, in the summary or in the status line.
+_CONFIDENCE_LEVEL = {
+    Confidence.HIGH: "critical",
+    Confidence.MEDIUM: "serious",
+}
 
 # Below this window width, the detail panel collapses from a persistent
 # third column into an inline panel that expands under the clicked list row.
@@ -368,6 +377,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
             t("status_done", self.lang, pages=len(result.pages),
               blocks=len(result.blocks()), flags=n_flags))
         self._update_repo_buttons_enabled()
+        self._refresh_summary()
 
     def _on_vm_repo_result(self, result) -> None:
         """ViewModel finished a repo scan - update the UI."""
@@ -379,6 +389,64 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
               blocks=len(result.blocks()), flags=n_flags))
         self._update_repo_buttons_enabled()
 
+    #: How an audit severity is counted into the bar. The audit's four
+    #: levels and the design's four-step ramp are the same four, in the same
+    #: order of consequence, so this is an identity rather than a mapping -
+    #: written out so that a fifth level added upstream fails visibly here
+    #: instead of being silently dropped into the last segment.
+    _SUMMARY_LEVELS = ("critical", "serious", "moderate", "minor")
+
+    def _refresh_summary(self) -> None:
+        """Fill the run summary strip, or hide it when there is no run.
+
+        Counts come from whichever result the run produced. An audit carries
+        real severities; a copy scan carries confidences, which are three
+        levels rather than four, so they are placed on the ramp by
+        consequence - a high-confidence flag is the one worth acting on
+        first. A run that did both shows them together rather than picking
+        one to report.
+
+        `LOW` spans are left out for the same reason the status line leaves
+        them out: they are below the threshold the window treats as a
+        finding, and counting them here would put a number in the summary
+        that the list underneath does not match.
+        """
+        counts = {level: 0 for level in self._SUMMARY_LEVELS}
+        total = 0
+
+        if self.audit_result is not None:
+            for issue in self.audit_result.issues():
+                if issue.severity in counts:
+                    counts[issue.severity] += 1
+                    total += 1
+
+        if self.result is not None:
+            for span in self.result.spans:
+                if span.confidence == Confidence.LOW:
+                    continue
+                counts[_CONFIDENCE_LEVEL.get(span.confidence, "moderate")] += 1
+                total += 1
+
+        if self.audit_result is None and self.result is None:
+            self.summary_bar.setVisible(False)
+            return
+
+        self.severity_bar.set_counts(counts)
+        self.summary_count.setText(t("summary_findings", self.lang, count=total))
+        self.summary_label.setText(self._summary_line())
+        self.summary_bar.setVisible(True)
+
+    def _summary_line(self) -> str:
+        """What was scanned, in the row's quietest ink."""
+        parts = [self._current_target() or ""]
+        if self.audit_result is not None:
+            parts.append(t("summary_documents", self.lang,
+                           count=len(self.audit_result.documents)))
+        elif self.result is not None:
+            parts.append(t("summary_pages", self.lang,
+                           count=len(self.result.pages)))
+        return " · ".join(part for part in parts if part)
+
     def _on_vm_audit_result(self, result) -> None:
         """ViewModel finished an audit - update the UI."""
         self.audit_result = result
@@ -389,6 +457,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
             self.current_preview_url = address
             self.site_view.setUrl(QUrl(address))
         self._update_audit_buttons_enabled()
+        self._refresh_summary()
         self.status_bar.showMessage(
             audit_explanations.summary_line(result, self.lang))
 
@@ -839,6 +908,34 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
         # straight to the root box below.
         theme.soft_shadow(self.toolbar, self.palette_tokens)
         root.addWidget(self.toolbar)
+
+        # The run summary: what was scanned, how the findings divide between
+        # severities, and how many there are. Its own strip under the
+        # controls, as the design draws it, and hidden until there is a run
+        # to summarise - an empty bar beside "0 findings" is a row of
+        # furniture that says nothing.
+        #
+        # The bar answers what the count cannot: 27 findings that are all
+        # minor and 27 that are all critical are the same number and a
+        # different afternoon.
+        self.summary_bar = QWidget()
+        self.summary_bar.setProperty("class", theme.CLASS_SURFACE)
+        self.summary_bar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.summary_bar.setSizePolicy(QSizePolicy.Policy.Preferred,
+                                       QSizePolicy.Policy.Fixed)
+        summary = QHBoxLayout(self.summary_bar)
+        summary.setContentsMargins(12, 7, 12, 7)
+        summary.setSpacing(14)
+        self.summary_label = muted()
+        summary.addWidget(self.summary_label)
+        self.severity_bar = SeverityBar(self.palette_tokens)
+        summary.addWidget(self.severity_bar)
+        self.summary_count = QLabel()
+        summary.addWidget(self.summary_count)
+        summary.addStretch(1)
+        self.summary_bar.setVisible(False)
+        theme.soft_shadow(self.summary_bar, self.palette_tokens)
+        root.addWidget(self.summary_bar)
 
         # --- three-column body -------------------------------------------------
         self.columns_splitter = QSplitter(Qt.Orientation.Horizontal)

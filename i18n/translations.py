@@ -318,6 +318,24 @@ _STRINGS: dict[str, dict[str, str]] = {
     "settings_cc_effort": {
         "uk": "Зусилля", "it": "Sforzo", "en": "Effort",
     },
+    # The run summary strip under the controls (artboard 3a). The counted
+    # nouns stay plural in every form: the strip is only ever shown after a
+    # run, and a run with one finding still reads as a tally, not a sentence.
+    "summary_findings": {
+        "uk": "{count} знахідок",
+        "it": "{count} riscontri",
+        "en": "{count} findings",
+    },
+    "summary_pages": {
+        "uk": "{count} стор.",
+        "it": "{count} pag.",
+        "en": "{count} pages",
+    },
+    "summary_documents": {
+        "uk": "{count} документів",
+        "it": "{count} documenti",
+        "en": "{count} documents",
+    },
     "runs_title": {
         "uk": "Прогони:",
         "it": "Esecuzioni:",

@@ -153,10 +153,14 @@ class TopRow(WindowCase):
                         MEDIUM_BREAKPOINT)
 
     def test_the_body_sits_under_the_row_not_beside_it(self):
+        """Controls, then the run summary, then the results - in that order.
+        The summary is between them because it describes the run the controls
+        set up and the list underneath shows."""
         layout = self.window.centralWidget().layout()
         widgets = [layout.itemAt(i).widget() for i in range(layout.count())]
-        self.assertEqual(widgets,
-                         [self.window.toolbar, self.window.columns_splitter])
+        self.assertEqual(widgets, [self.window.toolbar,
+                                   self.window.summary_bar,
+                                   self.window.columns_splitter])
 
     def test_the_run_history_is_behind_a_button_not_in_the_row(self):
         """A list cannot live on a one-line row. It moved into a popup, and

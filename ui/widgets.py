@@ -15,7 +15,7 @@ Kept out of `main_window.py` for one reason each:
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, QRect, QSize, Qt, Signal
+from PySide6.QtCore import QPoint, QRect, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath
 from PySide6.QtWidgets import (
     QHBoxLayout, QLabel, QLayout, QSizePolicy, QStyle, QStyledItemDelegate,
@@ -254,6 +254,86 @@ def panel(title: str = "", trailing=None) -> tuple:
     body_layout.setSpacing(0)
     outer.addWidget(body, stretch=1)
     return container, body_layout, label
+
+
+class SeverityBar(QWidget):
+    """One bar showing how a run's findings divide between severities.
+
+    The design puts this beside the finding count, and it answers a question
+    the count alone cannot: 27 findings that are all minor and 27 that are
+    all critical are the same number and a different afternoon.
+
+    Painted rather than built from four child widgets. The segments have to
+    share a rounded outline - the ends of the bar are round, the joins
+    between segments are square - which four rounded rectangles cannot do,
+    and a run with no findings of a given severity must contribute no sliver
+    at all rather than a 1px one.
+
+    The order is fixed and is the order of consequence, worst first. It is
+    not sorted by size: a bar whose colours moved between runs would say
+    nothing about whether things got better.
+    """
+    #: Severity key -> the palette field that paints it. The audit's four
+    #: levels (`audit/base.py`) and the design's four-step ramp are the same
+    #: four, in the same order, which is why neither needed adjusting.
+    LEVELS = (
+        ("critical", "sev_critical"),
+        ("serious", "sev_high"),
+        ("moderate", "sev_medium"),
+        ("minor", "sev_none"),
+    )
+
+    HEIGHT = 6
+    WIDTH = 190
+
+    def __init__(self, palette, parent=None):
+        super().__init__(parent)
+        self.palette_ = palette
+        self._counts: dict = {}
+        self.setFixedSize(QSize(self.WIDTH, self.HEIGHT))
+
+    def set_palette(self, palette) -> None:
+        self.palette_ = palette
+        self.update()
+
+    def set_counts(self, counts: dict) -> None:
+        """`counts` maps a severity key to how many findings carry it."""
+        self._counts = {key: int(counts.get(key, 0)) for key, _field in self.LEVELS}
+        self.setToolTip(", ".join(f"{key}: {value}"
+                                  for key, value in self._counts.items() if value))
+        self.update()
+
+    def total(self) -> int:
+        return sum(self._counts.values())
+
+    def paintEvent(self, event) -> None:  # noqa: N802 - Qt override
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        radius = self.height() / 2
+
+        track = QPainterPath()
+        track.addRoundedRect(QRectF(self.rect()), radius, radius)
+        painter.fillPath(track, QColor(self.palette_.bg_muted))
+
+        total = self.total()
+        if total <= 0:
+            painter.end()
+            return
+
+        # Clip to the rounded track, then fill flat rectangles inside it, so
+        # the bar keeps one outline instead of four.
+        painter.setClipPath(track)
+        x = 0.0
+        width = float(self.width())
+        for key, field in self.LEVELS:
+            count = self._counts.get(key, 0)
+            if not count:
+                continue
+            span = width * count / total
+            painter.fillRect(QRectF(x, 0, span, float(self.height())),
+                             QColor(getattr(self.palette_, field)))
+            x += span
+        painter.end()
 
 
 def hairline(height: int = 13):
