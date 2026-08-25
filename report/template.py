@@ -476,7 +476,12 @@ def render_html(model: ReportModel, lang: str = "en") -> str:
     if lang not in _LABELS:
         lang = "en"
     labels = _labels(lang)
-    palette = palettes()["light"]
+    # Without the desktop overlay: a report is a document, not the window.
+    # The overlay tints the paper off-white and mutes every status hue, which
+    # is right in a dark-capable app window and wrong on a page that gets
+    # printed or sent on. The design bundle says the same thing in its own
+    # words - "the paper stays white" (artboard 3h).
+    palette = palettes(overlay=False)["light"]
 
     # Grouped, not raw: one card per distinct problem, carrying every place
     # it was found. A thirty-page crawl of a site with a shared header used

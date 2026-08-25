@@ -52,6 +52,41 @@ class ShadowTokens(unittest.TestCase):
         self.assertEqual(palette.shadow_blur, 0)
 
 
+class TheReportIsNotTheWindow(unittest.TestCase):
+    """A report is a document, not the app that made it.
+
+    The desktop overlay tints the paper off-white and mutes every status hue.
+    Both are right in a window that also has a dark sheet, and wrong on a
+    page that gets printed or sent to someone - the design bundle says so in
+    its own words, "the paper stays white" (artboard 3h).
+
+    This was a real regression, not a hypothetical: the overlay went in and
+    silently repainted every HTML and PDF report with it, because
+    `report/template.py` reads the same `palettes()` the window does.
+    """
+
+    def test_the_paper_stays_white(self):
+        self.assertEqual(tokens.palettes(overlay=False)["light"].bg, "#ffffff")
+
+    def test_the_window_and_the_report_do_not_share_a_palette(self):
+        window = tokens.palettes()["light"]
+        report = tokens.palettes(overlay=False)["light"]
+        for field in ("bg", "page_bg", "error", "amber"):
+            with self.subTest(token=field):
+                self.assertNotEqual(getattr(window, field),
+                                    getattr(report, field))
+
+    def test_the_report_generator_asks_for_the_plain_palette(self):
+        """Checked at the call site, because the two palettes are only one
+        keyword apart and the wrong one still renders."""
+        import inspect
+
+        from report import template
+
+        source = inspect.getsource(template.render_html)
+        self.assertIn("palettes(overlay=False)", source)
+
+
 @unittest.skipIf(QApplication is None, "PySide6 not available")
 class SurfacePainting(unittest.TestCase):
     @classmethod

@@ -705,9 +705,17 @@ class Palette:
         )
 
 
-def palettes() -> dict:
-    """Both themes, ready to use."""
-    tokens = load_tokens(overlay=overlay_file())
+def palettes(overlay: bool = True) -> dict:
+    """Both themes, ready to use.
+
+    `overlay=False` returns the plain xFormat palette, without the desktop
+    layer. That is what the HTML and PDF reports want: a report is a
+    document, opened in a browser and sent to other people, so it belongs to
+    the same design system as the web app rather than to the window that
+    generated it. The desktop layer mutes every semantic hue and tints the
+    paper off-white, and both of those are wrong on a page someone prints.
+    """
+    tokens = load_tokens(overlay=overlay_file() if overlay else None)
     return {
         "light": Palette.from_tokens(tokens.get("light", {}), "light"),
         "dark": Palette.from_tokens(tokens.get("dark", {}), "dark"),
