@@ -22,10 +22,26 @@ Where the web app and the desktop app deliberately differ:
 * Qt needs an explicit widget-by-widget selector list where CSS would
   inherit; the shape of this file follows Qt's needs, the values follow the
   design system's.
+
+`build_textual_theme` below does the same job for the TUI. It stops short of
+generating a full `.tcss` file the way `build_qss` generates a full QSS
+string, because Textual's CSS already has variables and a cascade - the
+`.tcss` files under `tui/` are hand-written once and reference `$primary`,
+`$sev-critical` and so on, the same way a hand-written stylesheet on the web
+would. What has to be generated is the *values* those variables resolve to,
+because that is the part that would otherwise become a third copy of the
+palette. Textual also derives a full set of tints and shades from a handful
+of base colours (`textual.design.ColorSystem`); accepting that derivation
+for chrome nobody has opinions about (scrollbar, cursor, footer) and
+overriding only the values this app actually measured - `text_muted`,
+`text_subtle`, the four severity fills - keeps one contrast computation
+instead of two disagreeing ones.
 """
 from __future__ import annotations
 
 import re
+
+from textual.theme import Theme
 
 from ui.tokens import Palette, palettes
 
@@ -696,6 +712,63 @@ QMessageBox, QFileDialog {{
     background-color: {c(p.bg_card)};
 }}
 """
+
+
+#: Textual variable name -> Palette attribute, for the values this app has
+#: actually measured and does not want `ColorSystem` re-deriving from a base
+#: hue. `text-muted` and `text-disabled` are the two Textual computes by
+#: alpha-blending `foreground`, which is a plausible-looking grey with no
+#: relationship to the AA threshold `Palette.text_muted` was stepped to; left
+#: alone, the TUI's muted label would drift from the same word painted by
+#: the Qt window and by the accessibility rule it is named after.
+_TEXTUAL_VARIABLE_OVERRIDES = {
+    "text-muted": "text_muted",
+    "text-disabled": "text_subtle",
+    "border": "border",
+    "sev-critical": "sev_critical",
+    "sev-high": "sev_high",
+    "sev-medium": "sev_medium",
+    "sev-none": "sev_none",
+    #: Same three roles as the Qt inline selector (`CLASS_INLINE_*`), so a
+    #: `.tcss` file can build the "analyze Site · depth 2" sentence out of
+    #: the same three inks instead of picking its own.
+    "inline-label": "text_muted",
+    "inline-value": "text",
+    "inline-caret": "text_subtle",
+    "divider": "divider",
+}
+
+
+def build_textual_theme(p: Palette) -> Theme:
+    """A Textual `Theme` carrying the same values `build_qss` paints with.
+
+    Textual themes are registered by name and switched at runtime
+    (`App.theme = "..."`), so this returns one `Theme` for one `Palette`
+    rather than a style-sheet string; `build_textual_themes` below builds
+    both and names them so the TUI can pick the one that matches Qt's.
+    """
+    return Theme(
+        name=f"xanalyze-{p.name}",
+        dark=p.is_dark,
+        primary=p.primary,
+        secondary=p.accent,
+        accent=p.accent,
+        warning=p.amber,
+        error=p.error,
+        success=p.success,
+        foreground=p.text,
+        background=p.page_bg,
+        surface=p.bg,
+        panel=p.bg_muted,
+        variables={
+            name: getattr(p, attr) for name, attr in _TEXTUAL_VARIABLE_OVERRIDES.items()
+        },
+    )
+
+
+def build_textual_themes() -> dict:
+    """Both themes, named to match `palettes()` - `{"light": ..., "dark": ...}`."""
+    return {name: build_textual_theme(palette) for name, palette in palettes().items()}
 
 
 def resolve_mode(mode: str) -> str:
