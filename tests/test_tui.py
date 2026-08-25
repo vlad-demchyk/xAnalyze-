@@ -706,6 +706,32 @@ class DevServerConfirm(unittest.TestCase):
         self.assertEqual(len(captured), 1)
 
 
+async def _selector_widths_in_sentence(menu_key: str):
+    """`([(select_id, width), ...], row_width)` for the `.sentence` row on
+    the screen `menu_key` opens from the main menu.
+
+    Textual's `query()` result is a `DOMQuery`, which walks the live DOM the
+    first time something reads `.nodes` and caches that - it does not hold a
+    snapshot taken at query time. Returning the `DOMQuery` itself out of
+    `run_test()`'s `async with` block, the way an early version of this test
+    did, defers that first read to *after* the app has torn down and its
+    widgets are unmounted, so the query silently finds nothing and every
+    assertion in a `for select in (that empty query)` loop never runs - a
+    test that always passes without ever having tested anything. Reading the
+    widths here, while the app is still mounted, and returning plain tuples
+    is what makes the caller's assertions real.
+    """
+    app = XAnalyzeApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press(menu_key)
+        await pilot.pause()
+        sentence = app.screen.query_one(".sentence")
+        widths = [(select.id, select.size.width)
+                  for select in sentence.query(Select)]
+        return widths, sentence.size.width
+
+
 class FullscanReadsAsASentence(unittest.TestCase):
     """The redesign's toolbar (artboard 3a) reads "analyze Site · depth 2"
     instead of a form of labelled dropdowns. FullscanScreen's language/
@@ -740,20 +766,38 @@ class FullscanReadsAsASentence(unittest.TestCase):
         width and pushed everything after the first one off screen -
         `debug`-rendering the screen showed only the word "language" and
         nothing else in the row."""
-        async def body():
-            app = XAnalyzeApp()
-            async with app.run_test() as pilot:
-                await pilot.pause()
-                await pilot.press("3")
-                await pilot.pause()
-                sentence = app.screen.query_one(".sentence")
-                return sentence.query(Select), sentence.size.width
-
-        selects, row_width = run(body())
-        for select in selects:
+        widths, row_width = run(_selector_widths_in_sentence("3"))
+        self.assertTrue(widths, "no Select found in the sentence row at all")
+        for select_id, width in widths:
             self.assertLess(
-                select.size.width, row_width // 2,
-                f"#{select.id} claimed {select.size.width} of a {row_width}-wide row")
+                width, row_width // 2,
+                f"#{select_id} claimed {width} of a {row_width}-wide row")
+
+
+class TheOtherFormsBecameSentencesToo(unittest.TestCase):
+    """Scan (detector/scope) and Audit (language/depth/breakpoints) got the
+    same treatment as Fullscan, for the same reason: one inline sentence
+    instead of a stack of labelled dropdowns. This is the width regression
+    from `FullscanReadsAsASentence` run against the other two screens,
+    because the defect it guards against (`SelectCurrent`'s `width: 1fr`
+    swallowing the row) is a property of the shared `.sentence` CSS, not of
+    any one screen, and a screen added after this file was last read would
+    hit it the same way if that CSS regressed.
+    """
+
+    def _selectors_fit_their_row(self, menu_key):
+        widths, row_width = run(_selector_widths_in_sentence(menu_key))
+        self.assertTrue(widths, "no Select found in the sentence row at all")
+        for select_id, width in widths:
+            self.assertLess(
+                width, row_width // 2,
+                f"#{select_id} claimed {width} of a {row_width}-wide row")
+
+    def test_scan_screen_detector_and_scope_fit_their_row(self):
+        self._selectors_fit_their_row("1")
+
+    def test_audit_screen_language_depth_and_breakpoints_fit_their_row(self):
+        self._selectors_fit_their_row("2")
 
 
 if __name__ == "__main__":

@@ -25,29 +25,37 @@ class ScanScreen(RunScreen):
             yield Label("Target (file or directory):")
             yield Input(placeholder="./src or ./page.html", id="target")
 
-            yield Label("Detector:")
-            yield Select(
-                [
-                    ("offline — heuristic, free", "offline"),
-                    ("embedding — semantic, free", "embedding"),
-                    ("hybrid — offline + AI", "hybrid"),
-                    ("llm-judge — AI only, paid", "llm-judge"),
-                    ("none — characters only", "none"),
-                ],
-                value="offline",
-                id="detector",
-            )
-
-            yield Label("Scope:")
-            yield Select(
-                [
-                    ("content — user-facing copy", "content"),
-                    ("technical — comments & docstrings", "technical"),
-                    ("both", "both"),
-                ],
-                value="content",
-                id="scope",
-            )
+            # One sentence, not two labelled dropdowns - see
+            # FullscanScreen.compose for why, and ui.widgets.InlineValue for
+            # the Qt window's version of the same idea.
+            with Horizontal(classes="sentence"):
+                yield Static("detector", classes="inline-label")
+                yield Select(
+                    [
+                        ("offline — heuristic, free", "offline"),
+                        ("embedding — semantic, free", "embedding"),
+                        ("hybrid — offline + AI", "hybrid"),
+                        ("llm-judge — AI only, paid", "llm-judge"),
+                        ("none — characters only", "none"),
+                    ],
+                    value="offline",
+                    id="detector",
+                    compact=True,
+                    classes="inline-select",
+                )
+                yield Static("·", classes="inline-sep")
+                yield Static("scope", classes="inline-label")
+                yield Select(
+                    [
+                        ("content", "content"),
+                        ("technical", "technical"),
+                        ("both", "both"),
+                    ],
+                    value="content",
+                    id="scope",
+                    compact=True,
+                    classes="inline-select",
+                )
 
             yield Static("")
             yield Checkbox("Keep proper typography (skip em dashes, curly quotes)",

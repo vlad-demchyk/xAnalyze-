@@ -28,41 +28,51 @@ class AuditScreen(RunScreen):
             # CLI. See `cli_impl.auditpass.looks_like_url`.
             yield Input(placeholder="example.com or ./src", id="target")
 
-            yield Label("Language:")
-            yield Select(
-                [
-                    ("English", "en"),
-                    ("Українська", "uk"),
-                    ("Italiano", "it"),
-                ],
-                value="en",
-                id="language",
-            )
-
-            yield Label("Crawl depth (URLs only):")
-            yield Select(
-                [
-                    ("0 — the given page only", "0"),
-                    ("1 — the page and what it links to", "1"),
-                    ("2", "2"),
-                    ("3", "3"),
-                ],
-                value="0",
-                id="depth",
-            )
-
-            yield Label("Breakpoints:")
-            yield Select(
-                [
-                    ("default — one pass", ""),
-                    ("all — desktop + tablet + mobile", "all"),
-                    ("desktop only", "desktop"),
-                    ("desktop + mobile", "desktop,mobile"),
-                    ("mobile only", "mobile"),
-                ],
-                value="",
-                id="breakpoints",
-            )
+            # One sentence, not three labelled dropdowns - see
+            # FullscanScreen.compose for why, and ui.widgets.InlineValue for
+            # the Qt window's version of the same idea.
+            with Horizontal(classes="sentence"):
+                yield Static("language", classes="inline-label")
+                yield Select(
+                    [
+                        ("English", "en"),
+                        ("Українська", "uk"),
+                        ("Italiano", "it"),
+                    ],
+                    value="en",
+                    id="language",
+                    compact=True,
+                    classes="inline-select",
+                )
+                yield Static("·", classes="inline-sep")
+                yield Static("depth", classes="inline-label")
+                yield Select(
+                    [
+                        ("0", "0"),
+                        ("1", "1"),
+                        ("2", "2"),
+                        ("3", "3"),
+                    ],
+                    value="0",
+                    id="depth",
+                    compact=True,
+                    classes="inline-select",
+                )
+                yield Static("·", classes="inline-sep")
+                yield Static("breakpoints", classes="inline-label")
+                yield Select(
+                    [
+                        ("default", ""),
+                        ("all", "all"),
+                        ("desktop", "desktop"),
+                        ("desktop + mobile", "desktop,mobile"),
+                        ("mobile", "mobile"),
+                    ],
+                    value="",
+                    id="breakpoints",
+                    compact=True,
+                    classes="inline-select",
+                )
 
             yield Static("")
             yield Checkbox("Browser rendering (for SPA sites)", id="browser")
