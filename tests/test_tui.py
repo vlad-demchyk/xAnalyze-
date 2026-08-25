@@ -293,6 +293,41 @@ class ResultsScreenShowsTheResult(unittest.TestCase):
 
         self.assertIn("Not there", open_in_os("/tmp/definitely-not-here-42"))
 
+    def test_severity_rows_get_four_different_colours_not_one(self):
+        """Before this, "critical" and "minor" were the table's default
+        foreground - the same colour a run with no findings at all used for
+        "target". The severity ramp existing in the palette does nothing for
+        anyone if the one screen that lists severities by name never reads
+        it."""
+        from tui.screens.results import ResultsScreen
+
+        result = RunResult(
+            0,
+            json.dumps({"counts": {"critical": 3, "serious": 8,
+                                    "moderate": 15, "minor": 14}}),
+            "",
+        )
+
+        async def body():
+            app = XAnalyzeApp()
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                app.push_screen(ResultsScreen("Scan of x", result))
+                await pilot.pause()
+                table = app.screen.query_one("#results-summary", DataTable)
+                styles = {}
+                for row_key, _ in table.rows.items():
+                    cell = table.get_cell(row_key, table.ordered_columns[0].key)
+                    label = str(cell)
+                    if label in ("critical", "serious", "moderate", "minor"):
+                        styles[label] = cell.style
+                return styles
+
+        styles = run(body())
+        self.assertEqual(set(styles), {"critical", "serious", "moderate", "minor"})
+        self.assertEqual(len(set(styles.values())), 4,
+                         f"expected four distinct colours, got {styles}")
+
 
 class ReportsScreenReacts(unittest.TestCase):
     """Defect 4: clicking a row did nothing."""

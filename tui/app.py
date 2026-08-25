@@ -8,6 +8,17 @@ from textual.app import App
 from textual.binding import Binding
 
 import config
+from ui.theme import build_textual_themes
+
+#: Registered in `on_mount` below and matched by name (`ui.theme.build_
+#: textual_theme` names them `xanalyze-{light,dark}`), so the terminal
+#: paints from the same `Palette` the Qt window's `build_qss` does instead
+#: of Textual's stock design. `dark` is the default because a terminal's own
+#: background is dark far more often than not, and there is no equivalent of
+#: Qt's `QGuiApplication.styleHints().colorScheme()` to ask the terminal
+#: instead - `light`/`dark` stay one setting away (`XAnalyzeApp().theme =
+#: "xanalyze-light"`) for the person whose terminal is not.
+DEFAULT_THEME = "xanalyze-dark"
 
 
 class XAnalyzeApp(App):
@@ -115,6 +126,10 @@ class XAnalyzeApp(App):
     ]
 
     def on_mount(self) -> None:
+        for theme in build_textual_themes().values():
+            self.register_theme(theme)
+        self.theme = DEFAULT_THEME
+
         from tui.screens.main_menu import MainMenuScreen
         from tui.screens.scan import ScanScreen
         from tui.screens.audit import AuditScreen

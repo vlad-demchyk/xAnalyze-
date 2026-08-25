@@ -13,11 +13,25 @@ import subprocess
 import sys
 from pathlib import Path
 
+from rich.text import Text
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, DataTable, Label, RichLog, Static
 
 from tui.screens.base import XScreen
+
+#: Severity name -> the theme variable painting its step of the four-level
+#: ramp (`ui.theme.build_textual_theme`, itself the same four fields
+#: `ui.widgets.SeverityBar` paints in the Qt window). Before this, every
+#: severity in this table was the table's default foreground - "27 critical"
+#: and "27 minor" read as the same colour, which is the defect the ramp
+#: exists to fix, and it reached the summary table but not this one.
+_SEVERITY_VARIABLE = {
+    "critical": "sev-critical",
+    "serious": "sev-high",
+    "moderate": "sev-medium",
+    "minor": "sev-none",
+}
 
 
 def open_in_os(path: str) -> str:
@@ -115,8 +129,9 @@ class ResultsScreen(XScreen):
         table.add_columns("What", "Count")
         rows = summary_rows(self._result.payload())
         if rows:
+            variables = self.app.get_css_variables()
             for label, value in rows:
-                table.add_row(label, value)
+                table.add_row(self._severity_cell(label, variables), value)
         else:
             table.add_row("(no machine-readable summary)", "-")
 
@@ -132,6 +147,22 @@ class ResultsScreen(XScreen):
         for line in (self._result.stderr.splitlines()
                      + self._result.stdout.splitlines()):
             log.write(line)
+
+    @staticmethod
+    def _severity_cell(label: str, variables: dict) -> Text | str:
+        """`label` painted in its severity's step of the ramp, or `label`
+        unchanged when it names no severity.
+
+        Matched on the last word rather than the whole label, because a row
+        can read "critical" (scan) or "audit critical" (audit) for the same
+        severity - see `summary_rows` above, which is where the two shapes
+        are already reconciled into one row format.
+        """
+        last_word = label.rsplit(" ", 1)[-1]
+        variable = _SEVERITY_VARIABLE.get(last_word)
+        if variable is None or variable not in variables:
+            return label
+        return Text(label, style=variables[variable])
 
     def _file_paths(self) -> list:
         return [p for p in self._paths if Path(p).is_file()]
