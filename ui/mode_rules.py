@@ -61,39 +61,17 @@ def provider_visible(checks: tuple[str, ...], methods: tuple[str, ...]) -> bool:
     return wants_ai_patterns and wants_ai_method
 
 
-def fix_unicode_visible() -> bool:
-    """The unicode fix button is always available when there are findings."""
-    return True
-
-
-def generate_list_visible(source: str, checks: tuple[str, ...]) -> bool:
-    """Generate replacement list - only for repo + AI patterns check."""
-    return source == SOURCE_REPO and CHECK_AI_PATTERNS in checks
-
-
-def auto_replace_visible(source: str, checks: tuple[str, ...]) -> bool:
-    """Auto-replace in files - only for repo + AI patterns check."""
-    return source == SOURCE_REPO and CHECK_AI_PATTERNS in checks
-
-
-def fix_on_disk_visible(checks: tuple[str, ...]) -> bool:
-    """Fix audit issues on disk - only when accessibility check is active."""
-    return CHECK_ACCESSIBILITY in checks
-
-
-def undo_fix_visible(checks: tuple[str, ...]) -> bool:
-    """Undo disk fixes - only when accessibility check is active."""
-    return CHECK_ACCESSIBILITY in checks
-
-
-def download_visible(checks: tuple[str, ...]) -> bool:
-    """Download report - available when any check is active."""
-    return bool(checks)
-
-
-def breakpoint_row_visible(source: str) -> bool:
-    """The responsive breakpoint switcher - only for rendered pages."""
-    return source != SOURCE_REPO
+# The seven `*_visible` policies that used to live here are gone. They had no
+# callers - `main_window._apply_mode_visibility` decides all of it inline -
+# and that on its own would only be clutter. What made them worth deleting is
+# that they had drifted: `fix_unicode_visible()` returned True
+# unconditionally while the window shows that button only for a copy run, and
+# `download_visible(checks)` answered "any check at all" where the window asks
+# for copy or audit findings. A module named for the rules, stating rules the
+# application does not follow, is worse than no module: the next person to fix
+# a visibility bug fixes it here and nothing changes.
+#
+# If these come back, they come back with the window calling them.
 
 
 def col1_stack_index(source: str) -> int:

@@ -406,14 +406,6 @@ class RunsPanel:
             widget.more_btn.setFixedWidth(more)
         self.runs_action_spacer.setFixedWidth(width + more + 8)
 
-    def selected_run(self) -> dict | None:
-        """The first row, or None. Kept because the window still asks.
-
-        There is no selection any more: every row carries its own action, so
-        there is nothing for selecting one to enable.
-        """
-        return self._run_rows[0].row if getattr(self, "_run_rows", None) else None
-
     def apply_run_palette(self, palette) -> None:
         for widget in getattr(self, "_run_rows", ()):
             widget.apply_palette(palette)
@@ -445,23 +437,6 @@ class RunsPanel:
         self.status_bar.showMessage(
             t("runs_resuming", self.lang, run=Path(row["run"]).name))
         self._run_resume_worker(row["run"])
-
-    # The window still wires toolbar actions to these names; they act on the
-    # first row now that a row carries its own buttons.
-    def _on_open_run_clicked(self) -> None:
-        row = self.selected_run()
-        if row is not None:
-            self.open_run(row)
-
-    def _on_pause_run_clicked(self) -> None:
-        row = self.selected_run()
-        if row is not None:
-            self.pause_run(row)
-
-    def _on_resume_run_clicked(self) -> None:
-        row = self.selected_run()
-        if row is not None:
-            self.resume_run(row)
 
     def _run_resume_worker(self, run: str) -> None:
         from PySide6.QtCore import QThread, Signal

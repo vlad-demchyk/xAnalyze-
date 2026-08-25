@@ -20,7 +20,6 @@ from ui.mode_rules import (
     available_readers_for,
     col1_stack_index,
     derive_mode,
-    generate_list_visible,
     method_available,
     normalize_method_choice,
     normalize_reader_choice,
@@ -148,13 +147,10 @@ class TestNormalizeMethodChoice(unittest.TestCase):
         self.assertEqual(result, (METHOD_LOCAL, METHOD_AI))
 
 
-class TestButtonVisibility(unittest.TestCase):
-    def test_generate_list_repo_only(self):
-        self.assertTrue(generate_list_visible(SOURCE_REPO, (CHECK_AI_PATTERNS,)))
-        self.assertFalse(generate_list_visible(SOURCE_SITE, (CHECK_AI_PATTERNS,)))
-
-    def test_generate_list_needs_ai_patterns(self):
-        self.assertFalse(generate_list_visible(SOURCE_REPO, (CHECK_ACCESSIBILITY,)))
+class TestLayoutIndexes(unittest.TestCase):
+    """The button-visibility policies this class used to cover were deleted:
+    nothing called them, and they had drifted away from what the window
+    actually does. See the note in `ui/mode_rules.py`."""
 
     def test_col1_stack(self):
         self.assertEqual(col1_stack_index(SOURCE_REPO), 1)
