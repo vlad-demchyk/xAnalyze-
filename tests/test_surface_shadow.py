@@ -108,30 +108,30 @@ class SurfacePainting(unittest.TestCase):
         self.assertEqual(len(levels), 3)
 
 
-@unittest.skipIf(QApplication is None, "PySide6 not available")
-class SurfacesReachThePixels(unittest.TestCase):
-    """The levels have to survive being painted, not just being declared.
+class RenderedWindow:
+    """A window rendered in one theme, with its pixels readable.
 
-    They did not, and the palette could not have told anyone: a blanket
-    `QWidget { background-color: page_bg }` at the top of the style sheet
-    painted every unnamed container in the window, including the wrappers
-    inside a panel, straight over the surface the panel had just drawn. The
-    palette held three distinct colours the whole time while the window
-    rendered two. Only a rendered pixel catches that, so this renders one.
+    A mixin rather than a `TestCase`: subclassed per sheet so a failure names
+    the theme it happened in, and not a case in its own right, so the suite
+    does not report seven phantom skips for a base class nobody runs.
     """
+    THEME = "light"
 
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
         from ui.main_window import MainWindow
 
+        cls.palette = theme.current_palette(cls.THEME)
         cls.window = MainWindow()
+        cls.window.resize(1300, 800)
         # On the window, not on the application: setting the sheet on the
         # QApplication re-polishes every live widget in the process and
         # segfaults a full run. See the same note in `test_window_shell.py`.
-        cls.window.setStyleSheet(
-            theme.build_qss(theme.current_palette("light")))
-        cls.window.resize(1300, 800)
+        cls.window.setStyleSheet(theme.build_qss(cls.palette))
+        # The delegate and the drop shadow keep their own copy of the
+        # palette, so the sheet alone would leave them on the other theme.
+        cls.window.apply_palette(cls.palette)
         cls.window.show()
         cls.app.processEvents()
         cls.app.processEvents()
@@ -147,43 +147,55 @@ class SurfacesReachThePixels(unittest.TestCase):
         return "#%02x%02x%02x" % (colour.red(), colour.green(), colour.blue())
 
     def test_the_canvas_is_the_canvas(self):
-        palette = theme.current_palette("light")
-        # The left margin, beside the first column and below the top row.
-        self.assertEqual(self.pixel(4, 400), palette.page_bg)
+        self.assertEqual(self.pixel(4, 400), self.palette.page_bg)
 
     def test_the_top_row_sits_on_a_surface(self):
-        palette = theme.current_palette("light")
         # Above the inline strip, in the row's own padding.
-        self.assertEqual(self.pixel(1000, 14), palette.bg)
+        self.assertEqual(self.pixel(1000, 14), self.palette.bg)
 
     def test_the_inline_strip_is_the_level_below_the_row(self):
         """The selectors sit in a filled block inside the row. Two levels, so
         a caret reads as "this word can be changed" rather than as a stray
         glyph floating on the surface."""
-        palette = theme.current_palette("light")
-        self.assertEqual(self.pixel(400, 25), palette.bg_muted)
+        self.assertEqual(self.pixel(400, 25), self.palette.bg_muted)
 
     def test_a_column_sits_on_a_surface_not_on_the_canvas(self):
         """The failure this class exists for: the columns rendered in the
         canvas colour, so the window read as one flat sheet with lines drawn
         on it."""
-        palette = theme.current_palette("light")
         for x in (700, 1100):
             with self.subTest(column_at=x):
-                self.assertEqual(self.pixel(x, 300), palette.bg)
+                self.assertEqual(self.pixel(x, 300), self.palette.bg)
 
     def test_a_panel_head_is_the_level_between(self):
-        palette = theme.current_palette("light")
-        self.assertEqual(self.pixel(700, 90), palette.bg_muted)
+        self.assertEqual(self.pixel(700, 90), self.palette.bg_muted)
 
-    def test_the_canvas_and_the_surfaces_actually_differ_on_screen(self):
+    def test_a_column_has_no_border_drawn_round_it(self):
+        """The design draws none. The hairline this used to have was clearest
+        on the dark sheet, where it outlined every column in #3a3631 - tone
+        and shadow are what separate a zone from the canvas now."""
+        edge = self.pixel(490, 300)
+        self.assertNotEqual(edge, self.palette.border)
+        self.assertNotEqual(edge, self.palette.border_strong)
+
+    def test_the_levels_actually_differ_on_screen(self):
         """Stated as a rendered comparison rather than a palette one, so that
-        a future change which makes them equal fails here even if the tokens
-        still say they are three colours."""
-        canvas = self.pixel(4, 400)
-        surface = self.pixel(700, 300)
-        head = self.pixel(700, 90)
-        self.assertEqual(len({canvas, surface, head}), 3)
+        a change which makes them equal fails here even if the tokens still
+        say they are three colours."""
+        levels = {self.pixel(4, 400), self.pixel(700, 300), self.pixel(700, 90)}
+        self.assertEqual(len(levels), 3)
+
+
+@unittest.skipIf(QApplication is None, "PySide6 not available")
+class LightSheet(RenderedWindow, unittest.TestCase):
+    THEME = "light"
+
+
+@unittest.skipIf(QApplication is None, "PySide6 not available")
+class DarkSheet(RenderedWindow, unittest.TestCase):
+    """The dark theme is a warm graphite of its own, not an inversion of the
+    light one, and until this class existed nothing had ever rendered it."""
+    THEME = "dark"
 
 
 if __name__ == "__main__":

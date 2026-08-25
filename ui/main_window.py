@@ -813,6 +813,11 @@ class MainWindow(AccountMixin, AuditPanelMixin, FindingsPanelMixin,
 
         self.runs_btn = QPushButton()
         self.runs_btn.setProperty("class", theme.CLASS_QUIET)
+        # Settings is the same kind of button as Runs - a way out of the
+        # row, not an action on the run being set up - and the design
+        # draws them alike. It was the only bordered button up there
+        # beside Analyze, which made it read as a second primary.
+        self.settings_btn.setProperty("class", theme.CLASS_QUIET)
         self.runs_btn.clicked.connect(self._on_runs_clicked)
 
         controls.addWidget(self.analyze_btn)

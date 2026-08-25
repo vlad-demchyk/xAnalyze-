@@ -441,9 +441,14 @@ QPushButton[class="{CLASS_PRIMARY}"]:disabled {{
 /* Every zone is a surface on the canvas rather than a region of one flat
    sheet. This is the single largest difference between a Qt window that looks
    like a Qt window and one that looks like the rest of the product. */
+/* No border. The design separates a zone from the canvas by tone and by
+   `soft_shadow`, and the hairline this rule used to draw sat on top of both
+   as a visible seam - clearest on the dark sheet, where #3a3631 outlined
+   every column. The head strip below still carries its own fill, which is
+   what marks the top of a zone now. */
 QWidget[class="{CLASS_PANEL}"] {{
     background-color: {c(p.bg_card)};
-    border: 1px solid {c(p.border)};
+    border: none;
     border-radius: {p.radius}px;
 }}
 
