@@ -2638,6 +2638,139 @@ _STRINGS: dict[str, dict[str, str]] = {
     # "the file says", never as "this is AI": what was read is a statement
     # the file makes about itself, and the absence of one means nothing at
     # all - a screenshot or a re-save strips every field involved.
+    # What the repository reveals about itself (`audit/repo_facts.py`).
+    # Two of these are provenance and two are security, and the wording
+    # keeps them apart: writing code with an assistant is not a defect, and
+    # a credential in the working tree is not a style preference.
+    "a11y_sec_env_tracked_title": {
+        "uk": "Файл із секретами вже в історії git",
+        "it": "Un file con segreti e gia nella storia di git",
+        "en": "A secrets file is already in git history",
+    },
+    "a11y_sec_env_tracked_found": {
+        "uk": "{path} відстежується git, тобто він є в кожній копії репозиторія.",
+        "it": "{path} e tracciato da git, quindi si trova in ogni copia del "
+              "repository.",
+        "en": "{path} is tracked by git, so it is in every copy of the "
+              "repository.",
+    },
+    "a11y_sec_env_tracked_why": {
+        "uk": "Це вже опубліковано. Видалення файлу цього не скасує: він "
+              "лишається в кожному клоні й у кожному записі історії, і будь-хто, "
+              "хто мав доступ, має ці значення.",
+        "it": "E gia pubblicato. Cancellare il file non lo annulla: resta in "
+              "ogni clone e in ogni voce della storia, e chiunque abbia avuto "
+              "accesso possiede quei valori.",
+        "en": "This is already published. Deleting the file does not undo it: "
+              "it stays in every clone and every history entry, and anyone who "
+              "had access has those values.",
+    },
+    "a11y_sec_env_tracked_fix": {
+        "uk": "Змініть ці облікові дані. Прибирання файлу з історії має сенс "
+              "лише після того, і саме в такому порядку.",
+        "it": "Cambiate quelle credenziali. Rimuovere il file dalla storia ha "
+              "senso solo dopo, e in quest'ordine.",
+        "en": "Rotate those credentials. Removing the file from history is "
+              "worth doing only afterwards, and in that order.",
+    },
+    "a11y_sec_env_not_ignored_title": {
+        "uk": "Файл із секретами не в ігнорі",
+        "it": "Un file con segreti non e ignorato",
+        "en": "A secrets file is not ignored",
+    },
+    "a11y_sec_env_not_ignored_found": {
+        "uk": "{path} лежить у робочій теці, і жодне правило ігнорування його "
+              "не покриває.",
+        "it": "{path} si trova nella cartella di lavoro e nessuna regola di "
+              "ignore lo copre.",
+        "en": "{path} is in the working tree and no ignore rule covers it.",
+    },
+    "a11y_sec_env_not_ignored_why": {
+        "uk": "Ще не опубліковано, і саме тому це варто читати зараз: "
+              "наступний `git add .` забере його з собою, і тоді буде пізно.",
+        "it": "Non e ancora pubblicato, ed e proprio per questo che vale la "
+              "pena leggerlo adesso: il prossimo `git add .` se lo porta via.",
+        "en": "Not published yet, which is exactly why this is worth reading "
+              "now: the next `git add .` takes it along, and then it is too "
+              "late.",
+    },
+    "a11y_sec_env_not_ignored_fix": {
+        "uk": "Додайте його до `.gitignore`.",
+        "it": "Aggiungetelo a `.gitignore`.",
+        "en": "Add it to `.gitignore`.",
+    },
+    "a11y_bp_assistant_commits_title": {
+        "uk": "В історії є коміти, написані з асистентом",
+        "it": "La storia contiene commit scritti con un assistente",
+        "en": "The history contains commits written with an assistant",
+    },
+    "a11y_bp_assistant_commits_found": {
+        "uk": "{count} із {read} прочитаних комітів називають асистента "
+              "співавтором.",
+        "it": "{count} dei {read} commit letti indicano un assistente come "
+              "coautore.",
+        "en": "{count} of the {read} commits read name an assistant as a "
+              "co-author.",
+    },
+    "a11y_bp_assistant_commits_why": {
+        "uk": "Це запис, а не здогад: так написано в самих комітах. І це не "
+              "дефект. Писати код з асистентом нормально, а інструмент, який "
+              "каже інакше, вказує людям, як їм працювати. Показано тому, що "
+              "походження коду буває питанням, і відповідь на нього тут точна, "
+              "на відміну від будь-якого класифікатора.",
+        "it": "E un dato registrato, non una supposizione: lo dicono i commit "
+              "stessi. E non e un difetto. Scrivere codice con un assistente va "
+              "bene, e uno strumento che dice il contrario sta dicendo alle "
+              "persone come lavorare. Viene mostrato perche la provenienza del "
+              "codice a volte e una domanda, e qui la risposta e esatta.",
+        "en": "This is a record, not a guess: the commits say so themselves. "
+              "And it is not a defect. Writing code with an assistant is fine, "
+              "and a tool that says otherwise is telling people how to work. "
+              "It is shown because the provenance of code is sometimes a "
+              "question, and here the answer is exact - unlike any "
+              "classifier's.",
+    },
+    "a11y_bp_assistant_commits_fix": {
+        "uk": "Дії не потрібно. Якщо ваш проєкт вимагає позначати такий внесок, "
+              "це місце, де видно, що вже позначено.",
+        "it": "Non serve alcuna azione. Se il vostro progetto richiede di "
+              "dichiarare questo contributo, qui si vede cosa e gia dichiarato.",
+        "en": "No action needed. If your project requires declaring this kind "
+              "of contribution, this is where you can see what already is.",
+    },
+    "a11y_bp_assistant_artifacts_title": {
+        "uk": "У репозиторії є конфігурація AI-інструментів",
+        "it": "Il repository contiene configurazioni di strumenti AI",
+        "en": "The repository carries AI tool configuration",
+    },
+    "a11y_bp_assistant_artifacts_found": {
+        "uk": "Знайдено {count}: {names}.",
+        "it": "Trovati {count}: {names}.",
+        "en": "Found {count}: {names}.",
+    },
+    "a11y_bp_assistant_artifacts_why": {
+        "uk": "Самі по собі вони нешкідливі й часто корисні. Варто подивитись "
+              "з іншої причини: такі файли зазвичай містять контекст проєкту, "
+              "який писали для інструмента, а не для читача, і разом із ним "
+              "інколи внутрішні шляхи, імена систем і робочі домовленості.",
+        "it": "Di per se sono innocui e spesso utili. Vale la pena guardarli "
+              "per un altro motivo: contengono di solito contesto di progetto "
+              "scritto per uno strumento e non per un lettore, e insieme a "
+              "quello a volte percorsi interni, nomi di sistemi e accordi di "
+              "lavoro.",
+        "en": "They are harmless in themselves and often useful. They are worth "
+              "a look for a different reason: such files usually hold project "
+              "context written for a tool rather than for a reader, and with it "
+              "sometimes internal paths, system names and working arrangements.",
+    },
+    "a11y_bp_assistant_artifacts_fix": {
+        "uk": "Прочитайте їх як опубліковані. Якщо там є те, чого ви не "
+              "публікували б, приберіть це звідти або файл з індексу.",
+        "it": "Leggeteli come se fossero pubblicati. Se contengono qualcosa che "
+              "non pubblichereste, toglietelo o togliete il file dall'indice.",
+        "en": "Read them as published. If they hold anything you would not "
+              "publish, take it out - or take the file out of the index.",
+    },
     "a11y_bp_ai_media_declared_title": {
         "uk": "Файл каже, що його згенеровано",
         "it": "Il file dichiara di essere generato",

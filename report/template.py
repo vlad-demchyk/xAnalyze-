@@ -72,7 +72,8 @@ _LABELS = {
              "audit-web": "Site audit · website", "audit-repo": "Site audit · repository",
              "audit-file": "Site audit · page"},
         cat={"ai-text": "AI-sounding text", "accessibility": "Accessibility",
-            "performance": "Performance", "seo": "SEO", "best-practices": "Best practices"},
+            "performance": "Performance", "seo": "SEO", "best-practices": "Best practices",
+            "security": "Security"},
     ),
     "uk": dict(
         title="Звіт сканування", generated="Створено", target="Ціль",
@@ -98,7 +99,8 @@ _LABELS = {
              "audit-web": "Аудит доступності · сайт", "audit-repo": "Аудит доступності · репозиторій",
              "audit-file": "Аудит доступності · сторінка"},
         cat={"ai-text": "Схоже на текст ШІ", "accessibility": "Доступність",
-            "performance": "Продуктивність", "seo": "SEO", "best-practices": "Найкращі практики"},
+            "performance": "Продуктивність", "seo": "SEO", "best-practices": "Найкращі практики",
+            "security": "Безпека"},
     ),
     "it": dict(
         title="Report di scansione", generated="Generato", target="Destinazione",
@@ -125,7 +127,8 @@ _LABELS = {
              "audit-repo": "Audit di accessibilità · repository",
              "audit-file": "Audit di accessibilità · pagina"},
         cat={"ai-text": "Testo dall'aspetto artificiale", "accessibility": "Accessibilità",
-            "performance": "Prestazioni", "seo": "SEO", "best-practices": "Best practice"},
+            "performance": "Prestazioni", "seo": "SEO", "best-practices": "Best practice",
+            "security": "Sicurezza"},
     ),
 }
 

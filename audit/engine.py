@@ -50,6 +50,10 @@ class AccessibilityResult:
     #: has not come back clean - it has not come back - and without these
     #: counts the run has no way to say so.
     media: object = None
+    #: What the repository said about itself, when it was asked. Carries the
+    #: reason git could not answer, which is the difference between "no
+    #: assistant commits" and "no history to look at".
+    repo: object = None
 
     def issues(self) -> list:
         out = []
@@ -266,7 +270,7 @@ def analyze_page_file(path: str, rules=None, ai_review=None) -> AccessibilityRes
 
 
 def analyze_files(file_results, root: str, rules=None, ai_review=None,
-                  media: bool = True) -> AccessibilityResult:
+                  media: bool = True, repo_facts: bool = True) -> AccessibilityResult:
     """Repo mode: run over the markup files the scanner read.
 
     Only files that actually contain markup are examined. A `.py` opened for
@@ -280,6 +284,14 @@ def analyze_files(file_results, root: str, rules=None, ai_review=None,
     that list to be filtered. On by default because a repository's images
     are part of the repository, and off is there for a caller that has
     already read them or does not want the walk.
+
+    `repo_facts` reads what the repository says about itself rather than
+    about any file in it (`audit.repo_facts`): who the commits name as
+    authors, which assistant configuration is committed, and whether a
+    secrets file is sitting where the next `git add .` will take it. On by
+    default for the same reason - a `.env` nobody ignores is a fact about
+    this project, and a scan that walks past it to count image dimensions
+    has its priorities wrong.
     """
     rules = rules if rules is not None else RuleRegistry.all_rules()
     result = AccessibilityResult(root=root, mode="repo",
@@ -319,4 +331,10 @@ def analyze_files(file_results, root: str, rules=None, ai_review=None,
         # the file list in the window - already works in documents.
         result.documents.extend(
             media_pass.as_documents(media_pass.scan_media(root)))
+    if repo_facts:
+        from audit import repo_facts as facts_pass
+
+        facts = facts_pass.read_facts(root)
+        result.repo = facts
+        result.documents.extend(facts_pass.as_documents(facts, root))
     return result

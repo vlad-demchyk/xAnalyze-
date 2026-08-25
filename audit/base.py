@@ -49,8 +49,13 @@ ACCESSIBILITY = "accessibility"
 PERFORMANCE = "performance"
 SEO = "seo"
 BEST_PRACTICES = "best-practices"
+#: What the repository exposes rather than what a page does. A `.env` sitting
+#: where the next `git add .` will take it is not a best practice anyone
+#: departed from - it is a credential about to be published, and filing it
+#: under "best practices" would state it too quietly to act on.
+SECURITY = "security"
 
-CATEGORIES = (ACCESSIBILITY, PERFORMANCE, SEO, BEST_PRACTICES)
+CATEGORIES = (ACCESSIBILITY, PERFORMANCE, SEO, BEST_PRACTICES, SECURITY)
 
 # --------------------------------------------------------------- severity
 #

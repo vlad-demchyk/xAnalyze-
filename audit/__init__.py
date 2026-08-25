@@ -7,7 +7,7 @@ the same way `detectors/` registers its backends.
 from . import rules  # noqa: F401 - registers the built-in rules
 
 from .base import (  # noqa: F401
-    ACCESSIBILITY, BEST_PRACTICES, CATEGORIES, CRITICAL, EXACT, MINOR,
+    ACCESSIBILITY, BEST_PRACTICES, CATEGORIES, CRITICAL, EXACT, MINOR, SECURITY,
     MODERATE, NEEDS_BROWSER, PERFORMANCE, SEO, SERIOUS, SEVERITY_ORDER,
     Issue, Rule, RuleRegistry,
 )

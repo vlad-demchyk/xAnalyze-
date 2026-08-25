@@ -250,7 +250,7 @@ def _template_fields(details: dict) -> dict:
     for key in ("src", "alt", "text", "href", "element", "id", "attribute",
                 "missing", "value", "count", "rows", "tracks", "ratio",
                 "required", "foreground", "background", "content", "from", "to",
-                "marker", "tool"):
+                "marker", "tool", "path", "names", "read"):
         fields.setdefault(key, "")
     return fields
 
