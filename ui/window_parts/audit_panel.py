@@ -39,6 +39,31 @@ class AuditPanelMixin:
             return
         self.results_stack.setCurrentIndex(0)
 
+    def _arrival_text(self, arrival) -> str:
+        """When this line last changed, and in whose commit.
+
+        "Last changed", said in those words, because that is what blame
+        answers: a reformat, a rename or a moved block all take a line over,
+        so a date here is not evidence of who introduced the problem. The
+        sentence that follows it says so, and the caveat is not optional -
+        an unqualified name-and-date beside a finding reads as an accusation.
+        """
+        from datetime import datetime
+
+        when = ""
+        if getattr(arrival, "when", ""):
+            try:
+                when = datetime.fromtimestamp(int(arrival.when)).strftime("%Y-%m-%d")
+            except (ValueError, OSError, OverflowError):
+                when = ""
+        parts = [part for part in (when, arrival.author,
+                                   f"{arrival.sha} {arrival.summary}".strip())
+                 if part]
+        text = " · ".join(parts)
+        if getattr(arrival, "assistant", False):
+            text += "\n" + t("audit_arrived_assistant", self.lang)
+        return text + "\n" + t("audit_arrived_caveat", self.lang)
+
     #: How much of a distinguishing value a row carries. Long enough to
     #: recognise an address, short enough that it stays one line.
     _APART_CHARS = 42
@@ -369,6 +394,11 @@ class AuditPanelMixin:
         if issue.fix_snippet:
             layout.addWidget(self._evidence(t("detail_replacement", self.lang),
                                             issue.fix_snippet))
+
+        arrival = (issue.details or {}).get("arrived")
+        if arrival is not None and getattr(arrival, "sha", ""):
+            layout.addWidget(field(t("audit_arrived", self.lang),
+                                   self._arrival_text(arrival)))
 
         confirmations = (issue.details or {}).get("also_found_by")
         if confirmations:

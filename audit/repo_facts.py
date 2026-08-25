@@ -88,6 +88,12 @@ class RepoFacts:
     tracked_env: list = field(default_factory=list)
     #: Why git was not consulted, when it was not. Empty when it was.
     git_unavailable: str = ""
+    #: Findings `blame_issues` could place on a line, and how many of those
+    #: sit on a line an assistant commit last touched. Both, because the
+    #: second is meaningless without the first: two out of two and two out of
+    #: four hundred are the same numerator.
+    blamed_total: int = 0
+    blamed_assistant: int = 0
 
 
 def _git(root: Path, *args: str) -> str | None:
@@ -199,6 +205,7 @@ RULE_ASSISTANT_COMMITS = "bp-assistant-commits"
 RULE_TOOL_ARTIFACTS = "bp-assistant-artifacts"
 RULE_ENV_EXPOSED = "sec-env-not-ignored"
 RULE_ENV_TRACKED = "sec-env-tracked"
+RULE_ASSISTANT_TOUCHED = "bp-assistant-touched"
 
 #: How many examples a finding names before it says "+N". Enough to
 #: recognise the pattern, short enough to stay one line.
@@ -246,6 +253,9 @@ def as_documents(facts: RepoFacts, root: str) -> list:
             {"count": len(facts.tool_artifacts),
              "names": _listed(facts.tool_artifacts)},
             snippet=_listed(facts.tool_artifacts))
+    if facts.blamed_assistant:
+        add(root, RULE_ASSISTANT_TOUCHED, MINOR, BEST_PRACTICES,
+            {"count": facts.blamed_assistant, "read": facts.blamed_total})
     if facts.assistant_commits:
         add(root, RULE_ASSISTANT_COMMITS, MINOR, BEST_PRACTICES,
             {"count": len(facts.assistant_commits),
@@ -255,3 +265,131 @@ def as_documents(facts: RepoFacts, root: str) -> list:
             snippet=_listed([f"{sha} {subject}"
                              for sha, subject in facts.assistant_commits]))
     return documents
+
+
+# ------------------------------------------------------------------- blame
+#
+# When a flagged line arrived, and in whose commit. This is the part of the
+# module that answers a question no classifier can: not "does this look
+# written by a model" but "was it written in a commit that says it was".
+
+#: Files blamed in one run. `git blame` walks a file's whole history, so an
+#: unbounded pass over a large repository is a scan of its own - and the
+#: files that carry findings are few (nine of four hundred, in the run this
+#: was measured on).
+_BLAME_FILES = 60
+
+#: `git blame --porcelain` opens each line's record with the commit sha, and
+#: precedes it with header lines this reads.
+_BLAME_HEADER = re.compile(r"^(?P<sha>[0-9a-f]{40})\s+\d+\s+(?P<line>\d+)")
+
+
+@dataclass
+class Arrival:
+    """When one line last changed, and in which commit."""
+    sha: str = ""
+    summary: str = ""
+    author: str = ""
+    when: str = ""
+    #: True when that commit names an assistant as a co-author.
+    assistant: bool = False
+
+
+def _blame_file(root: Path, rel: str) -> dict:
+    """`line number -> Arrival` for one file. Empty when git cannot say."""
+    out = _git(root, "blame", "--porcelain", "--", rel)
+    if not out:
+        return {}
+    lines: dict = {}
+    # Keyed by sha and kept for the whole file, because `--porcelain` sends
+    # a commit's `summary`/`author` **once**, the first time that commit is
+    # seen; every later line of the same commit gets a bare header. Reset
+    # per line, the second finding in a file blamed to one commit came back
+    # with an empty summary - true of the output, false about the commit.
+    seen: dict = {}
+    sha = ""
+    number = 0
+    for row in out.splitlines():
+        header = _BLAME_HEADER.match(row)
+        if header:
+            sha = header.group("sha")
+            number = int(header.group("line"))
+            seen.setdefault(sha, {})
+            continue
+        if not sha:
+            continue
+        if row.startswith("summary "):
+            seen[sha]["summary"] = row[len("summary "):]
+        elif row.startswith("author "):
+            seen[sha]["author"] = row[len("author "):]
+        elif row.startswith("author-time "):
+            seen[sha]["time"] = row[len("author-time "):]
+        elif row.startswith("\t"):
+            known = seen.get(sha, {})
+            lines[number] = Arrival(sha=sha[:12],
+                                    summary=known.get("summary", ""),
+                                    author=known.get("author", ""),
+                                    when=known.get("time", ""))
+    return lines
+
+
+def blame_issues(root, issues, facts: RepoFacts | None = None) -> int:
+    """Attach `details["arrived"]` to every issue git can place. Returns how
+    many were placed.
+
+    Grouped by file rather than asked per finding: `git blame` reads a
+    file's whole history either way, so one call per finding would read the
+    same history thirty times for thirty findings in one file.
+
+    **What blame answers, and what it does not.** It names the commit that
+    last touched a line, which is not the same as the commit that introduced
+    the problem - a reformat, a rename or a moved block all take the line
+    over. The explanation says so rather than letting a date imply an
+    authorship it cannot support.
+    """
+    root = Path(root)
+    facts = facts or read_facts(root)
+    if not facts.is_git:
+        return 0
+
+    assistant_shas = {sha for sha, _subject in facts.assistant_commits}
+    by_file: dict = {}
+    for issue in issues:
+        line = getattr(issue, "line", None)
+        source = getattr(issue, "source", "") or ""
+        if not line or not source:
+            continue
+        try:
+            rel = Path(source).resolve().relative_to(root.resolve()).as_posix()
+        except (ValueError, OSError):
+            continue
+        by_file.setdefault(rel, []).append(issue)
+
+    placed = 0
+    for rel in sorted(by_file)[:_BLAME_FILES]:
+        blamed = _blame_file(root, rel)
+        if not blamed:
+            continue
+        for issue in by_file[rel]:
+            arrival = blamed.get(int(issue.line))
+            if arrival is None:
+                continue
+            arrival.assistant = arrival.sha in assistant_shas or bool(
+                _ASSISTANT_RE.search(arrival.summary))
+            details = dict(getattr(issue, "details", None) or {})
+            details["arrived"] = arrival
+            issue.details = details
+            placed += 1
+    facts.blamed_total = placed
+    facts.blamed_assistant = len(assistant_authored(issues))
+    return placed
+
+
+def assistant_authored(issues) -> list:
+    """The issues whose line last changed in a commit naming an assistant."""
+    out = []
+    for issue in issues:
+        arrival = (getattr(issue, "details", None) or {}).get("arrived")
+        if isinstance(arrival, Arrival) and arrival.assistant:
+            out.append(issue)
+    return out

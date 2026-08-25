@@ -335,6 +335,11 @@ def analyze_files(file_results, root: str, rules=None, ai_review=None,
         from audit import repo_facts as facts_pass
 
         facts = facts_pass.read_facts(root)
+        # Blamed before the findings are turned into documents, because one
+        # of those documents reports how many of them landed on lines an
+        # assistant commit last touched - and that count does not exist
+        # until the blame has run.
+        facts_pass.blame_issues(root, result.issues(), facts)
         result.repo = facts
         result.documents.extend(facts_pass.as_documents(facts, root))
     return result

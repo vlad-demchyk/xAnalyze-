@@ -2642,6 +2642,74 @@ _STRINGS: dict[str, dict[str, str]] = {
     # Two of these are provenance and two are security, and the wording
     # keeps them apart: writing code with an assistant is not a defect, and
     # a credential in the working tree is not a style preference.
+    # `git blame` on a finding's line (`audit/repo_facts.py`). The caveat
+    # travels with the fact every time it is shown: an unqualified
+    # name-and-date beside a finding reads as an accusation, and blame does
+    # not support one.
+    "audit_arrived": {
+        "uk": "Рядок востаннє змінено", "it": "Riga modificata l'ultima volta",
+        "en": "Line last changed",
+    },
+    "audit_arrived_assistant": {
+        "uk": "Цей коміт називає асистента співавтором.",
+        "it": "Questo commit indica un assistente come coautore.",
+        "en": "That commit names an assistant as a co-author.",
+    },
+    "audit_arrived_caveat": {
+        "uk": "Це коміт, який востаннє торкнувся рядка, а не обовʼязково той, "
+              "що створив проблему: переформатування, перейменування чи "
+              "переміщений блок так само забирають рядок на себе.",
+        "it": "E il commit che ha toccato la riga per ultimo, non "
+              "necessariamente quello che ha creato il problema: una "
+              "riformattazione, una rinomina o un blocco spostato prendono la "
+              "riga su di se allo stesso modo.",
+        "en": "This is the commit that last touched the line, not necessarily "
+              "the one that created the problem: a reformat, a rename or a "
+              "moved block take the line over just the same.",
+    },
+    "a11y_bp_assistant_touched_title": {
+        "uk": "Частина знахідок у рядках з асистентських комітів",
+        "it": "Alcuni riscontri su righe di commit con assistente",
+        "en": "Some findings sit on lines from assistant commits",
+    },
+    "a11y_bp_assistant_touched_found": {
+        "uk": "{count} із {read} знахідок, які вдалось привʼязати до рядка, "
+              "стоять у рядках, востаннє змінених комітами, що називають "
+              "асистента співавтором.",
+        "it": "{count} dei {read} riscontri collegabili a una riga si trovano "
+              "su righe toccate per ultime da commit che indicano un assistente "
+              "come coautore.",
+        "en": "{count} of the {read} findings that could be placed on a line "
+              "sit on lines last touched by commits naming an assistant as a "
+              "co-author.",
+    },
+    "a11y_bp_assistant_touched_why": {
+        "uk": "Це не звинувачення і не оцінка: `git blame` називає коміт, який "
+              "востаннє торкнувся рядка, а не той, що створив проблему. "
+              "Показано тому, що це єдина точна відповідь на питання про "
+              "походження, яку взагалі можна отримати, і тому, що вона своя для "
+              "кожного проєкту: у одному це нічого не означає, у іншому це "
+              "привід подивитись, як приймається така робота.",
+        "it": "Non e un'accusa ne una valutazione: `git blame` nomina il commit "
+              "che ha toccato la riga per ultimo, non quello che ha creato il "
+              "problema. Viene mostrato perche e l'unica risposta esatta sulla "
+              "provenienza che si possa ottenere, e perche significa cose "
+              "diverse in progetti diversi.",
+        "en": "Not an accusation and not a judgement: `git blame` names the "
+              "commit that last touched a line, not the one that created the "
+              "problem. It is shown because it is the only exact answer about "
+              "provenance available at all, and because it means different "
+              "things in different projects - nothing in one, and a reason to "
+              "look at how that work is reviewed in another.",
+    },
+    "a11y_bp_assistant_touched_fix": {
+        "uk": "Дії не потрібно. Якщо число здається великим, дивіться не на "
+              "інструмент, а на те, як така робота переглядається перед злиттям.",
+        "it": "Non serve alcuna azione. Se il numero sembra alto, guardate non "
+              "lo strumento ma come quel lavoro viene rivisto prima del merge.",
+        "en": "No action needed. If the number looks high, the thing to look at "
+              "is not the tool but how that work gets reviewed before it lands.",
+    },
     "a11y_sec_env_tracked_title": {
         "uk": "Файл із секретами вже в історії git",
         "it": "Un file con segreti e gia nella storia di git",

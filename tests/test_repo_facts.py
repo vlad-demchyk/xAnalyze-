@@ -276,3 +276,114 @@ class InTheAudit(Repo):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WhenALineLastChanged(Repo):
+    """`git blame` on a finding's line: the only exact answer about
+    provenance this tool can get, and one that has to be qualified every
+    time it is shown.
+
+    What blame answers is which commit *last touched* a line. A reformat, a
+    rename or a moved block all take a line over, so the name and date beside
+    a finding are not evidence of who introduced it - and an unqualified
+    name-and-date beside a defect reads as an accusation.
+    """
+
+    def page(self, images: int) -> str:
+        rows = "\n".join(f'<img src="/i{n}.png">' for n in range(images))
+        return ("<html lang='uk'>\n<head><title>x</title></head>\n<body>\n"
+                f"{rows}\n</body></html>\n")
+
+    def two_authors(self) -> None:
+        """One human commit, then one naming an assistant."""
+        self.make_git()
+        self.write("index.html", self.page(1))
+        self.commit("feat: page by a person", "index.html")
+        self.write("index.html", self.page(1).replace(
+            "</body>", '<img src="/hero.png">\n</body>'))
+        self.commit("feat: hero\n\nCo-Authored-By: Claude <noreply@anthropic.com>",
+                    "index.html")
+
+    def audited(self):
+        from models import FileResult
+
+        markup = (self.root / "index.html").read_text(encoding="utf-8")
+        return audit.analyze_files(
+            [FileResult(path=str(self.root / "index.html"), raw_text=markup)],
+            str(self.root), media=False)
+
+    def test_a_line_is_traced_to_the_commit_that_touched_it(self):
+        self.two_authors()
+        result = self.audited()
+        arrivals = [(i.line, i.details["arrived"]) for d in result.documents
+                    for i in d.issues if (i.details or {}).get("arrived")]
+        self.assertTrue(arrivals)
+        for _line, arrival in arrivals:
+            with self.subTest(sha=arrival.sha):
+                self.assertTrue(arrival.sha)
+                self.assertTrue(arrival.summary)
+
+    def test_a_commit_seen_twice_keeps_its_summary(self):
+        """`--porcelain` sends a commit's summary once, the first time it
+        appears; every later line of it gets a bare header. Reset per line,
+        the second finding blamed to one commit came back with an empty
+        summary - true of the output and false about the commit."""
+        self.make_git()
+        self.write("index.html", self.page(3))
+        self.commit("feat: three images at once", "index.html")
+        result = self.audited()
+        summaries = {i.details["arrived"].summary for d in result.documents
+                     for i in d.issues if (i.details or {}).get("arrived")}
+        self.assertEqual(summaries, {"feat: three images at once"})
+
+    def test_an_assistants_line_is_marked_and_a_persons_is_not(self):
+        self.two_authors()
+        result = self.audited()
+        marks = {i.line: i.details["arrived"].assistant for d in result.documents
+                 for i in d.issues if (i.details or {}).get("arrived")}
+        self.assertIn(True, marks.values())
+        self.assertIn(False, marks.values())
+
+    def test_the_count_is_reported_with_its_denominator(self):
+        """Two out of two and two out of four hundred are the same
+        numerator."""
+        self.two_authors()
+        result = self.audited()
+        self.assertGreater(result.repo.blamed_total, 0)
+        self.assertGreater(result.repo.blamed_assistant, 0)
+        issue = next(i for d in result.documents for i in d.issues
+                     if i.rule_id == repo_facts.RULE_ASSISTANT_TOUCHED)
+        self.assertEqual(issue.details["read"], result.repo.blamed_total)
+
+    def test_a_repository_with_no_assistant_commits_says_nothing_about_it(self):
+        self.make_git()
+        self.write("index.html", self.page(2))
+        self.commit("feat: page", "index.html")
+        result = self.audited()
+        rules = {i.rule_id for d in result.documents for i in d.issues}
+        self.assertNotIn(repo_facts.RULE_ASSISTANT_TOUCHED, rules)
+
+    def test_a_folder_with_no_history_places_nothing(self):
+        self.write("index.html", self.page(2))
+        result = self.audited()
+        self.assertEqual(result.repo.blamed_total, 0)
+
+    def test_the_caveat_is_not_optional(self):
+        """An unqualified name-and-date beside a defect reads as an
+        accusation, and blame does not support one."""
+        from i18n.translations import t
+
+        for lang in ("uk", "it", "en"):
+            with self.subTest(lang=lang):
+                caveat = t("audit_arrived_caveat", lang)
+                self.assertNotIn("audit_", caveat)
+                self.assertTrue(len(caveat) > 40)
+
+    def test_the_summary_finding_refuses_to_be_a_judgement(self):
+        from audit.base import Issue
+        from audit.explanations import render
+
+        issue = Issue(rule_id=repo_facts.RULE_ASSISTANT_TOUCHED,
+                      severity="minor", details={"count": 3, "read": 7})
+        why = render(issue, "en").why.lower()
+        self.assertIn("not an accusation", why)
