@@ -46,6 +46,10 @@ class AccessibilityResult:
     mode: str = "web"          # "web" | "repo" | "file"
     documents: list = field(default_factory=list)
     rules_run: list = field(default_factory=list)
+    #: What the media pass reached, when one ran. An image nobody fetched
+    #: has not come back clean - it has not come back - and without these
+    #: counts the run has no way to say so.
+    media: object = None
 
     def issues(self) -> list:
         out = []
@@ -191,12 +195,19 @@ def analyze_document(markup: str, source: str, rules=None,
     return report
 
 
-def analyze_pages(pages, root: str, rules=None, ai_review=None) -> AccessibilityResult:
+def analyze_pages(pages, root: str, rules=None, ai_review=None,
+                  media: bool = True, media_fetch=None) -> AccessibilityResult:
     """Web mode: run over what the crawler returned.
 
     Pages the crawler could not read are carried through with their error
     rather than dropped — a page that failed to load is a finding about the
     site, and silently omitting it would make the run look cleaner than it is.
+
+    `media` reads what the site's images say about how they were made
+    (`audit.media`). Unlike every other check here it needs the network: the
+    crawler kept the markup, not the pictures. `media_fetch` is injected the
+    way the crawler injects `render`, so a test proves what the pass does
+    with bytes without needing a network to hand them over.
     """
     rules = rules if rules is not None else RuleRegistry.all_rules()
     result = AccessibilityResult(root=root, mode="web",
@@ -210,6 +221,18 @@ def analyze_pages(pages, root: str, rules=None, ai_review=None) -> Accessibility
             continue
         result.documents.append(
             analyze_document(page.raw_html, page.url, rules, ai_review=ai_review))
+    if media:
+        from audit import media as media_pass
+
+        # On by default, bounded hard. A site's images are part of what was
+        # published, and a check that only runs when asked for is a check
+        # that mostly does not run - the same reasoning that made both
+        # questions the default. The budget is what keeps "read the images"
+        # from becoming "mirror the site", and whatever it did not reach is
+        # counted so the run can say so.
+        scan = media_pass.scan_page_media(pages, fetch=media_fetch)
+        result.media = scan
+        result.documents.extend(media_pass.as_web_documents(scan))
     return result
 
 

@@ -39,6 +39,7 @@ BLOCKED = "blocked"
 UNREACHABLE = "unreachable"
 RENDER_FAILED = "render_failed"
 TRUNCATED = "truncated"
+MEDIA_UNCHECKED = "media_unchecked"
 UNKNOWN_FAILURE = "unknown_failure"
 
 #: What a diagnosis offers. Names rather than callables: this module knows
@@ -162,6 +163,27 @@ def diagnose_result(result) -> list:
             evidence_key="diagnosis_truncated_evidence",
             actions=(RAISE_LIMIT,)))
     return out
+
+
+def diagnose_audit(result) -> list:
+    """What an audit could not look at.
+
+    Only one thing so far, and it is the media pass. Reading an image's
+    provenance means downloading it, so the pass runs under a budget - and
+    an image nobody fetched has not come back clean, it has not come back.
+    Reporting those two the same way is the one thing this whole family of
+    checks must not do: the value of a provenance reader is entirely in the
+    difference between "looked and found nothing" and "did not look".
+    """
+    scan = getattr(result, "media", None)
+    if scan is None or not getattr(scan, "unchecked", 0):
+        return []
+    return [Diagnosis(
+        MEDIA_UNCHECKED,
+        fields={"unchecked": scan.unchecked, "checked": scan.checked,
+                "found": scan.found},
+        evidence_key="diagnosis_media_unchecked_evidence",
+        actions=())]
 
 
 def diagnose_failure(message: str) -> Diagnosis:

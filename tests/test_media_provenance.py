@@ -335,3 +335,178 @@ class HowTheyGroup(Temp):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class _Page:
+    def __init__(self, url: str, html: str):
+        self.url, self.raw_html, self.error = url, html, None
+
+
+def png_bytes(prompt: str = "") -> bytes:
+    import io
+
+    buf = io.BytesIO()
+    meta = PngImagePlugin.PngInfo()
+    if prompt:
+        meta.add_text("parameters", prompt)
+    Image.new("RGB", (8, 8), "red").save(buf, "PNG", pnginfo=meta if prompt else None)
+    return buf.getvalue()
+
+
+class WhichImagesAPageRefersTo(unittest.TestCase):
+    def urls(self, html: str) -> list:
+        return media.image_urls(html, "https://x.test/a/b")
+
+    def test_relative_addresses_are_resolved(self):
+        self.assertEqual(self.urls('<img src="/hero.png">'),
+                         ["https://x.test/hero.png"])
+
+    def test_every_candidate_of_a_srcset_counts(self):
+        """A generated image is often served only at one size."""
+        self.assertEqual(len(self.urls('<img srcset="/a.png 1x, /b.png 2x">')), 2)
+
+    def test_a_picture_source_counts_too(self):
+        self.assertEqual(self.urls('<source srcset="/c.webp">'),
+                         ["https://x.test/c.webp"])
+
+    def test_a_lazy_attribute_counts(self):
+        """Half the web puts the real address in `data-src`."""
+        self.assertEqual(self.urls('<img data-src="/d.png">'),
+                         ["https://x.test/d.png"])
+
+    def test_a_data_uri_is_left_exactly_as_it_is(self):
+        """Resolving it against the page would corrupt the bytes."""
+        self.assertEqual(self.urls('<img src="data:image/png;base64,AAAA">'),
+                         ["data:image/png;base64,AAAA"])
+
+    def test_one_address_is_listed_once(self):
+        self.assertEqual(len(self.urls('<img src="/a.png"><img src="/a.png">')), 1)
+
+    def test_unparseable_markup_is_not_a_crash(self):
+        self.assertEqual(media.image_urls("<<<", "https://x.test/"), [])
+
+
+class TheWebPass(unittest.TestCase):
+    def setUp(self):
+        self.store = {"https://x.test/hero.png": png_bytes("a cat, Seed: 1"),
+                      "https://x.test/logo.png": png_bytes()}
+        self.asked = []
+
+    def fetch(self, url, limit):
+        self.asked.append(url)
+        if url not in self.store:
+            raise OSError("404")
+        return self.store[url], True
+
+    def pages(self, count: int = 1) -> list:
+        return [_Page(f"https://x.test/p{i}",
+                      '<img src="/hero.png"><img src="/logo.png">')
+                for i in range(count)]
+
+    def test_a_shared_image_is_fetched_once_not_once_per_page(self):
+        """A logo in a header appears on every page of a site, and fetching
+        it per page is how a thirty-page scan downloads one image thirty
+        times."""
+        scan = media.scan_page_media(self.pages(5), fetch=self.fetch)
+        self.assertEqual(len(self.asked), 2)
+        self.assertEqual(scan.checked, 2)
+
+    def test_it_reports_what_it_found(self):
+        scan = media.scan_page_media(self.pages(), fetch=self.fetch)
+        self.assertEqual([source for source, _found in scan.findings],
+                         ["https://x.test/hero.png"])
+
+    def test_the_budget_stops_it_and_the_stop_is_counted(self):
+        """An image nobody fetched has not come back clean - it has not come
+        back. The count is how the run can say so."""
+        scan = media.scan_page_media(self.pages(), fetch=self.fetch,
+                                     max_images=1)
+        self.assertEqual(scan.checked, 1)
+        self.assertEqual(scan.skipped_budget, 1)
+        self.assertEqual(scan.unchecked, 1)
+
+    def test_a_data_uri_costs_nothing_and_is_read_anyway(self):
+        """The bytes came with the page; a budget that exists to bound the
+        network has no business refusing them."""
+        import base64
+
+        uri = "data:image/png;base64," + base64.b64encode(
+            png_bytes("a dog, Seed: 9")).decode()
+        scan = media.scan_page_media([_Page("https://x.test/", f'<img src="{uri}">')],
+                                     fetch=self.fetch, max_images=0)
+        self.assertEqual(scan.checked, 0)
+        self.assertEqual(len(scan.findings), 1)
+
+    def test_a_data_uri_is_named_by_where_it_is(self):
+        """An eighty-character base64 prefix is not a place."""
+        import base64
+
+        uri = "data:image/png;base64," + base64.b64encode(
+            png_bytes("a dog, Seed: 9")).decode()
+        scan = media.scan_page_media([_Page("https://x.test/", f'<img src="{uri}">')],
+                                     fetch=self.fetch)
+        self.assertNotIn("base64", scan.findings[0][0])
+
+    def test_an_image_that_will_not_load_is_counted_not_raised(self):
+        scan = media.scan_page_media(
+            [_Page("https://x.test/", '<img src="/gone.png">')], fetch=self.fetch)
+        self.assertEqual(scan.unreachable, 1)
+        self.assertEqual(scan.findings, [])
+
+    def test_a_partial_download_is_not_reported_as_nothing_found(self):
+        """It was not judged. Calling that "nothing found" is a claim the
+        run did not earn - which is the whole point of this pass."""
+        def truncating(url, limit):
+            return self.store["https://x.test/hero.png"][:10], False
+
+        scan = media.scan_page_media(
+            [_Page("https://x.test/", '<img src="/big.png">')], fetch=truncating)
+        self.assertEqual(scan.findings, [])
+        self.assertEqual(scan.unreachable, 0)
+        self.assertGreater(scan.unchecked, 0)
+
+    def test_a_page_with_no_markup_is_skipped_quietly(self):
+        page = _Page("https://x.test/", "")
+        self.assertEqual(media.scan_page_media([page], fetch=self.fetch).found, 0)
+
+
+class TheAuditSaysWhatItDidNotOpen(unittest.TestCase):
+    """`diagnosis.diagnose_audit`, which is where the counts become words."""
+
+    def scan(self, **kwargs):
+        return media.MediaFetchScan(**kwargs)
+
+    def result(self, scan):
+        from audit.engine import AccessibilityResult
+
+        return AccessibilityResult(root="https://x.test", media=scan)
+
+    def test_a_run_that_opened_everything_says_nothing(self):
+        import diagnosis as dx
+
+        self.assertEqual(
+            dx.diagnose_audit(self.result(self.scan(found=3, checked=3))), [])
+
+    def test_a_run_that_skipped_images_says_so(self):
+        import diagnosis as dx
+
+        items = dx.diagnose_audit(
+            self.result(self.scan(found=50, checked=40, skipped_budget=10)))
+        self.assertEqual([item.kind for item in items], [dx.MEDIA_UNCHECKED])
+        self.assertEqual(items[0].fields["unchecked"], 10)
+
+    def test_an_audit_without_a_media_pass_says_nothing(self):
+        import diagnosis as dx
+
+        self.assertEqual(dx.diagnose_audit(self.result(None)), [])
+
+    def test_it_reads_as_a_sentence_in_every_language(self):
+        import diagnosis as dx
+        from i18n.translations import t
+
+        item = dx.diagnose_audit(
+            self.result(self.scan(found=50, checked=40, skipped_budget=10)))[0]
+        for lang in ("uk", "it", "en"):
+            with self.subTest(lang=lang):
+                for key in (item.title_key, item.body_key, item.evidence_key):
+                    self.assertNotIn("diagnosis_", t(key, lang, **item.fields))

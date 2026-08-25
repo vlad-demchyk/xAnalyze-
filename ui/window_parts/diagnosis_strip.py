@@ -182,6 +182,18 @@ class DiagnosisStripMixin:
             self.clear_diagnoses()
             self._on_analyze_clicked()
 
-    def diagnose_finished_run(self, result) -> None:
-        """After a run: everything worth saying about what it could not read."""
-        self.show_diagnoses(dx.diagnose_result(result))
+    def diagnose_finished_run(self, result=None) -> None:
+        """After a run: everything worth saying about what it could not read.
+
+        Both halves of a run, because a run can ask both questions: the
+        crawl's own account of what it reached, and the audit's account of
+        which images it managed to open. Called from either handler, so it
+        reads whichever results the window is holding rather than only the
+        one that just arrived.
+        """
+        items = []
+        if getattr(self, "result", None) is not None:
+            items.extend(dx.diagnose_result(self.result))
+        if getattr(self, "audit_result", None) is not None:
+            items.extend(dx.diagnose_audit(self.audit_result))
+        self.show_diagnoses(items)

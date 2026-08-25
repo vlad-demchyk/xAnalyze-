@@ -431,6 +431,27 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "massimo di pagine per esecuzione: {limit}",
         "en": "max pages per run: {limit}",
     },
+    "diagnosis_media_unchecked_title": {
+        "uk": "Частину зображень не перевірено",
+        "it": "Alcune immagini non sono state controllate",
+        "en": "Some images were not checked",
+    },
+    "diagnosis_media_unchecked_body": {
+        "uk": "Перевірено {checked} із {found} зображень. Решту ніхто не "
+              "відкривав, тож про них не сказано нічого: це не те саме, що "
+              "подивитись і нічого не знайти.",
+        "it": "Controllate {checked} immagini su {found}. Le altre non le ha "
+              "aperte nessuno, quindi su di esse non e stato detto nulla: non "
+              "e lo stesso che guardare e non trovare niente.",
+        "en": "Checked {checked} of {found} images. Nobody opened the rest, so "
+              "nothing has been said about them - which is not the same as "
+              "looking and finding nothing.",
+    },
+    "diagnosis_media_unchecked_evidence": {
+        "uk": "не перевірено: {unchecked}",
+        "it": "non controllate: {unchecked}",
+        "en": "not checked: {unchecked}",
+    },
     "diagnosis_unknown_failure_title": {
         "uk": "Прогін зупинився", "it": "L'esecuzione si e fermata",
         "en": "The run stopped",

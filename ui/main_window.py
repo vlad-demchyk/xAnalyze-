@@ -623,6 +623,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             self.current_preview_url = address
             self.site_view.setUrl(QUrl(address))
         self._update_audit_buttons_enabled()
+        self.diagnose_finished_run()
         self._refresh_summary()
         self.status_bar.showMessage(
             audit_explanations.summary_line(result, self.lang))
@@ -2478,6 +2479,10 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         # wordings of one summary is two things to keep true.
         self.status_bar.showMessage(
             audit_explanations.summary_line(result, self.lang))
+        # There are two ways an audit result reaches this window, and the
+        # other one already does this. Both, or a run started one way says
+        # what it could not read and a run started the other way does not.
+        self.diagnose_finished_run()
         if getattr(self, "_pending_copy_pass", False):
             # The second half of a both-questions run. `_reset_scan_ui` would
             # wipe the audit rows that just arrived, so the copy pass appends
