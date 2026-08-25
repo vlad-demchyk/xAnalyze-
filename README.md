@@ -234,6 +234,10 @@ xanalyze fullscan https://example.com --language uk
 | `--exclude PATTERN` | Gitignore-style exclude pattern (repeatable) |
 | `--no-default-excludes` | Don't skip `node_modules/`, `dist/`, `.git/` etc. |
 | `--repo PATH` | Local checkout behind a URL target. A finding whose passage matches a block found under `PATH` gets `source_file`/`source_line` - the file to fix, not just the page it renders on. Additive: a URL scanned without it works exactly as before |
+| `--devserver` | Detect and start a repo's own dev server (`package.json`, `manage.py`, `Gemfile`+`bin/rails`) and scan the rendered site instead of the source. Off by default - the server may already be running elsewhere; already have one running? Pass `--url http://localhost:PORT` instead |
+| `--start-command CMD` | Override the detected dev server start command, run without a shell (e.g. `--start-command "npm run dev:custom"`) |
+| `--dev-server-port N` | Port to expect, when it can't be read from the server's own output (Django/Rails; Node servers announce their own) |
+| `--yes` | Install missing dev server dependencies without asking |
 | `--detector DETECTOR` | AI pattern detector: `offline`, `embedding`, `hybrid`, `llm-judge` |
 | `--model MODEL` | Model for the AI pass, e.g. `sonnet`, `opus` (only with `--detector ai`/`llm-judge`; ignored by the xFormat subscription, which picks its own) |
 | `--effort {low,medium,high}` | How hard the AI pass thinks (default: `low`) |
@@ -330,6 +334,55 @@ case** - no live site, or a code review where "does this text sound
 AI-written" and "does this comment need a rewrite" are the only questions.
 It reads comments and docstrings, which a rendered page never shows a
 reader and this scan never claims are visible.
+
+### There's no live site, but there is a checkout - `fullscan` can run it
+
+A repo with a `package.json`, a Django `manage.py`, or a Rails
+`Gemfile`+`bin/rails` can start its own dev server and be scanned as the
+rendered site - but not by default. `fullscan ./repo` alone stays exactly
+what it always was: a static scan, no network, no subprocess. The server may
+already be running in another terminal, and starting a second one on a
+different port is a confusing outcome, not a helpful one - so this is
+opt-in, everywhere:
+
+```bash
+xanalyze fullscan ./repo
+# [devserver] node detected but not started - scanning source only.
+# Pass --devserver to read the rendered site instead, or --url if one is
+# already running
+
+xanalyze fullscan ./my-vite-app --devserver
+# node: dependencies are missing. Run `npm install`? [y/N]
+# [devserver] node ready at http://localhost:5173
+```
+
+With `--devserver`, missing dependencies (`node_modules/`, an unimportable
+Django, `bundle check` failing) stop the run and ask before installing
+anything - `--yes` skips the prompt for an unattended run. Once the server
+answers, the crawl and audit run against it exactly as they would against
+any URL - the report gets the render-only findings a static scan of the
+same repo cannot produce (measured live: 8 accessibility/SEO rules against
+zero from the source alone). `--repo` is set to the checkout automatically
+too, so content findings still point at the file to fix.
+
+Every command run here is a fixed argument list, never a shell string:
+reading `package.json`'s `scripts.dev` only reads the *name* of a runnable
+script - `npm run dev` resolves what it does, this never executes the
+script's text directly. If the server never becomes ready, or an install is
+declined, the run falls back to the ordinary static repo scan rather than
+stopping - the same "warn, never silent, keep going" rule the AI-detector
+fallback follows.
+
+`--start-command` overrides the detected command for a project whose "dev"
+script isn't the right one; `--dev-server-port` names the port when it
+can't be read from Node's own output. A server you already started
+yourself needs none of this - `fullscan http://localhost:5173` (or a bare
+`--url`) already works, exactly as any other URL does.
+
+The desktop app has the same default: a repo target's "Analyze" runs
+statically unless "Auto-start server" is checked, and a "Start server"
+button (both in the Advanced controls) starts one for a single run without
+turning the toggle on. The TUI has the same checkbox on the Full Scan form.
 
 ---
 

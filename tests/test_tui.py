@@ -20,7 +20,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from textual.widgets import Button, DataTable, Input, Label, Select
+from textual.widgets import Button, Checkbox, DataTable, Input, Label, Select
 
 from tui.app import XAnalyzeApp
 from tui import runner as tui_runner
@@ -489,6 +489,186 @@ class OneRunAtATime(unittest.TestCase):
                 return screen.query_one("#run", Button).disabled
 
         self.assertTrue(run(body()))
+
+
+class DevServerConfirm(unittest.TestCase):
+    """A repo target with missing dev-server deps asks before `start_run` -
+    but only when "Start dev server" is checked. Off by default: the
+    server may already be running elsewhere, and starting a second one on a
+    different port is a confusing outcome, not a helpful one.
+    """
+
+    def _repo_with_missing_deps(self, tmp_path):
+        (tmp_path / "package.json").write_text("{}", encoding="utf-8")
+        return tmp_path
+
+    def test_unchecked_by_default_scans_statically_even_with_missing_deps(self):
+        """The default: no modal, no server, the plain static scan runs -
+        `cmd_fullscan` itself says a stack exists, this screen does not ask."""
+        import tempfile
+        from tui.screens.confirm import ConfirmModal
+
+        async def body():
+            with tempfile.TemporaryDirectory() as tmp:
+                repo = self._repo_with_missing_deps(Path(tmp))
+                app = XAnalyzeApp()
+                captured: list = []
+                async with app.run_test() as pilot:
+                    await pilot.pause()
+                    await pilot.press("3")
+                    await pilot.pause()
+                    screen = app.screen
+                    screen.query_one("#target", Input).value = str(repo)
+                    self.assertFalse(screen.query_one("#devserver", Checkbox).value)
+                    with mock.patch.object(
+                            screen, "start_run",
+                            side_effect=lambda *a, **k: captured.append((a, k)) or True):
+                        screen._run_fullscan()
+                    await pilot.pause()
+                    pushed_modal = isinstance(app.screen, ConfirmModal)
+                return captured, pushed_modal
+
+        captured, pushed_modal = run(body())
+        self.assertFalse(pushed_modal)
+        self.assertEqual(len(captured), 1)
+        (_command, args), _kwargs = captured[0]
+        self.assertFalse(args.devserver)
+
+    def test_checked_and_missing_deps_pushes_a_modal_before_running(self):
+        import tempfile
+        from tui.screens.confirm import ConfirmModal
+
+        async def body():
+            with tempfile.TemporaryDirectory() as tmp:
+                repo = self._repo_with_missing_deps(Path(tmp))
+                app = XAnalyzeApp()
+                captured: list = []
+                async with app.run_test() as pilot:
+                    await pilot.pause()
+                    await pilot.press("3")
+                    await pilot.pause()
+                    screen = app.screen
+                    screen.query_one("#target", Input).value = str(repo)
+                    screen.query_one("#devserver", Checkbox).value = True
+                    with mock.patch.object(
+                            screen, "start_run",
+                            side_effect=lambda *a, **k: captured.append((a, k)) or True):
+                        screen._run_fullscan()
+                    await pilot.pause()
+                    pushed_modal = isinstance(app.screen, ConfirmModal)
+                return captured, pushed_modal
+
+        captured, pushed_modal = run(body())
+        self.assertTrue(pushed_modal)
+        # start_run must not have been called yet - the question is still open.
+        self.assertEqual(captured, [])
+
+    def test_confirming_yes_starts_the_run_with_yes_set(self):
+        import tempfile
+
+        async def body():
+            with tempfile.TemporaryDirectory() as tmp:
+                repo = self._repo_with_missing_deps(Path(tmp))
+                app = XAnalyzeApp()
+                captured: list = []
+                async with app.run_test() as pilot:
+                    await pilot.pause()
+                    await pilot.press("3")
+                    await pilot.pause()
+                    screen = app.screen
+                    screen.query_one("#target", Input).value = str(repo)
+                    screen.query_one("#devserver", Checkbox).value = True
+                    with mock.patch.object(
+                            screen, "start_run",
+                            side_effect=lambda *a, **k: captured.append((a, k)) or True):
+                        screen._run_fullscan()
+                        await pilot.pause()
+                        await pilot.click("#confirm-yes")
+                        await pilot.pause()
+                return captured
+
+        captured = run(body())
+        self.assertEqual(len(captured), 1)
+        (_command, args), _kwargs = captured[0]
+        self.assertTrue(args.yes)
+
+    def test_confirming_no_still_starts_the_run_static_only(self):
+        """Declining the install does not cancel the scan - it falls back
+        to the static repo scan, exactly like the CLI path does."""
+        import tempfile
+
+        async def body():
+            with tempfile.TemporaryDirectory() as tmp:
+                repo = self._repo_with_missing_deps(Path(tmp))
+                app = XAnalyzeApp()
+                captured: list = []
+                async with app.run_test() as pilot:
+                    await pilot.pause()
+                    await pilot.press("3")
+                    await pilot.pause()
+                    screen = app.screen
+                    screen.query_one("#target", Input).value = str(repo)
+                    screen.query_one("#devserver", Checkbox).value = True
+                    with mock.patch.object(
+                            screen, "start_run",
+                            side_effect=lambda *a, **k: captured.append((a, k)) or True):
+                        screen._run_fullscan()
+                        await pilot.pause()
+                        await pilot.click("#confirm-no")
+                        await pilot.pause()
+                return captured
+
+        captured = run(body())
+        self.assertEqual(len(captured), 1)
+        (_command, args), _kwargs = captured[0]
+        self.assertFalse(args.yes)
+
+    def test_checked_and_satisfied_deps_runs_immediately(self):
+        import tempfile
+
+        async def body():
+            with tempfile.TemporaryDirectory() as tmp:
+                repo = Path(tmp)
+                (repo / "package.json").write_text("{}", encoding="utf-8")
+                (repo / "node_modules").mkdir()
+                app = XAnalyzeApp()
+                captured: list = []
+                async with app.run_test() as pilot:
+                    await pilot.pause()
+                    await pilot.press("3")
+                    await pilot.pause()
+                    screen = app.screen
+                    screen.query_one("#target", Input).value = str(repo)
+                    screen.query_one("#devserver", Checkbox).value = True
+                    with mock.patch.object(
+                            screen, "start_run",
+                            side_effect=lambda *a, **k: captured.append((a, k)) or True):
+                        screen._run_fullscan()
+                    await pilot.pause()
+                return captured
+
+        captured = run(body())
+        self.assertEqual(len(captured), 1)
+
+    def test_a_url_target_never_triggers_a_devserver_check(self):
+        async def body():
+            app = XAnalyzeApp()
+            captured: list = []
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                await pilot.press("3")
+                await pilot.pause()
+                screen = app.screen
+                screen.query_one("#target", Input).value = "https://example.com"
+                with mock.patch.object(
+                        screen, "start_run",
+                        side_effect=lambda *a, **k: captured.append((a, k)) or True):
+                    screen._run_fullscan()
+                await pilot.pause()
+            return captured
+
+        captured = run(body())
+        self.assertEqual(len(captured), 1)
 
 
 if __name__ == "__main__":

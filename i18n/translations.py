@@ -352,6 +352,26 @@ _STRINGS: dict[str, dict[str, str]] = {
                                 "en": "interrupted"},
     "runs_status_done": {"uk": "завершено", "it": "completata",
                          "en": "complete"},
+    "devserver_confirm": {
+        "uk": "{stack}: залежності відсутні в {repo}. Встановити їх і запустити сервер?",
+        "it": "{stack}: dipendenze mancanti in {repo}. Installarle e avviare il server?",
+        "en": "{stack}: dependencies are missing in {repo}. Install them and start the server?",
+    },
+    "devserver_starting": {
+        "uk": "Запускаю сервер розробки…",
+        "it": "Avvio il server di sviluppo…",
+        "en": "Starting the dev server…",
+    },
+    "devserver_ready": {
+        "uk": "Сервер готовий: {url}",
+        "it": "Server pronto: {url}",
+        "en": "Server ready: {url}",
+    },
+    "devserver_failed": {
+        "uk": "Сервер не запущено ({reason}); скановано як звичайний код",
+        "it": "Server non avviato ({reason}); scansionato come codice statico",
+        "en": "The dev server did not start ({reason}); scanned statically instead",
+    },
     "runs_pause_requested": {
         "uk": "Пауза запрошена: прогін спиниться на межі наступного етапу",
         "it": "Pausa richiesta: si fermerà al confine della fase successiva",
@@ -819,6 +839,51 @@ _STRINGS: dict[str, dict[str, str]] = {
         "uk": "Файли й папки, які виключити з аналізу",
         "it": "File e cartelle da escludere dall'analisi",
         "en": "Files/folders to exclude from analysis",
+    },
+    "auto_devserver_check": {
+        "uk": "Автозапуск сервера",
+        "it": "Avvio automatico server",
+        "en": "Auto-start server",
+    },
+    "auto_devserver_check_full": {
+        "uk": "Аналіз сам виявляє й піднімає сервер розробки репо (package.json, "
+             "manage.py, Gemfile+bin/rails). Вимкнено за замовчуванням: сервер "
+             "може вже бути запущений деінде",
+        "it": "L'analisi rileva e avvia da sola il server di sviluppo del repo "
+             "(package.json, manage.py, Gemfile+bin/rails). Disattivo per "
+             "default: il server potrebbe già essere in esecuzione altrove",
+        "en": "Analyze detects and starts the repo's own dev server "
+             "(package.json, manage.py, Gemfile+bin/rails). Off by default: "
+             "it may already be running elsewhere",
+    },
+    "start_server_button": {
+        "uk": "Запустити сервер",
+        "it": "Avvia server",
+        "en": "Start server",
+    },
+    "start_server_button_full": {
+        "uk": "Виявити й підняти сервер розробки цього репо зараз, і сканувати "
+             "рендерений сайт",
+        "it": "Rileva e avvia ora il server di sviluppo di questo repo, e "
+             "scansiona il sito reso",
+        "en": "Detect and start this repo's dev server now, and scan the "
+             "rendered site",
+    },
+    "devserver_none_detected": {
+        "uk": "Не знайдено package.json, manage.py ані Gemfile+bin/rails у цьому шляху",
+        "it": "Nessun package.json, manage.py o Gemfile+bin/rails trovato in questo percorso",
+        "en": "No package.json, manage.py, or Gemfile+bin/rails found at this path",
+    },
+    "devserver_available": {
+        "uk": "Знайдено {stack}, статичний скан коду не дає найкращої точності. "
+             "Вкажи URL сервера/сайту, увімкни автозапуск, або натисни "
+             "«Запустити сервер»",
+        "it": "Rilevato {stack}, la scansione statica del codice non dà la "
+             "massima precisione. Indica l'URL del server/sito, attiva "
+             "l'avvio automatico, o premi «Avvia server»",
+        "en": "{stack} detected - a static code scan won't be as accurate. "
+             "Give the server/site URL, turn on auto-start, or click "
+             "\"Start server\"",
     },
     "exclusions_dialog_title": {
         "uk": "Файли й папки, які не аналізувати (.gitignore-подібний синтаксис)",

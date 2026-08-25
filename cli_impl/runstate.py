@@ -33,13 +33,20 @@ from pathlib import Path
 #: The phases of a full scan, in the order they run. Resume restarts at the
 #: first one that is not `done`, which is why the order is data and not just
 #: the order of statements in `cmd_fullscan`.
-PHASES = ("scan", "crawl", "audit", "browser", "reports", "documents")
+#:
+#: `"devserver"` is never trusted as `done` on resume - see `_run_phases` in
+#: `cli_impl/fullscan.py` - because the process it would refer to no longer
+#: exists once the CLI has exited. It is recorded for the same reason every
+#: other phase is: visibility, and a place for `skip`/`fail` to say why the
+#: browser pass never ran.
+PHASES = ("devserver", "scan", "crawl", "audit", "browser", "reports", "documents")
 
 #: Human labels, so the catalogue and the timings agree on what to call a
 #: stage. Kept next to `PHASES` rather than in the i18n table: these names
 #: also go into `state.json`, which is read by machines and must not move
 #: when the interface language changes.
 PHASE_LABELS = {
+    "devserver": "starting dev server",
     "scan": "AI patterns scan",
     "crawl": "crawl",
     "audit": "static audit",

@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 import sys
 from collections import Counter
 from pathlib import Path
 
+import devserver
 import duplicates
 import suppression
 
@@ -848,6 +850,67 @@ def _stop_short(state, folder, target, timings, phase, reason, *,
     return EXIT_INCOMPLETE
 
 
+def _confirm_install(stack_name: str, install_argv: list, args) -> bool:
+    """Ask before running an install command. Mirrors `uninstall._confirm`.
+
+    `--yes` bypasses the prompt, exactly like `uninstall`'s own bypass - the
+    same shape for the same reason: a script driving this CLI has no stdin to
+    answer with, and `EOFError` alone would make every unattended run silently
+    decline an install it might have wanted.
+    """
+    if getattr(args, "yes", False):
+        return True
+    try:
+        answer = input(f"{stack_name}: dependencies are missing. Run "
+                       f"`{' '.join(install_argv)}`? [y/N] ")
+    except EOFError:
+        return False
+    return answer.strip().lower() in ("y", "yes")
+
+
+def _maybe_start_devserver(args, repo_path: str):
+    """Detect and start a dev server for `repo_path`, or say why not.
+
+    Returns `(target, process_or_None, skip_reason_or_None)`. `target` is
+    `repo_path` unchanged unless a server was actually confirmed listening -
+    every failure here falls back to the static repo scan `fullscan` already
+    does, rather than aborting the run: the same "warn, never silent, keep
+    going on the fallback path" shape as `_content_passes` handling a judge
+    that could not be built.
+    """
+    repo = Path(repo_path)
+    stack = devserver.detect_stack(repo)
+    if stack is None:
+        return repo_path, None, None
+
+    override = getattr(args, "start_command", None)
+    start_argv = shlex.split(override) if override else None
+    port = getattr(args, "dev_server_port", None)
+    try:
+        plan = devserver.build_plan(stack, repo, start_argv=start_argv, port=port)
+    except devserver.DevServerUnavailable as exc:
+        return repo_path, None, f"{stack.name}: {exc}"
+
+    if plan.install_argv is not None:
+        print(f"# [devserver] {stack.name}: dependencies missing",
+              file=sys.stderr, flush=True)
+        if not _confirm_install(stack.name, plan.install_argv, args):
+            return repo_path, None, f"{stack.name}: dependencies missing, install declined"
+        try:
+            devserver.run_install(plan)
+        except devserver.DevServerInstallFailed as exc:
+            return repo_path, None, str(exc)
+
+    proc = devserver.DevServerProcess.start(plan)
+    try:
+        url = proc.wait_ready(60)
+    except devserver.DevServerNeverReady as exc:
+        proc.stop()
+        return repo_path, None, str(exc)
+    print(f"# [devserver] {stack.name} ready at {url}", file=sys.stderr, flush=True)
+    return url, proc, None
+
+
 def cmd_fullscan(args) -> int:
     """Full scan: AI patterns + accessibility audit + reports for agent.
 
@@ -866,6 +929,7 @@ def cmd_fullscan(args) -> int:
     Usage:
       xanalyze fullscan https://example.com           # full scan with browser
       xanalyze fullscan ./repo                        # repo scan (no browser)
+      xanalyze fullscan ./repo --devserver             # start its dev server, scan the render
       xanalyze fullscan https://example.com --breakpoints desktop  # desktop only
       xanalyze fullscan ./repo --agent                # agent judges AI patterns
     """
@@ -936,6 +1000,69 @@ def _run_phases(args, state, folder, timings, target, lang, is_url, is_page,
     caught: a `Paused` raised at any boundary unwinds to exactly one handler,
     and a paused run and a failed run then leave the same shape behind - which
     is what lets `resume` have one code path instead of two.
+    """
+    # --- Phase 0: dev server, for a repo target with no URL ---
+    #
+    # Deliberately local to this function rather than done in `cmd_fullscan`
+    # before the run folder is created: `cmd_fullscan` names the folder and
+    # the resumed run's identity from `target` as given, and that must stay
+    # the repo path across every run of it - not the dev server's port,
+    # which is different every time and would otherwise turn one project
+    # into a new "target" on every scan. `is_url`/`is_page`/`wants_browser`
+    # are plain local variables here, so reassigning them below is exactly
+    # what the rest of this function, unmodified, then runs on.
+    devserver_proc = None
+    is_repo_target = not is_url and not is_page and Path(target).is_dir()
+    if is_repo_target and not getattr(args, "devserver", False):
+        # Not requested: said once, because a repo that happens to have a
+        # start command is the ordinary case, not something worth a warning -
+        # but silence would mean nobody ever learns the flag exists.
+        stack = devserver.detect_stack(Path(target))
+        if stack is not None:
+            print(f"# [devserver] {stack.name} detected but not started - "
+                  f"scanning source only. Pass --devserver to read the "
+                  f"rendered site instead, or --url if one is already "
+                  f"running", file=sys.stderr, flush=True)
+    if (is_repo_target and getattr(args, "devserver", False)
+            and not already("crawl")):
+        guard("devserver")
+        if state is not None:
+            state.start("devserver")
+        repo_path = target
+        target, devserver_proc, skip_reason = _maybe_start_devserver(args, repo_path)
+        is_url = looks_like_url(target) or args.url
+        is_page = _is_page_file(target) if not is_url else False
+        wants_browser = (is_url or is_page) and not getattr(args, "no_browser", False)
+        if devserver_proc is not None:
+            if not getattr(args, "repo", None):
+                # The checkout that was just used to start the server *is*
+                # the code behind the site now being scanned - the same
+                # source-file cross-referencing `--repo` already gives
+                # applies without saying the same path twice.
+                args.repo = repo_path
+            if state is not None:
+                state.done("devserver")
+        elif state is not None:
+            state.skip("devserver", skip_reason or "no dev server detected")
+    elif state is not None:
+        state.skip("devserver", "target is a URL, a single file, or --devserver was not passed")
+
+    try:
+        return _run_phases_body(args, state, folder, timings, target, lang,
+                                is_url, is_page, wants_browser, agent_mode,
+                                already, guard)
+    finally:
+        if devserver_proc is not None:
+            devserver_proc.stop()
+
+
+def _run_phases_body(args, state, folder, timings, target, lang, is_url, is_page,
+                     wants_browser, agent_mode, already, guard) -> int:
+    """The phases from the AI-patterns scan onward.
+
+    Split out from `_run_phases` so the dev server it may have started has
+    exactly one place to be stopped - a `finally` around this call - whether
+    the run below finishes, fails, or pauses.
     """
     # --- Phase 1: AI patterns scan (for local files/repos) ---
     pages = None

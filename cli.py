@@ -862,6 +862,29 @@ def build_parser() -> argparse.ArgumentParser:
                                  "pattern findings that match a passage in it "
                                  "get the file and line to fix, not just the "
                                  "page")
+    # Off by default: a repo's dev server may already be running in another
+    # terminal, and starting a second one on a different port is a confusing
+    # outcome, not a helpful one. A repo scanned without this flag is scanned
+    # statically, exactly as it always has been - this is additive, not a
+    # mode switch.
+    p_fullscan.add_argument("--devserver", action="store_true",
+                            help="detect and start a repo's own dev server "
+                                 "(package.json, manage.py, Gemfile+bin/rails) "
+                                 "and scan the rendered site instead of the "
+                                 "source; already have one running? pass "
+                                 "--url http://localhost:PORT instead")
+    p_fullscan.add_argument("--start-command", default=None, metavar="CMD",
+                            help="override the detected dev server start "
+                                 "command, run without a shell (e.g. "
+                                 "--start-command 'npm run dev:custom')")
+    p_fullscan.add_argument("--dev-server-port", type=int, default=None,
+                            help="port to expect, when it can't be read "
+                                 "from the server's own output "
+                                 "(Django/Rails; Node servers announce "
+                                 "their own)")
+    p_fullscan.add_argument("--yes", action="store_true",
+                            help="install missing dev server dependencies "
+                                 "without asking")
     # `ai` first, because it is the word people reach for and it was the one
     # the help did not mention: the list named `llm-judge`, a backend name,
     # and left the natural request undiscoverable even though it has always

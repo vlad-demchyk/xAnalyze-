@@ -9,6 +9,7 @@ from textual.widgets import Button, Checkbox, Input, Label, Select, Static
 
 from cli import cmd_fullscan
 from tui.screens.base import RunScreen
+from tui.screens.confirm import ConfirmModal
 
 
 class FullscanScreen(RunScreen):
@@ -67,6 +68,13 @@ class FullscanScreen(RunScreen):
             yield Checkbox("Agent mode (offline + agent judges)", id="agent")
             yield Checkbox("No browser (static fetch only, much faster)",
                            id="no-browser")
+            # Off by default: a repo's dev server may already be running
+            # elsewhere, and starting a second one on a different port is a
+            # confusing outcome, not a helpful one. A repo scanned with this
+            # unchecked is scanned statically, same as always.
+            yield Checkbox("Start dev server if the repo has one "
+                           "(package.json, manage.py, Gemfile+bin/rails)",
+                           id="devserver")
 
             yield Static("")
             with Horizontal():
@@ -103,6 +111,11 @@ class FullscanScreen(RunScreen):
             ext=None,
             exclude=None,
             no_default_excludes=False,
+            repo=None,
+            devserver=self.query_one("#devserver", Checkbox).value,
+            start_command=None,
+            dev_server_port=None,
+            yes=False,
             detector="offline",
             scope="both",
             no_typography=False,
@@ -117,4 +130,50 @@ class FullscanScreen(RunScreen):
             no_browser=self.query_one("#no-browser", Checkbox).value,
             json=True,
         )
-        self.start_run(cmd_fullscan, args, title=f"Full scan of {target}")
+
+        title = f"Full scan of {target}"
+        if args.devserver:
+            stack = self._devserver_stack_needing_confirm(target)
+            if stack is not None:
+                question = (f"{stack.name}: dependencies are missing for "
+                           f"{target}. Install them and start the dev server?")
+                self.app.push_screen(
+                    ConfirmModal(question),
+                    lambda confirmed: self._on_devserver_confirmed(confirmed, args, title))
+                return
+        # Not checked: scanned statically, same as always. If a stack exists,
+        # `cmd_fullscan` says so itself (a "# [devserver] ..." stderr line),
+        # which this screen already surfaces through the ordinary status-line
+        # mechanism - no separate notice needed here.
+        self.start_run(cmd_fullscan, args, title=title)
+
+    def _devserver_stack_needing_confirm(self, target: str):
+        """The detected stack, if it needs an install confirmed - else `None`.
+
+        Cheap filesystem/`--version`-class checks only, run synchronously on
+        the UI thread before anything starts: this is not the server itself,
+        which is what `tui.runner`'s worker goes on to start once `start_run`
+        is called below, exactly as it always has.
+        """
+        from pathlib import Path
+
+        import devserver
+        from cli_impl.auditpass import looks_like_url
+
+        if looks_like_url(target):
+            return None
+        path = Path(target)
+        if not path.is_dir():
+            return None
+        stack = devserver.detect_stack(path)
+        if stack is None or stack.deps_satisfied(path):
+            return None
+        return stack
+
+    def _on_devserver_confirmed(self, confirmed: bool, args: argparse.Namespace,
+                                title: str) -> None:
+        # A separate call, not a resumed one: the modal answers on its own
+        # callback, on the UI thread, well after `_run_fullscan` already
+        # returned - there is no suspended call frame to continue.
+        args.yes = confirmed
+        self.start_run(cmd_fullscan, args, title=title)

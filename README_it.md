@@ -216,6 +216,10 @@ xanalyze fullscan https://example.com --language it
 | `--exclude PATTERN` | Pattern gitignore-style di esclusione (ripetibile) |
 | `--no-default-excludes` | Non saltare `node_modules/`, `dist/`, `.git/` ecc. |
 | `--repo PATH` | Checkout locale dietro un target URL. Un rilievo il cui passaggio corrisponde a un blocco trovato sotto `PATH` ottiene `source_file`/`source_line` - il file da correggere, non solo la pagina su cui compare. Additivo: un sito scansionato senza funziona esattamente come prima |
+| `--devserver` | Rileva e avvia il server di sviluppo del repo (`package.json`, `manage.py`, `Gemfile`+`bin/rails`) e scansiona il sito reso invece della sorgente. Disattivo per default - il server potrebbe già essere in esecuzione altrove; ne hai già uno avviato? Passa invece `--url http://localhost:PORT` |
+| `--start-command CMD` | Sovrascrive il comando di avvio rilevato, eseguito senza shell (es. `--start-command "npm run dev:custom"`) |
+| `--dev-server-port N` | Porta da usare, quando non può essere letta dall'output del server (Django/Rails; i server Node annunciano la propria) |
+| `--yes` | Installa le dipendenze mancanti del dev server senza chiedere |
 | `--detector DETECTOR` | Detector pattern AI: `offline`, `embedding`, `hybrid`, `llm-judge` |
 | `--model MODEL` | Modello per il passaggio AI, es. `sonnet`, `opus` (solo con `--detector ai`/`llm-judge`; ignorato dall'abbonamento xFormat, che sceglie da sé) |
 | `--effort {low,medium,high}` | Quanto impegno mette il passaggio AI (default: `low`) |
@@ -311,6 +315,58 @@ opposto** - nessun sito live, o una revisione del codice dove le uniche
 domande sono "questo testo suona scritto da un'AI" e "questo commento va
 riscritto". Legge commenti e docstring, che una pagina resa non mostra mai
 a un lettore e che questa scansione non fa mai passare per visibili.
+
+### Nessun sito live, ma c'è un checkout - `fullscan` può avviarlo da solo
+
+Un repo con `package.json`, un `manage.py` Django, o un Rails
+`Gemfile`+`bin/rails` può avviare il proprio server di sviluppo ed essere
+scansionato come sito reso - ma non per default. `fullscan ./repo` da solo
+resta esattamente quello che è sempre stato: una scansione statica, senza
+rete, senza sottoprocessi. Il server potrebbe già essere in esecuzione in
+un altro terminale, e avviarne un secondo su una porta diversa è un
+risultato confuso, non utile - quindi è opzionale, ovunque:
+
+```bash
+xanalyze fullscan ./repo
+# [devserver] node detected but not started - scanning source only.
+# Pass --devserver to read the rendered site instead, or --url if one is
+# already running
+
+xanalyze fullscan ./my-vite-app --devserver
+# node: dependencies are missing. Run `npm install`? [y/N]
+# [devserver] node ready at http://localhost:5173
+```
+
+Con `--devserver`, dipendenze mancanti (`node_modules/` assente, Django non
+importabile, `bundle check` fallito) fermano l'esecuzione e chiedono prima
+di installare - `--yes` salta la domanda per un'esecuzione non presidiata.
+Una volta che il server risponde, crawl e audit girano contro di esso
+esattamente come contro qualsiasi URL - il report ottiene i rilievi che solo
+il rendering produce e che una scansione statica dello stesso repo non può
+dare (misurato dal vivo: 8 regole di accessibilità/SEO contro zero dalla
+sola sorgente). Anche `--repo` viene impostato automaticamente su quel
+checkout, così i rilievi di contenuto continuano a indicare il file da
+correggere.
+
+Ogni comando eseguito qui è un elenco di argomenti fisso, mai una stringa di
+shell: leggere `scripts.dev` da `package.json` legge solo il *nome* di uno
+script eseguibile - `npm run dev` risolve da sé cosa fa, il testo dello
+script non viene mai eseguito direttamente qui. Se il server non diventa mai
+pronto, o un'installazione viene rifiutata, l'esecuzione ricade sulla normale
+scansione statica del repo invece di fermarsi - la stessa regola "avvisa, mai
+in silenzio, continua" che segue il fallback del rilevatore AI.
+
+`--start-command` sovrascrive il comando rilevato per un progetto il cui
+script "dev" non è quello giusto; `--dev-server-port` indica la porta
+quando non può essere letta dall'output di Node. Un server già avviato da
+soli non ha bisogno di niente di tutto ciò - `fullscan http://localhost:5173`
+(o un `--url` nudo) funziona già, esattamente come qualsiasi altro URL.
+
+L'app desktop ha lo stesso default: "Analyze" su un repo scansiona in modo
+statico finché non si spunta "Avvio automatico server", e un pulsante
+"Avvia server" (entrambi nei controlli Avanzati) ne avvia uno per una sola
+esecuzione senza attivare l'interruttore permanentemente. Il TUI ha la
+stessa casella nel modulo Full Scan.
 
 ---
 

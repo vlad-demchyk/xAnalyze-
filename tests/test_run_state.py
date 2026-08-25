@@ -95,12 +95,14 @@ class NextPhase(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_resume_restarts_at_the_first_unfinished_phase(self):
+        self.state.skip("devserver")
         for name in ("scan", "crawl", "audit"):
             self.state.start(name)
             self.state.done(name)
         self.assertEqual(self.state.next_phase(), "browser")
 
     def test_a_failed_phase_is_the_one_to_restart(self):
+        self.state.skip("devserver")
         for name in ("scan", "crawl", "audit"):
             self.state.start(name)
             self.state.done(name)
@@ -115,6 +117,7 @@ class NextPhase(unittest.TestCase):
         `next_phase` answers "where does work restart", in order, and the
         phase that *stopped* is a separate question `feedback` answers.
         """
+        self.state.skip("devserver")
         self.state.fail("browser", "the render process ended")
         self.assertEqual(self.state.next_phase(), "scan")
         self.assertEqual(self.state.feedback()["stopped_in"], "browser")
@@ -159,6 +162,7 @@ class Pause(unittest.TestCase):
         self.assertFalse(self.state.paused_requested())
 
     def test_a_paused_run_is_resumable_from_where_it_stopped(self):
+        self.state.skip("devserver")
         self.state.start("scan")
         self.state.done("scan")
         self.state.request_pause()
@@ -196,6 +200,7 @@ class Feedback(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.state = _state(self.tmp.name)
+        self.state.skip("devserver")
         self.state.start("scan")
         artifact = Path(self.tmp.name) / "checkpoint-scan.json"
         artifact.write_text("{}", encoding="utf-8")
@@ -464,6 +469,7 @@ class AKilledRunDoesNotClaimToBeRunning(unittest.TestCase):
         self.assertEqual(self.state.status(), runstate.INTERRUPTED)
 
     def test_an_interrupted_run_can_still_be_continued(self):
+        self.state.skip("devserver")
         self.state.data["pid"] = 2 ** 30
         self.assertTrue(self.state.resumable())
         self.assertEqual(self.state.next_phase(), "scan")

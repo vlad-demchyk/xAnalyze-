@@ -90,6 +90,16 @@ class XAnalyzeApp(App):
         height: 1fr;
         border: round $panel;
     }
+    #confirm-modal {
+        width: 60;
+        height: auto;
+        border: tall $warning;
+        padding: 1 2;
+        background: $surface;
+    }
+    #confirm-question {
+        margin: 0 0 1 0;
+    }
     """
 
     BINDINGS = [
