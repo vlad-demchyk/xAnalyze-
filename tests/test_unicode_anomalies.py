@@ -1,6 +1,8 @@
 """Tests for the unicode anomalies detector."""
 import unittest
+
 from detectors.unicode_anomalies import UnicodeAnomalyDetector
+from unicode_rules import CAT_HOMOGLYPH, find_anomalies
 from models import TextBlock, Confidence
 
 
@@ -119,3 +121,62 @@ class TestHomoglyphs(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ALoneLetterInBilingualText(unittest.TestCase):
+    """The rule that called ordinary Ukrainian a forgery.
+
+    A homoglyph attack is one stray letter: everything in "The password is
+    not correct о" is Latin, and the lone Cyrillic `о` has no honest reason
+    to be there. Technical Ukrainian is routinely two scripts at once -
+    "Подивитись privacy і data retention деталі" is a sentence somebody
+    wrote, and `і` is the word "and".
+
+    The rule compared character counts, so Latin came out the majority there
+    and it reported the Ukrainian conjunction as a forged Latin `i` - at
+    0.95, the highest confidence this tool has, about text a person typed.
+    Measured over 1106 strings of real product copy, that rule produced
+    *every* high-confidence finding in the corpus: four of four, all false,
+    and all of them Ukrainian.
+
+    What separates the two cases is not which script has more characters. It
+    is whether the minority script appears anywhere else in a real word. In
+    an attack it does not. In a bilingual sentence it does.
+    """
+
+    def homoglyphs(self, text: str) -> list:
+        return [a for a in find_anomalies(text) if a.category == CAT_HOMOGLYPH]
+
+    def test_a_stray_cyrillic_letter_in_english_is_still_caught(self):
+        """The reason the rule exists, and it has to keep working."""
+        self.assertTrue(self.homoglyphs("The password is not correct о"))
+        self.assertTrue(self.homoglyphs("Enter your name а here"))
+
+    def test_a_swapped_letter_inside_a_word_is_still_caught(self):
+        """A different branch, untouched, and the strongest signal there is."""
+        found = self.homoglyphs("Please log in to your аccount today")
+        self.assertTrue(found)
+        self.assertEqual(found[0].original, "а")
+
+    def test_the_ukrainian_word_for_and_is_not_a_forgery(self):
+        self.assertEqual(
+            self.homoglyphs("Подивитись privacy і data retention деталі"), [])
+
+    def test_a_model_name_among_ukrainian_words_is_not_a_forgery(self):
+        """`M1` is a chip, and Latin is all over that sentence anyway."""
+        self.assertEqual(self.homoglyphs(
+            "Лише Apple Silicon (M1 або новіший). Збірки під Intel поки немає."),
+            [])
+
+    def test_other_one_letter_ukrainian_words_are_safe_too(self):
+        for text in ("Зберігати у cloud storage чи локально",
+                     "Це я, а не bot",
+                     "Файл з backup лежить поруч"):
+            with self.subTest(text=text):
+                self.assertEqual(self.homoglyphs(text), [])
+
+    def test_it_is_the_company_of_the_letter_that_decides(self):
+        """The same lone Cyrillic `о`: suspicious alone among Latin words,
+        ordinary when other Cyrillic words are there with it."""
+        self.assertTrue(self.homoglyphs("Set the password о now"))
+        self.assertEqual(self.homoglyphs("Постав пароль о зараз please"), [])

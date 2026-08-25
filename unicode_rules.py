@@ -253,12 +253,33 @@ def _find_homoglyphs(text: str) -> list[Anomaly]:
             overall[script] = overall.get(script, 0) + 1
     if len(overall) >= 2:
         majority = max(overall, key=lambda s: overall[s])
+        # Which scripts appear in a word of *more* than one letter. This is
+        # what separates an attack from a bilingual sentence, and without it
+        # this branch was calling ordinary Ukrainian a forgery.
+        #
+        # A homoglyph attack is one stray letter: everything else in
+        # "The password is not correct о" is Latin, and the lone Cyrillic
+        # `о` has no honest reason to be there. Technical Ukrainian, on the
+        # other hand, is *routinely* two scripts at once - "Подивитись
+        # privacy і data retention деталі" is a sentence somebody wrote, and
+        # `і` is the word "and". Counting characters made Latin the majority
+        # there, so the rule flagged the Ukrainian conjunction as a forged
+        # Latin `i`, at 0.95 and the highest confidence this tool has.
+        #
+        # So a lone letter is only suspicious when its script appears
+        # nowhere else in real words. `M` in "Лише Apple Silicon (M1...)" is
+        # not suspicious, because Latin is all over that sentence.
+        established = {script for match in words if len(match.group(0)) > 1
+                       for script in {_script_of(ch) for ch in match.group(0)}
+                       if script}
         for match in words:
             word = match.group(0)
             if len(word) != 1:
                 continue
             script = _script_of(word)
             if script is None or script == majority:
+                continue
+            if script in established:
                 continue
             replacement = None
             if majority == "latin":
