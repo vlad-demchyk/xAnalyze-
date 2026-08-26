@@ -890,3 +890,57 @@ class InterfaceLanguage(unittest.TestCase):
                                staticmethod(lambda: config.Settings(ui_language="it"))):
             app = XAnalyzeApp()
         self.assertEqual(app.lang, "it")
+
+
+class NoDecorativeControls(unittest.TestCase):
+    """Every control on a form has to reach the command it belongs to.
+
+    The defect this pins: the audit screen's "Browser rendering" checkbox
+    was sent as `browser=`, and the command reads `no_browser` - so the box
+    was decorative and the browser pass ran whether or not it was ticked. A
+    control that changes nothing is worse than a missing one: it is a
+    promise the run does not keep.
+    """
+
+    #: Form screen -> the files its command's arguments are read in.
+    SOURCES = {
+        "scan": ("cli.py", "cli_impl/scanning.py"),
+        "audit": ("cli.py", "cli_impl/auditpass.py"),
+        "fullscan": ("cli_impl/fullscan.py", "cli_impl/auditpass.py",
+                     "cli_impl/scanning.py"),
+    }
+
+    def _sent(self, form):
+        import re
+
+        source = Path(f"tui/screens/{form}.py").read_text(encoding="utf-8")
+        # `name=self.query_one("#widget", …)`, with or without a `not` in
+        # front of it, which is how a positive control feeds a negative flag.
+        return dict(re.findall(
+            r"^\s+(\w+)=(?:not )?self\.query_one\(\"#([\w-]+)\"", source,
+            re.M))
+
+    def _read(self, form):
+        import re
+
+        names = set()
+        for path in self.SOURCES[form]:
+            text = Path(path).read_text(encoding="utf-8")
+            names |= set(re.findall(r"args\.(\w+)", text))
+            names |= set(re.findall(r'getattr\(args, "(\w+)"', text))
+        return names
+
+    def test_every_form_control_is_read_by_its_command(self):
+        for form in self.SOURCES:
+            with self.subTest(form=form):
+                sent = self._sent(form)
+                read = self._read(form)
+                dead = {name: widget for name, widget in sent.items()
+                        if name not in read}
+                self.assertEqual(dead, {},
+                                 f"{form}: these controls reach nothing")
+
+    def test_the_audit_browser_box_reaches_the_browser_pass(self):
+        sent = self._sent("audit")
+        self.assertIn("no_browser", sent)
+        self.assertEqual(sent["no_browser"], "browser")

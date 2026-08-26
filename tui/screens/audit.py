@@ -125,7 +125,11 @@ class AuditScreen(RunScreen):
             provider=None,
             fix=self.query_one("#fix", Checkbox).value,
             report=None,
-            browser=self.query_one("#browser", Checkbox).value,
+            # `no_browser`, not `browser`: the command reads the negative,
+            # and the positive it was being sent under was read by nothing.
+            # The checkbox was decorative - the browser pass ran either way,
+            # which is also why an audit felt slow with it switched off.
+            no_browser=not self.query_one("#browser", Checkbox).value,
             breakpoints=breakpoints,
             styled_report=None,
         )
