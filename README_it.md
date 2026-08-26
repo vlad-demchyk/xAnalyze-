@@ -59,6 +59,7 @@ Desktop e headless analyzer: rilevamento di testi generati da AI, caratteri non 
 - **Blame su una segnalazione** — ogni segnalazione può nominare il commit che ha toccato per ultimo la sua riga, così "chi ha scritto questo" è un dato registrato e non una supposizione
 - **Schermata di impostazione** — la finestra si apre sulla scansione che stai per fare: che cosa guardiamo, come leggiamo, che cosa cerchiamo, chi valuta, e una frase che nomina il risultato prima che tu prema qualcosa
 - **Gestione del rumore** — una schermata per tutto ciò che hai nascosto: che cosa era ogni voce, in quale elenco è scritta (il tuo o quello del progetto) e il ripristino proprio in quell'elenco
+- **Elenco delle sostituzioni** — un solo elenco di tutto ciò che l'esecuzione cambierebbe, prima che qualcosa venga scritto: che cosa dice il testo ora, che cosa direbbe e da dove viene la correzione — dedotta, scritta da un modello, oppure una decisione che nessuno può prendere al posto tuo. Le righe meccaniche arrivano selezionate, le bozze del modello no, le decisioni non si possono selezionare affatto
 - **Report stilizzati** — PDF/HTML brandizzati per persone
 - **Briefing per agenti** — markdown/JSON per coding agent
 - **CLI + GUI + TUI** — un binario, tre interfacce
@@ -1495,10 +1496,17 @@ xanalyze fullscan https://staging.example.com --check --json
 
 ## GUI
 
-L'app desktop risponde alle stesse domande della CLI, con i controlli in una
-colonna a sinistra e i risultati accanto.
+L'app desktop risponde alle stesse domande della CLI.
 
-**La colonna dei controlli**
+Si apre sulla **schermata di impostazione**: che cosa guardiamo, come leggiamo,
+che cosa cerchiamo, chi valuta, e una frase che nomina la scansione prima che tu
+prema qualcosa. Analizza consegna la finestra al layout di lavoro; il pulsante
+"Scegli un obiettivo" dello stato vuoto la riporta indietro.
+
+Durante il lavoro le stesse scelte sono una riga di valori in linea sopra i
+risultati.
+
+**I controlli, nella riga o nella schermata di impostazione**
 
 1. **Sorgente** — URL del sito, cartella del repository o singolo file HTML.
    Anche un host senza schema va bene
@@ -1510,13 +1518,16 @@ colonna a sinistra e i risultati accanto.
 5. **Profondità** (siti) — quanto lontano il crawl segue i link
 6. **Account** — chi paga un passaggio AI, e se qualcuno ha effettuato l'accesso
 
-**I risultati**
+**I risultati**, letti da sinistra a destra
 
-7. **Anteprima** — la pagina renderizzata, o il file sorgente, con il rilievo
-   evidenziato o la sua riga marcata. Si può fissare a larghezza desktop, tablet
-   o mobile, così un rilievo trovato a una larghezza si guarda a quella larghezza
-8. **Lista dei rilievi** — badge di gravità, una riga per problema distinto. Un
+7. **Lista dei rilievi** — badge di gravità, una riga per problema distinto. Un
    problema trovato in più file dice in quanti, invece di ripetersi
+8. **Anteprima** — la pagina renderizzata, o il file sorgente, con il rilievo
+   evidenziato o la sua riga marcata. Si può fissare a `1440`, `834` o `390`,
+   così un rilievo trovato a una larghezza si guarda a quella larghezza. Una
+   larghezza più grande della colonna viene ridimensionata invece che pretesa
+   dalla finestra: la pagina si dispone ancora a 1440 mentre i pixel restano
+   dentro la colonna
 9. **Dettaglio** — cosa è stato trovato, perché conta, come correggerlo,
    l'elemento, la sostituzione pronta e ogni punto in cui lo stesso problema
    compare
@@ -1526,6 +1537,29 @@ colonna a sinistra e i risultati accanto.
 
 La finestra ripiega una colonna alla volta mentre si restringe: prima la colonna
 dei dettagli (che ricompare sotto la riga cliccata), poi l'anteprima.
+
+**L'elenco delle sostituzioni**
+
+Nessun file viene scritto per via di un numero in una finestra di dialogo.
+*Genera elenco sostituzioni* apre una schermata con tutte le modifiche in
+sospeso dell'esecuzione — le correzioni dei caratteri, le bozze del modello e
+le correzioni di markup dell'audit insieme — su quattro colonne: dove si trova,
+che cosa dice ora, che cosa direbbe e da dove viene la correzione.
+
+Il senso della schermata è che cosa arriva selezionato:
+
+- **meccanica** — la correzione è dedotta, non composta (un solo modo giusto di
+  togliere un carattere invisibile, un solo attributo giusto per un pulsante
+  senza nome accessibile). Selezionata
+- **bozza del modello** — la sostituzione l'ha scritta un modello, e una frase
+  scorrevole non è una frase corretta. Non selezionata finché non la selezioni
+- **decisione** — non c'è una sostituzione, c'è solo la sua forma. `alt=""` su
+  una fotografia è markup valido ed è una bugia, quindi la riga mostra che cosa
+  va deciso e qui non si può selezionare
+
+Il pulsante dice quante righe sta per scrivere, e *Salva su file* scrive lo
+stesso elenco in Markdown (`replacements-YYYY-MM-DD.md`) per una revisione che
+avviene in una pull request o sullo schermo di qualcun altro.
 
 ---
 

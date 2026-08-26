@@ -1,8 +1,9 @@
-"""Repo bulk actions: rewrite-all, auto-replace, and the review-list export."""
+"""Repo bulk actions: rewrite-all, auto-replace, and the replacement list."""
 from __future__ import annotations
 
-from PySide6.QtWidgets import QFileDialog, QMessageBox
+from PySide6.QtWidgets import QMessageBox
 
+import replacements
 from file_writer import apply_replacements, build_plans
 from i18n.translations import t
 from models import CodeBlock, Confidence, RepoAnalysisResult, TextSpan
@@ -54,6 +55,11 @@ class BulkRewriteMixin:
     def _run_bulk_rewrite(self, auto_replace: bool) -> None:
         items = self._repo_flagged_items()
         if not items:
+            # Nothing for the model to draft is not nothing to write: the
+            # character pass and the audit both produce corrections of their
+            # own, and the list is where they are read.
+            if not auto_replace:
+                self._open_replacement_list()
             return
         missing = [(b, s) for (b, s) in items if (b.block_id, s.start, s.end) not in self.drafts]
 
@@ -106,7 +112,7 @@ class BulkRewriteMixin:
         if auto_replace:
             self._do_auto_replace()
         else:
-            self._offer_export_list()
+            self._open_replacement_list()
 
     def _do_auto_replace(self) -> None:
         if not self.result:
@@ -138,38 +144,42 @@ class BulkRewriteMixin:
             if f is not None and f.raw_text is not None:
                 self.code_view.setPlainText(f.raw_text)
 
-    def _offer_export_list(self) -> None:
-        reply = QMessageBox.question(self, "", t("export_list_prompt", self.lang))
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-        path, _ = QFileDialog.getSaveFileName(self, "", "xanalyze-review.md", "Markdown (*.md)")
-        if not path:
-            return
-        self._export_list_to_file(path)
-        QMessageBox.information(self, "", t("export_list_saved", self.lang, path=path))
+    # ------------------------------------------------------- the list (3l)
 
-    def _export_list_to_file(self, path: str) -> None:
-        if not self.result:
+    def _open_replacement_list(self) -> None:
+        """Show every pending change of this run before writing any of it.
+
+        One screen for three passes. The character fixes, the model's drafts
+        and the audit's markup corrections all end as an edit to a file on
+        this machine, and the question asked before any of them is written is
+        the same question - so it is asked once, in one list, rather than by
+        three buttons each with a count in a message box.
+        """
+        from ui.window_parts.replacement_list import ReplacementListDialog
+
+        root = self.repo_path_edit.text().strip() or None
+        items, skipped = replacements.collect(
+            result=self.result, drafts=self.drafts,
+            audit_result=self.audit_result, root=root)
+        dialog = ReplacementListDialog(
+            items, skipped=skipped, lang=self.lang, root=root,
+            palette=getattr(self, "palette_tokens", None), parent=self)
+        dialog.exec()
+        if dialog.outcome is None:
             return
-        blocks_by_id = {b.block_id: b for b in self.result.blocks()}
-        lines = ["# AI content review list", ""]
-        for span in sorted(self.result.spans, key=lambda s: -s.score):
-            if span.confidence == Confidence.LOW:
-                continue
-            block = blocks_by_id.get(span.block_id)
-            if block is None:
-                continue
-            key = (block.block_id, span.start, span.end)
-            original = block.text[span.start:span.end]
-            draft = self.drafts.get(key, "")
-            location = (
-                f"{block.file_path}:{block.line_number}" if isinstance(block, CodeBlock)
-                else block.page_url
-            )
-            lines.append(f"## {location} ({span.confidence.value}, {span.score:.2f})")
-            lines.append("")
-            lines.append(f"- original: {original}")
-            lines.append(f"- suggested: {draft}")
-            lines.append("")
-        with open(path, "w", encoding="utf-8") as fh:
-            fh.write("\n".join(lines))
+        self._after_replacement_write(dialog.outcome)
+
+    def _after_replacement_write(self, outcome) -> None:
+        lines = [t("replacements_written", self.lang, written=outcome.written,
+                   files=len(outcome.files_changed))]
+        if outcome.skipped:
+            lines.append(t("replacements_left", self.lang, n=len(outcome.skipped)))
+            lines += [f"  {reason}" for reason in outcome.skipped[:6]]
+        lines += list(outcome.errors)
+        QMessageBox.information(self, t("replacements_title", self.lang),
+                                "\n".join(lines))
+        self._refresh_repo_raw_text_after_write(outcome.files_changed)
+        # Markup was written into the audited files, so the findings on
+        # screen are now a claim about a version that no longer exists.
+        if self.audit_result is not None:
+            self._reaudit_after_fix()

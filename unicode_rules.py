@@ -428,3 +428,21 @@ def summarize(anomalies: list[Anomaly]) -> str:
     for a in anomalies:
         counts[a.category] = counts.get(a.category, 0) + 1
     return ", ".join(f"{cat}: {n}" for cat, n in sorted(counts.items()))
+
+
+def visible(text: str) -> str:
+    """Render a passage so its invisible characters can still be read.
+
+    A zero-width space shown as itself makes the row look identical to the
+    row it replaces, which is exactly the comparison a review list exists to
+    make. Every surface that shows a before/after pair needs this, so it
+    lives beside the table that knows which characters are invisible rather
+    than being retyped in each of them.
+    """
+    out = []
+    for ch in text:
+        if ch.isprintable() and INVISIBLE_CHARS.get(ch) != "":
+            out.append(ch)
+        else:
+            out.append(f"<U+{ord(ch):04X}>")
+    return "".join(out)

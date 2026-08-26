@@ -2068,7 +2068,11 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self.download_btn.setVisible(wants_copy or wants_audit)
         # The row itself is always shown — the unicode fix works in both
         # modes — but the two file-writing buttons only apply to a repo.
-        self.generate_list_btn.setVisible(is_repo and wants_copy)
+        # The list is not a copy-pass button any more: it shows the audit's
+        # corrections too, so it is offered wherever a run can write to disk
+        # at all. Whether it has anything to show is decided by the enabled
+        # state below, which asks the passes rather than the mode.
+        self.generate_list_btn.setVisible(is_repo or wants_audit)
         self.auto_replace_btn.setVisible(is_repo and wants_copy)
         self._update_repo_buttons_enabled()
 
@@ -2077,10 +2081,24 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             self.result and self.mode == MODE_REPO
             and any(s.confidence != Confidence.LOW for s in self.result.spans)
         )
-        self.generate_list_btn.setEnabled(has_flags)
+        self.generate_list_btn.setEnabled(
+            has_flags or bool(self._unicode_spans()) or self._audit_writable())
         self.auto_replace_btn.setEnabled(has_flags)
         self.fix_unicode_btn.setEnabled(bool(self._unicode_spans()))
         self._update_audit_buttons_enabled()
+
+    def _audit_writable(self) -> bool:
+        """Does the audit hold a correction for a file this machine can open?
+
+        A crawled page has no file to write back to, and a finding with no
+        ready correction is not an edit, so neither counts as something a
+        write button can promise.
+        """
+        documents = self.audit_result.documents if self.audit_result else []
+        local = [d for d in documents
+                 if not d.source.startswith(("http://", "https://"))]
+        return bool(local and any(
+            issue.fix_snippet for d in local for issue in d.issues))
 
     def _update_audit_buttons_enabled(self) -> None:
         """A button that writes to disk is only offered when it has something
@@ -2088,11 +2106,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         from audit import fixer
 
         documents = self.audit_result.documents if self.audit_result else []
-        local = [d for d in documents
-                 if not d.source.startswith(("http://", "https://"))]
-        writable = bool(local and any(
-            issue.fix_snippet for d in local for issue in d.issues))
-        self.fix_on_disk_btn.setEnabled(writable)
+        self.fix_on_disk_btn.setEnabled(self._audit_writable())
         self.undo_fix_btn.setEnabled(bool(fixer.backups_for(documents)))
         # Not gated on `self.mode == MODE_REPO` like the buttons above: a
         # styled report is offered for a web-text scan too, so this looks at

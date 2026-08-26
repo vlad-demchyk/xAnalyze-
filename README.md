@@ -69,6 +69,7 @@ Desktop and headless analyzer: AI-generated text detection, non-keyboard charact
 - **Blame on a Finding** — each finding can name the commit that last touched its line, so "who wrote this" is a record rather than a guess
 - **Setup Screen** — the window opens on the run you are about to make: what is looked at, how it is read, what is looked for, who judges, and a sentence naming the result before you press anything
 - **Noise Control** — one screen for everything you have hidden, saying what each entry was, which list it is written in (yours or the project's), and putting it back into that one
+- **Replacement List** — one list of every pending change before any of it is written: what the text is now, what it would become, and whether the correction was derived, drafted by a model, or is a decision nobody can make for you. Mechanical rows arrive ticked, drafts do not, decisions cannot be ticked at all
 - **Styled Reports** — branded PDF/HTML for humans
 - **Agent Briefings** — markdown/JSON for coding agents
 - **CLI + GUI + TUI** — one binary, three interfaces
@@ -1680,10 +1681,16 @@ xanalyze audit https://example.com --category seo --styled-report seo-report.pdf
 
 ## GUI
 
-The desktop app answers the same questions as the CLI, with the controls in a
-column on the left and the results beside them.
+The desktop app answers the same questions as the CLI.
 
-**The controls column**
+It opens on the **setup screen**: what is looked at, how it is read, what is
+looked for, who judges, and a sentence naming what the run will be before you
+press anything. Pressing Analyze hands the window to the working layout; the
+empty state's "Choose a target" brings it back.
+
+During work the same choices are one row of inline values above the results.
+
+**The controls, in the row or on the setup screen**
 
 1. **Source** — website URL, repository folder, or single HTML file. A bare
    host is accepted here too
@@ -1694,13 +1701,15 @@ column on the left and the results beside them.
 5. **Depth** (sites) — how far the crawl follows links
 6. **Account** — who pays for an AI pass, and whether anyone is signed in
 
-**The results**
+**The results**, read left to right
 
-7. **Preview** — the rendered page, or the source file, with the finding
-   outlined or its line highlighted. Pinnable to desktop, tablet or mobile
-   width, so a finding reported at one width can be looked at that width
-8. **Findings list** — severity badge, one row per distinct problem. A problem
+7. **Findings list** — severity badge, one row per distinct problem. A problem
    found in several files says how many, rather than repeating itself
+8. **Preview** — the rendered page, or the source file, with the finding
+   outlined or its line highlighted. Pinnable to `1440`, `834` or `390`, so a
+   finding reported at one width can be looked at that width. A width wider
+   than the column is scaled down rather than demanded from the window: the
+   page still lays out at 1440 while the pixels stay inside the column
 9. **Detail** — what was found, why it matters, how to fix it, the element,
    the ready replacement, and every place the same problem appears
 10. **Actions** — fix the characters, generate a replacement list, rewrite in
@@ -1708,6 +1717,29 @@ column on the left and the results beside them.
 
 The window folds one column at a time as it narrows: the detail column first
 (it reappears inline under the clicked row), then the preview.
+
+**The replacement list**
+
+Nothing is written to your files by a number in a message box. *Generate
+replacement list* opens one screen holding every pending change of the run —
+the character fixes, the model's drafts and the audit's markup corrections
+together — with four columns: where it is, what it says now, what it would
+say, and where the correction came from.
+
+What arrives ticked is the point of the screen:
+
+- **mechanical** — the correction is derived, not composed (one right removal
+  for an invisible character, one right attribute for a button with no
+  accessible name). Ticked
+- **model draft** — a model wrote the replacement, and a fluent sentence is
+  not a correct one. Not ticked until you tick it
+- **decision** — there is no replacement, only the shape of one. `alt=""` on a
+  photograph is valid markup and a lie, so the row shows what has to be
+  decided and cannot be ticked here at all
+
+The button says how many rows it is about to write, and *Save to file* writes
+the same list as Markdown (`replacements-YYYY-MM-DD.md`) for a review that
+happens in a pull request or on somebody else's screen.
 
 ---
 

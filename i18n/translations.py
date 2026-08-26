@@ -1443,6 +1443,90 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Elenco salvato: {path}",
         "en": "List saved: {path}",
     },
+
+    # --- Replacement list (artboard 3l) ------------------------------------
+    "replacements_title": {
+        "uk": "Список замін",
+        "it": "Elenco delle sostituzioni",
+        "en": "Replacement list",
+    },
+    "replacements_summary": {
+        "uk": "{mechanical} механічних · {drafts} чернеток моделі · "
+              "{decisions} потребують рішення",
+        "it": "{mechanical} meccaniche · {drafts} bozze del modello · "
+              "{decisions} richiedono una decisione",
+        "en": "{mechanical} mechanical · {drafts} model drafts · "
+              "{decisions} need a decision",
+    },
+    "replacements_save": {
+        "uk": "Зберегти у файл",
+        "it": "Salva su file",
+        "en": "Save to file",
+    },
+    "replacements_write": {
+        "uk": "Записати вибрані {n}",
+        "it": "Scrivi le {n} selezionate",
+        "en": "Write the {n} selected",
+    },
+    "replacements_footer": {
+        "uk": "Позначено {n} з {total} · рішення й чернетки моделі не "
+              "записуються без перегляду",
+        "it": "Selezionate {n} su {total} · decisioni e bozze del modello non "
+              "vengono scritte senza revisione",
+        "en": "{n} of {total} selected · decisions and model drafts are not "
+              "written without review",
+    },
+    "replacements_unplanned": {
+        "uk": "не стали правкою: {n}",
+        "it": "non diventate modifiche: {n}",
+        "en": "never became an edit: {n}",
+    },
+    "replacements_empty": {
+        "uk": "Цей прогін не залишив жодної заміни.",
+        "it": "Questa esecuzione non ha lasciato alcuna sostituzione.",
+        "en": "This run left nothing to replace.",
+    },
+    "replacements_column_where": {
+        "uk": "ДЕ", "it": "DOVE", "en": "WHERE",
+    },
+    "replacements_column_before": {
+        "uk": "БУЛО", "it": "ERA", "en": "WAS",
+    },
+    "replacements_column_after": {
+        "uk": "СТАНЕ", "it": "DIVENTA", "en": "BECOMES",
+    },
+    "replacements_column_source": {
+        "uk": "ДЖЕРЕЛО", "it": "ORIGINE", "en": "SOURCE",
+    },
+    "replacements_source_mechanical": {
+        "uk": "механічне", "it": "meccanica", "en": "mechanical",
+    },
+    "replacements_source_draft": {
+        "uk": "чернетка моделі", "it": "bozza del modello", "en": "model draft",
+    },
+    "replacements_source_decision": {
+        "uk": "рішення", "it": "decisione", "en": "decision",
+    },
+    "replacements_decision": {
+        "uk": "потрібне рішення: {reason}",
+        "it": "serve una decisione: {reason}",
+        "en": "needs a decision: {reason}",
+    },
+    "replacements_no_text": {
+        "uk": "готової заміни немає",
+        "it": "non c'è una sostituzione pronta",
+        "en": "there is no ready replacement",
+    },
+    "replacements_written": {
+        "uk": "Записано замін: {written}, файлів: {files}",
+        "it": "Sostituzioni scritte: {written}, file: {files}",
+        "en": "Written: {written} replacements in {files} files",
+    },
+    "replacements_left": {
+        "uk": "Не записано: {n}",
+        "it": "Non scritte: {n}",
+        "en": "Not written: {n}",
+    },
     # Renamed from `source_file`, which was already the source picker's
     # "HTML file" label. Two different strings under one key, and the later
     # definition won - so the main source dropdown offered a literal

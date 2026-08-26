@@ -57,14 +57,13 @@ def _print_json(findings, applied=None, walked=None) -> None:
 
 def _visible(text: str) -> str:
     """Render a match so invisible characters are still readable in a
-    terminal — an empty-looking finding is worse than useless."""
-    out = []
-    for ch in text:
-        if ch.isprintable() and not unicode_rules.INVISIBLE_CHARS.get(ch) == "":
-            out.append(ch)
-        else:
-            out.append(f"<U+{ord(ch):04X}>")
-    return "".join(out)
+    terminal — an empty-looking finding is worse than useless.
+
+    The rule itself lives beside the table of invisible characters now that
+    the replacement list needs the same rendering; this stays as the name the
+    terminal output already calls it by.
+    """
+    return unicode_rules.visible(text)
 
 
 def _coverage_line(walked) -> str:

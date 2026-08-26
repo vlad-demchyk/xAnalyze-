@@ -618,12 +618,21 @@ class MainViewModel(QObject):
         from i18n.translations import t
         lang = self.settings.ui_language
         parts = []
-        if outcome.written:
-            parts.append(t("fix_written", lang, n=len(outcome.written)))
+        # Three keys were wrong here and none of them failed loudly:
+        # `outcome.written` is a field `FixResult` never had, so a successful
+        # fix-on-disk raised `AttributeError` instead of reporting itself,
+        # and `fix_written` / `fix_skipped` / `fix_model_wrote` are not in the
+        # string table, so `t()` would have returned the key names as the
+        # message. The keys used here are the ones the single-finding fix
+        # already reports with.
+        if outcome.applied:
+            parts.append(t("fix_done", lang, applied=len(outcome.applied),
+                           files=len(outcome.files_changed)))
         if outcome.skipped:
-            parts.append(t("fix_skipped", lang, n=len(outcome.skipped)))
+            parts.append(t("fix_left_alone", lang, count=len(outcome.skipped)))
         if written_by_model:
-            parts.append(t("fix_model_wrote", lang, n=len(written_by_model)))
+            parts.append(t("fix_done_by_model", lang,
+                           rules=", ".join(sorted(set(written_by_model)))))
         message = "\n".join(parts) if parts else t("fix_nothing_ready", lang)
         self.fix_outcome.emit(message, written_by_model)
         self.buttons_changed.emit()
