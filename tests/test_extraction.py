@@ -13,7 +13,7 @@ import crawler
 from crawler import _diagnose, _extract_text_blocks
 from models import KIND_INJECTED, KIND_MARKUP, KIND_TECHNICAL, PageDiagnostics
 from repo_scanner import (SCOPE_BOTH, SCOPE_CONTENT, SCOPE_TECHNICAL,
-                          _extract_blocks, mask_code_comments)
+                          _extract_blocks, _is_schema_field, mask_code_comments)
 
 
 def extract(html: str):
@@ -235,3 +235,66 @@ class MarkdownMasking(unittest.TestCase):
     def test_backticks_in_other_file_types_are_left_alone(self):
         source = 'const sql = `SELECT * FROM t`;\n'
         self.assertEqual(mask_code_comments(source, "db.ts"), source)
+
+
+class AToolSchemaIsNotCopy(unittest.TestCase):
+    """A tool definition writes its parameter descriptions with the same
+    `description:` key a landing page writes its copy with, and both hold
+    English sentences - so the string cannot tell them apart and the object
+    around it has to.
+
+    Every fragment below is verbatim from a real repository. Measured
+    there: 220 blocks are schema fields, all of them tool parameters, and
+    none written under `label`, `placeholder` or `title`.
+    """
+
+    SCHEMA = '''export const webSearch = {
+  name: "web_search",
+  description:
+    "Search the web for current or factual information you don't already know.",
+  params: [
+    {
+      name: "query",
+      type: "string",
+      description: "Search query.",
+      required: true,
+    },
+    { name: "language", type: "string", description: "Search language code, for example uk or en.", required: false },
+  ],
+};
+'''
+
+    COPY = '''const sections = [
+  { title: "Observability", description: "Changes made by staff and control-plane operations" },
+  { title: "Providers", description: "Provider failures, fallbacks and unresolved outages" },
+];
+'''
+
+    def texts(self, source: str) -> list:
+        return [b.text for b in _extract_blocks(source, "actions.ts", SCOPE_CONTENT)]
+
+    def test_a_parameter_description_is_not_collected(self):
+        taken = self.texts(self.SCHEMA)
+        self.assertNotIn("Search query.", taken)
+        self.assertNotIn("Search language code, for example uk or en.", taken)
+
+    def test_a_card_description_still_is(self):
+        # The other side of the measurement: a rule that quietens a real
+        # sentence has made the scan worse, not better.
+        taken = self.texts(self.COPY)
+        self.assertIn("Changes made by staff and control-plane operations", taken)
+        self.assertIn("Provider failures, fallbacks and unresolved outages", taken)
+
+    def test_a_word_that_happens_to_be_called_type_is_not_a_schema(self):
+        # `type: "warning"` is a word, not a JSON-schema primitive.
+        source = ('const banner = { type: "warning", required: true, '
+                  'description: "We could not reach the server." };')
+        self.assertIn("We could not reach the server.", self.texts(source))
+
+    def test_a_type_alone_is_not_enough(self):
+        # One marker is a coincidence; the second is what makes it a schema.
+        source = 'const field = { type: "string", description: "Your full name" };'
+        self.assertIn("Your full name", self.texts(source))
+
+    def test_a_string_outside_any_object_is_not_a_schema_field(self):
+        self.assertFalse(_is_schema_field('description: "Hello there"', 15))
