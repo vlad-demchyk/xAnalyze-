@@ -1124,27 +1124,6 @@ _STRINGS: dict[str, dict[str, str]] = {
               "statistics, a file map, every finding with its ready "
               "correction, and what changed since last time.",
     },
-    "fix_confirm_body": {
-        "uk": "Готових до запису виправлень: {ready}.\n\n"
-              "Ще {pending} потребують рішення або справжнього тексту - "
-              "наприклад, що зображено на картинці або що обіцяє сторінка. "
-              "Записати їх може модель.\n\n"
-              "«Так» - модель напише і їх. «Ні» - записати лише готові.\n"
-              "У будь-якому разі копія .bak зберігається перед першою зміною.",
-        "it": "Correzioni pronte da scrivere: {ready}.\n\n"
-              "Altre {pending} richiedono una decisione o un testo reale: per "
-              "esempio che cosa mostra un'immagine o che cosa promette la "
-              "pagina. Può scriverle un modello.\n\n"
-              "«Sì» - le scrive anche il modello. «No» - solo quelle "
-              "pronte.\nIn entrambi i casi viene salvata una copia .bak "
-              "prima della prima modifica.",
-        "en": "Corrections ready to write: {ready}.\n\n"
-              "Another {pending} need a decision or real text - what an image "
-              "shows, what the page promises. A model can write those.\n\n"
-              "Yes - let the model write them too. No - write only the ready "
-              "ones.\nEither way a .bak copy is saved before the first "
-              "change.",
-    },
     "fix_nothing_ready": {
         "uk": "Серед знахідок немає таких, які можна записати автоматично.",
         "it": "Tra i rilievi non ce n'è nessuno scrivibile automaticamente.",
@@ -1516,6 +1495,19 @@ _STRINGS: dict[str, dict[str, str]] = {
         "uk": "готової заміни немає",
         "it": "non c'è una sostituzione pronta",
         "en": "there is no ready replacement",
+    },
+    "replacements_fill": {
+        "uk": "Хай модель заповнить {n}",
+        "it": "Fai completare {n} al modello",
+        "en": "Let the model answer {n}",
+    },
+    "replacements_filled": {
+        "uk": "Модель відповіла на {n}. Ці рядки стали чернетками моделі й "
+              "чекають на ваш перегляд.",
+        "it": "Il modello ha risposto a {n}. Quelle righe ora sono bozze del "
+              "modello e attendono la tua revisione.",
+        "en": "The model answered {n}. Those rows are model drafts now, and "
+              "wait for you to read them.",
     },
     "replacements_written": {
         "uk": "Записано замін: {written}, файлів: {files}",

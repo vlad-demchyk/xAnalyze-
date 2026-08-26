@@ -80,8 +80,6 @@ class MainViewModel(QObject):
     browser_pass_needed = Signal()          # audit done, browser pass needed
 
     # -- UI dialog signals -------------------------------------------------
-    fix_confirm_needed = Signal(int, int)   # (ready_count, pending_count)
-    fix_outcome = Signal(str, list)         # (message, written_by_model_rules)
     undo_outcome = Signal(str)              # message
     download_choice_needed = Signal(bool, bool)  # (has_audit, has_text)
     unicode_fixed = Signal(int)             # filled count
@@ -559,83 +557,12 @@ class MainViewModel(QObject):
         self.unicode_fixed.emit(filled)
         self.buttons_changed.emit()
 
-    def fix_on_disk(self):
-        from audit import fix_ai, fixer
-        if self.audit_result is None:
-            return
-        ready, pending, skipped = fixer.plan_fixes(self.audit_result.documents)
-
-        page_text = ""
-        if self.audit_result.documents:
-            page_text = self.audit_result.documents[0].source
-        filled, pending = fix_ai.fill_locally(pending, page_text)
-        ready += filled
-
-        if not ready and not pending:
-            self.status_message.emit("Nothing to fix")
-            return
-
-        if pending:
-            self.fix_confirm_needed.emit(len(ready), len(pending))
-            return
-
-        outcome = fixer.apply_fixes(ready)
-        outcome.skipped.extend(skipped)
-        self._report_fix_outcome(outcome, [])
-
-    def apply_fix_with_ai(self, use_ai: bool):
-        from audit import fix_ai, fixer
-        if self.audit_result is None:
-            return
-        ready, pending, skipped = fixer.plan_fixes(self.audit_result.documents)
-
-        page_text = ""
-        if self.audit_result.documents:
-            page_text = self.audit_result.documents[0].source
-        filled, pending = fix_ai.fill_locally(pending, page_text)
-        ready += filled
-
-        written_by_model = []
-        if use_ai and pending:
-            import rewriter
-            try:
-                provider = rewriter.build_provider(self.settings)
-                filled, pending = fix_ai.describe(pending, page_text, provider,
-                                                  self.settings.ui_language)
-                ready += filled
-                written_by_model = [p.rule_id for p in filled]
-            except rewriter.LLMUnavailable as exc:
-                self.error.emit(str(exc))
-
-        outcome = fixer.apply_fixes(ready)
-        outcome.skipped.extend(skipped)
-        for plan in pending:
-            outcome.skipped.append(
-                fixer.SkippedFix(plan.rule_id, plan.path, plan.line, plan.needs_input))
-        self._report_fix_outcome(outcome, written_by_model)
-
-    def _report_fix_outcome(self, outcome, written_by_model):
-        from i18n.translations import t
-        lang = self.settings.ui_language
-        parts = []
-        # Three keys were wrong here and none of them failed loudly:
-        # `outcome.written` is a field `FixResult` never had, so a successful
-        # fix-on-disk raised `AttributeError` instead of reporting itself,
-        # and `fix_written` / `fix_skipped` / `fix_model_wrote` are not in the
-        # string table, so `t()` would have returned the key names as the
-        # message. The keys used here are the ones the single-finding fix
-        # already reports with.
-        if outcome.applied:
-            parts.append(t("fix_done", lang, applied=len(outcome.applied),
-                           files=len(outcome.files_changed)))
-        if outcome.skipped:
-            parts.append(t("fix_left_alone", lang, count=len(outcome.skipped)))
-        if written_by_model:
-            parts.append(t("fix_done_by_model", lang,
-                           rules=", ".join(sorted(set(written_by_model)))))
-        message = "\n".join(parts) if parts else t("fix_nothing_ready", lang)
-        self.fix_outcome.emit(message, written_by_model)
-        self.buttons_changed.emit()
+    # `fix_on_disk` and `apply_fix_with_ai` lived here and wrote the audit's
+    # corrections straight to disk after a message box with two counts in it.
+    # They are gone: the same corrections are rows in the replacement list
+    # now, read before they are written, and a second path to the same write
+    # is a second answer to "what changed in my repository". What the model
+    # can answer is `replacements.fill_decisions`.
 
     def undo_fix(self):
         from audit import fixer

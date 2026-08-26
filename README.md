@@ -6,8 +6,60 @@ Desktop and headless analyzer: AI-generated text detection, non-keyboard charact
 
 ---
 
+## Why XAnalyze exists
+
+**What it is for.** One run answers two questions about a site or a repository
+you are responsible for: *was this text written by a model*, and *does this
+page actually work for the people who have to use it* — accessibility, SEO,
+performance, best practice. Both answers point at a place (file, line, URL),
+not at a score, and most of them arrive with the correction attached.
+
+**The problems it solves**
+
+1. **"Is this copy AI-written?" answered somewhere you can act on.** A web
+   detector gives a percentage about a paste. XAnalyze gives the file and the
+   line, the signals that fired, the confidence, and — if you ask — the commit
+   that last touched that line.
+2. **Characters nobody can see.** Zero-width spaces, soft hyphens, homoglyph
+   letters and curly punctuation break search, diffs, price strings and
+   `grep`. They are found exactly and removed exactly, one character at a
+   time, never by reformatting the file.
+3. **An audit that stays a PDF.** 52 rules do not stop at naming the defect:
+   where the correction follows from the markup, it can be written back to the
+   file. Where it does not — alternative text for a photograph, the page's
+   language — it is kept out of the automatic path on purpose, because valid
+   markup that lies makes the next audit call the page clean.
+4. **A "clean" result that is a lie.** A run says what it actually read: how
+   many pages, what it could not open, where a limit cut the crawl. Nothing
+   found is only good news when you know what was looked at.
+5. **Doing it more than once.** A run is an object, not a command: it can be
+   paused, continued, listed, compared with the previous run, and it leaves a
+   folder of documents rather than terminal scrollback.
+6. **Guessing about provenance.** Images and repositories are read for what
+   they *say about themselves* — IPTC/XMP fields, generator prompt blocks, a
+   signed C2PA manifest, commits authored by an assistant, committed assistant
+   configuration — which is a record, not an opinion about pixels.
+
+**Who it is for**
+
+- **Editors and content owners** who need to know what in their site was
+  written by a model, and where.
+- **Developers and agencies** who answer for someone else's site and have to
+  show the state of it, fix what is mechanical, and keep a record of both.
+- **Accessibility and QA people**, including anyone working to the European
+  accessibility rules, who need findings tied to elements and a report to hand
+  over.
+- **Teams that cannot send their content anywhere.** Everything except the
+  optional model pass runs on your machine; there is no account to create and
+  nothing is uploaded.
+- **AI coding agents**, which get their own offline scan format and a way to
+  hand judgments back (`agent-scan`, `agent-judge`).
+
+---
+
 ## Table of Contents
 
+- [Why XAnalyze exists](#why-xanalyze-exists)
 - [Features](#features)
 - [Quick Start](#quick-start)
 - [CLI Commands](#cli-commands)
@@ -1712,8 +1764,10 @@ During work the same choices are one row of inline values above the results.
    page still lays out at 1440 while the pixels stay inside the column
 9. **Detail** — what was found, why it matters, how to fix it, the element,
    the ready replacement, and every place the same problem appears
-10. **Actions** — fix the characters, generate a replacement list, rewrite in
-    place, write an audit correction to disk, undo it, export the report
+10. **Actions** — fix the characters, open the replacement list, rewrite in
+    place, undo a write, export the report. *Fix on disk* opens the same list:
+    the audit's corrections are read there before they are written, like
+    everything else
 
 The window folds one column at a time as it narrows: the detail column first
 (it reappears inline under the clicked row), then the preview.
@@ -1740,6 +1794,11 @@ What arrives ticked is the point of the screen:
 The button says how many rows it is about to write, and *Save to file* writes
 the same list as Markdown (`replacements-YYYY-MM-DD.md`) for a review that
 happens in a pull request or on somebody else's screen.
+
+*Let the model answer N* hands the open decisions to the configured model. What
+it answers becomes a **model draft** — unticked, with a sentence to read —
+never a mechanical row, and what the page does not actually say is left as a
+decision.
 
 ---
 

@@ -6,8 +6,56 @@ Desktop e headless analyzer: rilevamento di testi generati da AI, caratteri non 
 
 ---
 
+## Perché esiste XAnalyze
+
+**A che cosa serve.** Una sola esecuzione risponde a due domande su un sito o un repository di cui
+sei responsabile: *questo testo l'ha scritto un modello* e *questa pagina funziona davvero per le
+persone che devono usarla* - accessibilità, SEO, prestazioni, buone pratiche. Entrambe le risposte
+indicano un punto preciso (file, riga, indirizzo), non un punteggio, e quasi tutte arrivano con la
+correzione già pronta.
+
+**Quali problemi risolve**
+
+1. **"L'ha scritto un'AI?" - con una risposta dove puoi agire.** Un rilevatore web dà una
+   percentuale su un testo incollato. XAnalyze dà il file e la riga, i segnali che si sono
+   attivati, la confidenza e, se lo chiedi, il commit che ha toccato quella riga per ultimo.
+2. **Caratteri che nessuno vede.** Spazi a larghezza zero, trattini morbidi, lettere omoglife e
+   virgolette tipografiche rompono ricerca, diff, stringhe di prezzo e `grep`. Vengono trovati con
+   precisione e rimossi con precisione, un carattere alla volta, mai riformattando il file.
+3. **Un audit che resta un PDF.** 52 regole non si fermano al nome del difetto: dove la correzione
+   discende dal markup, può essere riscritta nel file. Dove non discende - il testo alternativo di
+   una fotografia, la lingua della pagina - resta fuori dal percorso automatico di proposito: un
+   markup valido che mente fa sì che l'audit successivo dichiari la pagina pulita.
+4. **Un risultato "pulito" che è una bugia.** L'esecuzione dice che cosa ha letto davvero: quante
+   pagine, che cosa non è riuscita ad aprire, dove un limite ha tagliato la scansione. "Nessun
+   rilievo" è una buona notizia solo se sai che cosa è stato guardato.
+5. **Farlo più di una volta.** Un'esecuzione è un oggetto, non un comando: si può mettere in pausa,
+   riprendere, elencare, confrontare con quella precedente, e lascia una cartella di documenti
+   invece che righe nel terminale.
+6. **Le supposizioni sulla provenienza.** Immagini e repository vengono letti per ciò che
+   **dichiarano di sé**: campi IPTC/XMP, blocchi con il prompt del generatore, un manifest C2PA
+   firmato, commit con un assistente come autore, configurazione di un assistente committata. È un
+   record, non un'opinione sui pixel.
+
+**A chi serve**
+
+- **Redattori e proprietari dei contenuti** che devono sapere che cosa, nel loro sito, l'ha scritto
+  un modello, e dove.
+- **Sviluppatori e agenzie** che rispondono del sito di qualcun altro e devono mostrarne lo stato,
+  correggere ciò che è meccanico e lasciare traccia di entrambe le cose.
+- **Chi si occupa di accessibilità e QA**, comprese le persone che lavorano secondo le regole
+  europee di accessibilità: servono rilievi legati agli elementi e un report da consegnare.
+- **Team che non possono mandare i propri contenuti da nessuna parte.** Tutto, tranne il passaggio
+  facoltativo del modello, gira sulla tua macchina; non c'è un account da creare e nulla viene
+  caricato.
+- **Agenti AI per il codice**, che hanno un formato di scansione offline dedicato e un modo per
+  restituire i giudizi (`agent-scan`, `agent-judge`).
+
+---
+
 ## Indice
 
+- [Perché esiste XAnalyze](#perché-esiste-xanalyze)
 - [Funzionalità](#funzionalità)
 - [Avvio rapido](#avvio-rapido)
 - [Comandi CLI](#comandi-cli)
@@ -1531,9 +1579,10 @@ risultati.
 9. **Dettaglio** — cosa è stato trovato, perché conta, come correggerlo,
    l'elemento, la sostituzione pronta e ogni punto in cui lo stesso problema
    compare
-10. **Azioni** — correggi i caratteri, genera l'elenco delle sostituzioni,
-    riscrivi sul posto, scrivi su disco una correzione dell'audit, annullala,
-    esporta il report
+10. **Azioni** — correggi i caratteri, apri l'elenco delle sostituzioni,
+    riscrivi sul posto, annulla una scrittura, esporta il report. *Correggi su
+    disco* apre lo stesso elenco: le correzioni dell'audit si leggono lì prima
+    di essere scritte, come tutto il resto
 
 La finestra ripiega una colonna alla volta mentre si restringe: prima la colonna
 dei dettagli (che ricompare sotto la riga cliccata), poi l'anteprima.
@@ -1560,6 +1609,11 @@ Il senso della schermata è che cosa arriva selezionato:
 Il pulsante dice quante righe sta per scrivere, e *Salva su file* scrive lo
 stesso elenco in Markdown (`replacements-YYYY-MM-DD.md`) per una revisione che
 avviene in una pull request o sullo schermo di qualcun altro.
+
+*Fai completare N al modello* consegna le decisioni aperte al modello
+configurato. Ciò a cui risponde diventa una **bozza del modello** - non
+selezionata e con una frase da leggere - mai una riga meccanica; ciò che la
+pagina non dice davvero resta una decisione.
 
 ---
 

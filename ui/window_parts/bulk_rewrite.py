@@ -163,11 +163,29 @@ class BulkRewriteMixin:
             audit_result=self.audit_result, root=root)
         dialog = ReplacementListDialog(
             items, skipped=skipped, lang=self.lang, root=root,
-            palette=getattr(self, "palette_tokens", None), parent=self)
+            palette=getattr(self, "palette_tokens", None),
+            on_fill=self._fill_decisions_with_model, parent=self)
         dialog.exec()
         if dialog.outcome is None:
             return
         self._after_replacement_write(dialog.outcome)
+
+    def _fill_decisions_with_model(self, items) -> int:
+        """The provider side of *let the model answer*, kept in the window.
+
+        Building the provider is where "you are not signed in" is discovered,
+        and that is an answer about the account rather than about the list,
+        so it is raised here and shown by the screen that asked.
+        """
+        import rewriter
+
+        provider = rewriter.build_provider(self.settings)
+        status = provider.auth_status()
+        if not status.signed_in:
+            raise RuntimeError(
+                t("settings_not_signed_in", self.lang, detail=status.detail))
+        return replacements.fill_decisions(items, provider,
+                                           self._audited_text(), self.lang)
 
     def _after_replacement_write(self, outcome) -> None:
         lines = [t("replacements_written", self.lang, written=outcome.written,

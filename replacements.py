@@ -223,6 +223,40 @@ def collect(result=None, drafts: dict | None = None, audit_result=None,
     return rows, skipped
 
 
+def fill_decisions(items, provider, page_text: str = "",
+                   language: str = "en") -> int:
+    """Ask a model for the values the decisions are missing.
+
+    A decision the model answers becomes a **draft**, not a mechanical row,
+    and stays unticked. That is the honest reading of what happened: nobody
+    read the picture, a model wrote a sentence about it, and the whole point
+    of the middle category is that such a sentence is reviewed before it is
+    written. `fix_ai.describe` already refuses to invent - it answers SKIP
+    when the page does not say - and those rows simply stay decisions.
+    """
+    from audit import fix_ai
+
+    pending = [i for i in items if i.source == DECISION and i.writer == MARKUP]
+    if not pending:
+        return 0
+    filled, _left = fix_ai.describe([i.plan for i in pending], page_text,
+                                    provider, language)
+    by_key = {(p.path, p.start, p.end, p.rule_id): p for p in filled}
+    answered = 0
+    for item in pending:
+        plan = by_key.get((item.plan.path, item.plan.start, item.plan.end,
+                           item.plan.rule_id))
+        if plan is None:
+            continue
+        item.plan = plan
+        item.after = plan.replacement
+        item.source = DRAFT
+        item.reason = ""
+        item.selected = False
+        answered += 1
+    return answered
+
+
 # ------------------------------------------------------------------ writing
 
 @dataclass

@@ -34,7 +34,14 @@ class ReportExportMixin:
     """Toolbar actions that hand results to the reader or the disk."""
 
     def _on_fix_on_disk_clicked(self) -> None:
-        self.view_model.fix_on_disk()
+        """The audit's corrections are read in the replacement list too.
+
+        This used to write them straight to disk after a message box with a
+        count in it, which made the audit the one pass whose edits nobody
+        saw before they happened - and made two surfaces that write the same
+        markup. There is one now, and this button is a way into it.
+        """
+        self._open_replacement_list()
 
     def _on_undo_fix_clicked(self) -> None:
         self.view_model.undo_fix()
@@ -82,22 +89,6 @@ class ReportExportMixin:
         if documents is None:
             return
         self._show_run_documents(documents)
-
-    def _report_fix_outcome(self, outcome, written_by_model) -> None:
-        lines = [t("fix_done", self.lang, applied=len(outcome.applied),
-                   files=len(outcome.files_changed))]
-        if written_by_model:
-            lines.append(t("fix_done_by_model", self.lang,
-                           rules=", ".join(sorted(set(written_by_model)))))
-        if outcome.skipped:
-            lines.append("")
-            lines.append(t("fix_left_alone", self.lang, count=len(outcome.skipped)))
-            for item in outcome.skipped[:6]:
-                lines.append(f"  {item.rule_id}: {item.reason}")
-        for error in outcome.errors:
-            lines.append(error)
-        QMessageBox.information(self, t("fix_on_disk_button", self.lang),
-                                "\n".join(lines))
 
     def _audited_text(self) -> str:
         """The words of the audited files, for anything that has to read them."""

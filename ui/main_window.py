@@ -271,8 +271,6 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self.view_model.audit_result_ready.connect(self._on_vm_audit_result)
         self.view_model.rewrite_ready.connect(self._on_rewrite_finished)
         self.view_model.browser_pass_needed.connect(self._run_browser_pass)
-        self.view_model.fix_confirm_needed.connect(self._on_fix_confirm_needed)
-        self.view_model.fix_outcome.connect(self._on_fix_outcome)
         self.view_model.undo_outcome.connect(self._on_undo_outcome)
         self.view_model.download_choice_needed.connect(self._on_download_choice_needed)
         self.view_model.unicode_fixed.connect(self._on_unicode_fixed)
@@ -2885,22 +2883,6 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self.cancel_btn.setEnabled(False)
 
     # -- ViewModel signal handlers -----------------------------------------
-    def _on_fix_confirm_needed(self, ready_count: int, pending_count: int) -> None:
-        answer = QMessageBox.question(
-            self, t("fix_on_disk_button", self.lang),
-            t("fix_confirm_body", self.lang, ready=ready_count, pending=pending_count),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            | QMessageBox.StandardButton.Cancel,
-        )
-        if answer == QMessageBox.StandardButton.Cancel:
-            return
-        use_ai = answer == QMessageBox.StandardButton.Yes
-        self.view_model.apply_fix_with_ai(use_ai)
-
-    def _on_fix_outcome(self, message: str, written_by_model: list) -> None:
-        QMessageBox.information(self, t("fix_on_disk_button", self.lang), message)
-        self._reaudit_after_fix()
-
     def _on_undo_outcome(self, message: str) -> None:
         QMessageBox.information(self, t("undo_fix_button", self.lang), message)
         self._reaudit_after_fix()

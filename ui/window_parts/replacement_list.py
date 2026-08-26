@@ -88,6 +88,7 @@ class ReplacementRow(QWidget):
     def __init__(self, item, lang: str = "en", parent=None):
         super().__init__(parent)
         self.item = item
+        self.lang = lang
 
         row = QHBoxLayout(self)
         row.setContentsMargins(8, 5, 8, 5)
@@ -134,17 +135,40 @@ class ReplacementRow(QWidget):
         holder_row.addStretch(1)
         row.addWidget(holder)
 
+    def refresh(self) -> None:
+        """Redraw this row after the model answered what it was missing."""
+        item = self.item
+        self.check.setEnabled(item.writable)
+        self.check.setChecked(item.selected)
+        if item.source == replacements.DECISION:
+            self.after.setText(t("replacements_decision", self.lang,
+                                 reason=item.reason
+                                 or t("replacements_no_text", self.lang)))
+            self.after.setProperty("class", theme.CLASS_MUTED)
+        else:
+            self.after.setText(item.after)
+            self.after.setProperty("class", theme.CLASS_CODE)
+        self.source.setText(t(f"replacements_source_{item.source}", self.lang))
+        for widget in (self.after, self.source):
+            widget.style().unpolish(widget)
+            widget.style().polish(widget)
+
 
 class ReplacementListDialog(QDialog):
     """Every pending change of this run, and the two things to do with them."""
 
     def __init__(self, items, skipped=None, lang: str = "en",
-                 root: str | None = None, palette=None, parent=None):
+                 root: str | None = None, palette=None, on_fill=None,
+                 parent=None):
         super().__init__(parent)
         self.items = list(items)
         self.skipped = list(skipped or [])
         self.lang = lang
         self.root = root
+        #: Called with the rows when the user asks a model to answer the
+        #: decisions. Supplied by the window, which owns the provider and
+        #: the account it is billed to; without it the button is not offered.
+        self.on_fill = on_fill
         self.palette_ = palette or getattr(parent, "palette_tokens", None)
         self.rows: list[ReplacementRow] = []
         self.outcome = None
@@ -174,6 +198,11 @@ class ReplacementListDialog(QDialog):
         self.summary = muted("")
         self.summary.setWordWrap(True)
         row.addWidget(self.summary, stretch=1)
+
+        self.fill_btn = QPushButton("")
+        self.fill_btn.setProperty("class", theme.CLASS_QUIET)
+        self.fill_btn.clicked.connect(self._on_fill)
+        row.addWidget(self.fill_btn)
 
         self.save_btn = QPushButton(t("replacements_save", self.lang))
         self.save_btn.setProperty("class", theme.CLASS_QUIET)
@@ -263,6 +292,13 @@ class ReplacementListDialog(QDialog):
             mechanical=totals[replacements.MECHANICAL],
             drafts=totals[replacements.DRAFT],
             decisions=totals[replacements.DECISION]))
+        open_decisions = totals[replacements.DECISION]
+        # Offered only when there is a decision to answer and somebody to
+        # answer it: a button that spends money on nothing is worse than a
+        # missing one.
+        self.fill_btn.setVisible(bool(open_decisions and self.on_fill))
+        self.fill_btn.setText(t("replacements_fill", self.lang,
+                                n=open_decisions))
         chosen = len(replacements.selected(self.items))
         self.write_btn.setText(t("replacements_write", self.lang, n=chosen))
         self.write_btn.setEnabled(bool(chosen))
@@ -277,6 +313,31 @@ class ReplacementListDialog(QDialog):
         self.footer.setText(footer)
 
     # ------------------------------------------------------------- actions
+
+    def _on_fill(self) -> None:
+        """Hand the open decisions to a model, and say what came back.
+
+        What it answers becomes a draft: the row stays unticked and now has
+        a sentence to read, which is the difference between a model helping
+        and a model deciding.
+        """
+        if self.on_fill is None:
+            return
+        self.fill_btn.setEnabled(False)
+        try:
+            answered = self.on_fill(self.items)
+        except Exception as exc:  # noqa: BLE001 - shown, never swallowed
+            QMessageBox.warning(self, t("replacements_title", self.lang),
+                                str(exc))
+            return
+        finally:
+            self.fill_btn.setEnabled(True)
+        for row in self.rows:
+            row.refresh()
+        self._refresh_counts()
+        QMessageBox.information(
+            self, t("replacements_title", self.lang),
+            t("replacements_filled", self.lang, n=answered))
 
     def _on_save(self) -> None:
         suggested = replacements.default_filename(datetime.date.today())

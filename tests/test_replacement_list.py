@@ -164,6 +164,52 @@ class Writing(unittest.TestCase):
         self.assertEqual(replacements.write([row]).written, 0)
 
 
+class LettingTheModelAnswer(unittest.TestCase):
+    """A decision a model answered is a draft, not a mechanical row."""
+
+    class _Provider:
+        def __init__(self, answer):
+            self.answer = answer
+
+        def analyze(self, system, prompt):
+            return self.answer
+
+    def _decision_rows(self, tmp):
+        path = os.path.join(tmp, "index.html")
+        Path(path).write_text('<body>\n<img src="/icon.svg">\n</body>',
+                              encoding="utf-8")
+        audit = AccessibilityResult(root=tmp, mode="repo", documents=[
+            DocumentReport(source=path, issues=[
+                Issue(rule_id="image-alt", severity="critical", line=2,
+                      snippet='<img src="/icon.svg">',
+                      fix_snippet='<img src="/icon.svg" alt="…">',
+                      engine="static", source=path)])])
+        rows, _ = replacements.from_audit_result(audit, root=tmp)
+        return rows
+
+    def test_an_answered_decision_becomes_an_unticked_draft(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rows = self._decision_rows(tmp)
+            self.assertEqual(rows[0].source, replacements.DECISION)
+            answered = replacements.fill_decisions(
+                rows, self._Provider("<<<1>>>\nA magnifying glass"),
+                page_text="Search the site")
+            self.assertEqual(answered, 1)
+            self.assertEqual(rows[0].source, replacements.DRAFT)
+            self.assertIn("A magnifying glass", rows[0].after)
+            self.assertFalse(rows[0].selected)
+            self.assertTrue(rows[0].writable)
+
+    def test_a_model_that_skips_leaves_the_decision_open(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rows = self._decision_rows(tmp)
+            answered = replacements.fill_decisions(
+                rows, self._Provider("<<<1>>>\nSKIP"), page_text="")
+            self.assertEqual(answered, 0)
+            self.assertEqual(rows[0].source, replacements.DECISION)
+            self.assertFalse(rows[0].writable)
+
+
 class Exporting(unittest.TestCase):
     """The same list as a file, for a review that happens somewhere else."""
 
@@ -276,6 +322,13 @@ class Screen(unittest.TestCase):
         self.assertLessEqual(right_edge, viewport)
         dialog.close()
 
+    def test_the_model_button_appears_only_with_a_decision_and_a_provider(self):
+        without = self._dialog()
+        self.assertFalse(without.fill_btn.isVisible())
+        with_fill = ReplacementListDialog(list(without.items), lang="en",
+                                          on_fill=lambda items: 0)
+        self.assertIn("1", with_fill.fill_btn.text())
+
     def test_the_header_counts_all_three_sources(self):
         dialog = self._dialog()
         self.assertIn("1 mechanical", dialog.summary.text())
@@ -285,3 +338,30 @@ class Screen(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipIf(QApplication is None, "PySide6 not available")
+class OneWriteSurface(unittest.TestCase):
+    """The audit's corrections have one way to reach the disk, not two."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_fix_on_disk_opens_the_list(self):
+        from ui.main_window import MainWindow
+
+        window = MainWindow()
+        opened = []
+        window._open_replacement_list = lambda: opened.append(True)
+        window._on_fix_on_disk_clicked()
+        self.assertEqual(opened, [True])
+        window.close()
+        window.deleteLater()
+
+    def test_the_view_model_no_longer_writes_audit_fixes_itself(self):
+        """The second surface, named so it cannot come back quietly."""
+        from ui.view_model import MainViewModel
+
+        for gone in ("fix_on_disk", "apply_fix_with_ai", "fix_confirm_needed"):
+            self.assertFalse(hasattr(MainViewModel, gone), gone)
