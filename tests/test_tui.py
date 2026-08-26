@@ -291,7 +291,13 @@ class ResultsScreenShowsTheResult(unittest.TestCase):
     def test_a_missing_file_cannot_be_opened(self):
         from tui.screens.results import open_in_os
 
-        self.assertIn("Not there", open_in_os("/tmp/definitely-not-here-42"))
+        from i18n.translations import t
+
+        # The message is in the interface language now, so the test asks for
+        # the string that language actually produces.
+        self.assertEqual(open_in_os("/tmp/definitely-not-here-42", "en"),
+                         t("tui_open_gone", "en",
+                           path="/tmp/definitely-not-here-42"))
 
     def test_severity_rows_get_four_different_colours_not_one(self):
         """Before this, "critical" and "minor" were the table's default
@@ -375,7 +381,7 @@ class ReportsScreenReacts(unittest.TestCase):
                 with mock.patch.object(screen_module, "load_runs",
                                        return_value=self.history(tmp)):
                     with mock.patch.object(screen_module, "open_in_os",
-                                           side_effect=lambda p:
+                                           side_effect=lambda p, lang="uk":
                                            opened.append(p) or "ok"):
                         await pilot.press("4")
                         await pilot.pause()
@@ -944,3 +950,61 @@ class NoDecorativeControls(unittest.TestCase):
         sent = self._sent("audit")
         self.assertIn("no_browser", sent)
         self.assertEqual(sent["no_browser"], "browser")
+
+
+class NothingUntranslated(unittest.TestCase):
+    """No screen may put an English literal in front of a person.
+
+    The Ukrainian pass covered the labels first and the *dynamic* text - the
+    table heads, the statuses, the detail block - a commit later, which is
+    how a screen ends up half in one language. This reads the source rather
+    than the running app: a literal handed to a widget is the defect whether
+    or not a test happens to open that screen.
+
+    Parsed rather than grepped: a regex over the line cannot tell the label
+    of a button from the id beside it.
+    """
+
+    #: Calls whose visible arguments are read by a person.
+    SPEAKING = {"Label", "Button", "Static", "Checkbox", "add_columns",
+                "add_row", "update"}
+
+    #: Strings that are the same in every language, or are not sentences.
+    ALLOWED = {"XAnalyze", "ok", "-", "?", "·", ""}
+
+    def _offences(self, path):
+        import ast
+
+        tree = ast.parse(Path(path).read_text(encoding="utf-8"))
+        found = []
+
+        def visible(node):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                text = node.value
+                if text in self.ALLOWED or not text.strip():
+                    return
+                if not any(ch.isalpha() for ch in text):
+                    return
+                found.append((node.lineno, text))
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                name = (node.func.attr if isinstance(node.func, ast.Attribute)
+                        else getattr(node.func, "id", ""))
+                if name in self.SPEAKING:
+                    for argument in node.args:
+                        visible(argument)
+                for keyword in node.keywords:
+                    if keyword.arg == "placeholder":
+                        visible(keyword.value)
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Attribute) and target.attr == "label":
+                        visible(node.value)
+        return found
+
+    def test_no_screen_speaks_english_directly(self):
+        for path in sorted(Path("tui/screens").glob("*.py")):
+            with self.subTest(screen=path.name):
+                self.assertEqual(self._offences(path), [],
+                                 f"{path}: untranslated text")

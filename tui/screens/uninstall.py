@@ -69,7 +69,7 @@ class UninstallScreen(XScreen):
         button.label = self.tr("tui_uninstall_remove")
         button.display = False
         listing = self.query_one("#uninstall-list", Label)
-        listing.update("XAnalyze is not installed - nothing to remove.")
+        listing.update(self.tr("tui_uninstall_none"))
         if errors:
             status.update(self.tr("tui_uninstall_errors", what="; ".join(errors)))
         else:

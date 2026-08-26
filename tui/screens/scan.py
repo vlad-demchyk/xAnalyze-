@@ -23,7 +23,7 @@ class ScanScreen(RunScreen):
             yield Static("")
 
             yield Label(self.tr("tui_target_path"))
-            yield Input(placeholder="./src or ./page.html", id="target")
+            yield Input(placeholder=self.tr("tui_placeholder_path"), id="target")
 
             # One sentence, not two labelled dropdowns - see
             # FullscanScreen.compose for why, and ui.widgets.InlineValue for

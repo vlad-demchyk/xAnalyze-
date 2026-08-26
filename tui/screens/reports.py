@@ -16,6 +16,8 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, DataTable, Label, Static
 
+from i18n.translations import t
+
 from tui.screens.base import XScreen
 from tui.screens.results import open_in_os
 
@@ -98,7 +100,9 @@ class ReportsScreen(XScreen):
 
     def on_mount(self) -> None:
         table = self.query_one("#reports-table", DataTable)
-        table.add_columns("When", "Target", "Mode", "Findings", "Problems")
+        table.add_columns(self.tr("tui_col_when"), self.tr("tui_col_target"),
+                          self.tr("tui_col_mode"), self.tr("tui_col_findings"),
+                          self.tr("tui_col_problems"))
         self.action_refresh()
 
     def on_screen_resume(self) -> None:
@@ -116,7 +120,7 @@ class ReportsScreen(XScreen):
         self._runs = load_runs()
         if not self._runs:
             self.query_one("#report-status", Label).update(
-                "No runs recorded yet. Run a scan, audit or full scan first.")
+                self.tr("tui_reports_empty"))
             self._enable_actions(False)
             return
         for run in self._runs[:200]:
@@ -129,7 +133,7 @@ class ReportsScreen(XScreen):
                 "-" if distinct is None else str(distinct),
             )
         self.query_one("#report-status", Label).update(
-            f"{len(self._runs)} run(s) recorded.")
+            self.tr("tui_reports_count", n=len(self._runs)))
         self._show_detail(0)
 
     def _enable_actions(self, enabled: bool) -> None:
@@ -152,18 +156,19 @@ class ReportsScreen(XScreen):
         exists = report and Path(report).exists()
         lines = [
             f"{run.get('root', '?')}  ·  {run.get('mode', '?')}",
-            f"critical {counts.get('critical', 0)}  serious "
-            f"{counts.get('serious', 0)}  moderate {counts.get('moderate', 0)}"
-            f"  minor {counts.get('minor', 0)}",
-            f"documents examined: {run.get('documents', '?')}"
-            f"   corrections written: {run.get('fixed', 0)}",
+            "  ".join(
+                f"{t('severity_' + level, self.lang)} {counts.get(level, 0)}"
+                for level in ("critical", "serious", "moderate", "minor")),
+            self.tr("tui_report_examined",
+                    documents=run.get("documents", "?"),
+                    fixed=run.get("fixed", 0)),
         ]
         if report:
-            lines.append(f"report: {report}"
-                         + ("" if exists else "   (no longer on disk)"))
+            lines.append(self.tr("tui_report_path", path=report)
+                         + ("" if exists else self.tr("tui_report_gone")))
         else:
             # Runs recorded before the report path was stored.
-            lines.append("report: not recorded for this run")
+            lines.append(self.tr("tui_report_unrecorded"))
         self.query_one("#report-detail", Label).update("\n".join(lines))
         self._enable_actions(bool(exists))
 
@@ -186,7 +191,7 @@ class ReportsScreen(XScreen):
         if not report:
             status.update(self.tr("tui_no_report_path"))
             return
-        status.update(open_in_os(report))
+        status.update(open_in_os(report, self.lang))
 
     def action_open_folder(self) -> None:
         run = self._selected()
@@ -195,7 +200,7 @@ class ReportsScreen(XScreen):
         if not report:
             status.update(self.tr("tui_no_folder"))
             return
-        status.update(open_in_os(str(Path(report).parent)))
+        status.update(open_in_os(str(Path(report).parent), self.lang))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "back":

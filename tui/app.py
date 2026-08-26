@@ -174,6 +174,7 @@ class XAnalyzeApp(App):
         #: after Settings changed it, which is exactly what "the option does
         #: nothing" looks like from the outside.
         self.lang = config.Settings.load().ui_language or "uk"
+        self._translate_own_bindings()
         # Registered here rather than in `on_mount`: the CSS above already
         # references custom variables (`$inline-label` and friends), and the
         # first stylesheet parse - which resolves every `$name` against
@@ -184,6 +185,33 @@ class XAnalyzeApp(App):
         for theme in build_textual_themes().values():
             self.register_theme(theme)
         self.theme = DEFAULT_THEME
+
+    def _translate_own_bindings(self) -> None:
+        """The app's own footer hints, in the app's language.
+
+        The same rewrite the screens do to their copy (`XScreen`), applied
+        one level up. What is left in English after this belongs to Textual
+        itself - the focus and clipboard hints a focused widget contributes -
+        and translating those would mean patching the framework.
+        """
+        from dataclasses import replace
+
+        from i18n.translations import t
+        from tui.screens.base import BINDING_LABELS
+
+        mapping = getattr(self._bindings, "key_to_bindings", None)
+        if not mapping:
+            return
+        for key, bindings in list(mapping.items()):
+            rewritten = []
+            for binding in bindings:
+                action = (binding.action or "").split("(")[0]
+                label_key = BINDING_LABELS.get(action)
+                if label_key and binding.description:
+                    binding = replace(binding,
+                                      description=t(label_key, self.lang))
+                rewritten.append(binding)
+            mapping[key] = rewritten
 
     #: Screen name -> the class that builds it. One list, because installing
     #: them and re-installing them after a language change must not drift.
@@ -222,6 +250,7 @@ class XAnalyzeApp(App):
         if lang == self.lang:
             return
         self.lang = lang
+        self._translate_own_bindings()
         while len(self.screen_stack) > 1:
             self.pop_screen()
         for name in self.SCREENS_IN_ORDER:

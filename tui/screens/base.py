@@ -20,7 +20,7 @@ from i18n.translations import t
 #: part of the interface, so it is translated with everything else; the
 #: bindings themselves are class-level and therefore built in one language,
 #: which is why the descriptions are rewritten per instance below.
-_BINDING_LABELS = {
+BINDING_LABELS = {
     "back": "tui_back",
     "quit": "tui_quit",
     "save": "tui_save",
@@ -72,7 +72,7 @@ class XScreen(Screen):
             rewritten = []
             for binding in bindings:
                 action = (binding.action or "").split("(")[0]
-                label_key = _BINDING_LABELS.get(action)
+                label_key = BINDING_LABELS.get(action)
                 if action == "go":
                     # The menu's number keys: each one names a screen, and
                     # the screen's own name is already translated.

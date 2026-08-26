@@ -25,7 +25,7 @@ class AuditScreen(RunScreen):
             yield Label(self.tr("tui_target_any"))
             # No scheme needed: `example.com` is accepted, the same as in the
             # CLI. See `cli_impl.auditpass.looks_like_url`.
-            yield Input(placeholder="example.com or ./src", id="target")
+            yield Input(placeholder=self.tr("tui_placeholder_any"), id="target")
 
             # One sentence, not three labelled dropdowns - see
             # FullscanScreen.compose for why, and ui.widgets.InlineValue for

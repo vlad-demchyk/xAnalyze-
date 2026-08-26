@@ -18,6 +18,8 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, DataTable, Label, RichLog, Static
 
+from i18n.translations import t
+
 from tui.screens.base import XScreen
 
 #: Severity name -> the theme variable painting its step of the four-level
@@ -34,7 +36,7 @@ _SEVERITY_VARIABLE = {
 }
 
 
-def open_in_os(path: str) -> str:
+def open_in_os(path: str, lang: str = "uk") -> str:
     """Hand a file or folder to the desktop. Returns a message for the user.
 
     A report the tool just wrote is only useful if it can be opened, and the
@@ -43,7 +45,7 @@ def open_in_os(path: str) -> str:
     """
     target = Path(path)
     if not target.exists():
-        return f"Not there any more: {path}"
+        return t("tui_open_gone", lang, path=path)
     try:
         if sys.platform == "darwin":
             subprocess.Popen(["open", str(target)])
@@ -52,8 +54,8 @@ def open_in_os(path: str) -> str:
         else:
             subprocess.Popen(["xdg-open", str(target)])
     except OSError as exc:
-        return f"Could not open it: {exc}"
-    return f"Opened {target.name}"
+        return t("tui_open_failed", lang, error=exc)
+    return t("tui_opened", lang, name=target.name)
 
 
 def summary_rows(payload: dict | None) -> list:
@@ -111,8 +113,10 @@ class ResultsScreen(XScreen):
     def compose(self) -> ComposeResult:
         yield from self.compose_chrome()
         with Vertical(id="results-view"):
-            yield Label(f"{self._title} — result", classes="menu-title")
-            yield Label(f"exit code {self._result.exit_code}", id="results-exit")
+            yield Label(self.tr("tui_result_title", title=self._title),
+                        classes="menu-title")
+            yield Label(self.tr("tui_exit_code", code=self._result.exit_code),
+                        id="results-exit")
             yield DataTable(id="results-summary")
             yield Static("")
             yield Label("", id="results-paths")
@@ -131,9 +135,16 @@ class ResultsScreen(XScreen):
         if rows:
             variables = self.app.get_css_variables()
             for label, value in rows:
-                table.add_row(self._severity_cell(label, variables), value)
+                # The payload's keys are machine names; the table is read by
+                # a person, so each one is said in their language and falls
+                # back to the raw key when a command grows a new field.
+                shown = self.tr(f"tui_sum_{label.replace(' ', '_')}")
+                if shown.startswith("tui_sum_"):
+                    shown = label
+                table.add_row(self._severity_cell(label, variables, shown),
+                              value)
         else:
-            table.add_row("(no machine-readable summary)", "-")
+            table.add_row(self.tr("tui_no_summary"), "-")
 
         paths = self.query_one("#results-paths", Label)
         if self._paths:
@@ -150,20 +161,25 @@ class ResultsScreen(XScreen):
             log.write(line)
 
     @staticmethod
-    def _severity_cell(label: str, variables: dict) -> Text | str:
-        """`label` painted in its severity's step of the ramp, or `label`
-        unchanged when it names no severity.
+    def _severity_cell(label: str, variables: dict,
+                       shown: str | None = None) -> Text | str:
+        """`shown` painted in `label`'s step of the ramp, or left unpainted.
 
-        Matched on the last word rather than the whole label, because a row
-        can read "critical" (scan) or "audit critical" (audit) for the same
-        severity - see `summary_rows` above, which is where the two shapes
-        are already reconciled into one row format.
+        The severity is matched on the payload's own key, not on the words
+        the person reads: the label is translated by the time it reaches the
+        table, and matching on a translated word would paint the ramp in one
+        language and nothing in the other two.
+
+        Matched on the last word rather than the whole key, because a row can
+        read "critical" (scan) or "audit critical" (audit) for the same
+        severity - see `summary_rows`, which reconciles the two shapes.
         """
+        text = label if shown is None else shown
         last_word = label.rsplit(" ", 1)[-1]
         variable = _SEVERITY_VARIABLE.get(last_word)
         if variable is None or variable not in variables:
-            return label
-        return Text(label, style=variables[variable])
+            return text
+        return Text(text, style=variables[variable])
 
     def _file_paths(self) -> list:
         return [p for p in self._paths if Path(p).is_file()]
@@ -179,7 +195,7 @@ class ResultsScreen(XScreen):
     def action_open_first(self) -> None:
         files = self._file_paths()
         if files:
-            self.query_one("#report-status", Label).update(open_in_os(files[0]))
+            self.query_one("#report-status", Label).update(open_in_os(files[0], self.lang))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "back":
@@ -190,4 +206,4 @@ class ResultsScreen(XScreen):
             folder = self._folder()
             if folder:
                 self.query_one("#report-status", Label).update(
-                    open_in_os(folder))
+                    open_in_os(folder, self.lang))

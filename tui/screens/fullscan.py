@@ -25,7 +25,7 @@ class FullscanScreen(RunScreen):
 
             yield Label(self.tr("tui_target_any"))
             # `example.com` is enough - the scheme is added for you.
-            yield Input(placeholder="example.com or ./repo", id="target")
+            yield Input(placeholder=self.tr("tui_placeholder_repo"), id="target")
 
             # The design's toolbar (artboard 3a) reads "analyze Site ·
             # depth 2" - one sentence with the choices inline rather than a

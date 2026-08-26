@@ -101,10 +101,10 @@ class UpdateScreen(XScreen):
             return
         button = self.query_one("#install", Button)
         if str(button.label) != "Really install?":
-            button.label = "Really install?"
+            button.label = self.tr("tui_update_confirm_install")
             self._status(self.tr("tui_update_confirm"))
             return
-        button.label = "Install"
+        button.label = self.tr("tui_update_install")
         button.disabled = True
         self._busy = True
         self._status(self.tr("tui_update_installing"))
