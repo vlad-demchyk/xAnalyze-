@@ -54,6 +54,31 @@ METHODS = (
 )
 
 
+def _under_home(path) -> str:
+    """`~/Downloads/page.html` rather than the whole absolute path.
+
+    The design writes it this way and it is not only shorter: the part that
+    identifies the file is its tail, and a temporary directory's path can be
+    sixty characters of nothing anybody typed.
+    """
+    from pathlib import Path
+
+    try:
+        return "~/" + str(Path(path).relative_to(Path.home()))
+    except ValueError:
+        return str(path)
+
+
+def _human_size(size: int) -> str:
+    """Bytes as somebody would say them. Two units are enough here: a saved
+    page is kilobytes or a few megabytes, never gigabytes."""
+    if size < 1024:
+        return f"{size} B"
+    if size < 1024 * 1024:
+        return f"{size / 1024:.0f} KB"
+    return f"{size / (1024 * 1024):.1f} MB"
+
+
 def _two_line(title: str, hint: str) -> QWidget:
     """A name over the sentence that says what choosing it means."""
     holder = QWidget()
@@ -91,6 +116,8 @@ class SetupScreen(QWidget):
     """Everything a run is, before it is one."""
 
     analyze_requested = Signal()
+    #: The screen asks; the window owns the picker and the field it fills.
+    choose_file_requested = Signal()
 
     def __init__(self, app_state, palette, lang: str = "en", parent=None):
         super().__init__(parent)
@@ -141,6 +168,13 @@ class SetupScreen(QWidget):
         self.target_layout.setSpacing(8)
         column.addWidget(self.target_row)
 
+        # The single-page source is the one target you can bring rather than
+        # type, so it gets the area the design draws for it (artboard 3o).
+        # It sits under the target row and takes the same drop the window
+        # takes anywhere on itself.
+        self.drop_zone = self._build_drop_zone()
+        column.addWidget(self.drop_zone)
+
         cards = QHBoxLayout()
         cards.setSpacing(8)
         cards.addWidget(self._build_source_card(), stretch=1)
@@ -170,6 +204,74 @@ class SetupScreen(QWidget):
 
         self.app_state.any_changed.connect(self.refresh)
         self.retranslate(lang)
+
+    def _build_drop_zone(self) -> QWidget:
+        zone = QWidget()
+        zone.setProperty("class", theme.CLASS_INSET)
+        zone.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        zone.setMaximumWidth(720)
+        column = QVBoxLayout(zone)
+        column.setContentsMargins(16, 14, 16, 14)
+        column.setSpacing(4)
+
+        self.drop_arrow = QLabel("↓")
+        self.drop_arrow.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        column.addWidget(self.drop_arrow)
+        self.drop_title = QLabel()
+        self.drop_title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        column.addWidget(self.drop_title)
+        self.drop_note = QLabel()
+        self.drop_note.setProperty("class", theme.CLASS_MUTED)
+        self.drop_note.setWordWrap(True)
+        self.drop_note.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        column.addWidget(self.drop_note)
+
+        row = QHBoxLayout()
+        row.addStretch(1)
+        self.drop_choose_btn = QPushButton()
+        self.drop_choose_btn.setProperty("class", theme.CLASS_QUIET)
+        self.drop_choose_btn.clicked.connect(self.choose_file_requested)
+        row.addWidget(self.drop_choose_btn)
+        row.addStretch(1)
+        column.addLayout(row)
+
+        # What was chosen, once something is: the design puts the file's own
+        # name and size here, because "412 KB" is how somebody notices they
+        # dropped the wrong export.
+        self.drop_chosen = QLabel()
+        self.drop_chosen.setProperty("class", theme.CLASS_CODE)
+        self.drop_chosen.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        self.drop_chosen.setVisible(False)
+        column.addWidget(self.drop_chosen)
+        return zone
+
+    def refresh_target(self) -> None:
+        """The two things that read the target: the drop zone and the sentence.
+
+        `AppState.set_target` carries no signal - the target changes on every
+        keystroke and a repaint per character is not worth it - so the window
+        calls this when the value has actually settled.
+        """
+        self._refresh_drop_zone()
+        self._refresh_summary()
+
+    def _refresh_drop_zone(self) -> None:
+        from pathlib import Path
+
+        state = self.app_state
+        self.drop_zone.setVisible(state.source == SOURCE_FILE)
+        if state.source != SOURCE_FILE:
+            return
+        target = (state.target or "").strip()
+        path = Path(target) if target else None
+        if path is not None and path.is_file():
+            size = path.stat().st_size
+            self.drop_chosen.setText(t("setup_drop_chosen", self.lang,
+                                       name=_under_home(path),
+                                       size=_human_size(size)))
+            self.drop_chosen.setVisible(True)
+        else:
+            self.drop_chosen.setVisible(False)
 
     # ------------------------------------------------------------- cards
 
@@ -292,6 +394,9 @@ class SetupScreen(QWidget):
         self.subtitle.setText(t("setup_subtitle", lang))
         self.reading_note.setText(t("setup_reading_note", lang))
         self.analyze_btn.setText(t("analyze_button", lang))
+        self.drop_title.setText(t("setup_drop_title", lang))
+        self.drop_note.setText(t("setup_drop_note", lang))
+        self.drop_choose_btn.setText(t("setup_drop_choose", lang))
         self.refresh()
 
     def refresh(self) -> None:
@@ -333,6 +438,7 @@ class SetupScreen(QWidget):
         self.account_note.setText("" if ai_ready
                                   else t("setup_method_needs_account", self.lang))
         self.account_note.setVisible(not ai_ready)
+        self._refresh_drop_zone()
         self._refresh_summary()
 
     def _refresh_summary(self) -> None:

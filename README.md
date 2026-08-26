@@ -123,6 +123,7 @@ not at a score, and most of them arrive with the correction attached.
 - **Noise Control** — one screen for everything you have hidden, saying what each entry was, which list it is written in (yours or the project's), and putting it back into that one
 - **Replacement List** — one list of every pending change before any of it is written: what the text is now, what it would become, and whether the correction was derived, drafted by a model, or is a decision nobody can make for you. Mechanical rows arrive ticked, drafts do not, decisions cannot be ticked at all
 - **Settings as rows** — five sections in a rail, one row per decision, switches and segmented controls instead of stretched form fields; each symbol category shows what it actually catches
+- **Drop a page in** — a saved `.html` page or a folder dropped on the window becomes the target, and the setup screen shows the file's own name and size. A finding seen at one width out of three says so, because the mobile menu's unnamed button is not in the desktop DOM at all
 - **Styled Reports** — branded PDF/HTML for humans
 - **Agent Briefings** — markdown/JSON for coding agents
 - **CLI + GUI + TUI** — one binary, three interfaces
@@ -1753,6 +1754,12 @@ During work the same choices are one row of inline values above the results.
 4. **Scope** (folders) — the copy that ships, comments and docstrings, or both
 5. **Depth** (sites) — how far the crawl follows links
 6. **Account** — who pays for an AI pass, and whether anyone is signed in
+
+**Bringing the target instead of typing it.** A page saved as one file — or a
+folder — can be dropped anywhere on the window: it sets the source and fills
+the path, and the setup screen shows what was chosen with its size, so a wrong
+export is visible before the run rather than after it. Anything else is refused
+by the cursor rather than accepted and ignored.
 
 **The results**, read left to right
 

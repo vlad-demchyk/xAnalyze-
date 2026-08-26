@@ -194,6 +194,9 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         #: attribute holding either is a type check at every use site.
         self.audit_result = None
         self.drafts: dict[tuple, str] = {}  # (block_id, start, end) -> replacement text
+        # A saved page or a folder can be dropped on the window (artboard 3o);
+        # what happens then is `dropEvent` below.
+        self.setAcceptDrops(True)
 
         self.current_preview_url: str | None = None       # web mode
         self.current_preview_path: str | None = None      # repo mode
@@ -252,8 +255,15 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self.scope_combo.currentIndexChanged.connect(self._sync_scope_to_state)
 
         # -- AppState -> UI updates --
-        self.app_state.any_changed.connect(self._apply_mode_visibility)
+        # Order matters, and it was wrong: `_apply_mode_visibility` reads the
+        # legacy `self.source` copy, which `_sync_source_from_state` is what
+        # updates. Connected the other way round, every source change painted
+        # the window one source behind - choosing "HTML file" left the address
+        # field and the depth on screen until some later change happened to
+        # repaint. The copy is refreshed first, and then the window is drawn
+        # from it.
         self.app_state.any_changed.connect(self._sync_source_from_state)
+        self.app_state.any_changed.connect(self._apply_mode_visibility)
         # The account is asked for after the window is on screen, so the
         # answer arrives later than the combo that depends on it. Rebuilt when
         # it does; before this, an account found at startup did not add the AI
@@ -321,6 +331,11 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
 
     def _sync_target_to_state(self, _text: str = "") -> None:
         self.app_state.set_target(self._current_target())
+        # `set_target` carries no signal, so the setup screen would not learn
+        # that a file was chosen or dropped - and its drop zone is the one
+        # place that shows the file's own name and size.
+        if getattr(self, "setup_screen", None) is not None:
+            self.setup_screen.refresh_target()
 
     def _sync_scope_to_state(self, _idx: int = 0) -> None:
         self.app_state.set_scope(self._repo_scope())
@@ -1193,6 +1208,10 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self.setup_screen = SetupScreen(self.app_state, self.palette_tokens,
                                         self.lang)
         self.setup_screen.analyze_requested.connect(self._on_analyze_clicked)
+        # The screen asks for a file; the picker and the field it fills stay
+        # here, so there is still one place a chosen path can be wrong in.
+        self.setup_screen.choose_file_requested.connect(
+            self._on_browse_file_clicked)
         self.body_stack.addWidget(self.setup_screen)       # index 0
         self.body_stack.addWidget(self.columns_splitter)   # index 1
         # Starts on the working layout so that the first `show_setup(True)`
@@ -2793,6 +2812,60 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             self._populate_flagged_list()
             self._reset_detail_panel()
             self.status_bar.showMessage(t("status_idle", self.lang))
+
+    # ------------------------------------------------- dropping a target in
+
+    #: What a dropped file may be for the single-page source (artboard 3o).
+    #: A page saved as one file is the whole case: it can be rendered *and*
+    #: read as code, which is why it is a source of its own.
+    DROPPABLE_PAGES = (".html", ".htm")
+
+    def dragEnterEvent(self, event) -> None:  # noqa: N802 - Qt override
+        """Accept a saved page or a folder, and nothing else.
+
+        Refused rather than accepted-and-ignored: a window that takes the
+        drop and then does nothing is indistinguishable from one that is
+        broken, and the cursor is the only place to say so before the drop.
+        """
+        if self._dropped_target(event.mimeData()) is not None:
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event) -> None:  # noqa: N802 - Qt override
+        self.dragEnterEvent(event)
+
+    def dropEvent(self, event) -> None:  # noqa: N802 - Qt override
+        target = self._dropped_target(event.mimeData())
+        if target is None:
+            event.ignore()
+            return
+        source, path = target
+        self.app_state.set_source(source)
+        edit = (self.file_path_edit if source == SOURCE_FILE
+                else self.repo_path_edit)
+        edit.setText(path)
+        # Straight to the setup screen rather than starting a run: dropping
+        # a file says what to look at, not that everything else about the
+        # run is already right.
+        self.show_setup(True)
+        self.status_bar.showMessage(t("status_dropped", self.lang,
+                                      path=Path(path).name))
+        event.acceptProposedAction()
+
+    def _dropped_target(self, mime):
+        """`(source, path)` for a drop this window can act on, or None."""
+        if mime is None or not mime.hasUrls():
+            return None
+        for url in mime.urls():
+            if not url.isLocalFile():
+                continue
+            path = Path(url.toLocalFile())
+            if path.is_dir():
+                return SOURCE_REPO, str(path)
+            if path.suffix.lower() in self.DROPPABLE_PAGES:
+                return SOURCE_FILE, str(path)
+        return None
 
     def _on_browse_clicked(self) -> None:
         path = QFileDialog.getExistingDirectory(self, self.browse_btn.text())

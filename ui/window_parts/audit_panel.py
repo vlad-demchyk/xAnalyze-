@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 
 import duplicates
 from audit import explanations as audit_explanations
+from audit import responsive
 from i18n.translations import t
 from models import Confidence
 from ui import theme
@@ -371,6 +372,20 @@ class AuditPanelMixin:
         chips.addWidget(chip(issue.rule_id))
         if issue.engine and issue.engine != "static":
             chips.addWidget(chip(issue.engine))
+        # A finding seen at one width out of the three the window always runs
+        # is a different fact from one seen at all of them: the mobile menu's
+        # unnamed button does not exist in the desktop DOM at all. The list
+        # is recorded by `audit.responsive.merge`; a static finding has none
+        # and gets no chip.
+        only = responsive.only_at(issue)
+        if only:
+            width = dict((name, w) for name, w, _h in responsive.BREAKPOINTS)
+            only_chip = chip(t("audit_only_at", self.lang,
+                               width=width.get(only, only)))
+            only_chip.setToolTip(t("audit_only_at_note", self.lang,
+                                   name=t(f"breakpoint_{only}", self.lang)))
+            chips.addWidget(only_chip)
+
         also = (issue.details or {}).get("also_found_by", [])
         if also:
             also_label = ", ".join(also)

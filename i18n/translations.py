@@ -3160,6 +3160,43 @@ _STRINGS: dict[str, dict[str, str]] = {
               "the walk. Nothing past it was examined, so this is not a "
               "statement about the whole repository.",
     },
+    "status_dropped": {
+        "uk": "Ціль узято з перетягнутого: {path}",
+        "it": "Obiettivo preso dal file trascinato: {path}",
+        "en": "Target taken from the drop: {path}",
+    },
+    "setup_drop_title": {
+        "uk": "Перетягніть сторінку сюди",
+        "it": "Trascina qui la pagina",
+        "en": "Drop a page here",
+    },
+    "setup_drop_note": {
+        "uk": "Сторінка, збережена в один файл - .html або .htm. Її можна і "
+              "відрендерити, і прочитати як код. Теку теж можна перетягнути.",
+        "it": "Una pagina salvata in un solo file - .html o .htm. Si può sia "
+              "renderizzare sia leggere come codice. Anche una cartella si "
+              "può trascinare.",
+        "en": "A page saved as one file - .html or .htm. It can be rendered "
+              "and read as code. A folder can be dropped too.",
+    },
+    "setup_drop_choose": {
+        "uk": "Обрати файл…", "it": "Scegli un file…", "en": "Choose a file…",
+    },
+    "setup_drop_chosen": {
+        "uk": "{name} · {size}", "it": "{name} · {size}", "en": "{name} · {size}",
+    },
+    "audit_only_at": {
+        "uk": "лише @{width}", "it": "solo @{width}", "en": "only @{width}",
+    },
+    "audit_only_at_note": {
+        "uk": "Знайдено лише на ширині «{name}». На інших ширинах правило не "
+              "спрацьовує: елемент там або має назву, або його немає в DOM.",
+        "it": "Rilevato solo alla larghezza «{name}». Alle altre la regola non "
+              "scatta: lì l'elemento ha un nome oppure non è nel DOM.",
+        "en": "Found only at the {name} width. At the others the rule does not "
+              "fire: there the element either has a name or is not in the DOM "
+              "at all.",
+    },
     "breakpoint_desktop": {"uk": "десктоп", "it": "desktop", "en": "desktop"},
     "breakpoint_tablet": {"uk": "планшет", "it": "tablet", "en": "tablet"},
     "breakpoint_mobile": {"uk": "мобільний", "it": "mobile", "en": "mobile"},

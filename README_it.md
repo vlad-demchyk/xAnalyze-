@@ -109,6 +109,7 @@ correzione già pronta.
 - **Gestione del rumore** — una schermata per tutto ciò che hai nascosto: che cosa era ogni voce, in quale elenco è scritta (il tuo o quello del progetto) e il ripristino proprio in quell'elenco
 - **Elenco delle sostituzioni** — un solo elenco di tutto ciò che l'esecuzione cambierebbe, prima che qualcosa venga scritto: che cosa dice il testo ora, che cosa direbbe e da dove viene la correzione — dedotta, scritta da un modello, oppure una decisione che nessuno può prendere al posto tuo. Le righe meccaniche arrivano selezionate, le bozze del modello no, le decisioni non si possono selezionare affatto
 - **Impostazioni come righe** — cinque sezioni in una barra, una riga per decisione, interruttori e controlli segmentati invece di campi stirati; ogni categoria di simboli mostra che cosa intercetta davvero
+- **Trascina una pagina** — un `.html` salvato o una cartella trascinati sulla finestra diventano l'obiettivo, e la schermata di preparazione mostra nome e dimensione del file. Un rilievo visto a una sola larghezza su tre lo dice: il pulsante del menu mobile non è affatto nel DOM desktop
 - **Report stilizzati** — PDF/HTML brandizzati per persone
 - **Briefing per agenti** — markdown/JSON per coding agent
 - **CLI + GUI + TUI** — un binario, tre interfacce
@@ -1566,6 +1567,13 @@ risultati.
    docstring, o entrambi
 5. **Profondità** (siti) — quanto lontano il crawl segue i link
 6. **Account** — chi paga un passaggio AI, e se qualcuno ha effettuato l'accesso
+
+**L'obiettivo si può portare invece di scriverlo.** Una pagina salvata in un
+solo file - o una cartella - si può trascinare ovunque sulla finestra: imposta
+la sorgente e compila il percorso, e la schermata di preparazione mostra ciò
+che è stato scelto con la sua dimensione, così un export sbagliato si vede
+prima dell'esecuzione e non dopo. Tutto il resto viene rifiutato dal cursore,
+non accettato e ignorato.
 
 **I risultati**, letti da sinistra a destra
 
