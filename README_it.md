@@ -55,6 +55,7 @@ Desktop e headless analyzer: rilevamento di testi generati da AI, caratteri non 
 - **Rilevamento server di sviluppo** — `fullscan --devserver` avvia il server Node/Django/Rails del repo e scansiona il rendering, opzionale ovunque (CLI/TUI/GUI) perché uno potrebbe già essere in esecuzione
 - **Provenienza dei media** — legge cosa un'immagine dichiara sulla propria creazione: campi IPTC/XMP, blocco del prompt del generatore e il manifesto C2PA firmato quando un lettore è installato. È una dichiarazione del file su se stesso, mai un verdetto sui suoi pixel
 - **Fatti del repository** — cosa il repository rivela di sé: commit che nominano un assistente come autore, configurazione degli assistenti versionata e un `.env` che nessuna regola di esclusione copre
+- **Ruoli delle stringhe** — le descrizioni dei campi di uno schema di strumento vengono distinte dal testo di pagina, così un `description:` rivolto a un modello non viene giudicato come se lo leggesse una persona
 - **Blame su una segnalazione** — ogni segnalazione può nominare il commit che ha toccato per ultimo la sua riga, così "chi ha scritto questo" è un dato registrato e non una supposizione
 - **Report stilizzati** — PDF/HTML brandizzati per persone
 - **Briefing per agenti** — markdown/JSON per coding agent
@@ -863,6 +864,32 @@ Ogni anomalia fornisce:
 - Codepoint esatti (es. `U+200B`)
 - Testo sostitutivo
 - Categoria e descrizione
+
+---
+
+### Cosa conta come testo
+
+Una scansione del repository legge le stringhe che una persona vedrà - un
+`placeholder`, una chiamata `t("...")`, una chiave di oggetto come `title:`
+- e lascia stare il resto del codice. Due ruoli vengono distinti di
+proposito, perché la stringa da sola non dice quale sia:
+
+- **Le descrizioni dei campi di uno schema di strumento non sono testo.**
+  La definizione di uno strumento scrive le descrizioni dei suoi parametri
+  sotto la stessa chiave `description:` con cui una landing page scrive il
+  proprio testo, e in entrambi i casi sono frasi in inglese. A separarli è
+  l'oggetto attorno: uno schema dichiara un `type` fra i primitivi del
+  formato (`string`, `number`, ...) e porta una seconda chiave di schema
+  (`required`, `enum`, `parameters`, ...). Misurato su un repository reale:
+  è il **12%** di tutto ciò che sembrava testo.
+- **Un esempio citato in Markdown non è markup pubblicato.** I blocchi
+  delimitati e i backtick vengono mascherati prima dell'analisi, così un
+  documento che scrive `<img src="...">` in un resoconto di bug non viene
+  segnalato come immagine senza `alt`.
+
+La regola resta prudente in entrambe le direzioni: leggere la descrizione di
+uno schema come testo costa un verdetto senza senso, mentre scartare una
+frase vera costa una segnalazione, e i due prezzi non sono uguali.
 
 ---
 

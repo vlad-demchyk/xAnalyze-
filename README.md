@@ -65,6 +65,7 @@ Desktop and headless analyzer: AI-generated text detection, non-keyboard charact
 - **Dev Server Detection** — `fullscan --devserver` starts a repo's own Node/Django/Rails dev server and scans the render, opt-in everywhere (CLI/TUI/GUI) since one may already be running
 - **Media Provenance** — reads what an image says about how it was made: IPTC/XMP fields, generator prompt blocks, and a signed C2PA manifest when a reader is installed. A statement the file makes about itself, never a verdict on its pixels
 - **Repository Facts** — what the repo reveals about itself: commits naming an assistant as author, committed assistant configuration, and a `.env` no ignore rule covers
+- **String Roles** — a tool schema's field descriptions are told apart from page copy, so a model-facing `description:` is not judged as if a person would read it
 - **Blame on a Finding** — each finding can name the commit that last touched its line, so "who wrote this" is a record rather than a guess
 - **Styled Reports** — branded PDF/HTML for humans
 - **Agent Briefings** — markdown/JSON for coding agents
@@ -943,6 +944,30 @@ Each anomaly provides:
 - Exact codepoints (e.g., `U+200B`)
 - Replacement text
 - Category and description
+
+---
+
+### What Counts as Copy
+
+A repository scan reads the strings a person will see - a `placeholder`,
+a `t("...")` call, an object key like `title:` - and leaves the rest of
+the code alone. Two roles are told apart on purpose, because the string
+itself cannot tell you which it is:
+
+- **A tool schema's field descriptions are not copy.** A tool definition
+  writes its parameter descriptions under the same `description:` key a
+  landing page writes its copy under, and both hold English sentences. The
+  object around it is what separates them: a schema declares a `type` from
+  the format's own primitives (`string`, `number`, ...) and carries a
+  second schema key (`required`, `enum`, `parameters`, ...). Measured on a
+  real repository, this is 12% of everything that looked like copy.
+- **A quoted example in Markdown is not shipped markup.** Fenced blocks
+  and inline backticks are masked before parsing, so a document writing
+  `<img src="...">` in a bug report is not reported as a missing `alt`.
+
+The rule stays conservative in both directions: reading a schema
+description as copy costs a meaningless verdict, while dropping a real
+sentence costs a finding, and those are not the same price.
 
 ---
 
