@@ -61,12 +61,14 @@ not at a score, and most of them arrive with the correction attached.
 
 - [Why XAnalyze exists](#why-xanalyze-exists)
 - [Features](#features)
+- [Limits](#limits)
 - [Quick Start](#quick-start)
+- [Usage](#usage)
 - [CLI Commands](#cli-commands)
   - [fullscan](#fullscan---full-scan)
-  - [The four things people actually ask for](#the-four-things-people-actually-ask-for)
+  - [The four shapes worth remembering](#the-four-shapes-worth-remembering)
   - [Scanning a site you also have the code for](#scanning-a-site-you-also-have-the-code-for)
-  - [There's no live site, but there is a checkout](#theres-no-live-site-but-there-is-a-checkout---fullscan-can-run-it)
+  - [No live site, but a checkout](#no-live-site-but-a-checkout---fullscan-can-run-it)
   - [scan](#scan---ai-patterns-detection)
   - [audit](#audit---accessibility-seo-performance)
   - [fix](#fix---apply-fixes)
@@ -95,10 +97,8 @@ not at a score, and most of them arrive with the correction attached.
 - [Repository Facts](#repository-facts)
 - [Reports](#reports)
 - [For AI Agents](#for-ai-agents)
-  - [How Users Ask](#how-users-ask)
   - [Agent-as-Judge Mode](#agent-as-judge-mode)
-  - [Command Reference](#command-reference-with-user-requests)
-  - [Workflow Examples](#workflow-examples)
+  - [Reading the output](#reading-the-output)
 - [GUI](#gui)
 - [TUI (Terminal Interface)](#tui-terminal-interface)
 - [Configuration](#configuration)
@@ -110,25 +110,75 @@ not at a score, and most of them arrive with the correction attached.
 
 ## Features
 
-- **AI Pattern Detection** — heuristic (clichés, structural patterns, burstiness) and embedding-based (sentence-transformers)
-- **Non-keyboard Characters** — zero-width spaces, curly quotes, em dashes, homoglyphs
-- **Accessibility Audit** — WCAG rules, SEO, performance, best practices (52 rules)
-- **Full Scan** — combined AI patterns + accessibility in one command with automatic browser rendering
-- **Dev Server Detection** — `fullscan --devserver` starts a repo's own Node/Django/Rails dev server and scans the render, opt-in everywhere (CLI/TUI/GUI) since one may already be running
-- **Media Provenance** — reads what an image says about how it was made: IPTC/XMP fields, generator prompt blocks, and a signed C2PA manifest when a reader is installed. A statement the file makes about itself, never a verdict on its pixels
-- **Repository Facts** — what the repo reveals about itself: commits naming an assistant as author, committed assistant configuration, and a `.env` no ignore rule covers
-- **String Roles** — a tool schema's field descriptions are told apart from page copy, so a model-facing `description:` is not judged as if a person would read it
-- **Blame on a Finding** — each finding can name the commit that last touched its line, so "who wrote this" is a record rather than a guess
-- **Setup Screen** — the window opens on the run you are about to make: what is looked at, how it is read, what is looked for, who judges, and a sentence naming the result before you press anything
-- **Noise Control** — one screen for everything you have hidden, saying what each entry was, which list it is written in (yours or the project's), and putting it back into that one
-- **Replacement List** — one list of every pending change before any of it is written: what the text is now, what it would become, and whether the correction was derived, drafted by a model, or is a decision nobody can make for you. Mechanical rows arrive ticked, drafts do not, decisions cannot be ticked at all
-- **Settings as rows** — five sections in a rail, one row per decision, switches and segmented controls instead of stretched form fields; each symbol category shows what it actually catches
-- **Drop a page in** — a saved `.html` page or a folder dropped on the window becomes the target, and the setup screen shows the file's own name and size. A finding seen at one width out of three says so, because the mobile menu's unnamed button is not in the desktop DOM at all
-- **Styled Reports** — branded PDF/HTML for humans
-- **Agent Briefings** — markdown/JSON for coding agents
-- **CLI + GUI + TUI** — one binary, three interfaces, all three in your language: the terminal interface speaks Ukrainian, Italian and English like the window does, and changing the language rebuilds it on the spot
-- **Responsive Audit** — test at desktop, tablet, and mobile widths
-- **Browser Rendering** — real Chromium for client-side rendered sites (React, Vue, Next.js)
+- **AI pattern detection** — heuristic signals (clichés, structure, burstiness)
+  and an embedding pass; both judged against a small corpus, see [Limits](#limits)
+- **Non-keyboard characters** — zero-width spaces, homoglyphs, odd spaces,
+  styled letters, curly punctuation. Exact, and exactly removable
+- **Accessibility, SEO, performance, best practice** — 52 rules; where the
+  correction follows from the markup it can be written back
+- **Responsive audit** — the same page at 1440 / 834 / 390, merged into one
+  list that says which widths saw each finding
+- **Browser rendering** — real Chromium for client-side rendered sites
+- **Full scan** — both passes in one run, with the browser pass automatic
+- **Dev server** — `fullscan --devserver` starts a repo's own Node/Django/Rails
+  server and scans the render. Opt-in: one may already be running
+- **Media provenance** — what an image says about itself: IPTC/XMP fields,
+  generator prompt blocks, a signed C2PA manifest when a reader is installed.
+  Never a verdict on the pixels
+- **Repository facts** — commits naming an assistant as author, committed
+  assistant configuration, a `.env` no ignore rule covers
+- **Blame on a finding** — the commit that last touched the line
+- **Runs are objects** — pause, continue, list, compare with the previous run
+- **Documents** — a report to read (PDF/HTML), a briefing for an agent
+  (Markdown/JSON), and the timings, one folder per run
+- **Three interfaces, three languages** — CLI, window and terminal interface
+  over one core, all of them in Ukrainian, Italian or English
+
+---
+
+## Limits
+
+What the tool is weak at, measured rather than guessed. The tracking for each
+lives in the project's `Problems.md`.
+
+**The corpus behind the AI-text detection is small and biased.** Its positive
+half was written by models and runs longer than its human half, which is
+largely interface strings. The precision figures below are precision *on that
+corpus*, not in the wild, and `scripts/calibrate.py --confounds` prints what a
+classifier that knows only the length would score, so the difference stays
+visible.
+
+**Italian is the weakest of the three languages.** Measured recall: 27.8%
+Italian against 56.2% English and 60.0% Ukrainian. On one live Italian site
+the offline detector found nothing where a model judge found six passages. If
+Italian copy matters to you, run the hybrid method rather than the offline one.
+
+**A model's judgment is not reproducible.** Neither a seed nor a temperature is
+exposed by the providers, so two runs over the same text can disagree. The
+judgment cache hides this between runs of the same text, and drops entries
+after 90 days.
+
+**A repository scan is not a weaker page audit.** Scanning templates misses
+what only exists once rendered and reports things a rendered page would not.
+Use a URL, or `--devserver`, when the answer has to be about the page.
+
+**An audit at one width has been done at one width.** The mobile navigation of
+most sites is not in the desktop DOM at all. Pass all three breakpoints unless
+you mean one.
+
+**Typography is noisy on well-set copy.** The category is on by default and
+flags deliberate em dashes and curly quotes; `--no-typography` or the Symbols
+section in Settings turns it off.
+
+**Comments and docstrings are judged with a dictionary tuned for page copy.**
+`--scope technical` therefore reports more loosely than `--scope content`.
+
+**On a 16-colour terminal the four severity steps collapse.** The TUI's ramp
+needs 256 colours to be told apart.
+
+**Content Credentials need an optional reader.** Without `c2pa-python` and
+`cryptography`, XAnalyze reports that a file carries a manifest and says it
+could not read it, which is true and less than you want.
 
 ---
 
@@ -171,59 +221,20 @@ python cli.py fullscan https://example.com
 
 ## Usage
 
-### Interactive TUI
-
-Just type `xanalyze` with no arguments to launch the interactive terminal interface:
-
 ```bash
-xanalyze
-```
-
-The TUI provides a menu-driven interface with:
-- **Scan** — detect AI-generated text patterns and non-keyboard characters
-- **Audit** — check accessibility, SEO, performance, best practices
-- **Full Scan** — everything in one run
-- **Reports** — view previous analysis results
-- **Settings** — inspect configuration
-- **Update** — check for new versions
-- **Uninstall** — remove XAnalyze from this machine
-
-Navigate with arrow keys or number shortcuts (1-7). The footer lists the keys
-each screen accepts. `Esc` goes back, `q` quits.
-
-### CLI Commands
-
-```bash
-# Scan a directory for AI patterns
-xanalyze scan ./src
-
-# Audit a website for accessibility
-xanalyze audit https://example.com --browser
-
-# Full scan (AI + accessibility + SEO)
-xanalyze fullscan https://example.com
-
-# Fix non-keyboard characters in place
-xanalyze fix ./src
-
-# Check for updates
-xanalyze update
-
-# Remove XAnalyze from this machine
-xanalyze uninstall
-
-# Show version
+xanalyze                                    # the terminal interface
+xanalyze fullscan https://example.com       # both passes over a site
+xanalyze scan ./src                         # AI patterns and characters
+xanalyze audit https://example.com --browser  # accessibility, SEO, speed
+xanalyze fix ./src                          # write the character fixes
+xanalyze runs                               # what ran, and what can continue
+xanalyze update                             # check and install a new version
 xanalyze --version
 ```
 
-### Self-Update
-
-```bash
-# Check and install the latest version
-xanalyze update
-```
-
-Every CLI command also checks for updates once a day and prints a hint if a newer version is available. Suppress with `--no-update-check`.
+Every command checks for a new version once a day and prints one line when
+there is one; `--no-update-check` turns that off. The window is a separate
+application (`XAnalyze.app`, or `python main.py` from source).
 
 ---
 
@@ -231,7 +242,7 @@ Every CLI command also checks for updates once a day and prints a hint if a newe
 
 ### `fullscan` - Full Scan
 
-The primary command for comprehensive analysis. Combines AI pattern detection, accessibility audit, SEO, performance, and best practices in one run.
+Both passes in one run: AI patterns and characters, plus accessibility, SEO, performance and best practice.
 
 **Automatic behavior for URLs and HTML files:**
 - Browser rendering enabled (handles React, Vue, Next.js, etc.)
@@ -320,135 +331,68 @@ xanalyze fullscan https://example.com --language uk
 
 ---
 
-### The four things people actually ask for
-
-`fullscan` has a lot of flags because it can do a lot. These are the shapes
-worth remembering; everything else is a variation on one of them.
+### The four shapes worth remembering
 
 ```bash
-# 1. "Check my site properly."  Ten pages, all three widths, a model reading
-#    the copy. The four flags are the four decisions - how much, how deep,
-#    how wide, who reads.
+# 1. A proper look: ten pages, three widths, a model reading the copy.
 xanalyze fullscan mysite.com --max-pages 10 --depth 2 --detector ai --breakpoints all
 
-# 2. "Check it quickly."  Defaults: 30 pages, depth 1, desktop only, offline.
+# 2. A quick look - the defaults: 30 pages, depth 1, desktop only, offline.
 xanalyze fullscan mysite.com
 
-# 3. "Check this code."  No crawl, no browser; the AI-text and character
-#    passes plus the static audit.
+# 3. Code: no crawl, no browser. AI-text and characters plus the static audit.
 xanalyze fullscan ./my-project
 
-# 4. "What did I run, and can I carry on?"
+# 4. What ran, and carrying on.
 xanalyze runs
 xanalyze resume 2026-08-24-1331
 ```
 
-**`--detector ai`** is the natural spelling and it works; `llm-judge` and
-`judge` are the same thing. None of them says whose account pays - that comes
-from your settings, and the run prints the judge it resolved to
-(`# [stage] AI patterns: claude-code-llm-judge`) so the answer is in the log
-rather than in your memory. `xanalyze ai status` says what is available.
+`--detector ai` (also `llm-judge`, `judge`) says a model reads the copy, not
+whose account pays: that comes from your settings, and the run prints the
+judge it resolved to. `xanalyze ai status` says what is available.
 
-**The defaults are a quick look, not a thorough one.** Depth 1 and
-desktop-only are chosen so an unqualified `fullscan` finishes in a minute or
-two. A real audit is recipe 1, and on a ten-page site it takes about five -
-the browser pass at three widths is ~90% of that, which `timings.md` will
-show you.
+The defaults are a quick look. A ten-page audit at three widths takes about
+five minutes, ~90% of it the browser pass; `timings.md` in the run folder
+shows where it went.
 
 ---
 
 ### Scanning a site you also have the code for
 
-The two are not the same question, and neither reading substitutes for the
-other. Measured on matched content - one HTML page and the PHP template that
-produces it: the rendered page triggered **15** rules the template could not
-(`html-lang`, `page-has-h1`, `seo-canonical`, `link-text-vague`... - most of
-what WordPress writes through `wp_head()` and a template file never holds),
-and the template triggered one the page could not, backwards
-(`_e('clicca qui')` reads as `seo-empty-link` on the page - the text is
-hidden behind a function call there - and as nothing on the template, where
-`link-text-vague` never gets to see the words at all).
+Two different questions. Measured on matched content - one HTML page and the
+PHP template that produces it - the rendered page triggered **15** rules the
+template could not (`html-lang`, `page-has-h1`, `seo-canonical`,
+`link-text-vague`: most of what `wp_head()` writes and a template never
+holds), and the template triggered one the page could not.
 
-**Scan the site for what it is: `fullscan https://example.com`.** It sees
-what a browser sees - rendered `<head>`, `axe-core`, HTML_CodeSniffer,
-Core Web Vitals - none of which exist as text in any file. This is the
-right default even when a checkout is sitting right there, because most of
-what an accessibility and SEO audit measures is a property of the render,
-not of the source.
+Scan the site for what it is - `fullscan https://example.com` - because most
+of what an accessibility and SEO audit measures is a property of the render.
+Add `--repo PATH` to also learn *where* to fix it: a content finding whose
+passage matches a block under `PATH` carries `source_file` / `source_line`
+into the report, the briefing and the JSON.
 
-**Add `--repo PATH` when you also want to know where to fix it.** A
-content finding whose passage matches a block found under `PATH` gets
-`source_file`/`source_line` alongside the page it renders on - the report,
-the agent briefing and the JSON output all carry it. Nothing about a
-site-only run changes when `--repo` is left out; most runs have no checkout
-to point at, and are not worse off for lacking one.
+---
 
-```bash
-xanalyze fullscan https://example.com --repo ./my-wordpress-theme --detector ai
-```
+### No live site, but a checkout - `fullscan` can run it
 
-The run prints how much of the site the given checkout actually explains -
-`# [AI patterns] matched to --repo: 42/68 distinct passage(s)` - and the
-report repeats it next to the highest-scoring passages. A low number is
-not necessarily a defect in the checkout: WordPress puts `<html lang>` and
-canonical links in `wp_head()`, and a widget's or a plugin's text can come
-from the database rather than any file at all. It is a real fact about
-this run either way, and worth a look either way.
-
-**Scan the repository alone (`fullscan ./my-project`) for the opposite
-case** - no live site, or a code review where "does this text sound
-AI-written" and "does this comment need a rewrite" are the only questions.
-It reads comments and docstrings, which a rendered page never shows a
-reader and this scan never claims are visible.
-
-### There's no live site, but there is a checkout - `fullscan` can run it
-
-A repo with a `package.json`, a Django `manage.py`, or a Rails
+A repo with `package.json`, Django's `manage.py` or Rails'
 `Gemfile`+`bin/rails` can start its own dev server and be scanned as the
-rendered site - but not by default. `fullscan ./repo` alone stays exactly
-what it always was: a static scan, no network, no subprocess. The server may
-already be running in another terminal, and starting a second one on a
-different port is a confusing outcome, not a helpful one - so this is
-opt-in, everywhere:
+rendered site. Opt-in, because one may already be running elsewhere and a
+second on another port helps nobody:
 
 ```bash
-xanalyze fullscan ./repo
-# [devserver] node detected but not started - scanning source only.
-# Pass --devserver to read the rendered site instead, or --url if one is
-# already running
-
+xanalyze fullscan ./repo            # static scan; says the server was not started
 xanalyze fullscan ./my-vite-app --devserver
 # node: dependencies are missing. Run `npm install`? [y/N]
 # [devserver] node ready at http://localhost:5173
 ```
 
-With `--devserver`, missing dependencies (`node_modules/`, an unimportable
-Django, `bundle check` failing) stop the run and ask before installing
-anything - `--yes` skips the prompt for an unattended run. Once the server
-answers, the crawl and audit run against it exactly as they would against
-any URL - the report gets the render-only findings a static scan of the
-same repo cannot produce (measured live: 8 accessibility/SEO rules against
-zero from the source alone). `--repo` is set to the checkout automatically
-too, so content findings still point at the file to fix.
-
-Every command run here is a fixed argument list, never a shell string:
-reading `package.json`'s `scripts.dev` only reads the *name* of a runnable
-script - `npm run dev` resolves what it does, this never executes the
-script's text directly. If the server never becomes ready, or an install is
-declined, the run falls back to the ordinary static repo scan rather than
-stopping - the same "warn, never silent, keep going" rule the AI-detector
-fallback follows.
-
-`--start-command` overrides the detected command for a project whose "dev"
-script isn't the right one; `--dev-server-port` names the port when it
-can't be read from Node's own output. A server you already started
-yourself needs none of this - `fullscan http://localhost:5173` (or a bare
-`--url`) already works, exactly as any other URL does.
-
-The desktop app has the same default: a repo target's "Analyze" runs
-statically unless "Auto-start server" is checked, and a "Start server"
-button (both in the Advanced controls) starts one for a single run without
-turning the toggle on. The TUI has the same checkbox on the Full Scan form.
+Missing dependencies stop the run and ask before installing; `--yes` skips
+the prompt. Once the server answers, the crawl and audit run against it as
+against any URL - measured live, 8 accessibility/SEO rules that a static scan
+of the same repo cannot produce. `--repo` is set to the checkout
+automatically, so content findings still name the file to fix.
 
 ---
 
@@ -876,7 +820,7 @@ Combines multiple signals to detect AI-generated text:
 
 #### Cliché Phrases
 
-Extensive word lists per language (100+ English, 80+ Ukrainian, 80+ Italian):
+Word lists per language (100+ English, 80+ Ukrainian, 80+ Italian):
 - Padding/hedging openers ("it's important to note")
 - Temporal openers ("in today's fast-paced world")
 - Marketing buzzwords ("unlock the potential", "seamless experience")
@@ -980,8 +924,11 @@ rejected on evidence rather than skipped:
 `scripts/calibrate.py --confounds` prints the length distribution and what a
 classifier that knows *only* the length scores, so the same mistake is visible
 before the next signal is believed. On this corpus that ceiling is 57.9%
-precision; the detector reaches 100%, which is what says it is detecting
-writing rather than length.
+precision and the detector reaches 100%, which is what says it is detecting
+writing rather than length - **on this corpus**. Its positives were written by
+models and its negatives are largely interface strings, so the number is a
+statement about the detector against that sample and not about your text. See
+[Limits](#limits).
 
 ---
 
@@ -1130,7 +1077,7 @@ When `--browser` is used (automatic for `fullscan` on URLs):
 
 1. **Page Loading** — Real Chromium via QtWebEngine
 2. **Settle Wait** — 2500ms after load for SPA hydration
-3. **axe-core** — Industry-standard accessibility engine (~27% coverage alone)
+3. **axe-core** — the engine most audits are run with (~27% of WCAG failures detectable automatically, by its own measurement)
 4. **HTML_CodeSniffer** — Additional accessibility checks (~20% coverage alone)
 5. **State Pass** — Focus, keyboard traps, hover-only content
 6. **Measurements** — FCP, load time, transfer size, DOM size
@@ -1384,354 +1331,52 @@ lives in the briefing (`--report`), under `problems`, next to
 
 ## For AI Agents
 
-This section describes how to use xanalyze from an AI agent (Claude, ChatGPT, Copilot, etc.) to analyze websites and codebases.
+Agents drive the same commands people do; two exist only for them.
 
-### How Users Ask
-
-Users ask agents in natural language. Here's how each request maps to a command:
-
-#### fullscan — Full Analysis
-
-| User says | Agent runs |
+| The user wants | The command |
 |---|---|
-| "Scan my website for accessibility issues" | `xanalyze fullscan https://example.com` |
-| "Check https://xformat.net for problems" | `xanalyze fullscan https://xformat.net` |
-| "Analyze my codebase for AI-generated text" | `xanalyze fullscan ./my-project` |
-| "Run a full audit on this site" | `xanalyze fullscan https://example.com` |
-| "Is my site accessible?" | `xanalyze fullscan https://example.com` |
-| "Check my landing page for SEO" | `xanalyze fullscan https://example.com` |
-| "Scan my React app" | `xanalyze fullscan https://myapp.com` |
-| "Audit this Next.js site" | `xanalyze fullscan https://mysite.com` |
-| "Check mobile responsiveness" | `xanalyze fullscan https://example.com --breakpoints mobile` |
-| "Desktop only check" | `xanalyze fullscan https://example.com --breakpoints desktop` |
-| "Scan in Ukrainian" | `xanalyze fullscan https://example.com --language uk` |
+| Everything about a site or a repo, in one run | `xanalyze fullscan <target>` |
+| Accessibility, SEO, performance, best practice | `xanalyze audit <target>` |
+| AI-written copy and non-keyboard characters | `xanalyze scan <path>` |
+| The character fixes written back | `xanalyze fix <path>` |
+| Those writes undone | `xanalyze undo <path>` |
+| What was run, and what can be continued | `xanalyze runs` |
 
-#### audit — Accessibility/SEO/Performance
-
-| User says | Agent runs |
-|---|---|
-| "Check accessibility of this page" | `xanalyze audit https://example.com --browser` |
-| "Audit SEO on my site" | `xanalyze audit https://example.com --category seo` |
-| "Check performance issues" | `xanalyze audit https://example.com --category performance` |
-| "Is my site WCAG compliant?" | `xanalyze audit https://example.com --browser` |
-| "Check this HTML file" | `xanalyze audit ./page.html --browser` |
-| "Audit my repo for a11y" | `xanalyze audit ./src` |
-| "Fix accessibility issues" | `xanalyze audit ./src --fix` |
-| "Check with AI analysis" | `xanalyze audit https://example.com --ai` |
-
-#### scan — AI Pattern Detection
-
-| User says | Agent runs |
-|---|---|
-| "Check if my text sounds AI-generated" | `xanalyze scan ./src` |
-| "Scan for clichés in my copy" | `xanalyze scan ./src --detector offline` |
-| "Check comments for AI patterns" | `xanalyze scan ./src --scope technical` |
-| "Scan only user-facing text" | `xanalyze scan ./src --scope content` |
-| "Find non-keyboard characters" | `xanalyze scan ./src` |
-| "Check for zero-width spaces" | `xanalyze scan ./src --categories invisible` |
-| "Scan with AI detector" | `xanalyze scan ./src --detector llm-judge` |
-| "Incremental scan (changed files only)" | `xanalyze scan ./src --incremental` |
-
-#### fix — Apply Fixes
-
-| User says | Agent runs |
-|---|---|
-| "Fix non-keyboard characters" | `xanalyze fix ./src` |
-| "Clean up smart quotes" | `xanalyze fix ./src` |
-| "Replace zero-width spaces" | `xanalyze fix ./src` |
-| "Fix typography in my files" | `xanalyze fix ./src` |
-
-#### undo — Revert Fixes
-
-| User says | Agent runs |
-|---|---|
-| "Undo the fixes" | `xanalyze undo ./src` |
-| "Revert changes" | `xanalyze undo ./src` |
-| "Put files back" | `xanalyze undo ./src` |
-
-#### compare — Compare Detectors
-
-| User says | Agent runs |
-|---|---|
-| "Compare different detectors" | `xanalyze compare ./src` |
-| "Which detector is best?" | `xanalyze compare ./src` |
-| "Test offline vs AI detector" | `xanalyze compare ./src` |
-
-#### cache — Manage Cache
-
-| User says | Agent runs |
-|---|---|
-| "Show cache stats" | `xanalyze cache stats` |
-| "Clear the cache" | `xanalyze cache clear` |
-| "Where is the cache?" | `xanalyze cache path` |
-
-#### ai — AI Operations
-
-| User says | Agent runs |
-|---|---|
-| "Check my AI account status" | `xanalyze ai status` |
-| "Sign in to xFormat" | `xanalyze ai login` |
-| "Sign out" | `xanalyze ai logout` |
-| "Rewrite this text" | `xanalyze ai rewrite "text"` |
-| "Make this sound human" | `xanalyze ai rewrite "text" --language en` |
-
-#### clean — Filter Text
-
-| User says | Agent runs |
-|---|---|
-| "Clean this text" | `echo "text" \| xanalyze clean` |
-| "Fix characters in stdin" | `cat file.txt \| xanalyze clean` |
+`--json` on any of them gives machine-readable output, `--language uk|it|en`
+sets the report's language, `--breakpoints desktop,tablet,mobile` chooses the
+widths, `--styled-report report.pdf` writes a document to hand over.
 
 ### Agent-as-Judge Mode
 
-The agent itself acts as the LLM judge (no API key needed). Two modes:
-
-**Simple — validate offline findings:**
-```bash
-# Step 1: offline scan → candidates
-xanalyze agent-scan ./src --json > candidates.json
-
-# Step 2: agent judges candidates, pipes back
-echo '[{"block_id":"...","score":0.8,"reason":"AI cliché"}]' | \
-  xanalyze agent-judge ./src --judgments -
-```
-
-**Full — hybrid analysis (agent reads everything):**
-```bash
-# Step 1: offline scan + all blocks for agent
-xanalyze agent-scan ./src --full --json > scan.json
-
-# Step 2: agent judges candidates AND reads blocks independently
-
-# Step 3: merge with hybrid logic
-cat agent_output.json | xanalyze agent-judge ./src --judgments -
-```
-
-**Fullscan with agent:**
-```bash
-xanalyze fullscan ./repo --agent --json
-# Outputs: audit + offline candidates + detection rules + instructions
-```
-
-**LLM Judge Options:**
-
-| Detector | Command | API Key |
-|---|---|---|
-| Agent (validate) | `xanalyze agent-scan ./src --json` | Not needed |
-| Agent (full hybrid) | `xanalyze agent-scan ./src --full --json` | Not needed |
-| Claude API | `xanalyze scan ./src --detector claude-llm-judge` | `ANTHROPIC_API_KEY` |
-| xFormat | `xanalyze scan ./src --detector xformat-llm-judge` | xFormat login |
-| Claude Code | `xanalyze scan ./src --detector claude-code-llm-judge` | Claude Code session |
-| Hybrid | `xanalyze scan ./src --detector hybrid` | Optional |
-
-### Command Reference with User Requests
-
-#### `fullscan` — "Scan my site"
+Two commands split a scan in half so the agent is the model in the middle: no
+API key, no subscription, and nothing leaves the machine except into the
+agent's own context.
 
 ```bash
-# User: "Scan my website for all issues"
-xanalyze fullscan https://example.com
-
-# User: "Check my site, desktop only"
-xanalyze fullscan https://example.com --breakpoints desktop
-
-# User: "Scan with 2 levels deep"
-xanalyze fullscan https://example.com --depth 2
-
-# User: "Scan my codebase"
-xanalyze fullscan ./my-project
-
-# User: "Generate PDF report"
-xanalyze fullscan https://example.com --styled-report report.pdf
-
-# User: "Scan in Italian"
-xanalyze fullscan https://example.com --language it
+xanalyze agent-scan ./src --json > passages.json   # offline pass, passages out
+#                                                    the agent judges them
+xanalyze agent-judge ./src --judgments verdicts.json
 ```
 
-**Output:** JSON to stdout, PDF + MD reports to `~/Desktop`
+`agent-scan` writes every passage worth judging with its id, its text and what
+the offline signals said. `agent-judge` takes the same ids back with a verdict
+each: the judgment is the agent's, the scoring, grouping and documents stay
+this tool's. One verdict covers every place a passage occurs - three identical
+files are judged once.
 
-#### `audit` — "Check accessibility"
+### Reading the output
 
 ```bash
-# User: "Is my site accessible?"
-xanalyze audit https://example.com --browser
-
-# User: "Check SEO only"
-xanalyze audit https://example.com --category seo --json
-
-# User: "Audit this HTML file"
-xanalyze audit ./page.html --browser
-
-# User: "Fix what you can"
-xanalyze audit ./src --fix
-
-# User: "Check with AI analysis"
-xanalyze audit https://example.com --ai --json
+xanalyze fullscan https://example.com --json > run.json
+jq '.audit.issues[] | select(.severity == "critical")' run.json
+jq '.findings[] | {score, explanation}' run.json
 ```
 
-#### `scan` — "Check for AI text"
-
-```bash
-# User: "Does my copy sound AI-generated?"
-xanalyze scan ./src --json
-
-# User: "Check only comments"
-xanalyze scan ./src --scope technical --json
-
-# User: "Use AI detector"
-xanalyze scan ./src --detector llm-judge --json
-
-# User: "Check for zero-width characters"
-xanalyze scan ./src --categories invisible --json
-```
-
-#### `fix` — "Fix the issues"
-
-```bash
-# User: "Fix non-keyboard characters"
-xanalyze fix ./src
-
-# User: "Clean up my files"
-xanalyze fix ./src
-```
-
-#### `undo` — "Revert changes"
-
-```bash
-# User: "Undo the fixes"
-xanalyze undo ./src
-```
-
-### Workflow Examples
-
-#### Example 1: "Audit my website and tell me what to fix"
-
-```bash
-# Step 1: Full scan
-xanalyze fullscan https://example.com --json > scan.json
-
-# Step 2: Show critical issues
-cat scan.json | jq '.audit.issues[] | select(.severity == "critical")'
-
-# Step 3: Show fix suggestions
-cat scan.json | jq '.audit.issues[] | {rule, snippet, fix_snippet}'
-```
-
-#### Example 2: "Check my codebase for AI patterns and fix them"
-
-```bash
-# Step 1: Scan
-xanalyze scan ./src --json > scan.json
-
-# Step 2: Show findings
-cat scan.json | jq '.findings[] | {score, explanation}'
-
-# Step 3: Fix characters
-xanalyze fix ./src
-
-# Step 4: Verify
-xanalyze scan ./src --json | jq '.counts'
-```
-
-#### Example 3: "Is my React app accessible on mobile?"
-
-```bash
-# Step 1: Full scan with mobile breakpoint
-xanalyze fullscan https://myapp.com --breakpoints mobile --json
-
-# Step 2: Show mobile-specific issues
-# (issues with "breakpoints": ["mobile"] in details)
-```
-
-#### Example 4: "Check SEO and generate a report"
-
-```bash
-# Step 1: Audit SEO
-xanalyze audit https://example.com --category seo --json
-
-# Step 2: Generate styled report
-xanalyze audit https://example.com --category seo --styled-report seo-report.pdf
-```
-
-### JSON Output Structure
-
-```json
-{
-  "target": "https://example.com",
-  "is_url": true,
-  "language": "en",
-  "scan": {
-    "findings": [
-      {
-        "source": "style",
-        "score": 0.85,
-        "confidence": "high",
-        "explanation": "cliché: unlock the potential; style-uniformity=0.72",
-        "details": {
-          "signals": {"uniformity": 0.72, "repetition": 0.45, "dashes": 0.3},
-          "cliches": ["unlock the potential"],
-          "language": "en"
-        }
-      }
-    ],
-    "counts": {"total": 5, "style": 3, "characters": 2}
-  },
-  "audit": {
-    "counts": {"critical": 0, "serious": 2, "moderate": 5, "minor": 3},
-    "issues": [
-      {
-        "rule": "image-alt",
-        "category": "accessibility",
-        "severity": "critical",
-        "selector": "html > body > main > img",
-        "snippet": "<img src=\"hero.jpg\">",
-        "fix_snippet": "<img src=\"hero.jpg\" alt=\"\">"
-      }
-    ]
-  },
-  "summary": {
-    "total_findings": 15,
-    "ai_patterns": 3,
-    "characters": 2,
-    "accessibility": 5,
-    "seo": 3,
-    "performance": 1,
-    "best_practices": 1
-  }
-}
-```
-
-### Severity Levels
-
-| Level | Meaning | User says | Action |
-|---|---|---|---|
-| `critical` | Blocks users completely | "This is broken" | Fix immediately |
-| `serious` | Content lost or unusable | "This doesn't work" | Fix soon |
-| `moderate` | Harder to use | "This is annoying" | Fix when possible |
-| `minor` | Smell, may be intentional | "This could be better" | Consider fixing |
-
-### Exit Codes
-
-| Code | Meaning |
-|---|---|
-| 0 | Success, no critical/serious issues (with `--check`) |
-| 1 | Critical/serious issues found (with `--check`) |
-| 2 | Error (invalid arguments, file not found, etc.) |
-
-### Tips for Agents
-
-1. **Always use `--json`** for machine-readable output
-2. **Use `--check`** in CI/CD to fail on critical issues
-3. **Use `fullscan`** for comprehensive analysis
-4. **Use `audit --browser`** for SPA/React/Vue sites
-5. **Use `scan`** for quick AI pattern check
-6. **Use `fix`** to auto-correct non-keyboard characters
-7. **Parse `summary`** for quick overview
-8. **Parse `audit.issues`** for detailed findings
-9. **Check `fix_snippet`** for suggested corrections
-10. **Use `--language`** for localized reports
-
----
+A finding says where it is (`source`, `line`, `selector`), what it is
+(`rule_id`, `severity`, `snippet`) and, where the correction follows from the
+markup, `fix_snippet`. A responsive run also carries `details.breakpoints`, so
+a defect that exists only at one width can be told from one that exists
+everywhere.
 
 ## GUI
 
