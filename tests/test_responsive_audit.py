@@ -195,13 +195,42 @@ class PreviewSwitcher(unittest.TestCase):
                          responsive.breakpoint_names())
 
     def test_choosing_one_pins_the_preview_to_it(self):
+        self.window.resize(1300, 800)
+        self.window.show()
+        self.app.processEvents()
         self.window.breakpoint_buttons["mobile"][0].click()
+        # Narrower than the column, so the widget itself is held to it.
         self.assertEqual(self.window.site_view.maximumWidth(), 390)
+        self.assertAlmostEqual(self.window.site_view.zoomFactor(), 1.0, places=3)
 
     def test_choosing_it_again_lets_the_preview_go(self):
         self.window.breakpoint_buttons["mobile"][0].click()
         self.window.breakpoint_buttons["mobile"][0].click()
         self.assertGreater(self.window.site_view.maximumWidth(), 10_000)
+        self.assertAlmostEqual(self.window.site_view.zoomFactor(), 1.0, places=3)
+
+    def test_a_width_wider_than_the_column_is_scaled_not_demanded(self):
+        """The defect this replaced: `setMinimumWidth(1440)` is a demand on
+        the parent, so choosing a desktop width widened the whole window
+        instead of changing anything inside the column."""
+        self.window.resize(1300, 800)
+        self.window.show()
+        self.app.processEvents()
+        before = self.window.minimumSizeHint().width()
+        self.window.breakpoint_buttons["desktop"][0].click()
+        self.app.processEvents()
+        self.assertEqual(self.window.minimumSizeHint().width(), before)
+        self.assertLess(self.window.site_view.zoomFactor(), 1.0)
+        # And the page still lays out at the width that was chosen: CSS
+        # pixels are what the zoom factor divides.
+        laid_out = self.window.site_view.width() / self.window.site_view.zoomFactor()
+        self.assertAlmostEqual(laid_out, 1440, delta=2)
+        self.window.breakpoint_buttons["desktop"][0].click()
+
+    def test_the_buttons_are_labelled_with_the_width(self):
+        labels = {button.text() for button, _width in
+                  self.window.breakpoint_buttons.values()}
+        self.assertEqual(labels, {"1440", "834", "390"})
 
     def test_only_one_width_is_ever_pressed(self):
         self.window.breakpoint_buttons["tablet"][0].click()
@@ -213,12 +242,25 @@ class PreviewSwitcher(unittest.TestCase):
     def test_a_repository_has_no_width_to_look_at(self):
         from analysis_modes import SOURCE_REPO, SOURCE_SITE
 
+        # A page in the preview, because the switcher belongs to the page:
+        # with the column empty it is hidden whatever the source is.
+        self.window.current_preview_url = "https://example.com/"
         self.window.source = SOURCE_REPO
         self.window._apply_mode_visibility()
         self.assertTrue(self.window.breakpoint_row.isHidden())
         self.window.source = SOURCE_SITE
         self.window._apply_mode_visibility()
         self.assertFalse(self.window.breakpoint_row.isHidden())
+
+    def test_an_empty_preview_has_no_width_to_look_at_either(self):
+        """Three widths to view nothing at is furniture above a sentence
+        saying there is nothing."""
+        from analysis_modes import SOURCE_SITE
+
+        self.window.source = SOURCE_SITE
+        self.window.current_preview_url = None
+        self.window._apply_mode_visibility()
+        self.assertTrue(self.window.breakpoint_row.isHidden())
 
 
 if __name__ == "__main__":

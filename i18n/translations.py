@@ -296,6 +296,20 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Una parte della pagina esclusa: un selettore CSS.",
         "en": "A part of the page excluded - a CSS selector.",
     },
+    "preview_empty_title": {
+        "uk": "Сторінку ще не відкрито",
+        "it": "Nessuna pagina ancora aperta",
+        "en": "No page opened yet",
+    },
+    "preview_empty_body": {
+        "uk": "Прев'ю показує сторінку, яку відкрив прогін. Вкажіть ціль і "
+              "натисніть «Аналізувати», і вона зʼявиться тут.",
+        "it": "L'anteprima mostra la pagina aperta da una scansione. Scegli "
+              "un obiettivo e premi Analizza, e comparirà qui.",
+        "en": "The preview shows the page a run opened. Choose a target and "
+              "press Analyze, and it appears here.",
+    },
+
     # --- Noise control (artboard 3k) ---------------------------------------
     "noise_title": {
         "uk": "Що не показувати",

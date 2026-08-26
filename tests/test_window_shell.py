@@ -240,6 +240,57 @@ class TopRow(WindowCase):
         self.assertLessEqual(self.window.toolbar.height(), TOP_ROW_HEIGHT + 4)
 
 
+class ThreeColumnsInReadingOrder(WindowCase):
+    """The body, as artboard 3a lays it out.
+
+    The columns are built preview-first, because the preview owns the width
+    switcher and the stack the run panels are pushed onto. They were also
+    *added* in that order, so the window opened with the preview on the left
+    and the list of findings in the middle - the list being the thing the
+    window is for.
+    """
+
+    def test_the_findings_come_first_and_the_preview_second(self):
+        splitter = self.window.columns_splitter
+        self.assertEqual(splitter.count(), 3)
+        self.assertIs(splitter.widget(1), self.window.col1)   # the preview
+        self.assertIs(splitter.widget(2), self.window.col3)   # the detail
+        # And the first is the one holding the findings list.
+        self.assertIn(self.window.results_stack,
+                      splitter.widget(0).findChildren(type(self.window.results_stack)))
+
+    def test_the_preview_is_the_widest_of_the_three(self):
+        sizes = self.window.columns_splitter.sizes()
+        self.assertEqual(max(sizes), sizes[1], sizes)
+
+
+class AnEmptyPreview(WindowCase):
+    """What the preview column shows before a run has opened anything.
+
+    It used to show an empty `QWebEngineView`, which paints its own
+    background over the panel: a canvas-coloured rectangle with square
+    corners where the design has a surface, saying nothing.
+    """
+
+    def test_it_shows_the_empty_state_not_the_browser(self):
+        self.window.current_preview_url = None
+        self.window._apply_mode_visibility()
+        self.assertIs(self.window.col1_stack.currentWidget(),
+                      self.window.preview_empty)
+
+    def test_the_empty_state_says_which_absence_it_is(self):
+        self.window.current_preview_url = None
+        self.window._apply_mode_visibility()
+        self.assertTrue(self.window.preview_empty.title.text().strip())
+        self.assertTrue(self.window.preview_empty.body.text().strip())
+
+    def test_a_page_gives_the_column_back_to_the_browser(self):
+        self.window.current_preview_url = "https://example.com/"
+        self.window._apply_mode_visibility()
+        self.assertIs(self.window.col1_stack.currentWidget(),
+                      self.window.site_view)
+
+
 class SourceFields(WindowCase):
     """The source picker swaps the fields, as the redesign's chips did."""
 

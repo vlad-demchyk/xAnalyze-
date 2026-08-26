@@ -365,6 +365,10 @@ class FindingsPanelMixin:
             self._run_pending_highlight()
 
     def _on_preview_loaded(self, _ok: bool) -> None:
+        # Whether the column shows the browser or the empty state follows
+        # from whether a page is in it, and that is decided here - a load
+        # finishing is the only moment it changes.
+        self._apply_mode_visibility()
         self._run_pending_highlight()
 
     def _highlight_color(self) -> QColor:

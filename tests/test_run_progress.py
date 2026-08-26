@@ -181,6 +181,9 @@ class RunBookkeeping(unittest.TestCase):
     def test_the_width_switcher_goes_away_and_comes_back(self):
         """It belongs to the preview, and there is no preview while the panel
         is up - three buttons that change nothing are worse than none."""
+        # A page in the preview: the switcher is hidden by an empty column
+        # too, and this test is about the run, not about that.
+        self.window.current_preview_url = "https://example.com/"
         self.window._on_busy_changed(True)
         self.assertTrue(self.window.breakpoint_row.isHidden())
         self.window._on_busy_changed(False)

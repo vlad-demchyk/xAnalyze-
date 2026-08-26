@@ -1187,6 +1187,15 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self.run_comparison.back_btn.clicked.connect(self._show_preview_column)
         self.col1_stack.addWidget(self.run_comparison)  # index 4: what changed
 
+        # Index 5: nothing opened yet. Before this the column opened on an
+        # empty `QWebEngineView`, which paints its own background over the
+        # panel - a canvas-coloured rectangle with square corners where the
+        # design has a surface. It also said nothing: a blank browser is not
+        # a state, it is the absence of one, and this window has a component
+        # for saying which absence it is.
+        self.preview_empty = EmptyState(self.palette_tokens)
+        self.col1_stack.addWidget(self.preview_empty)  # index 5: nothing yet
+
         # The width switcher, above the preview rather than beside it: the
         # audit now runs at three widths (see `audit/responsive.py`), and a
         # finding labelled "found at mobile only" is not checkable in a
@@ -1213,7 +1222,11 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         col1_layout.addWidget(self.breakpoint_row)
 
         col1_layout.addWidget(self.col1_stack, stretch=1)
-        self.columns_splitter.addWidget(self.col1)
+        # Added to the splitter below rather than here. The columns are built
+        # preview-first because the preview owns the width switcher and the
+        # stack the other panels are pushed onto, but they are *read* findings
+        # first, as artboard 3a lays them out - the list is what the window is
+        # for, and the preview is what a selected finding is checked against.
 
         # Column 2: the list of flagged passages (+ repo-mode bulk actions).
         col2, col2_layout, self.flagged_header = panel()
@@ -1273,7 +1286,10 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         # Kept as an alias so the repo-only visibility logic reads clearly.
         self.repo_actions_row = self.bulk_actions_row
 
+        # Reading order: findings, then the preview they point into, then the
+        # detail of the one that is selected.
         self.columns_splitter.addWidget(col2)
+        self.columns_splitter.addWidget(self.col1)
 
         # Column 3 (wide layout only): input box + actions for the selected passage.
         # A panel with a head, like the other two columns. It was a bare
@@ -1285,7 +1301,9 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self.detail_layout.setSpacing(0)
         self.columns_splitter.addWidget(self.col3)
 
-        self.columns_splitter.setSizes([450, 380, 380])
+        # The preview is the widest: it holds a rendered page at up to three
+        # widths, and the other two hold text that wraps.
+        self.columns_splitter.setSizes([380, 450, 380])
 
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
@@ -1390,8 +1408,12 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self.scope_combo.setToolTip(t(f"scope_{self._repo_scope()}_full", lang))
 
         for name, (button, width) in self.breakpoint_buttons.items():
+            # The number, as artboard 3a writes it. "desktop" and "mobile"
+            # name a device; the page lays out to a width, and the width is
+            # the thing a finding labelled "found at 390 only" is checked
+            # against. The word stays in the tooltip.
             label = t(f"breakpoint_{name}", lang)
-            button.setText(label)
+            button.setText(str(width))
             button.setToolTip(t("breakpoint_tooltip", lang,
                                 name=label, width=width))
         # Refilled, not just relabelled: the entries themselves are words.
@@ -1465,26 +1487,52 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self._apply_preview_width(None if release else width)
 
     def _apply_preview_width(self, width) -> None:
-        """Constrain the preview to simulate a viewport width.
+        """Show the page as it lays out at one viewport width.
 
-        Uses resize() like the audit driver does, not setMaximumWidth:
-        the browser's CSS media queries respond to the actual widget size,
-        and setMaximumWidth only constrains the container without changing
-        the viewport that window.innerWidth reads.
+        Zoom, not size. Pinning the widget with `setMinimumWidth(1440)` does
+        make the page lay out at 1440, but a minimum is a demand on the
+        parent: the column could not be narrower than that, so choosing
+        "desktop" widened the whole window instead of changing anything
+        inside it. The simulation has to happen in the column that is there,
+        the way a browser's device toolbar does it.
+
+        Scaling down leaves `window.innerWidth` at the chosen width - CSS
+        pixels are what the zoom factor divides - so media queries answer for
+        the breakpoint while the pixels on screen stay inside the column.
+        Never scaled *up*: a 390px layout blown up to fill 500px of column is
+        a picture of a phone, not a page at 390.
         """
-        if width is None:
+        self._preview_width = int(width) if width else None
+        self._fit_preview_zoom()
+
+    def _fit_preview_zoom(self) -> None:
+        """Re-fit the simulated width into whatever width the column has now.
+
+        Called on every resize as well as on every choice: the column is one
+        pane of a splitter, so its width changes without the chosen
+        breakpoint changing at all.
+        """
+        chosen = getattr(self, "_preview_width", None)
+        if not chosen:
             self.site_view.setMaximumWidth(16777215)  # Qt's own "no maximum"
-            self.site_view.setMinimumWidth(0)
+            self.site_view.setZoomFactor(1.0)
+            return
+        available = self.col1_stack.width() or self.site_view.width()
+        if available <= 0:
+            return
+        if available >= chosen:
+            # Room to spare: hold the widget itself to the width, which lays
+            # the page out at exactly it. A *maximum* is safe where the
+            # minimum was not - it never asks the parent for anything.
+            self.site_view.setMaximumWidth(chosen)
+            self.site_view.setZoomFactor(1.0)
         else:
-            # Find the matching height for this breakpoint
-            height = 900  # default
-            for name, bp_width, bp_height in responsive_breakpoints():
-                if bp_width == width:
-                    height = bp_height
-                    break
-            self.site_view.setMinimumWidth(int(width))
-            self.site_view.setMaximumWidth(int(width))
-            self.site_view.resize(int(width), int(height))
+            # Narrower than the breakpoint. Scale instead, so the page still
+            # lays out at the chosen width rather than at whatever the column
+            # happens to be - which would be a different breakpoint wearing
+            # the label of this one.
+            self.site_view.setMaximumWidth(16777215)
+            self.site_view.setZoomFactor(available / chosen)
 
     def _repaint_preview_background(self) -> None:
         self.site_view.page().setBackgroundColor(QColor(self.palette_tokens.page_bg))
@@ -1554,6 +1602,9 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
         super().resizeEvent(event)
         self._update_layout_mode()
+        # The simulated width is a fraction of the column's width, and the
+        # column follows the window.
+        self._fit_preview_zoom()
 
     # ------------------------------------------------------ thread lifecycle
 
@@ -1893,14 +1944,22 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self._size_stack_to_its_page()
         # A single file is previewed as a rendered page, not as source: it is
         # a page, and its markup is what the third column already shows.
-        self.col1_stack.setCurrentIndex(1 if is_repo else 0)
+        # A rendered preview only once there is a page in it; until then the
+        # empty state, which says so.
+        self.col1_stack.setCurrentIndex(
+            1 if is_repo else (0 if self.current_preview_url else 5))
+        self.preview_empty.show_message(t("preview_empty_title", self.lang),
+                                        t("preview_empty_body", self.lang))
         # And the head says which. It read "Page preview" over a list of a
         # repository's files, which is the column naming the wrong source.
         self.col1_header.setText(t("repo_preview_header" if is_repo
                                    else "site_preview_header", self.lang))
         # The width switcher belongs to the rendered preview. A repository is
-        # previewed as source, which has no layout to look at narrow.
-        self.breakpoint_row.setVisible(not is_repo)
+        # previewed as source, which has no layout to look at narrow - and
+        # neither has an empty column, where three widths to view nothing at
+        # is a row of furniture above a sentence saying there is nothing.
+        self.breakpoint_row.setVisible(not is_repo
+                                       and bool(self.current_preview_url))
         # The detector belongs to the copy pass, so it follows the question
         # rather than the source. It used to be hidden whenever an audit was
         # selected, which meant that asking both questions at once left no way
