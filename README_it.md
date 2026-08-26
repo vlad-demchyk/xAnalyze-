@@ -57,6 +57,7 @@ Desktop e headless analyzer: rilevamento di testi generati da AI, caratteri non 
 - **Fatti del repository** — cosa il repository rivela di sé: commit che nominano un assistente come autore, configurazione degli assistenti versionata e un `.env` che nessuna regola di esclusione copre
 - **Ruoli delle stringhe** — le descrizioni dei campi di uno schema di strumento vengono distinte dal testo di pagina, così un `description:` rivolto a un modello non viene giudicato come se lo leggesse una persona
 - **Blame su una segnalazione** — ogni segnalazione può nominare il commit che ha toccato per ultimo la sua riga, così "chi ha scritto questo" è un dato registrato e non una supposizione
+- **Gestione del rumore** — una schermata per tutto ciò che hai nascosto: che cosa era ogni voce, in quale elenco è scritta (il tuo o quello del progetto) e il ripristino proprio in quell'elenco
 - **Report stilizzati** — PDF/HTML brandizzati per persone
 - **Briefing per agenti** — markdown/JSON per coding agent
 - **CLI + GUI + TUI** — un binario, tre interfacce
@@ -1585,6 +1586,12 @@ third_party/
 *.min.js
 *.min.css
 ```
+
+Un elenco nudo come questo viene letto come pattern di file: una riga prima
+della prima intestazione di sezione che finisce con `/` o contiene un glob è
+un percorso. Il resto delle righe nude sono frasi, perché è ciò che si scrive
+per primo. Per essere espliciti, apri con un'intestazione di sezione: vedi
+**Soppressioni** più sotto.
 
 ### Soppressioni
 

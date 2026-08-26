@@ -45,6 +45,14 @@ from pathlib import Path
 #: The file a project keeps its own suppressions in.
 IGNORE_FILENAME = ".xanalyze-ignore"
 
+#: A bare line before any section header that is plainly a file pattern: it
+#: ends in `/` or carries a glob. The README teaches the file as "gitignore
+#: syntax" and its example is a bare list of `vendor/`, `third_party/`,
+#: `*.min.js` - which, read as phrases, excluded nothing at all. Narrow on
+#: purpose: a phrase somebody writes ("comprehensive", "cutting-edge") has
+#: neither, so no existing list changes meaning.
+_PATH_SHAPED_RE = re.compile(r"/\s*$|[*?]|^\*\*/")
+
 #: Section headers inside that file. A bare line with no section yet is
 #: treated as a phrase, because that is what people write first.
 _SECTIONS = {
@@ -189,28 +197,49 @@ class Suppressions:
         labels: dict = {}
         layout: list = []
         current = "phrases"
+        header_seen = False
+        #: Comments and blank lines belong to whatever comes *after* them -
+        #: `# generated` is the heading of the group below it, not a trailer
+        #: on the group above. Held back until the next line says which
+        #: section that is, which matters before the first header, where a
+        #: value can be a path while `current` still says phrases.
+        pending: list = []
+
+        def flush(section: str) -> None:
+            for held in pending:
+                held.section = section
+                layout.append(held)
+            pending.clear()
+
         for raw_line in text.splitlines():
             line = raw_line.strip()
             if not line:
-                layout.append(_Line("blank"))
+                pending.append(_Line("blank"))
                 continue
             if _is_note_line(line, current):
-                layout.append(_Line("comment", section=current, note=line))
+                pending.append(_Line("comment", note=line))
                 continue
             match = _SECTION_RE.match(line)
             if match:
                 current = _SECTIONS.get(match.group("name").lower(), current)
+                header_seen = True
+                flush(current)
                 layout.append(_Line("header", section=current))
                 continue
             value, note = _split_note(line, current)
             if not value:
                 # A line that is only a note once the `#` is honoured.
-                layout.append(_Line("comment", section=current, note=note))
+                pending.append(_Line("comment", note=note))
                 continue
-            buckets[current].append(value)
+            level = current
+            if not header_seen and _PATH_SHAPED_RE.search(value):
+                level = "paths"
+            flush(level)
+            buckets[level].append(value)
             if note:
                 labels[value] = note.lstrip("#").strip()
-            layout.append(_Line("value", section=current, value=value, note=note))
+            layout.append(_Line("value", section=level, value=value, note=note))
+        flush(current)
         return cls(**buckets, labels=labels, layout=layout)
 
     @classmethod
@@ -330,6 +359,11 @@ class Suppressions:
                 lines.append(_Line("value", entry.section, entry.value,
                                    f"# {note}" if note else "").render())
             else:
+                # A section always opens on its own: without this, a section
+                # whose last line was consumed by an edit would run straight
+                # into the next header.
+                if (entry.kind == "header" and lines and lines[-1] != ""):
+                    lines.append("")
                 lines.append(entry.render())
             if entry.kind in ("header", "value"):
                 insert_at[entry.section] = len(lines)
@@ -356,6 +390,52 @@ class Suppressions:
                 insert_at[name] = at + len(written)
 
         return "\n".join(lines).rstrip() + "\n" if lines else ""
+
+    def replace_section(self, level: str, text: str) -> None:
+        """Replace one level with the lines somebody typed into a box.
+
+        The text is that section written the way a person writes it: values,
+        `#` notes and blank lines. Everything outside the level is left
+        exactly as it was, which is the whole point - a box for files and
+        folders must not be able to delete a rule, and a round trip through
+        the dataclass would do precisely that.
+        """
+        block = Suppressions.parse(f"[{level}]\n{text}")
+        old_values = set(getattr(self, level))
+        setattr(self, level, list(getattr(block, level)))
+        for value in old_values - set(getattr(block, level)):
+            self.labels.pop(value, None)
+        self.labels.update(block.labels)
+
+        new_lines = [line for line in block.layout if line.kind != "header"]
+        for line in new_lines:
+            line.section = level
+        if self.layout:
+            rebuilt: list = []
+            at = None
+            for line in self.layout:
+                if line.section == level and line.kind != "header":
+                    continue  # the old contents of this section
+                rebuilt.append(line)
+                if line.section == level and line.kind == "header":
+                    at = len(rebuilt)
+            if at is None:
+                rebuilt.append(_Line("header", section=level))
+                at = len(rebuilt)
+            self.layout = rebuilt[:at] + new_lines + rebuilt[at:]
+        self.__post_init__()
+
+    def section_text(self, level: str) -> str:
+        """One level as the lines a person would edit, notes and all."""
+        if not self.layout:
+            return "\n".join(
+                _Line("value", level, value,
+                      f"# {self.labels[value]}" if self.labels.get(value) else "").render()
+                for value in getattr(self, level))
+        lines = [line.render() for line in self.layout
+                 if line.section == level
+                 and line.kind in ("value", "comment", "blank")]
+        return "\n".join(lines).strip("\n")
 
     def _sections(self):
         return tuple((name, getattr(self, name)) for name in self._SECTION_ORDER)
@@ -414,6 +494,68 @@ def span_fingerprint(span, block) -> str:
 
 def issue_fingerprint(issue) -> str:
     return fingerprint(issue.source, issue.snippet or issue.selector, issue.rule_id)
+
+
+#: The five levels, in the order the module docstring introduces them: most
+#: surgical first. One list so a screen that shows "everything hidden" does
+#: not have to keep its own copy of what the levels are.
+LEVELS = ("fingerprints", "phrases", "rules", "paths", "selectors")
+
+#: Where an entry lives. Not cosmetic: "put this back" has to remove the line
+#: from the list it is actually in, and `Suppressions.load` merges the two
+#: into one object that can no longer say which that was.
+PERSONAL = "personal"
+PROJECT = "project"
+
+
+@dataclass
+class Source:
+    """One list of suppressions, and where it is kept.
+
+    `Suppressions.load` answers "is this finding hidden", which is all the
+    scan needs. A screen that offers to un-hide something needs the other
+    half: which of the two lists the entry is written in, because removing it
+    from the wrong one changes nothing and looks like the button is broken.
+    """
+    kind: str
+    entries: "Suppressions"
+    path: Path = None
+
+    def remove(self, level: str, value: str) -> bool:
+        """Take one entry out. False when it was not in this list."""
+        values = getattr(self.entries, level, None)
+        if not values or value not in values:
+            return False
+        values.remove(value)
+        self.entries.labels.pop(value, None)
+        self.entries.__post_init__()
+        return True
+
+    def save(self, settings=None) -> None:
+        """Write the list back where it came from."""
+        if self.kind == PROJECT and self.path is not None:
+            self.path.write_text(self.entries.render(), encoding="utf-8")
+            return
+        if settings is not None:
+            settings.ignore = self.entries.as_settings()
+            settings.save()
+
+
+def sources(settings=None, root: str | None = None) -> list:
+    """Both lists, kept apart, in the order they are read.
+
+    The personal list first because it is always there; the project's file
+    only when the scanned folder has one.
+    """
+    found = [Source(kind=PERSONAL,
+                    entries=Suppressions.from_dict(getattr(settings, "ignore", None)))]
+    for path in _ignore_files(root):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        found.append(Source(kind=PROJECT, entries=Suppressions.parse(text), path=path))
+    return found
 
 
 def _short_source(source: str) -> str:

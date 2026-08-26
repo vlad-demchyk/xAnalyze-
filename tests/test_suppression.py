@@ -261,6 +261,28 @@ class TheFileIsADocument(unittest.TestCase):
         self.assertIn("vendor/", written)
         self.assertIn("# vendored code we do not own", written)
 
+    def test_a_file_it_did_not_edit_comes_back_byte_for_byte(self):
+        original = ("# vendored\n"
+                    "vendor/\n"
+                    "third_party/\n"
+                    "\n"
+                    "# generated\n"
+                    "*.min.js\n"
+                    "\n"
+                    "[rules]\n"
+                    "region  # decided in review\n")
+        self.assertEqual(suppression.Suppressions.parse(original).render(), original)
+
+    def test_a_group_heading_belongs_to_the_group_below_it(self):
+        # `# generated` heads the lines under it; attaching it to the group
+        # above would put it in the wrong pane and, once a section is edited,
+        # in the wrong place in the file.
+        parsed = suppression.Suppressions.parse(
+            "# vendored\nvendor/\n\n# generated\n*.min.js\n")
+        box = parsed.section_text("paths")
+        self.assertEqual(box.splitlines(),
+                         ["# vendored", "vendor/", "", "# generated", "*.min.js"])
+
     def test_an_id_selector_is_a_selector_and_not_a_comment(self):
         parsed = suppression.Suppressions.parse("[selectors]\n#main .ads\n.faq #q1\n")
         self.assertEqual(parsed.selectors, ["#main .ads", ".faq #q1"])
@@ -270,6 +292,41 @@ class TheFileIsADocument(unittest.TestCase):
             "[selectors]\n# third-party embeds\n.ads  # sold, not ours\n")
         self.assertEqual(parsed.selectors, [".ads"])
         self.assertEqual(parsed.labels[".ads"], "sold, not ours")
+
+
+class TheDocumentedExampleWorks(unittest.TestCase):
+    """The README's own ignore file, copied verbatim.
+
+    It is taught as "gitignore syntax" and written as a bare list, which the
+    parser read as phrases - so the example everybody starts from excluded
+    nothing, silently, and `vendor/` was still scanned.
+    """
+
+    README_EXAMPLE = ("# Ignore vendored code\n"
+                      "vendor/\n"
+                      "third_party/\n"
+                      "\n"
+                      "# Ignore generated files\n"
+                      "*.min.js\n"
+                      "*.min.css\n")
+
+    def test_it_actually_excludes_those_files(self):
+        parsed = suppression.Suppressions.parse(self.README_EXAMPLE)
+        self.assertTrue(parsed.ignores_path("vendor/thing.js"))
+        self.assertTrue(parsed.ignores_path("src/app.min.js"))
+        self.assertEqual(parsed.phrases, [])
+
+    def test_a_plain_word_is_still_a_phrase(self):
+        parsed = suppression.Suppressions.parse("robust\ndelve\ncutting-edge\n")
+        self.assertEqual(parsed.phrases, ["robust", "delve", "cutting-edge"])
+        self.assertEqual(parsed.paths, [])
+
+    def test_inside_a_section_the_section_decides(self):
+        # Only a bare line before the first header is reclassified; a phrase
+        # somebody deliberately filed under [phrases] stays one.
+        parsed = suppression.Suppressions.parse("[phrases]\nand/or\n")
+        self.assertEqual(parsed.phrases, ["and/or"])
+        self.assertEqual(parsed.paths, [])
 
 
 class ADismissedFindingSaysWhatItWas(unittest.TestCase):

@@ -19,6 +19,7 @@ try:
     import suppression
     from ui.main_window import MainWindow, _SUPPRESSED_NOTE
     from ui.settings_dialog import SettingsDialog
+    from ui.window_parts.noise_control import HiddenRow, NoiseDialog
     from analysis_modes import SOURCE_REPO, SOURCE_SITE
     from models import AnalysisResult, Confidence, PageResult, TextBlock, TextSpan
 except Exception:  # noqa: BLE001 - no Qt here is a skip, not a failure
@@ -163,80 +164,124 @@ class SuppressedNoteInTheExplanation(unittest.TestCase):
 
 
 @unittest.skipIf(QApplication is None, "PySide6 not available")
-class SuppressionSettingsTab(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+class NoiseControl(unittest.TestCase):
+    """Artboard 3k: what is hidden, where the record lives, and undoing it.
 
-    def test_existing_entries_are_shown_by_level(self):
-        window = MainWindow()
-        window.settings.ignore = {"phrases": ["comprehensive"], "rules": ["dashes"]}
-        dlg = SettingsDialog(window.settings, window.lang, parent=window)
-        phrases = dlg._suppression_lists["phrases"]
-        self.assertEqual([phrases.item(i).text() for i in range(phrases.count())],
-                         ["comprehensive"])
-        rules = dlg._suppression_lists["rules"]
-        self.assertEqual([rules.item(i).text() for i in range(rules.count())],
-                         ["dashes"])
-
-    def test_removing_an_entry_and_saving_updates_settings(self):
-        window = MainWindow()
-        window.settings.ignore = {"phrases": ["comprehensive", "cutting-edge"]}
-        # Not a disk write this test should cause: `_on_accept` persists to
-        # the real, shared settings.json, and this test only cares what
-        # ends up in the in-memory object it hands back.
-        window.settings.save = lambda: None
-        dlg = SettingsDialog(window.settings, window.lang, parent=window)
-        phrases = dlg._suppression_lists["phrases"]
-        phrases.takeItem(0)  # drop "comprehensive"
-        dlg._on_accept()
-        self.assertEqual(window.settings.ignore.get("phrases"), ["cutting-edge"])
-
-    def test_the_rule_id_helper_is_populated_from_known_rule_ids(self):
-        window = MainWindow()
-        dlg = SettingsDialog(window.settings, window.lang, parent=window)
-        # Built without crashing, and with at least the style signals every
-        # detector run can produce.
-        known = suppression.known_rule_ids()
-        self.assertIn("dashes", known["style"])
-
-
-@unittest.skipIf(QApplication is None, "PySide6 not available")
-class ADismissedFindingIsReadable(unittest.TestCase):
-    """The list used to be sixteen hex characters and a Remove button.
-
-    Nothing stored what a fingerprint had been, so the one action the tab
-    offers - bring it back - could not be taken on purpose.
+    The settings tab this replaced showed five list boxes of raw values, so a
+    dismissed finding was sixteen hex characters and a Remove button - the one
+    action it offered could not be taken on purpose.
     """
 
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
-    def test_the_row_shows_the_note_and_keeps_the_value(self):
+    def _dialog(self, ignore=None, root=None):
         window = MainWindow()
-        window.settings.ignore = {
+        window.settings.ignore = ignore or {}
+        window.settings.save = lambda: None  # never the real settings.json
+        return NoiseDialog(window.settings, window.lang, root=root,
+                           palette=window.palette_tokens, parent=window), window
+
+    def _rows(self, dialog):
+        return [dialog.hidden_layout.itemAt(i).widget()
+                for i in range(dialog.hidden_layout.count())
+                if isinstance(dialog.hidden_layout.itemAt(i).widget(), HiddenRow)]
+
+    def test_a_hidden_finding_is_shown_by_its_note(self):
+        dialog, _ = self._dialog({
             "fingerprints": ["4c1f9a2b7d3e5061"],
             "labels": {"4c1f9a2b7d3e5061": "empty-heading \u00b7 about.html"},
-        }
-        dlg = SettingsDialog(window.settings, window.lang, parent=window)
-        listbox = dlg._suppression_lists["fingerprints"]
-        self.assertIn("empty-heading", listbox.item(0).text())
-        self.assertIn("4c1f9a2b7d3e5061", listbox.item(0).text())
+        })
+        row = self._rows(dialog)[0]
+        text = " ".join(child.text() for child in row.findChildren(QLabel))
+        self.assertIn("empty-heading", text)
+        self.assertIn("4c1f9a2b7d3e5061", text)
 
-    def test_saving_keeps_the_note_of_what_survived_and_drops_the_rest(self):
+    def test_the_row_says_which_list_the_record_is_in(self):
+        with tempfile.TemporaryDirectory() as folder:
+            Path(folder, suppression.IGNORE_FILENAME).write_text(
+                "[phrases]\nrobust\n", encoding="utf-8")
+            dialog, _ = self._dialog({"phrases": ["comprehensive"]}, root=folder)
+            said = {" ".join(c.text() for c in row.findChildren(QLabel)): row
+                    for row in self._rows(dialog)}
+            personal = [k for k in said if "comprehensive" in k][0]
+            project = [k for k in said if "robust" in k][0]
+            self.assertIn("personal", personal)
+            self.assertIn(suppression.IGNORE_FILENAME, project)
+
+    def test_restoring_a_personal_entry_takes_it_out_of_settings(self):
+        dialog, window = self._dialog({"phrases": ["comprehensive", "robust"]})
+        row = [r for r in self._rows(dialog) if r.value == "comprehensive"][0]
+        row.restore_btn.click()
+        dialog._on_accept()
+        self.assertEqual(window.settings.ignore["phrases"], ["robust"])
+
+    def test_restoring_a_project_entry_rewrites_that_file_and_keeps_the_rest(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder, suppression.IGNORE_FILENAME)
+            path.write_text("# ours, decided in review\n[phrases]\nrobust\n"
+                            "comprehensive\n", encoding="utf-8")
+            dialog, _ = self._dialog(root=folder)
+            row = [r for r in self._rows(dialog) if r.value == "robust"][0]
+            row.restore_btn.click()
+            dialog._on_accept()
+            written = path.read_text(encoding="utf-8")
+            self.assertNotIn("robust", written)
+            self.assertIn("comprehensive", written)
+            self.assertIn("# ours, decided in review", written)
+
+    def test_a_disabled_rule_is_a_chip_and_clicking_it_switches_it_back_on(self):
+        dialog, window = self._dialog({"rules": ["region", "meta-viewport"]})
+        chips = [dialog.rules_flow.itemAt(i).widget()
+                 for i in range(dialog.rules_flow.count())]
+        self.assertEqual(len(chips), 2)
+        [chip for chip in chips if chip.text().startswith("region")][0].click()
+        dialog._on_accept()
+        self.assertEqual(window.settings.ignore["rules"], ["meta-viewport"])
+
+    def test_the_files_box_cannot_drop_a_rule_below_it(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder, suppression.IGNORE_FILENAME)
+            path.write_text("[paths]\n# vendored\nvendor/\n\n[rules]\n"
+                            "region  # decided in review\n", encoding="utf-8")
+            dialog, _ = self._dialog(root=folder)
+            self.assertIn("# vendored", dialog.paths_edit.toPlainText())
+            dialog.paths_edit.setPlainText("# generated\ndist/")
+            dialog._on_accept()
+            written = path.read_text(encoding="utf-8")
+            self.assertIn("dist/", written)
+            self.assertNotIn("vendor/", written)
+            self.assertIn("# generated", written)
+            # The pane below it is untouched, note and all.
+            self.assertIn("region  # decided in review", written)
+
+    def test_the_settings_tab_says_how_much_is_hidden_before_it_is_opened(self):
         window = MainWindow()
-        window.settings.ignore = {
-            "fingerprints": ["aaaa1111bbbb2222", "cccc3333dddd4444"],
-            "labels": {"aaaa1111bbbb2222": "one", "cccc3333dddd4444": "two"},
-        }
+        window.settings.ignore = {"phrases": ["comprehensive", "robust"],
+                                  "rules": ["region"]}
         window.settings.save = lambda: None
         dlg = SettingsDialog(window.settings, window.lang, parent=window)
-        dlg._suppression_lists["fingerprints"].takeItem(0)
-        dlg._on_accept()
-        self.assertEqual(window.settings.ignore["fingerprints"], ["cccc3333dddd4444"])
-        self.assertEqual(window.settings.ignore["labels"],
-                         {"cccc3333dddd4444": "two"})
+        self.assertIn("3", dlg.noise_count.text())
+
+    def test_a_phrase_can_still_be_added_by_hand(self):
+        dialog, window = self._dialog()
+        dialog.level_combo.setCurrentIndex(
+            [dialog.level_combo.itemData(i) for i in range(dialog.level_combo.count())]
+            .index("phrases"))
+        dialog.hidden_entry.setText("cutting-edge")
+        dialog._on_add_hidden()
+        dialog._on_accept()
+        self.assertEqual(window.settings.ignore["phrases"], ["cutting-edge"])
+
+
+@unittest.skipIf(QApplication is None, "PySide6 not available")
+class ADismissedFindingIsReadable(unittest.TestCase):
+    """A fingerprint is a one-way hash, so the note is the only record."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
 
     def test_dismissing_a_finding_writes_the_note_beside_it(self):
         with tempfile.TemporaryDirectory() as folder:

@@ -11,55 +11,20 @@ import json
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QFrame, QGroupBox,
-    QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox,
-    QPlainTextEdit, QPushButton, QScrollArea, QSpinBox, QTabWidget, QVBoxLayout, QWidget,
+    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QGroupBox,
+    QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton,
+    QSpinBox, QTabWidget, QVBoxLayout, QWidget,
 )
 
 import cli_install
 import config
-import suppression
 from i18n.translations import LANGUAGES, t
 from llm import credentials
 from llm.base import LLMAuthError, LLMProviderFactory, LLMUnavailable
 from ui import theme
 
-def _suppression_item(value: str, note: str) -> QListWidgetItem:
-    """One suppression row, shown the way the file shows it.
-
-    A fingerprint is sixteen hex characters, so a row without its note tells
-    the reader nothing about what pressing Remove would bring back. The note
-    is displayed exactly as it is written on disk (`value  # note`) rather
-    than in some list-only format, so the window and a diff of
-    `.xanalyze-ignore` read the same.
-    """
-    item = QListWidgetItem(f"{value}  # {note}" if note else value)
-    item.setData(Qt.ItemDataRole.UserRole, value)
-    if note:
-        item.setToolTip(note)
-    return item
-
-
-def _suppression_value(item: QListWidgetItem) -> str:
-    """The entry itself, never the row's display text."""
-    return item.data(Qt.ItemDataRole.UserRole) or item.text()
-
-
 PROVIDER_ANTHROPIC = "anthropic"
 PROVIDER_XFORMAT = "xformat"
-
-#: The five suppression levels, as translation keys rather than as English
-#: strings. They were hardcoded English with a comment saying the
-#: translations file belonged to someone else at the time - which left one
-#: tab of a translated dialog in a language the user had not chosen.
-_SUPPRESSION_LEVELS = (
-    ("fingerprints", "suppression_fingerprints"),
-    ("phrases", "suppression_phrases"),
-    ("rules", "suppression_rules"),
-    ("paths", "suppression_paths"),
-    ("selectors", "suppression_selectors"),
-)
-
 
 def _select_data(combo, value) -> None:
     """Select the entry whose `userData` is `value`, if there is one.
@@ -92,7 +57,7 @@ class SettingsDialog(QDialog):
         tabs.addTab(self._build_general_tab(), t("settings_tab_general", lang))
         tabs.addTab(self._build_unicode_tab(), t("settings_tab_unicode", lang))
         tabs.addTab(self._build_provider_tab(), t("settings_tab_provider", lang))
-        tabs.addTab(self._build_suppression_tab(), "Suppression")
+        tabs.addTab(self._build_suppression_tab(), t("settings_tab_noise", lang))
         tabs.addTab(self._build_advanced_tab(), t("settings_tab_advanced", lang))
         layout.addWidget(tabs)
 
@@ -288,103 +253,60 @@ class SettingsDialog(QDialog):
         return w
 
     def _build_suppression_tab(self) -> QWidget:
-        """What is already being ignored, by level, with a way to undo it.
+        """The way in to noise control, not a second copy of it.
 
-        Edits only the personal list (`Settings.ignore`) — the project's own
-        `.xanalyze-ignore` is a file meant to be committed and reviewed like
-        any other, not rewritten from a settings dialog on someone's machine.
-        It is still shown, read-only, so "what is suppressed" is one honest
-        answer instead of half of it.
+        This tab used to be five list boxes of raw values - the whole of the
+        suppression UI, and the reason a dismissed finding was sixteen hex
+        characters with a Remove button. The screen the design asks for
+        (artboard 3k) reads the two lists apart, says what each hidden entry
+        was and where the record lives, and can put one back into the list it
+        is actually written in. Keeping the boxes here as well would be two
+        editors of one fact, and the one that lies is always the other one.
         """
-        # Five list-plus-add-row groups, one per level, add up to well over
-        # this dialog's usual height - every other tab fits inside the
-        # window's original 520px and this one blew straight past it, which
-        # made switching to this tab visibly resize the whole dialog. Scrolled
-        # rather than shrunk: every level is still worth seeing at a glance,
-        # just not all five glued together outside a scroll area.
-        outer = QWidget()
-        outer_layout = QVBoxLayout(outer)
-        outer_layout.setContentsMargins(0, 0, 0, 0)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        outer_layout.addWidget(scroll)
-
         w = QWidget()
-        scroll.setWidget(w)
         layout = QVBoxLayout(w)
         note = QLabel(t("suppression_note", self.lang))
         note.setWordWrap(True)
         note.setProperty("class", theme.CLASS_MUTED)
         layout.addWidget(note)
 
-        own = suppression.Suppressions.from_dict(self.settings.ignore)
-        self._suppression_labels = dict(own.labels)
-        self._suppression_lists: dict[str, QListWidget] = {}
-        for key, label_key in _SUPPRESSION_LEVELS:
-            group = QGroupBox(t(label_key, self.lang))
-            group.setToolTip(t(f"{label_key}_hint", self.lang))
-            group_layout = QVBoxLayout(group)
+        # A count, so the tab says something before it is opened: an empty
+        # panel with one button reads as a feature that is not set up, when
+        # in fact it may be holding five decisions.
+        self.noise_count = QLabel()
+        self.noise_count.setProperty("class", theme.CLASS_MUTED)
+        self._refresh_noise_count()
+        layout.addWidget(self.noise_count)
 
-            listbox = QListWidget()
-            for value in getattr(own, key):
-                listbox.addItem(_suppression_item(value, own.labels.get(value, "")))
-            listbox.setMaximumHeight(90)
-            self._suppression_lists[key] = listbox
-            group_layout.addWidget(listbox)
+        open_btn = QPushButton(t("noise_open", self.lang))
+        open_btn.setProperty("class", theme.CLASS_QUIET)
+        open_btn.clicked.connect(self._on_open_noise_control)
+        row = QHBoxLayout()
+        row.addWidget(open_btn)
+        row.addStretch(1)
+        layout.addLayout(row)
 
-            row = QHBoxLayout()
-            entry = QComboBox() if key == "rules" else QLineEdit()
-            if isinstance(entry, QComboBox):
-                entry.setEditable(True)
-                for category, ids in suppression.known_rule_ids().items():
-                    for rule_id in ids:
-                        entry.addItem(f"{rule_id}  ({category})", userData=rule_id)
-                entry.setCurrentIndex(-1)
-                entry.lineEdit().setPlaceholderText(
-                    t("suppression_rule_placeholder", self.lang))
-            else:
-                entry.setPlaceholderText(t("suppression_add_placeholder",
-                                           self.lang))
-            add_btn = QPushButton(t("suppression_add", self.lang))
-            remove_btn = QPushButton(t("suppression_remove", self.lang))
-            row.addWidget(entry, stretch=1)
-            row.addWidget(add_btn)
-            row.addWidget(remove_btn)
-            group_layout.addLayout(row)
-
-            def make_add(listbox=listbox, entry=entry):
-                def add() -> None:
-                    if isinstance(entry, QComboBox):
-                        value = (entry.currentData() or entry.currentText()).strip()
-                    else:
-                        value = entry.text().strip()
-                    if not value:
-                        return
-                    existing = [_suppression_value(listbox.item(i))
-                                for i in range(listbox.count())]
-                    if value not in existing:
-                        listbox.addItem(_suppression_item(value, ""))
-                    if isinstance(entry, QComboBox):
-                        entry.setCurrentIndex(-1)
-                        entry.clearEditText()
-                    else:
-                        entry.clear()
-                return add
-
-            def make_remove(listbox=listbox):
-                def remove() -> None:
-                    for item in listbox.selectedItems():
-                        listbox.takeItem(listbox.row(item))
-                return remove
-
-            add_btn.clicked.connect(make_add())
-            remove_btn.clicked.connect(make_remove())
-            layout.addWidget(group)
-
-        layout.addWidget(self._build_project_suppression_view())
         layout.addStretch(1)
-        return outer
+        return w
+
+    def _on_open_noise_control(self) -> None:
+        from ui.window_parts.noise_control import NoiseDialog
+
+        dialog = NoiseDialog(self.settings, self.lang,
+                             root=self._project_ignore_root(),
+                             palette=getattr(self.parent(), "palette_tokens", None),
+                             parent=self)
+        dialog.exec()
+        self._refresh_noise_count()
+
+    def _refresh_noise_count(self) -> None:
+        import suppression
+
+        total = sum(len(getattr(source.entries, level))
+                    for source in suppression.sources(self.settings,
+                                                      self._project_ignore_root())
+                    for level in suppression.LEVELS)
+        self.noise_count.setText(t("noise_count", self.lang).format(count=total))
 
     def _project_ignore_root(self) -> str | None:
         """The folder whose `.xanalyze-ignore` is worth showing, if the
@@ -395,42 +317,6 @@ class SettingsDialog(QDialog):
             if edit is not None and edit.text().strip():
                 return edit.text().strip()
         return None
-
-    def _build_project_suppression_view(self) -> QWidget:
-        from pathlib import Path
-
-        group = QGroupBox("Project (.xanalyze-ignore) — read-only here")
-        layout = QVBoxLayout(group)
-        root = self._project_ignore_root()
-        path = None
-        if root:
-            candidate = Path(root)
-            if candidate.is_file():
-                candidate = candidate.parent
-            candidate = candidate / suppression.IGNORE_FILENAME
-            if candidate.is_file():
-                path = candidate
-
-        if path is None:
-            label = QLabel(
-                "No .xanalyze-ignore file for the current source, or none "
-                "chosen yet."
-            )
-            label.setWordWrap(True)
-            label.setProperty("class", theme.CLASS_MUTED)
-            layout.addWidget(label)
-            return group
-
-        project = suppression.Suppressions.parse(path.read_text(encoding="utf-8"))
-        summary = ", ".join(
-            f"{t(label_key, self.lang).lower()}: {len(getattr(project, key))}"
-            for key, label_key in _SUPPRESSION_LEVELS
-            if getattr(project, key)
-        ) or t("suppression_empty", self.lang)
-        label = QLabel(f"{path}\n{summary}")
-        label.setWordWrap(True)
-        layout.addWidget(label)
-        return group
 
     def _build_advanced_tab(self) -> QWidget:
         w = QWidget()
@@ -609,21 +495,6 @@ class SettingsDialog(QDialog):
         self.settings.unicode_categories = [
             key for key, box in self.category_boxes.items() if box.isChecked()
         ]
-        # Rebuilt from the rows rather than edited in place, so a removal in
-        # the list is a removal in settings - and the notes are carried across
-        # for the values that survived, since the note is the only thing that
-        # says what a fingerprint was.
-        ignore = {
-            key: [_suppression_value(listbox.item(i)) for i in range(listbox.count())]
-            for key, listbox in self._suppression_lists.items()
-        }
-        kept = {value for values in ignore.values() for value in values}
-        labels = {value: note for value, note in self._suppression_labels.items()
-                  if value in kept}
-        if labels:
-            ignore["labels"] = labels
-        self.settings.ignore = ignore
-
         self.settings.llm_provider = self.provider_combo.currentData()
         self.settings.claude_model = self.model_edit.text().strip() or self.settings.claude_model
         # Empty is a real answer here - "whatever the session is set to" -

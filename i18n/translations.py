@@ -296,6 +296,84 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Una parte della pagina esclusa: un selettore CSS.",
         "en": "A part of the page excluded - a CSS selector.",
     },
+    # --- Noise control (artboard 3k) ---------------------------------------
+    "noise_title": {
+        "uk": "Що не показувати",
+        "it": "Che cosa non mostrare",
+        "en": "What not to show",
+    },
+    "noise_where": {
+        "uk": "записується у .xanalyze-ignore сканованої теки, або у ваші "
+              "налаштування для скану сайту",
+        "it": "scritto nel .xanalyze-ignore della cartella scansionata, o "
+              "nelle tue impostazioni per la scansione di un sito",
+        "en": "written to .xanalyze-ignore in the scanned folder, or to your "
+              "settings for a site scan",
+    },
+    "settings_tab_noise": {
+        "uk": "Шум", "it": "Rumore", "en": "Noise",
+    },
+    "noise_count": {
+        "uk": "Зараз приховано записів: {count}",
+        "it": "Voci attualmente nascoste: {count}",
+        "en": "Currently hidden: {count} entries",
+    },
+    "noise_open": {
+        "uk": "Керування шумом…",
+        "it": "Gestione del rumore…",
+        "en": "Noise control…",
+    },
+    "noise_hidden": {
+        "uk": "Приховані знахідки",
+        "it": "Rilievi nascosti",
+        "en": "Hidden findings",
+    },
+    "noise_hidden_hint": {
+        "uk": "приберіть запис, і знахідка повернеться при наступному скані",
+        "it": "rimuovi una voce e il rilievo torna alla prossima scansione",
+        "en": "remove an entry and the finding comes back on the next scan",
+    },
+    "noise_hidden_empty": {
+        "uk": "Нічого не приховано.",
+        "it": "Niente di nascosto.",
+        "en": "Nothing is hidden.",
+    },
+    "noise_restore": {
+        "uk": "Повернути", "it": "Ripristina", "en": "Restore",
+    },
+    "noise_paths": {
+        "uk": "Файли й папки", "it": "File e cartelle", "en": "Files and folders",
+    },
+    "noise_paths_hint": {
+        "uk": ".gitignore-подібний синтаксис",
+        "it": "sintassi in stile .gitignore",
+        "en": "gitignore-like syntax",
+    },
+    "noise_rules": {
+        "uk": "Вимкнені правила", "it": "Regole disattivate",
+        "en": "Disabled rules",
+    },
+    "noise_rules_add": {
+        "uk": "+ додати", "it": "+ aggiungi", "en": "+ add",
+    },
+    "noise_origin_personal": {
+        "uk": "особистий запис",
+        "it": "voce personale",
+        "en": "personal entry",
+    },
+    "noise_origin_project": {
+        "uk": ".xanalyze-ignore",
+        "it": ".xanalyze-ignore",
+        "en": ".xanalyze-ignore",
+    },
+    "noise_no_project_file": {
+        "uk": "Тека для .xanalyze-ignore не вибрана, тож правки йдуть у ваші "
+              "особисті налаштування.",
+        "it": "Nessuna cartella scelta per .xanalyze-ignore, quindi le "
+              "modifiche vanno nelle tue impostazioni personali.",
+        "en": "No folder chosen for a .xanalyze-ignore, so edits go to your "
+              "personal settings.",
+    },
     "ignore_finding": {
         "uk": "Не показувати цю знахідку",
         "it": "Ignora questo rilievo",
