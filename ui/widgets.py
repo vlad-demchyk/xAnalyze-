@@ -18,8 +18,8 @@ from __future__ import annotations
 from PySide6.QtCore import QPoint, QRect, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath
 from PySide6.QtWidgets import (
-    QHBoxLayout, QLabel, QLayout, QSizePolicy, QStyle, QStyledItemDelegate,
-    QVBoxLayout, QWidget,
+    QAbstractButton, QButtonGroup, QHBoxLayout, QLabel, QLayout, QPushButton,
+    QSizePolicy, QStyle, QStyledItemDelegate, QVBoxLayout, QWidget,
 )
 
 from i18n.translations import t
@@ -905,3 +905,106 @@ class FlowLayout(QLayout):
 
         flush()
         return y + line_height - rect.y() + margins.bottom()
+
+
+class Switch(QAbstractButton):
+    """A setting that is on or off, drawn as the design draws it (3d, 3q).
+
+    A checkbox would carry the same value and read as a different kind of
+    decision: a box in a list is one of several things you are choosing,
+    while a switch at the end of a row is that row's state. The settings
+    screen is rows, so it gets switches.
+
+    Painted rather than styled: a QSS checkbox indicator is a fixed-size
+    image slot, and the travelling knob would have to be two static images
+    that cannot follow the palette.
+    """
+
+    WIDTH = 34
+    HEIGHT = 20
+
+    def __init__(self, palette=None, parent=None):
+        super().__init__(parent)
+        self.palette_ = palette
+        self.setCheckable(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedSize(QSize(self.WIDTH, self.HEIGHT))
+
+    def set_palette(self, palette) -> None:
+        self.palette_ = palette
+        self.update()
+
+    def paintEvent(self, event) -> None:  # noqa: N802 - Qt override
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        radius = self.height() / 2
+        track = QRectF(0, 0, float(self.width()), float(self.height()))
+
+        palette = self.palette_
+        on = QColor(palette.accent if palette else "#4c43e8")
+        off = QColor(palette.border_strong if palette else "#c9c5bd")
+        knob = QColor(palette.bg if palette else "#ffffff")
+        if not self.isEnabled():
+            on.setAlpha(90)
+            off.setAlpha(90)
+
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(on if self.isChecked() else off)
+        painter.drawRoundedRect(track, radius, radius)
+
+        inset = 2.0
+        diameter = self.height() - inset * 2
+        x = (self.width() - diameter - inset) if self.isChecked() else inset
+        painter.setBrush(knob)
+        painter.drawEllipse(QRectF(x, inset, diameter, diameter))
+        painter.end()
+
+
+class Segmented(QWidget):
+    """Two to four exclusive choices shown side by side, all of them visible.
+
+    The design uses it where a dropdown would hide the alternatives behind a
+    click even though there are only three of them - the theme, the effort a
+    model spends. A combo box is right when the list is long or open-ended;
+    this is right when seeing the options *is* the explanation.
+    """
+
+    changed = Signal(object)
+
+    def __init__(self, options=(), parent=None):
+        super().__init__(parent)
+        self.setProperty("class", theme.CLASS_SEGMENTED)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(2, 2, 2, 2)
+        row.setSpacing(2)
+        self.group = QButtonGroup(self)
+        self.group.setExclusive(True)
+        self._buttons: list = []
+        for index, (label, value) in enumerate(options):
+            button = QPushButton(label)
+            button.setProperty("class", theme.CLASS_SEGMENT)
+            button.setCheckable(True)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setProperty("value", value)
+            self.group.addButton(button, index)
+            row.addWidget(button)
+            self._buttons.append(button)
+        self.group.idClicked.connect(self._on_clicked)
+
+    def _on_clicked(self, index: int) -> None:
+        self.changed.emit(self.current_data())
+
+    def set_current_data(self, value) -> None:
+        for button in self._buttons:
+            if button.property("value") == value:
+                button.setChecked(True)
+                return
+        if self._buttons:
+            self._buttons[0].setChecked(True)
+
+    def current_data(self):
+        for button in self._buttons:
+            if button.isChecked():
+                return button.property("value")
+        return None

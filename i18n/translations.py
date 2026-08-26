@@ -442,7 +442,7 @@ _STRINGS: dict[str, dict[str, str]] = {
               "settings for a site scan",
     },
     "settings_tab_noise": {
-        "uk": "Шум", "it": "Rumore", "en": "Noise",
+        "uk": "Винятки", "it": "Eccezioni", "en": "Exceptions",
     },
     "noise_count": {
         "uk": "Зараз приховано записів: {count}",
@@ -1556,15 +1556,116 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Impostazioni",
         "en": "Settings",
     },
+    # --- Settings screen (artboards 3d, 3q) --------------------------------
+    "save_button": {
+        "uk": "Зберегти", "it": "Salva", "en": "Save",
+    },
+    "settings_keys_note": {
+        "uk": "Ключі зберігаються у keychain системи, не у файлі налаштувань.",
+        "it": "Le chiavi sono nel keychain di sistema, non nel file di "
+              "impostazioni.",
+        "en": "Keys are kept in the system keychain, not in the settings file.",
+    },
+    "settings_devserver_row": {
+        "uk": "Запускати dev-сервер репозиторія",
+        "it": "Avvia il dev server del repository",
+        "en": "Start the repository's dev server",
+    },
+    "settings_devserver_note": {
+        "uk": "вимкнено, бо ваш `npm run dev` міг уже працювати: другий "
+              "сервер на іншому порті плутає, а не допомагає",
+        "it": "disattivato perché il tuo `npm run dev` potrebbe essere già "
+              "in esecuzione: un secondo server su un'altra porta confonde",
+        "en": "off, because your own `npm run dev` may already be running: a "
+              "second server on another port confuses rather than helps",
+    },
+    "settings_as_session": {
+        "uk": "як у сесії", "it": "come la sessione", "en": "as the session",
+    },
+    "effort_low": {
+        "uk": "низьке", "it": "basso", "en": "low",
+    },
+    "effort_medium": {
+        "uk": "середнє", "it": "medio", "en": "medium",
+    },
+    "effort_high": {
+        "uk": "високе", "it": "alto", "en": "high",
+    },
+    "settings_cat_invisible_example": {
+        "uk": "U+200B, U+200D, U+FEFF",
+        "it": "U+200B, U+200D, U+FEFF",
+        "en": "U+200B, U+200D, U+FEFF",
+    },
+    "settings_cat_space_example": {
+        "uk": "U+00A0, U+2009, U+202F",
+        "it": "U+00A0, U+2009, U+202F",
+        "en": "U+00A0, U+2009, U+202F",
+    },
+    "settings_cat_homoglyph_example": {
+        "uk": "кирилична «а» замість латинської",
+        "it": "una «а» cirillica al posto di quella latina",
+        "en": "a Cyrillic \u0430 standing in for a Latin a",
+    },
+    "settings_cat_styled_example": {
+        "uk": "математичні й «жирні» юнікод-літери",
+        "it": "lettere Unicode matematiche e «in grassetto»",
+        "en": "mathematical and \"bold\" Unicode letters",
+    },
+    "settings_cat_typography_example": {
+        "uk": "— «» ’ - часто ставлять свідомо",
+        "it": "— «» ’ - spesso sono voluti",
+        "en": "— «» ’ - often deliberate",
+    },
+    "settings_cache_note": {
+        "uk": "Кеш суджень моделі: {n} запис(ів) у {path}",
+        "it": "Cache dei giudizi del modello: {n} voce/i in {path}",
+        "en": "Model judgment cache: {n} entries in {path}",
+    },
+    "settings_clear_cache": {
+        "uk": "Очистити кеш", "it": "Svuota la cache", "en": "Clear the cache",
+    },
+    "settings_clear_cache_confirm": {
+        "uk": "Видалити {path}? Наступний прогін питатиме модель наново.",
+        "it": "Eliminare {path}? La prossima esecuzione interrogherà di nuovo "
+              "il modello.",
+        "en": "Delete {path}? The next run will ask the model again.",
+    },
+    "settings_uninstall": {
+        "uk": "Видалити XAnalyze з цього компʼютера",
+        "it": "Rimuovi XAnalyze da questo computer",
+        "en": "Remove XAnalyze from this machine",
+    },
+    "settings_uninstall_confirm": {
+        "uk": "Буде видалено:",
+        "it": "Verranno rimossi:",
+        "en": "This removes:",
+    },
+    "settings_uninstall_kept": {
+        "uk": "Лишається на місці:",
+        "it": "Resta al suo posto:",
+        "en": "Left in place:",
+    },
+    "settings_uninstall_nothing": {
+        "uk": "Нічого видаляти: на цій машині сліду не знайдено.",
+        "it": "Niente da rimuovere: nessuna traccia su questa macchina.",
+        "en": "Nothing to remove: no trace of it on this machine.",
+    },
+    "settings_uninstall_done": {
+        "uk": "Видалено записів: {n}.",
+        "it": "Voci rimosse: {n}.",
+        "en": "Removed {n} item(s).",
+    },
     "settings_tab_general": {
         "uk": "Загальні",
         "it": "Generali",
         "en": "General",
     },
+    # Named after what the section decides, not after one of the things it
+    # affects (3d): who reads the text, and whose account pays for it.
     "settings_tab_provider": {
-        "uk": "Переписування",
-        "it": "Riscrittura",
-        "en": "Rewriting",
+        "uk": "Акаунт і модель",
+        "it": "Account e modello",
+        "en": "Account and model",
     },
     "settings_tab_advanced": {
         "uk": "Додатково",
@@ -1724,29 +1825,19 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "This check is exact and free, so it runs alongside the selected detector. Characters that are normal for the language (Ukrainian «quotes», Italian è à ò) are not flagged.",
     },
     "settings_cat_invisible": {
-        "uk": "Невидимі символи (нульова ширина, мʼякий перенос, мітки напряму)",
-        "it": "Caratteri invisibili (larghezza zero, sillabazione morbida, marcatori di direzione)",
-        "en": "Invisible characters (zero-width, soft hyphen, direction marks)",
+        "uk": "Невидимі", "it": "Invisibili", "en": "Invisible",
     },
     "settings_cat_space": {
-        "uk": "Нетипові пробіли (нерозривний, вузький, ідеографічний)",
-        "it": "Spazi atipici (unificatore, stretto, ideografico)",
-        "en": "Unusual spaces (non-breaking, narrow, ideographic)",
+        "uk": "Пробіли", "it": "Spazi", "en": "Spaces",
     },
     "settings_cat_homoglyph": {
-        "uk": "Літери з чужої абетки всередині слова (латинська «о» в кирилиці)",
-        "it": "Lettere di un altro alfabeto dentro una parola (una «o» latina in cirillico)",
-        "en": "Letters from another alphabet inside a word (Latin 'o' in Cyrillic)",
+        "uk": "Гомогліфи", "it": "Omoglifi", "en": "Homoglyphs",
     },
     "settings_cat_styled": {
-        "uk": "Стилізовані та повноширинні літери (𝐀𝐁𝐂, Ａ)",
-        "it": "Lettere stilizzate e a larghezza intera (𝐀𝐁𝐂, Ａ)",
-        "en": "Styled and fullwidth letters (𝐀𝐁𝐂, Ａ)",
+        "uk": "Стилізовані", "it": "Stilizzate", "en": "Styled",
     },
     "settings_cat_typography": {
-        "uk": "Друкарська пунктуація (— – « » „ “ …)",
-        "it": "Punteggiatura tipografica (— – « » „ “ …)",
-        "en": "Typographic punctuation (— – « » „ “ …)",
+        "uk": "Типографіка", "it": "Tipografia", "en": "Typography",
     },
     "settings_cat_typography_note": {
         "uk": "Вимкніть, якщо хочете зберегти правильне тире й лапки в українських та італійських текстах.",

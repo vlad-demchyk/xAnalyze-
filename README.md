@@ -122,6 +122,7 @@ not at a score, and most of them arrive with the correction attached.
 - **Setup Screen** — the window opens on the run you are about to make: what is looked at, how it is read, what is looked for, who judges, and a sentence naming the result before you press anything
 - **Noise Control** — one screen for everything you have hidden, saying what each entry was, which list it is written in (yours or the project's), and putting it back into that one
 - **Replacement List** — one list of every pending change before any of it is written: what the text is now, what it would become, and whether the correction was derived, drafted by a model, or is a decision nobody can make for you. Mechanical rows arrive ticked, drafts do not, decisions cannot be ticked at all
+- **Settings as rows** — five sections in a rail, one row per decision, switches and segmented controls instead of stretched form fields; each symbol category shows what it actually catches
 - **Styled Reports** — branded PDF/HTML for humans
 - **Agent Briefings** — markdown/JSON for coding agents
 - **CLI + GUI + TUI** — one binary, three interfaces
@@ -1832,6 +1833,24 @@ back, `q` quits.
 ---
 
 ## Configuration
+
+### The settings screen
+
+Five sections in a rail — **Account and model**, **General**, **Symbols**,
+**Exceptions**, **Advanced** — and one row per decision, with the file every
+row is written to named at the bottom of the rail.
+
+The control shape follows the kind of decision: a **switch** for on/off, a
+**segmented control** where there are two to four alternatives and seeing them
+is the explanation (theme, model effort), a **dropdown** only where the list is
+open-ended (language, model). *Symbols* shows what each category actually
+catches (`U+200B, U+200D, U+FEFF`) rather than only its name, and the rows go
+dead when the character pass itself is switched off.
+
+**Advanced** also says what the tool has put on this machine: how many model
+judgments are cached and where, with a button to clear them, and *Remove
+XAnalyze from this machine*, which lists exactly what it would delete —
+and what it leaves alone, such as reports already written and run folders.
 
 ### Settings File
 

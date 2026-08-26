@@ -108,6 +108,7 @@ correzione già pronta.
 - **Schermata di impostazione** — la finestra si apre sulla scansione che stai per fare: che cosa guardiamo, come leggiamo, che cosa cerchiamo, chi valuta, e una frase che nomina il risultato prima che tu prema qualcosa
 - **Gestione del rumore** — una schermata per tutto ciò che hai nascosto: che cosa era ogni voce, in quale elenco è scritta (il tuo o quello del progetto) e il ripristino proprio in quell'elenco
 - **Elenco delle sostituzioni** — un solo elenco di tutto ciò che l'esecuzione cambierebbe, prima che qualcosa venga scritto: che cosa dice il testo ora, che cosa direbbe e da dove viene la correzione — dedotta, scritta da un modello, oppure una decisione che nessuno può prendere al posto tuo. Le righe meccaniche arrivano selezionate, le bozze del modello no, le decisioni non si possono selezionare affatto
+- **Impostazioni come righe** — cinque sezioni in una barra, una riga per decisione, interruttori e controlli segmentati invece di campi stirati; ogni categoria di simboli mostra che cosa intercetta davvero
 - **Report stilizzati** — PDF/HTML brandizzati per persone
 - **Briefing per agenti** — markdown/JSON per coding agent
 - **CLI + GUI + TUI** — un binario, tre interfacce
@@ -1647,6 +1648,25 @@ footer elenca i tasti che lo schermo corrente accetta. `Esc` torna indietro,
 ---
 
 ## Configurazione
+
+### La schermata delle impostazioni
+
+Cinque sezioni in una barra laterale - **Account e modello**, **Generali**,
+**Simboli**, **Eccezioni**, **Avanzate** - e una riga per ogni decisione; il
+file in cui ogni riga viene scritta è indicato in fondo alla barra.
+
+La forma del controllo segue il tipo di decisione: un **interruttore** per
+acceso/spento, un **controllo segmentato** dove le alternative sono due-quattro
+e vederle è la spiegazione (tema, sforzo del modello), un **menu a discesa**
+solo dove l'elenco è aperto (lingua, modello). «Simboli» mostra che cosa
+intercetta davvero ogni categoria (`U+200B, U+200D, U+FEFF`), non solo il suo
+nome, e le righe si disattivano quando il passaggio sui caratteri è spento.
+
+«Avanzate» dice anche che cosa lo strumento ha lasciato su questa macchina:
+quanti giudizi del modello sono in cache e dove, con un pulsante per svuotarla,
+e «Rimuovi XAnalyze da questo computer», che elenca esattamente che cosa
+verrebbe eliminato - e che cosa resta, come i report già scritti e le cartelle
+delle esecuzioni.
 
 ### File impostazioni
 

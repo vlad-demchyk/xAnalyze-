@@ -1,9 +1,28 @@
-"""Settings dialog: UI language, rewrite provider, and credentials.
+"""Settings: five sections in a rail, and a row per decision (3d, 3q).
 
 This exists mainly to keep the main window's toolbar short. Everything you
 set once and rarely change (language, which account pays for rewrites, API
 keys, endpoint mapping) lives here; the toolbar keeps only what you touch
 on every scan (source, target, detector, Analyze).
+
+The design replaced the tab strip with a rail down the left and full-width
+form fields with **rows**: the label on the left, a small control on the
+right, a hairline between them. The reason is not decoration. A settings
+screen is read as a list of statements about how the tool behaves, and a
+row says one; a stretched combo box in a two-column form makes the control
+look like the subject and the sentence like its caption.
+
+Three shapes, chosen by what the choice is:
+
+- a **switch** for on/off, because that is the row's state rather than one
+  item picked out of several;
+- a **segmented control** for two to four alternatives, where seeing the
+  options is the explanation (theme, effort);
+- a **combo box** only where the list is long or open-ended (language,
+  model).
+
+What the design shows and this does not build is listed in
+`_UNBUILT_ROWS` - a control that saves nothing is worse than a missing one.
 """
 from __future__ import annotations
 
@@ -11,9 +30,9 @@ import json
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QGroupBox,
-    QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton,
-    QSpinBox, QTabWidget, QVBoxLayout, QWidget,
+    QButtonGroup, QComboBox, QDialog, QFormLayout, QGroupBox, QHBoxLayout,
+    QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton, QScrollArea,
+    QSpinBox, QStackedWidget, QVBoxLayout, QWidget,
 )
 
 import cli_install
@@ -22,6 +41,23 @@ from i18n.translations import LANGUAGES, t
 from llm import credentials
 from llm.base import LLMAuthError, LLMProviderFactory, LLMUnavailable
 from ui import theme
+from ui.widgets import Segmented, Switch, muted
+
+#: Rows the artboards draw that this screen does not, and why. Each one is a
+#: control over a setting that does not exist in `config.Settings`, and a
+#: control that saves nothing is worse than a missing one - it is a promise
+#: the next run does not keep. Kept as a list rather than as a comment
+#: because it is the to-do for whoever adds the setting behind one.
+_UNBUILT_ROWS = {
+    "browser pass by default": "no such setting; the browser pass is a "
+                               "per-run choice made in the window",
+    "daily update check": "the updater is asked when it is opened, never on "
+                          "a schedule",
+    "documents folder": "the run folder is derived from the target, one "
+                        "folder per target, and is not configurable",
+    "render timeout": "the watchdog's timeout is a constant in the browser "
+                      "pass, not a setting",
+}
 
 PROVIDER_ANTHROPIC = "anthropic"
 PROVIDER_XFORMAT = "xformat"
@@ -50,56 +86,211 @@ class SettingsDialog(QDialog):
         self._palette = theme.current_palette(settings.theme)
 
         self.setWindowTitle(t("settings_title", lang))
-        self.resize(600, 520)
+        self.resize(820, 560)
 
-        layout = QVBoxLayout(self)
-        tabs = QTabWidget()
-        tabs.addTab(self._build_general_tab(), t("settings_tab_general", lang))
-        tabs.addTab(self._build_unicode_tab(), t("settings_tab_unicode", lang))
-        tabs.addTab(self._build_provider_tab(), t("settings_tab_provider", lang))
-        tabs.addTab(self._build_suppression_tab(), t("settings_tab_noise", lang))
-        tabs.addTab(self._build_advanced_tab(), t("settings_tab_advanced", lang))
-        layout.addWidget(tabs)
+        outer = QVBoxLayout(self)
+        outer.setSpacing(8)
 
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons.accepted.connect(self._on_accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        body = QHBoxLayout()
+        body.setSpacing(12)
+        self.stack = QStackedWidget()
+        body.addWidget(self._build_rail(), stretch=0)
+        panel = QWidget()
+        panel.setProperty("class", theme.CLASS_PANEL)
+        panel.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        panel_column = QVBoxLayout(panel)
+        panel_column.setContentsMargins(12, 8, 12, 8)
+        panel_column.addWidget(self.stack)
+        body.addWidget(panel, stretch=1)
+        outer.addLayout(body, stretch=1)
+        outer.addWidget(self._build_footer())
+
+        # The order of the rail is the order of the design: the account
+        # first, because "who reads the text and who pays" is the setting
+        # people come here for, and the endpoint JSON last.
+        for key, page in (
+            ("provider", self._build_provider_tab()),
+            ("general", self._build_general_tab()),
+            ("unicode", self._build_unicode_tab()),
+            ("noise", self._build_suppression_tab()),
+            ("advanced", self._build_advanced_tab()),
+        ):
+            self._add_page(key, page)
+        self._rail_buttons[1].setChecked(True)
+        self.stack.setCurrentIndex(1)
 
         self._refresh_provider_ui()
+
+    # ------------------------------------------------------------- shell
+
+    def _build_rail(self) -> QWidget:
+        rail = QWidget()
+        column = QVBoxLayout(rail)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(2)
+        title = QLabel(t("settings_title", self.lang))
+        title.setProperty("class", theme.CLASS_HEADING)
+        column.addWidget(title)
+        column.addSpacing(4)
+
+        self._rail_host = QVBoxLayout()
+        self._rail_host.setSpacing(2)
+        column.addLayout(self._rail_host)
+        column.addStretch(1)
+
+        # Said out loud, because "where does this end up" is a question this
+        # screen answers for every row on it, and the answer is one file.
+        where = muted(str(config.CONFIG_FILE))
+        where.setWordWrap(True)
+        where.setProperty("class", theme.CLASS_CODE)
+        column.addWidget(where)
+
+        rail.setFixedWidth(210)
+        self._rail_group = QButtonGroup(self)
+        self._rail_group.setExclusive(True)
+        self._rail_buttons: list = []
+        return rail
+
+    def _add_page(self, key: str, page: QWidget) -> None:
+        button = QPushButton(t(f"settings_tab_{key}", self.lang))
+        button.setProperty("class", theme.CLASS_RAIL_ITEM)
+        button.setCheckable(True)
+        index = self.stack.count()
+        self._rail_group.addButton(button, index)
+        button.clicked.connect(lambda _=False, i=index: self.stack.setCurrentIndex(i))
+        self._rail_host.addWidget(button)
+        self._rail_buttons.append(button)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setWidget(page)
+        self.stack.addWidget(scroll)
+
+    def _build_footer(self) -> QWidget:
+        foot = QWidget()
+        row = QHBoxLayout(foot)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(8)
+        note = muted(t("settings_keys_note", self.lang))
+        note.setWordWrap(True)
+        row.addWidget(note, stretch=1)
+
+        cancel = QPushButton(t("cancel_button", self.lang))
+        cancel.setProperty("class", theme.CLASS_QUIET)
+        cancel.clicked.connect(self.reject)
+        row.addWidget(cancel)
+
+        save = QPushButton(t("save_button", self.lang))
+        save.setProperty("class", theme.CLASS_PRIMARY)
+        save.clicked.connect(self._on_accept)
+        row.addWidget(save)
+        self.save_btn, self.cancel_btn = save, cancel
+        return foot
+
+    # -------------------------------------------------------------- rows
+
+    def _page(self) -> tuple:
+        """An empty settings page and the column its rows go in."""
+        page = QWidget()
+        column = QVBoxLayout(page)
+        column.setContentsMargins(0, 0, 4, 0)
+        column.setSpacing(0)
+        return page, column
+
+    def _row(self, label: str, control: QWidget, note: str = "") -> QWidget:
+        """One statement: what it is on the left, what it is set to on the right."""
+        row = QWidget()
+        line = QHBoxLayout(row)
+        line.setContentsMargins(0, 6, 0, 6)
+        line.setSpacing(8)
+
+        text = QWidget()
+        stack = QVBoxLayout(text)
+        stack.setContentsMargins(0, 0, 0, 0)
+        stack.setSpacing(1)
+        name = QLabel(label)
+        name.setWordWrap(True)
+        stack.addWidget(name)
+        if note:
+            hint = muted(note)
+            hint.setWordWrap(True)
+            stack.addWidget(hint)
+        line.addWidget(text, stretch=1)
+        line.addWidget(control, stretch=0, alignment=Qt.AlignmentFlag.AlignRight)
+        return row
+
+    def _rule(self) -> QWidget:
+        rule = QWidget()
+        rule.setFixedHeight(1)
+        rule.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        rule.setStyleSheet(f"background-color: {self._palette.divider};")
+        return rule
+
+    def _section(self, column, title: str, note: str = "") -> None:
+        heading = QLabel(title)
+        heading.setProperty("class", theme.CLASS_FIELD_LABEL)
+        column.addSpacing(6)
+        column.addWidget(heading)
+        if note:
+            hint = muted(note)
+            hint.setWordWrap(True)
+            column.addWidget(hint)
+
+    def _rows(self, column, rows) -> None:
+        """Add rows with a hairline between them, and none after the last."""
+        for index, widget in enumerate(rows):
+            if index:
+                column.addWidget(self._rule())
+            column.addWidget(widget)
+
+    def _switch(self, checked: bool) -> Switch:
+        control = Switch(self._palette)
+        control.setChecked(checked)
+        return control
 
     # ------------------------------------------------------------- tabs
 
     def _build_general_tab(self) -> QWidget:
-        w = QWidget()
-        form = QFormLayout(w)
+        page, column = self._page()
 
         self.lang_combo = QComboBox()
         for code, name in LANGUAGES.items():
             self.lang_combo.addItem(name, userData=code)
-        idx = self.lang_combo.findData(self.settings.ui_language)
-        self.lang_combo.setCurrentIndex(max(idx, 0))
-        form.addRow(t("ui_language_label_full", self.lang), self.lang_combo)
+        index = self.lang_combo.findData(self.settings.ui_language)
+        self.lang_combo.setCurrentIndex(max(index, 0))
 
-        self.theme_combo = QComboBox()
-        for value in ("auto", "light", "dark"):
-            self.theme_combo.addItem(t(f"theme_{value}", self.lang), userData=value)
-        idx = self.theme_combo.findData(self.settings.theme)
-        self.theme_combo.setCurrentIndex(max(idx, 0))
-        # Applied as it changes rather than on OK: a colour scheme is judged
+        self.theme_seg = Segmented([(t(f"theme_{value}", self.lang), value)
+                                    for value in ("auto", "light", "dark")])
+        self.theme_seg.set_current_data(self.settings.theme)
+        # Applied as it changes rather than on Save: a colour scheme is judged
         # by looking at it, and a preview that needs a dialog round-trip is
         # not a preview.
-        self.theme_combo.currentIndexChanged.connect(self._on_theme_changed)
-        form.addRow(t("theme_label", self.lang), self.theme_combo)
+        self.theme_seg.changed.connect(self._on_theme_changed)
 
         self.max_pages_spin = QSpinBox()
         self.max_pages_spin.setRange(1, 500)
         self.max_pages_spin.setValue(self.settings.max_pages)
-        form.addRow(t("settings_max_pages", self.lang), self.max_pages_spin)
+        self.max_pages_spin.setFixedWidth(90)
 
-        return w
+        self.unicode_enabled_box = self._switch(self.settings.unicode_check_enabled)
+        self.devserver_switch = self._switch(self.settings.auto_start_devserver)
+
+        self._rows(column, [
+            self._row(t("ui_language_label_full", self.lang), self.lang_combo),
+            # The shared key ends in a colon because the window's toolbar
+            # uses it as a field label; a row is a statement, not a field.
+            self._row(t("theme_label", self.lang).rstrip(":"), self.theme_seg),
+            self._row(t("settings_max_pages", self.lang), self.max_pages_spin),
+            self._row(t("settings_unicode_enabled", self.lang),
+                      self.unicode_enabled_box),
+            self._row(t("settings_devserver_row", self.lang),
+                      self.devserver_switch,
+                      t("settings_devserver_note", self.lang)),
+        ])
+        column.addStretch(1)
+        return page
 
     def _on_theme_changed(self) -> None:
         from PySide6.QtWidgets import QApplication
@@ -108,49 +299,53 @@ class SettingsDialog(QDialog):
         app = QApplication.instance()
         if app is None:
             return
-        palette = theme.apply_theme(app, self.theme_combo.currentData() or "auto")
-        # The findings list is painted by a delegate holding its own copy of
-        # the palette, so it has to be handed the new one — a style sheet
-        # alone would leave the badges in the previous theme's colours.
+        palette = theme.apply_theme(app, self.theme_seg.current_data() or "auto")
+        self._palette = palette
+        # Two things paint themselves rather than being styled, and both have
+        # to be handed the new palette: the findings delegate in the window,
+        # and every switch on this screen.
+        for switch in self.findChildren(Switch):
+            switch.set_palette(palette)
         window = self.parent()
         if window is not None and hasattr(window, "apply_palette"):
             window.apply_palette(palette)
 
     def _build_unicode_tab(self) -> QWidget:
-        w = QWidget()
-        layout = QVBoxLayout(w)
+        """Artboard 3q: one row per category, with what it actually catches.
 
-        self.unicode_enabled_box = QCheckBox(t("settings_unicode_enabled", self.lang))
-        self.unicode_enabled_box.setChecked(self.settings.unicode_check_enabled)
-        layout.addWidget(self.unicode_enabled_box)
-
-        note = QLabel(t("settings_unicode_note", self.lang))
-        note.setWordWrap(True)
-        note.setProperty("class", theme.CLASS_MUTED)
-        layout.addWidget(note)
+        The old tab was five checkboxes with category names on them, which
+        means the choice could only be made by someone who already knew what
+        "styled" covers. Each row now shows an example of the characters it
+        is about - that is the difference between a setting and a quiz.
+        """
+        page, column = self._page()
+        self._section(column, t("settings_tab_unicode", self.lang),
+                      t("settings_unicode_note", self.lang))
 
         active = set(self.settings.unicode_categories or [])
-        self.category_boxes: dict[str, QCheckBox] = {}
-        group = QGroupBox("")
-        group_layout = QVBoxLayout(group)
+        self.category_boxes: dict = {}
+        rows = []
         for key in ("invisible", "space", "homoglyph", "styled", "typography"):
-            box = QCheckBox(t(f"settings_cat_{key}", self.lang))
-            box.setChecked(key in active)
-            self.category_boxes[key] = box
-            group_layout.addWidget(box)
-            if key == "typography":
-                sub = QLabel(t("settings_cat_typography_note", self.lang))
-                sub.setWordWrap(True)
-                sub.setProperty("class", theme.CLASS_MUTED)
-                sub.setStyleSheet(f"margin-left: {self._palette.space_lg + self._palette.space_sm}px;")
-                group_layout.addWidget(sub)
-        layout.addWidget(group)
+            switch = self._switch(key in active)
+            self.category_boxes[key] = switch
+            rows.append(self._row(t(f"settings_cat_{key}", self.lang), switch,
+                                  t(f"settings_cat_{key}_example", self.lang)))
+        self._rows(column, rows)
 
-        self.unicode_enabled_box.toggled.connect(group.setEnabled)
-        group.setEnabled(self.unicode_enabled_box.isChecked())
+        self.category_host = QWidget()
+        host_column = QVBoxLayout(self.category_host)
+        host_column.setContentsMargins(0, 0, 0, 0)
+        column.addWidget(self.category_host)
 
-        layout.addStretch(1)
-        return w
+        # The master switch lives on the General page; the categories are
+        # meaningless while it is off, and a row that still looks settable
+        # would be the screen contradicting itself.
+        for row in rows:
+            self.unicode_enabled_box.toggled.connect(row.setEnabled)
+            row.setEnabled(self.unicode_enabled_box.isChecked())
+
+        column.addStretch(1)
+        return page
 
     def _build_provider_tab(self) -> QWidget:
         w = QWidget()
@@ -203,12 +398,15 @@ class SettingsDialog(QDialog):
             self.cc_model_combo.addItem(label, userData=value)
         _select_data(self.cc_model_combo, self.settings.claude_code_model)
         cc_form.addRow(t("settings_cc_model", self.lang), self.cc_model_combo)
-        self.cc_effort_combo = QComboBox()
-        for label, value in (("—", ""), ("low", "low"),
-                             ("medium", "medium"), ("high", "high")):
-            self.cc_effort_combo.addItem(label, userData=value)
-        _select_data(self.cc_effort_combo, self.settings.claude_code_effort)
-        cc_form.addRow(t("settings_cc_effort", self.lang), self.cc_effort_combo)
+        # Segmented rather than a dropdown (3q): four short options, and
+        # seeing them together is what says the setting is about how hard the
+        # session thinks rather than which model runs.
+        self.cc_effort_seg = Segmented([(t("settings_as_session", self.lang), ""),
+                                        (t("effort_low", self.lang), "low"),
+                                        (t("effort_medium", self.lang), "medium"),
+                                        (t("effort_high", self.lang), "high")])
+        self.cc_effort_seg.set_current_data(self.settings.claude_code_effort)
+        cc_form.addRow(t("settings_cc_effort", self.lang), self.cc_effort_seg)
         layout.addWidget(self.claude_code_group)
 
         # --- xformat group ---
@@ -354,7 +552,99 @@ class SettingsDialog(QDialog):
         layout.addWidget(cli_group)
         self._refresh_cli_status()
 
+        # --- what a run leaves behind ------------------------------------
+        # Artboard 3q puts the cache and the uninstall here, and both are
+        # about the same thing: what this tool has put on the machine.
+        self.cache_label = muted("")
+        self.cache_label.setWordWrap(True)
+        layout.addWidget(self.cache_label)
+
+        actions = QHBoxLayout()
+        self.clear_cache_btn = QPushButton(t("settings_clear_cache", self.lang))
+        self.clear_cache_btn.setProperty("class", theme.CLASS_QUIET)
+        self.clear_cache_btn.clicked.connect(self._on_clear_cache)
+        actions.addWidget(self.clear_cache_btn)
+        self.uninstall_btn = QPushButton(t("settings_uninstall", self.lang))
+        self.uninstall_btn.setProperty("class", theme.CLASS_QUIET)
+        self.uninstall_btn.clicked.connect(self._on_uninstall)
+        actions.addWidget(self.uninstall_btn)
+        actions.addStretch(1)
+        layout.addLayout(actions)
+        self._refresh_cache_label()
+
         return w
+
+    def _refresh_cache_label(self) -> None:
+        """How much is cached, and where, in one line.
+
+        A count rather than "cache: on": the question this answers is
+        whether clearing it would throw anything away.
+        """
+        import judgment_cache
+
+        directory = judgment_cache.cache_dir()
+        files = list(directory.glob("*.json")) if directory.exists() else []
+        self.cache_label.setText(t("settings_cache_note", self.lang,
+                                   n=len(files), path=str(directory)))
+        self.clear_cache_btn.setEnabled(bool(files))
+
+    def _on_clear_cache(self) -> None:
+        """Throw away what a model has already said about passages.
+
+        Offered because a cached judgment outlives the reason it was right:
+        a detector change, a different model, a rewritten rubric. The cache
+        is keyed on all three, so this is rarely needed - which is why it is
+        a button here rather than an option on every run.
+        """
+        import shutil
+
+        import judgment_cache
+
+        directory = judgment_cache.cache_dir()
+        if not directory.exists():
+            self._refresh_cache_label()
+            return
+        answer = QMessageBox.question(
+            self, t("settings_clear_cache", self.lang),
+            t("settings_clear_cache_confirm", self.lang, path=str(directory)))
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        shutil.rmtree(directory, ignore_errors=True)
+        self._refresh_cache_label()
+
+    def _on_uninstall(self) -> None:
+        """Remove XAnalyze from this machine, after saying what that means.
+
+        The list is enumerated first and shown in the question, because
+        "uninstall" covers four different things here - the app, the command
+        line link, the configuration, the keychain entries - and someone
+        agreeing to it should be agreeing to the actual list. Reports already
+        written and run folders are not on it: those are their work, not the
+        tool's state.
+        """
+        import uninstaller
+
+        items = uninstaller.enumerate_items()
+        present = [i for i in items if i.exists]
+        if not present:
+            QMessageBox.information(self, t("settings_uninstall", self.lang),
+                                    t("settings_uninstall_nothing", self.lang))
+            return
+        lines = [t("settings_uninstall_confirm", self.lang), ""]
+        lines += [f"  · {item.label}" for item in present]
+        notes = uninstaller.remaining_notes()
+        if notes:
+            lines += ["", t("settings_uninstall_kept", self.lang)]
+            lines += [f"  · {note}" for note in notes]
+        answer = QMessageBox.question(self, t("settings_uninstall", self.lang),
+                                      "\n".join(lines))
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        removed, problems = uninstaller.remove_all(present)
+        message = t("settings_uninstall_done", self.lang, n=len(removed))
+        if problems:
+            message += "\n\n" + "\n".join(problems)
+        QMessageBox.information(self, t("settings_uninstall", self.lang), message)
 
     # ---------------------------------------------------------- behaviour
 
@@ -489,9 +779,10 @@ class SettingsDialog(QDialog):
             self.settings.xformat_endpoints = {}
 
         self.settings.ui_language = self.lang_combo.currentData()
-        self.settings.theme = self.theme_combo.currentData() or "auto"
+        self.settings.theme = self.theme_seg.current_data() or "auto"
         self.settings.max_pages = self.max_pages_spin.value()
         self.settings.unicode_check_enabled = self.unicode_enabled_box.isChecked()
+        self.settings.auto_start_devserver = self.devserver_switch.isChecked()
         self.settings.unicode_categories = [
             key for key, box in self.category_boxes.items() if box.isChecked()
         ]
@@ -501,7 +792,7 @@ class SettingsDialog(QDialog):
         # so these are read straight rather than falling back to the old
         # value the way the free-text model field above has to.
         self.settings.claude_code_model = self.cc_model_combo.currentData() or ""
-        self.settings.claude_code_effort = self.cc_effort_combo.currentData() or ""
+        self.settings.claude_code_effort = self.cc_effort_seg.current_data() or ""
         self.settings.xformat_base_url = self.xformat_url_edit.text().strip() or self.settings.xformat_base_url
 
         typed_key = self.api_key_edit.text().strip()

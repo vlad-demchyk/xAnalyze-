@@ -109,6 +109,15 @@ CLASS_INLINE_FIELD = "inline-field"
 #: The fillable area of a `panel()`, under its head.
 CLASS_PANEL_BODY = "panel-body"
 
+#: The settings screen (artboards 3d, 3q). `CLASS_SEGMENTED` is the strip a
+#: `Segmented` control sits in, `CLASS_SEGMENT` one of its choices;
+#: `CLASS_RAIL_ITEM` is a section name in the left-hand rail. All three are
+#: checkable states, which is why they need style of their own: a checked
+#: `QPushButton` is otherwise drawn as a pressed button.
+CLASS_SEGMENTED = "segmented"
+CLASS_SEGMENT = "segment"
+CLASS_RAIL_ITEM = "rail-item"
+
 
 def qcolor(value: str):
     """A palette colour as a `QColor`, alpha included.
@@ -547,6 +556,57 @@ QPushButton[class="{CLASS_ACCENT}"]:disabled {{
     background-color: {c(p.bg_muted)};
     border-color: {c(p.border)};
     color: {c(p.text_muted)};
+}}
+
+QWidget[class="{CLASS_SEGMENTED}"] {{
+    background-color: {c(p.bg_muted)};
+    border: 1px solid {c(p.border)};
+    border-radius: {p.radius_md}px;
+}}
+
+QPushButton[class="{CLASS_SEGMENT}"] {{
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: {p.radius_sm}px;
+    padding: 1px {p.space_sm}px;
+    color: {c(p.text_muted)};
+    font-size: {p.font_size_sm}px;
+    font-weight: 500;
+}}
+
+QPushButton[class="{CLASS_SEGMENT}"]:hover {{
+    color: {c(p.text)};
+}}
+
+/* The chosen segment is a raised card on the strip, not a pressed button:
+   the strip is the track and the choice is what sits on it. */
+QPushButton[class="{CLASS_SEGMENT}"]:checked {{
+    background-color: {c(p.bg)};
+    border-color: {c(p.border_strong)};
+    color: {c(p.text)};
+    font-weight: 600;
+}}
+
+QPushButton[class="{CLASS_RAIL_ITEM}"] {{
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: {p.radius_md}px;
+    padding: {p.space_sm // 2}px {p.space_sm}px;
+    color: {c(p.text_muted)};
+    text-align: left;
+    font-weight: 500;
+}}
+
+QPushButton[class="{CLASS_RAIL_ITEM}"]:hover {{
+    background-color: {c(p.bg_hover)};
+    color: {c(p.text)};
+}}
+
+QPushButton[class="{CLASS_RAIL_ITEM}"]:checked {{
+    background-color: {c(p.bg)};
+    border-color: {c(p.border)};
+    color: {c(p.text)};
+    font-weight: 600;
 }}
 
 QPushButton[class="{CLASS_QUIET}"] {{
