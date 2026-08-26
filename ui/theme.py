@@ -768,6 +768,39 @@ QCheckBox {{
     spacing: {p.space_sm}px;
 }}
 
+/* The radio in a provider row (3d) says which account a run uses, so
+   "chosen" has to be legible in both themes. Left to the platform style it
+   is drawn from the system palette, which on the dark sheet gave three
+   identical white discs and no way to see which one was selected. */
+QRadioButton {{
+    spacing: {p.space_sm}px;
+}}
+
+/* The radius has to match the *outer* box, which is the content plus both
+   borders: a 12px indicator with a 4px border is 20px across, and a radius
+   of 7 there draws a rounded square rather than a dot. */
+QRadioButton::indicator {{
+    width: 12px;
+    height: 12px;
+    border-radius: 7px;
+    border: 1px solid {c(p.border_strong)};
+    background-color: {c(p.bg)};
+}}
+
+QRadioButton::indicator:hover {{
+    border-color: {c(p.text_muted)};
+}}
+
+QRadioButton::indicator:checked {{
+    border: 4px solid {c(p.accent)};
+    border-radius: 10px;
+    background-color: {c(p.bg)};
+}}
+
+QRadioButton:disabled {{
+    color: {c(p.text_subtle)};
+}}
+
 QMessageBox, QFileDialog {{
     background-color: {c(p.bg_card)};
 }}

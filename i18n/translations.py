@@ -1655,6 +1655,72 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Voci rimosse: {n}.",
         "en": "Removed {n} item(s).",
     },
+    # The three accounts by name. `display_name` on the provider classes is
+    # English and belongs to the log and the CLI; a row in a Ukrainian
+    # settings screen is not the place it should surface.
+    "provider_name_xformat": {
+        "uk": "Акаунт xFormat",
+        "it": "Account xFormat",
+        "en": "xFormat account",
+    },
+    "provider_name_anthropic": {
+        "uk": "Anthropic (свій ключ)",
+        "it": "Anthropic (la tua chiave)",
+        "en": "Anthropic (your own key)",
+    },
+    "provider_name_claude-code": {
+        "uk": "Сесія Claude Code",
+        "it": "Sessione Claude Code",
+        "en": "Claude Code session",
+    },
+    "settings_who_pays": {
+        "uk": "ХТО ЧИТАЄ ТЕКСТ І ПЛАТИТЬ",
+        "it": "CHI LEGGE IL TESTO E CHI PAGA",
+        "en": "WHO READS THE TEXT AND PAYS",
+    },
+    "settings_account_as": {
+        "uk": "вхід виконано: {email}",
+        "it": "accesso effettuato: {email}",
+        "en": "signed in as {email}",
+    },
+    "settings_account_none": {
+        "uk": "вхід не виконано",
+        "it": "nessun accesso",
+        "en": "nobody is signed in",
+    },
+    "settings_account_note": {
+        "uk": "AI-прохід за підпискою · пароль не зберігається",
+        "it": "passaggio AI con abbonamento · la password non viene salvata",
+        "en": "the AI pass runs on the subscription · the password is not kept",
+    },
+    "settings_account_none_note": {
+        "uk": "без входу прогін іде локальним двигуном: знахідок менше, "
+              "але він нічого не коштує",
+        "it": "senza accesso l'esecuzione usa il motore locale: meno rilievi, "
+              "ma non costa nulla",
+        "en": "without it a run uses the local engine: fewer findings, and it "
+              "costs nothing",
+    },
+    "settings_key_in_keychain": {
+        "uk": "ключ {masked} · keychain",
+        "it": "chiave {masked} · keychain",
+        "en": "key {masked} · keychain",
+    },
+    "settings_key_missing": {
+        "uk": "ключа немає",
+        "it": "nessuna chiave",
+        "en": "no key configured",
+    },
+    "settings_cli_found": {
+        "uk": "CLI знайдено: {path} · сесію не перевіряли",
+        "it": "CLI trovata: {path} · sessione non verificata",
+        "en": "CLI found at {path} · the session has not been checked",
+    },
+    "settings_cli_missing": {
+        "uk": "claude CLI не знайдено на цій машині",
+        "it": "claude CLI non trovata su questa macchina",
+        "en": "the claude CLI is not on this machine",
+    },
     "settings_tab_general": {
         "uk": "Загальні",
         "it": "Generali",

@@ -128,6 +128,64 @@ class Screen(unittest.TestCase):
         for reason in _UNBUILT_ROWS.values():
             self.assertTrue(reason.strip())
 
+    def test_the_account_rows_are_a_choice_and_it_saves(self):
+        dialog, settings = self._dialog(llm_provider="anthropic")
+        self.assertEqual(dialog.current_provider(), "anthropic")
+        dialog.provider_buttons["claude-code"].setChecked(True)
+        dialog._refresh_provider_ui()
+        dialog.settings.save = lambda: None
+        dialog._on_accept()
+        self.assertEqual(settings.llm_provider, "claude-code")
+
+    def test_only_the_chosen_account_shows_its_details(self):
+        """Two greyed-out boxes under the one in use are three answers to a
+        question that has one."""
+        dialog, _ = self._dialog(llm_provider="anthropic")
+        # The screen opens on General, so the account page has to be the one
+        # on screen before "visible" means anything.
+        dialog._rail_buttons[0].click()
+        dialog.show()
+        self.app.processEvents()
+        visible = [name for name, box in dialog.provider_details.items()
+                   if box.isVisible()]
+        self.assertEqual(visible, ["anthropic"])
+        dialog.close()
+
+    def test_the_account_names_are_in_the_interface_language(self):
+        """`display_name` on the provider classes is English, and one English
+        row in a Ukrainian list is the defect the OK button had."""
+        dialog, _ = self._dialog()
+        for name, button in dialog.provider_buttons.items():
+            self.assertEqual(button.text(), t(f"provider_name_{name}", "uk"))
+
+    def test_opening_the_screen_asks_nothing_that_costs(self):
+        """The CLI's session takes a subprocess and the subscription's quota
+        takes a request; neither may happen while the dialog opens."""
+        calls = []
+
+        from llm.base import LLMProviderFactory
+
+        original = LLMProviderFactory.create
+
+        def spy(name, **kwargs):
+            provider = original(name, **kwargs)
+            calls.append(name)
+            original_status = provider.auth_status
+
+            def guarded():
+                calls.append(f"auth_status:{name}")
+                return original_status()
+
+            provider.auth_status = guarded
+            return provider
+
+        LLMProviderFactory.create = staticmethod(spy)
+        try:
+            self._dialog()
+        finally:
+            LLMProviderFactory.create = original
+        self.assertEqual([c for c in calls if c.startswith("auth_status")], [])
+
     def test_the_cache_row_says_where_the_cache_is(self):
         import judgment_cache
 

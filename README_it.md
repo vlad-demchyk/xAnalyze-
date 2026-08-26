@@ -1662,6 +1662,13 @@ solo dove l'elenco è aperto (lingua, modello). «Simboli» mostra che cosa
 intercetta davvero ogni categoria (`U+200B, U+200D, U+FEFF`), non solo il suo
 nome, e le righe si disattivano quando il passaggio sui caratteri è spento.
 
+«Account e modello» sono tre righe, una per account - l'abbonamento xFormat,
+la tua chiave Anthropic, la sessione Claude Code già autenticata su questa
+macchina - ognuna dice qual è il proprio stato, e la scelta è quale di esse
+usa l'esecuzione. Tutto ciò che si vede all'apertura è letto in locale e senza
+costo; le due risposte che costano qualcosa (la quota dell'abbonamento e la
+sessione della CLI) stanno dietro il pulsante «Verifica» della riga stessa.
+
 «Avanzate» dice anche che cosa lo strumento ha lasciato su questa macchina:
 quanti giudizi del modello sono in cache e dove, con un pulsante per svuotarla,
 e «Rimuovi XAnalyze da questo computer», che elenca esattamente che cosa

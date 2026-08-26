@@ -1847,6 +1847,13 @@ open-ended (language, model). *Symbols* shows what each category actually
 catches (`U+200B, U+200D, U+FEFF`) rather than only its name, and the rows go
 dead when the character pass itself is switched off.
 
+**Account and model** is three rows, one per account — the xFormat
+subscription, your own Anthropic key, the Claude Code session signed in on
+this machine — each saying what its own state is, with the choice of which one
+a run uses. Everything shown when the screen opens is read locally and
+cheaply; the two answers that cost something (the subscription's quota, the
+CLI's session) sit behind each row's own *Check*.
+
 **Advanced** also says what the tool has put on this machine: how many model
 judgments are cached and where, with a button to clear them, and *Remove
 XAnalyze from this machine*, which lists exactly what it would delete —

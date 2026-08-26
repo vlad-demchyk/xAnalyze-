@@ -31,7 +31,8 @@ import json
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QButtonGroup, QComboBox, QDialog, QFormLayout, QGroupBox, QHBoxLayout,
-    QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton, QScrollArea,
+    QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton, QRadioButton,
+    QScrollArea,
     QSpinBox, QStackedWidget, QVBoxLayout, QWidget,
 )
 
@@ -347,108 +348,195 @@ class SettingsDialog(QDialog):
         column.addStretch(1)
         return page
 
+    #: The three ways the AI pass can be paid for, in the order the design
+    #: lists them, with the settings group each one owns.
+    _PROVIDER_ROWS = (PROVIDER_XFORMAT, PROVIDER_ANTHROPIC, "claude-code")
+
     def _build_provider_tab(self) -> QWidget:
-        w = QWidget()
-        layout = QVBoxLayout(w)
+        """Who reads the text and who pays for it (artboard 3d).
 
-        self.provider_combo = QComboBox()
-        for name in LLMProviderFactory.available():
-            try:
-                label = LLMProviderFactory.create(name).display_name
-            except Exception:  # noqa: BLE001
-                label = name
-            self.provider_combo.addItem(label, userData=name)
-        idx = self.provider_combo.findData(self.settings.llm_provider)
-        self.provider_combo.setCurrentIndex(max(idx, 0))
-        self.provider_combo.currentIndexChanged.connect(self._refresh_provider_ui)
+        Three rows, one per account, each saying what *its own* state is -
+        a key in the keychain, a session on this machine, a subscription -
+        and the choice is which of them the run uses. The dropdown this
+        replaces named the three but described none of them, so the answer
+        to "why is the AI pass unavailable" was three group boxes down the
+        page rather than on the row you were choosing.
 
-        top_form = QFormLayout()
-        top_form.addRow(t("settings_provider", self.lang), self.provider_combo)
-        layout.addLayout(top_form)
+        Every status on this page is read locally and cheaply. Asking the
+        `claude` CLI takes a subprocess and up to thirty seconds, and the
+        subscription's remaining quota is a network call - neither may
+        happen while a settings screen is opening, so both sit behind the
+        row's own Check button.
+        """
+        page, column = self._page()
 
-        note = QLabel(t("settings_provider_note", self.lang))
-        note.setWordWrap(True)
-        note.setProperty("class", theme.CLASS_MUTED)
-        layout.addWidget(note)
-
-        # --- Anthropic group ---
-        self.anthropic_group = QGroupBox("Anthropic")
-        a_form = QFormLayout(self.anthropic_group)
-        self.api_key_edit = QLineEdit()
-        self.api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        existing = config.get_anthropic_api_key()
-        if existing:
-            self.api_key_edit.setPlaceholderText("•••• " + existing[-4:])
-        a_form.addRow(t("settings_api_key", self.lang), self.api_key_edit)
-        self.model_edit = QLineEdit(self.settings.claude_model)
-        a_form.addRow(t("settings_model", self.lang), self.model_edit)
-        layout.addWidget(self.anthropic_group)
-
-        # --- Claude Code group ---
-        # Its own box, because it is a different account from the one above:
-        # this is the session already signed in on this machine, and what it
-        # costs is a setting rather than a detail - the AI pass runs over
-        # every block on a site. `sonnet` at `low` effort is enough for the
-        # job, which classifies short passages against a fixed rubric.
-        self.claude_code_group = QGroupBox("Claude Code")
-        cc_form = QFormLayout(self.claude_code_group)
-        self.cc_model_combo = QComboBox()
-        for label, value in (("—", ""), ("sonnet", "sonnet"),
-                             ("opus", "opus"), ("haiku", "haiku")):
-            self.cc_model_combo.addItem(label, userData=value)
-        _select_data(self.cc_model_combo, self.settings.claude_code_model)
-        cc_form.addRow(t("settings_cc_model", self.lang), self.cc_model_combo)
-        # Segmented rather than a dropdown (3q): four short options, and
-        # seeing them together is what says the setting is about how hard the
-        # session thinks rather than which model runs.
-        self.cc_effort_seg = Segmented([(t("settings_as_session", self.lang), ""),
-                                        (t("effort_low", self.lang), "low"),
-                                        (t("effort_medium", self.lang), "medium"),
-                                        (t("effort_high", self.lang), "high")])
-        self.cc_effort_seg.set_current_data(self.settings.claude_code_effort)
-        cc_form.addRow(t("settings_cc_effort", self.lang), self.cc_effort_seg)
-        layout.addWidget(self.claude_code_group)
-
-        # --- xformat group ---
-        self.xformat_group = QGroupBox("app.xformat.net")
-        x_layout = QVBoxLayout(self.xformat_group)
-        x_form = QFormLayout()
-        self.xformat_url_edit = QLineEdit(self.settings.xformat_base_url)
-        x_form.addRow(t("settings_base_url", self.lang), self.xformat_url_edit)
-        self.xformat_email_edit = QLineEdit(credentials.load_secret("xformat_account_email") or "")
-        x_form.addRow(t("settings_email", self.lang), self.xformat_email_edit)
-        self.xformat_password_edit = QLineEdit()
-        self.xformat_password_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        self.xformat_password_edit.setPlaceholderText(t("settings_password_hint", self.lang))
-        x_form.addRow(t("settings_password", self.lang), self.xformat_password_edit)
-        x_layout.addLayout(x_form)
-
-        btn_row = QHBoxLayout()
-        self.sign_in_btn = QPushButton(t("settings_sign_in", self.lang))
-        self.sign_in_btn.clicked.connect(self._on_sign_in)
+        self.account_card = QWidget()
+        self.account_card.setProperty("class", theme.CLASS_INSET)
+        self.account_card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        card_row = QHBoxLayout(self.account_card)
+        card_row.setContentsMargins(10, 8, 10, 8)
+        card_row.setSpacing(8)
+        self.account_initials = QLabel("")
+        self.account_initials.setProperty("class", theme.CLASS_CHIP)
+        card_row.addWidget(self.account_initials)
+        card_text = QWidget()
+        card_column = QVBoxLayout(card_text)
+        card_column.setContentsMargins(0, 0, 0, 0)
+        card_column.setSpacing(1)
+        self.account_name = QLabel("")
+        card_column.addWidget(self.account_name)
+        self.account_note = muted("")
+        self.account_note.setWordWrap(True)
+        card_column.addWidget(self.account_note)
+        card_row.addWidget(card_text, stretch=1)
         self.sign_out_btn = QPushButton(t("settings_sign_out", self.lang))
+        self.sign_out_btn.setProperty("class", theme.CLASS_QUIET)
         self.sign_out_btn.clicked.connect(self._on_sign_out)
-        self.check_btn = QPushButton(t("settings_check", self.lang))
-        self.check_btn.clicked.connect(self._on_check_status)
-        for b in (self.sign_in_btn, self.sign_out_btn, self.check_btn):
-            btn_row.addWidget(b)
-        x_layout.addLayout(btn_row)
+        card_row.addWidget(self.sign_out_btn)
+        column.addWidget(self.account_card)
+
+        self._section(column, t("settings_who_pays", self.lang),
+                      t("settings_provider_note", self.lang))
+
+        self.provider_group = QButtonGroup(self)
+        self.provider_group.setExclusive(True)
+        self.provider_buttons: dict = {}
+        self.provider_details: dict = {}
+        rows = []
+        for name in self._PROVIDER_ROWS:
+            rows.append(self._provider_row(name))
+        self._rows(column, rows)
+        self.provider_group.buttonClicked.connect(
+            lambda *_: self._refresh_provider_ui())
+
+        # The details of the chosen account, one group at a time. Shown
+        # rather than merely enabled: two greyed-out boxes under the one in
+        # use is three answers on screen to a question with one.
+        for name in self._PROVIDER_ROWS:
+            column.addWidget(self.provider_details[name])
 
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
-        x_layout.addWidget(self.status_label)
+        column.addWidget(self.status_label)
+        column.addStretch(1)
+        return page
 
-        self.storage_label = QLabel(
+    def _provider_row(self, name: str) -> QWidget:
+        choice = QRadioButton(self._provider_label(name))
+        choice.setChecked(name == self.settings.llm_provider)
+        self.provider_group.addButton(choice)
+        choice.setProperty("provider", name)
+        self.provider_buttons[name] = choice
+
+        note = muted("")
+        note.setWordWrap(True)
+        self.provider_details[name] = self._provider_group_box(name)
+
+        row = QWidget()
+        line = QHBoxLayout(row)
+        line.setContentsMargins(0, 6, 0, 6)
+        line.setSpacing(8)
+        text = QWidget()
+        stack = QVBoxLayout(text)
+        stack.setContentsMargins(0, 0, 0, 0)
+        stack.setSpacing(1)
+        stack.addWidget(choice)
+        stack.addWidget(note)
+        line.addWidget(text, stretch=1)
+
+        check = QPushButton(t("settings_check", self.lang))
+        check.setProperty("class", theme.CLASS_QUIET)
+        check.clicked.connect(lambda _=False, n=name: self._on_check_status(n))
+        line.addWidget(check)
+        self.provider_notes = getattr(self, "provider_notes", {})
+        self.provider_notes[name] = note
+        self.provider_checks = getattr(self, "provider_checks", {})
+        self.provider_checks[name] = check
+        return row
+
+    def _provider_label(self, name: str) -> str:
+        """The account's name in the interface language.
+
+        `display_name` on the provider classes is English and belongs to the
+        log and the CLI; falling back to it here would put one English row
+        in a Ukrainian list, which is the same defect the dialog's OK button
+        had.
+        """
+        label = t(f"provider_name_{name}", self.lang)
+        if label != f"provider_name_{name}":
+            return label
+        try:
+            return LLMProviderFactory.create(name).display_name
+        except Exception:  # noqa: BLE001 - a provider that cannot be built
+            return name                                    # still has a row
+
+    def _provider_group_box(self, name: str) -> QWidget:
+        if name == PROVIDER_ANTHROPIC:
+            box = QGroupBox("Anthropic")
+            form = QFormLayout(box)
+            self.api_key_edit = QLineEdit()
+            self.api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+            existing = config.get_anthropic_api_key()
+            if existing:
+                self.api_key_edit.setPlaceholderText("•••• " + existing[-4:])
+            form.addRow(t("settings_api_key", self.lang), self.api_key_edit)
+            self.model_edit = QLineEdit(self.settings.claude_model)
+            form.addRow(t("settings_model", self.lang), self.model_edit)
+            return box
+
+        if name == "claude-code":
+            # Its own box, because it is a different account from the one
+            # above: this is the session already signed in on this machine,
+            # and what it costs is a setting rather than a detail - the AI
+            # pass runs over every block on a site.
+            box = QGroupBox("Claude Code")
+            form = QFormLayout(box)
+            self.cc_model_combo = QComboBox()
+            for label, value in (("—", ""), ("sonnet", "sonnet"),
+                                 ("opus", "opus"), ("haiku", "haiku")):
+                self.cc_model_combo.addItem(label, userData=value)
+            _select_data(self.cc_model_combo, self.settings.claude_code_model)
+            form.addRow(t("settings_cc_model", self.lang), self.cc_model_combo)
+            # Segmented rather than a dropdown (3q): four short options, and
+            # seeing them together is what says the setting is about how hard
+            # the session thinks rather than which model runs.
+            self.cc_effort_seg = Segmented(
+                [(t("settings_as_session", self.lang), ""),
+                 (t("effort_low", self.lang), "low"),
+                 (t("effort_medium", self.lang), "medium"),
+                 (t("effort_high", self.lang), "high")])
+            self.cc_effort_seg.set_current_data(self.settings.claude_code_effort)
+            form.addRow(t("settings_cc_effort", self.lang), self.cc_effort_seg)
+            return box
+
+        box = QGroupBox("app.xformat.net")
+        layout = QVBoxLayout(box)
+        form = QFormLayout()
+        self.xformat_url_edit = QLineEdit(self.settings.xformat_base_url)
+        form.addRow(t("settings_base_url", self.lang), self.xformat_url_edit)
+        self.xformat_email_edit = QLineEdit(
+            credentials.load_secret("xformat_account_email") or "")
+        form.addRow(t("settings_email", self.lang), self.xformat_email_edit)
+        self.xformat_password_edit = QLineEdit()
+        self.xformat_password_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.xformat_password_edit.setPlaceholderText(
+            t("settings_password_hint", self.lang))
+        form.addRow(t("settings_password", self.lang), self.xformat_password_edit)
+        layout.addLayout(form)
+
+        buttons = QHBoxLayout()
+        self.sign_in_btn = QPushButton(t("settings_sign_in", self.lang))
+        self.sign_in_btn.clicked.connect(self._on_sign_in)
+        buttons.addWidget(self.sign_in_btn)
+        buttons.addStretch(1)
+        layout.addLayout(buttons)
+
+        self.storage_label = muted(
             t("settings_storage_keyring", self.lang) if credentials.using_keyring()
-            else t("settings_storage_file", self.lang)
-        )
+            else t("settings_storage_file", self.lang))
         self.storage_label.setWordWrap(True)
-        self.storage_label.setProperty("class", theme.CLASS_MUTED)
-        x_layout.addWidget(self.storage_label)
-
-        layout.addWidget(self.xformat_group)
-        layout.addStretch(1)
-        return w
+        layout.addWidget(self.storage_label)
+        return box
 
     def _build_suppression_tab(self) -> QWidget:
         """The way in to noise control, not a second copy of it.
@@ -648,10 +736,65 @@ class SettingsDialog(QDialog):
 
     # ---------------------------------------------------------- behaviour
 
+    def current_provider(self) -> str:
+        for name, button in self.provider_buttons.items():
+            if button.isChecked():
+                return name
+        return self.settings.llm_provider
+
     def _refresh_provider_ui(self) -> None:
-        is_xformat = self.provider_combo.currentData() == PROVIDER_XFORMAT
-        self.xformat_group.setEnabled(is_xformat)
-        self.anthropic_group.setEnabled(not is_xformat)
+        chosen = self.current_provider()
+        for name, box in self.provider_details.items():
+            box.setVisible(name == chosen)
+        self._refresh_local_statuses()
+
+    def _refresh_local_statuses(self) -> None:
+        """What each account is, read without a request and without a subprocess.
+
+        Everything here is a local file, a keychain entry or a `which`. The
+        two answers that cost something - the subscription's quota and the
+        CLI's session - are what the Check button is for, and until it is
+        pressed the row says what is known rather than guessing.
+        """
+        import shutil
+
+        email = credentials.load_secret("xformat_account_email") or ""
+        token = credentials.load_secret("xformat_refresh_token") or ""
+        self.provider_notes[PROVIDER_XFORMAT].setText(
+            t("settings_account_as", self.lang, email=email) if token and email
+            else t("settings_account_none", self.lang))
+
+        key = config.get_anthropic_api_key()
+        self.provider_notes[PROVIDER_ANTHROPIC].setText(
+            t("settings_key_in_keychain", self.lang, masked="•••• " + key[-4:])
+            if key else t("settings_key_missing", self.lang))
+
+        binary = shutil.which("claude")
+        self.provider_notes["claude-code"].setText(
+            t("settings_cli_found", self.lang, path=binary) if binary
+            else t("settings_cli_missing", self.lang))
+
+        self._refresh_account_card(email, bool(token))
+
+    def _refresh_account_card(self, email: str, signed_in: bool) -> None:
+        """The card the design puts on top: who this machine is signed in as.
+
+        Only the subscription can be signed *in* - a key and a CLI session
+        are not accounts this dialog opened - so the card is about xFormat,
+        and it says so plainly when there is nobody to name.
+        """
+        if signed_in and email:
+            initials = "".join(part[0] for part in email.split("@")[0]
+                               .replace(".", " ").split() if part)[:2].upper()
+            self.account_initials.setText(initials or "?")
+            self.account_name.setText(email)
+            self.account_note.setText(t("settings_account_note", self.lang))
+            self.sign_out_btn.setVisible(True)
+        else:
+            self.account_initials.setText("—")
+            self.account_name.setText(t("settings_account_none", self.lang))
+            self.account_note.setText(t("settings_account_none_note", self.lang))
+            self.sign_out_btn.setVisible(False)
 
     def _build_xformat_provider(self):
         endpoints = self._parse_endpoints(silent=True)
@@ -676,18 +819,34 @@ class SettingsDialog(QDialog):
         # The password is not kept anywhere — only the returned tokens are.
         self.xformat_password_edit.clear()
         self._report_status(status)
+        self._refresh_local_statuses()
 
     def _on_sign_out(self) -> None:
         provider = self._build_xformat_provider()
         provider.sign_out()
         self._set_status(t("settings_signed_out", self.lang), ok=True)
+        self._refresh_local_statuses()
 
-    def _on_check_status(self) -> None:
-        provider = self._build_xformat_provider()
+    def _on_check_status(self, name: str = PROVIDER_XFORMAT) -> None:
+        """Ask one account what it actually says about itself.
+
+        Per row rather than per dialog: "check" means three different things
+        here - a request to the subscription, a keychain read, a subprocess -
+        and only the row that was clicked should pay for its own answer.
+        """
         try:
-            self._report_status(provider.auth_status())
+            provider = (self._build_xformat_provider()
+                        if name == PROVIDER_XFORMAT
+                        else LLMProviderFactory.create(name))
+            status = provider.auth_status()
         except (LLMAuthError, LLMUnavailable) as exc:
             self._set_status(str(exc), ok=False)
+            return
+        except Exception as exc:  # noqa: BLE001 - a provider that cannot even
+            self._set_status(str(exc), ok=False)      # be built is an answer
+            return
+        self.provider_notes[name].setText(status.detail or "")
+        self._report_status(status)
 
     def _report_status(self, status) -> None:
         if not status.signed_in:
@@ -786,7 +945,7 @@ class SettingsDialog(QDialog):
         self.settings.unicode_categories = [
             key for key, box in self.category_boxes.items() if box.isChecked()
         ]
-        self.settings.llm_provider = self.provider_combo.currentData()
+        self.settings.llm_provider = self.current_provider()
         self.settings.claude_model = self.model_edit.text().strip() or self.settings.claude_model
         # Empty is a real answer here - "whatever the session is set to" -
         # so these are read straight rather than falling back to the old
