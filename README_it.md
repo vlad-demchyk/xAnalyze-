@@ -1611,6 +1611,19 @@ Il pulsante dice quante righe sta per scrivere, e *Salva su file* scrive lo
 stesso elenco in Markdown (`replacements-YYYY-MM-DD.md`) per una revisione che
 avviene in una pull request o sullo schermo di qualcun altro.
 
+Premere *Scrivi* mostra che cosa sta per succedere: i file, quanti frammenti
+ne riceve ciascuno e un interruttore per la copia `.bak` tenuta accanto a ogni
+file prima della sua prima modifica. Che cosa è successo torna in quattro
+numeri che non sono lo stesso numero - applicate, file modificati, saltate
+perché il frammento è cambiato dopo la scansione, errori - con «Annulla tutto»
+finché quelle copie ci sono ancora.
+
+Una riga-decisione ha un'azione propria, «Decidi», con tre vie d'uscita:
+scrivere tu il valore, segnare l'immagine come decorativa (un'affermazione che
+una persona può fare e lo strumento no), oppure passarla al modello. Una
+decisione a cui hai risposto diventa una riga **decisa** - selezionata, perché
+la decisione l'hai appena presa.
+
 *Fai completare N al modello* consegna le decisioni aperte al modello
 configurato. Ciò a cui risponde diventa una **bozza del modello** - non
 selezionata e con una frase da leggere - mai una riga meccanica; ciò che la

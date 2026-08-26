@@ -1796,6 +1796,18 @@ The button says how many rows it is about to write, and *Save to file* writes
 the same list as Markdown (`replacements-YYYY-MM-DD.md`) for a review that
 happens in a pull request or on somebody else's screen.
 
+Pressing *Write* shows what is about to happen: the files, how many
+fragments each of them gets, and a switch for the `.bak` copy kept beside
+every file before its first change. What happened comes back as four numbers
+that are not the same number — applied, files changed, skipped because the
+fragment moved after the scan, errors — with *Undo everything* offered while
+those copies are still there.
+
+A decision row has one action of its own, *Decide*, with three ways out: write
+the value yourself, mark the image decorative (a claim a person is allowed to
+make and the tool is not), or hand it to the model. A decision you answered
+becomes an **answered** row — ticked, because you have just made the decision.
+
 *Let the model answer N* hands the open decisions to the configured model. What
 it answers becomes a **model draft** — unticked, with a sentence to read —
 never a mechanical row, and what the page does not actually say is left as a

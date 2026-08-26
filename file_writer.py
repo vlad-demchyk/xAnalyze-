@@ -71,7 +71,14 @@ def _drop_overlaps(plans: list[ReplacementPlan], result: ApplyResult) -> list[Re
     return kept
 
 
-def apply_replacements(plans: list[ReplacementPlan]) -> ApplyResult:
+def apply_replacements(plans: list[ReplacementPlan],
+                       backup: bool = True) -> ApplyResult:
+    """Write every plan that still matches the file it came from.
+
+    `backup` mirrors `audit.fixer.apply_fixes`: on by default, because the
+    `.bak` beside the file is this tool's undo, and off only when the caller
+    was told to skip it - a repository already in git has its own.
+    """
     result = ApplyResult()
     by_file: dict[str, list[ReplacementPlan]] = {}
     for plan in plans:
@@ -107,14 +114,16 @@ def apply_replacements(plans: list[ReplacementPlan]) -> ApplyResult:
         if not applied_here:
             continue
 
-        try:
-            # One implementation of "keep the first copy", shared with the
-            # audit's own writer. Two safety nets with the same rule in them
-            # is how one of them eventually stops matching the other.
-            backups.take(file_path, original_content)
-        except OSError as exc:
-            result.errors.append(f"{file_path}: could not write backup ({exc}), skipping this file")
-            continue
+        if backup:
+            try:
+                # One implementation of "keep the first copy", shared with the
+                # audit's own writer. Two safety nets with the same rule in
+                # them is how one of them eventually stops matching the other.
+                backups.take(file_path, original_content)
+            except OSError as exc:
+                result.errors.append(
+                    f"{file_path}: could not write backup ({exc}), skipping this file")
+                continue
 
         try:
             with open(file_path, "w", encoding="utf-8", newline="") as fh:

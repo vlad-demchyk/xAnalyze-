@@ -1424,6 +1424,103 @@ _STRINGS: dict[str, dict[str, str]] = {
     },
 
     # --- Replacement list (artboard 3l) ------------------------------------
+    # --- Action dialogs (artboard 3j) --------------------------------------
+    "write_confirm_title": {
+        "uk": "Записати виправлення у файли?",
+        "it": "Scrivere le correzioni nei file?",
+        "en": "Write the corrections into the files?",
+    },
+    "write_confirm_body": {
+        "uk": "Це запише зміни у {n} фрагмент(ів) прямо у файли на цій машині.",
+        "it": "Questo scrive le modifiche in {n} frammento/i direttamente nei "
+              "file su questa macchina.",
+        "en": "This writes {n} fragment(s) straight into the files on this "
+              "machine.",
+    },
+    "write_confirm_backup": {
+        "uk": "зберегти .bak-копію кожного файла перед першою зміною",
+        "it": "salva una copia .bak di ogni file prima della prima modifica",
+        "en": "keep a .bak copy of every file before the first change",
+    },
+    "decision_title": {
+        "uk": "Це рішення, а не механічна заміна",
+        "it": "Questa è una decisione, non una sostituzione meccanica",
+        "en": "This is a decision, not a mechanical replacement",
+    },
+    "decision_where": {
+        "uk": "{where}",
+        "it": "{where}",
+        "en": "{where}",
+    },
+    "decision_placeholder": {
+        "uk": "напишіть значення самі",
+        "it": "scrivi tu il valore",
+        "en": "write the value yourself",
+    },
+    "decision_backup_note": {
+        "uk": "Копія .bak зберігається перед зміною, тож відкотити можна завжди.",
+        "it": "Una copia .bak viene salvata prima della modifica, quindi si "
+              "può sempre annullare.",
+        "en": "A .bak copy is kept before the change, so this can always be "
+              "undone.",
+    },
+    "decision_self": {
+        "uk": "Я впишу сам", "it": "Lo scrivo io", "en": "I will write it",
+    },
+    "decision_decorative": {
+        "uk": "Позначити декором",
+        "it": "Segna come decorativa",
+        "en": "Mark it decorative",
+    },
+    "decision_model": {
+        "uk": "Хай напише модель",
+        "it": "Lo scriva il modello",
+        "en": "Let the model write it",
+    },
+    "decision_button": {
+        "uk": "Вирішити", "it": "Decidi", "en": "Decide",
+    },
+    "write_done_title": {
+        "uk": "Готово", "it": "Fatto", "en": "Done",
+    },
+    "write_done_applied": {
+        "uk": "застосовано", "it": "applicate", "en": "applied",
+    },
+    "write_done_files": {
+        "uk": "файлів змінено", "it": "file modificati", "en": "files changed",
+    },
+    "write_done_skipped": {
+        "uk": "пропущено - фрагмент змінився після скану",
+        "it": "saltate - il frammento è cambiato dopo la scansione",
+        "en": "skipped - the fragment changed after the scan",
+    },
+    "write_done_errors": {
+        "uk": "помилок", "it": "errori", "en": "errors",
+    },
+    "write_done_backups": {
+        "uk": "Копії лежать поруч із файлами: {first} і ще {rest}.",
+        "it": "Le copie sono accanto ai file: {first} e altre {rest}.",
+        "en": "The copies are beside the files: {first} and {rest} more.",
+    },
+    "write_done_undo": {
+        "uk": "Відкотити все", "it": "Annulla tutto", "en": "Undo everything",
+    },
+    "write_done_undone": {
+        "uk": "Повернуто файлів: {n}.",
+        "it": "File ripristinati: {n}.",
+        "en": "Restored {n} file(s).",
+    },
+    "write_done_show": {
+        "uk": "Показати {n} пропущені",
+        "it": "Mostra {n} saltate",
+        "en": "Show the {n} skipped",
+    },
+    "write_done_ok": {
+        "uk": "Готово", "it": "Fatto", "en": "Done",
+    },
+    "replacements_source_answered": {
+        "uk": "вирішено", "it": "decisa", "en": "answered",
+    },
     "replacements_title": {
         "uk": "Список замін",
         "it": "Elenco delle sostituzioni",

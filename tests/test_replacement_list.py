@@ -130,7 +130,7 @@ class Collecting(unittest.TestCase):
         ]
         self.assertEqual(replacements.counts(rows),
                          {replacements.MECHANICAL: 1, replacements.DRAFT: 1,
-                          replacements.DECISION: 1})
+                          replacements.DECISION: 1, replacements.ANSWERED: 0})
 
 
 class Writing(unittest.TestCase):
@@ -208,6 +208,46 @@ class LettingTheModelAnswer(unittest.TestCase):
             self.assertEqual(answered, 0)
             self.assertEqual(rows[0].source, replacements.DECISION)
             self.assertFalse(rows[0].writable)
+
+
+class AnsweringADecision(unittest.TestCase):
+    """A decision a person answered, and what the row becomes (3j)."""
+
+    def _decision(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "index.html")
+            Path(path).write_text('<body>\n<img src="/icon.svg">\n</body>',
+                                  encoding="utf-8")
+            audit = AccessibilityResult(root=tmp, mode="repo", documents=[
+                DocumentReport(source=path, issues=[
+                    Issue(rule_id="image-alt", severity="critical", line=2,
+                          snippet='<img src="/icon.svg">',
+                          fix_snippet='<img src="/icon.svg" alt="…">',
+                          engine="static", source=path)])])
+            rows, _ = replacements.from_audit_result(audit, root=tmp)
+            return rows[0]
+
+    def test_writing_the_value_makes_it_an_answered_row(self):
+        row = self._decision()
+        self.assertTrue(replacements.answer_decision(row, text="A magnifier"))
+        self.assertEqual(row.source, replacements.ANSWERED)
+        self.assertIn("A magnifier", row.after)
+        self.assertTrue(row.writable)
+        # Answered arrives ticked: the decision has just been made.
+        self.assertTrue(row.selected)
+
+    def test_marking_it_decorative_takes_the_rule_s_own_correction(self):
+        row = self._decision()
+        self.assertTrue(replacements.answer_decision(row, decorative=True))
+        self.assertEqual(row.source, replacements.ANSWERED)
+        self.assertEqual(row.after, '<img src="/icon.svg" alt="…">')
+        self.assertFalse(row.plan.needs_input)
+
+    def test_a_row_that_is_not_a_decision_is_left_alone(self):
+        row = replacements.Replacement("a", "x", "y", replacements.MECHANICAL,
+                                       replacements.TEXT, plan=object())
+        self.assertFalse(replacements.answer_decision(row, text="z"))
+        self.assertEqual(row.source, replacements.MECHANICAL)
 
 
 class Exporting(unittest.TestCase):
@@ -328,6 +368,12 @@ class Screen(unittest.TestCase):
         with_fill = ReplacementListDialog(list(without.items), lang="en",
                                           on_fill=lambda items: 0)
         self.assertIn("1", with_fill.fill_btn.text())
+
+    def test_a_decision_row_offers_the_way_out_of_it(self):
+        dialog = self._dialog()
+        self.assertTrue(dialog.rows[2].decide_btn.isVisible()
+                        or dialog.rows[2].decide_btn.isVisibleTo(dialog))
+        self.assertFalse(dialog.rows[0].decide_btn.isVisibleTo(dialog))
 
     def test_the_header_counts_all_three_sources(self):
         dialog = self._dialog()

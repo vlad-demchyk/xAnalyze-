@@ -119,7 +119,14 @@ class ReplacementRow(QWidget):
             self.after.setProperty("class", theme.CLASS_CODE)
         row.addWidget(self.after, stretch=4)
 
-        # Not a `Cell`: the source is three known words in three languages,
+        # A decision has one action of its own: the three ways out of it
+        # (artboard 3j). Every other row's action is its tick.
+        self.decide_btn = QPushButton(t("decision_button", lang))
+        self.decide_btn.setProperty("class", theme.CLASS_QUIET)
+        self.decide_btn.setVisible(item.source == replacements.DECISION)
+        row.addWidget(self.decide_btn)
+
+        # Not a `Cell`: the source is four known words in three languages,
         # and it is the column that must never be the one that gives way.
         # The chip keeps its own width and the column keeps the chip, which
         # is why the label sits in a holder rather than being stretched to
@@ -148,6 +155,7 @@ class ReplacementRow(QWidget):
         else:
             self.after.setText(item.after)
             self.after.setProperty("class", theme.CLASS_CODE)
+        self.decide_btn.setVisible(item.source == replacements.DECISION)
         self.source.setText(t(f"replacements_source_{item.source}", self.lang))
         for widget in (self.after, self.source):
             widget.style().unpolish(widget)
@@ -248,6 +256,8 @@ class ReplacementListDialog(QDialog):
             row = ReplacementRow(item, self.lang, self)
             row.check.toggled.connect(
                 lambda checked, r=row: self._on_toggle(r, checked))
+            row.decide_btn.clicked.connect(
+                lambda _=False, r=row: self._on_decide(r))
             self.rows_layout.addWidget(row)
             self.rows.append(row)
         if not self.rows:
@@ -357,9 +367,36 @@ class ReplacementListDialog(QDialog):
         QMessageBox.information(self, t("replacements_title", self.lang),
                                 t("export_list_saved", self.lang, path=path))
 
+    def _on_decide(self, row) -> None:
+        """One decision, answered the way its owner chooses (artboard 3j)."""
+        from ui.window_parts.action_dialogs import DecisionDialog
+
+        dialog = DecisionDialog(row.item, self.lang, self.palette_, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        if dialog.choice == DecisionDialog.MODEL:
+            self._on_fill()
+            return
+        row.refresh()
+        self._refresh_counts()
+
     def _on_write(self) -> None:
+        """The last screen before the files change, then what changed."""
+        from ui.window_parts.action_dialogs import (WriteConfirmDialog,
+                                                    WriteOutcomeDialog)
+
         chosen = replacements.selected(self.items)
         if not chosen:
             return
-        self.outcome = replacements.write(self.items)
+        confirm = WriteConfirmDialog(self.items, self.lang, self.root,
+                                     self.palette_, self)
+        if confirm.exec() != QDialog.DialogCode.Accepted:
+            return
+        self.outcome = replacements.write(self.items, backup=confirm.backup)
+        done = WriteOutcomeDialog(self.outcome, self.lang, self.palette_, self)
+        done.exec()
+        if done.undo_requested:
+            # Undone means nothing was written after all, as far as everything
+            # downstream is concerned - the files are back as they were.
+            self.outcome = None
         self.accept()

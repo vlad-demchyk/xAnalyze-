@@ -188,14 +188,12 @@ class BulkRewriteMixin:
                                            self._audited_text(), self.lang)
 
     def _after_replacement_write(self, outcome) -> None:
-        lines = [t("replacements_written", self.lang, written=outcome.written,
-                   files=len(outcome.files_changed))]
-        if outcome.skipped:
-            lines.append(t("replacements_left", self.lang, n=len(outcome.skipped)))
-            lines += [f"  {reason}" for reason in outcome.skipped[:6]]
-        lines += list(outcome.errors)
-        QMessageBox.information(self, t("replacements_title", self.lang),
-                                "\n".join(lines))
+        """What the window does after the write; the screen already reported.
+
+        No message box here any more: the outcome is its own screen (3j),
+        with the four numbers and the undo, and repeating it in a modal is
+        the same fact told twice.
+        """
         self._refresh_repo_raw_text_after_write(outcome.files_changed)
         # Markup was written into the audited files, so the findings on
         # screen are now a claim about a version that no longer exists.

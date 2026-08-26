@@ -38,7 +38,13 @@ import unicode_rules
 MECHANICAL = "mechanical"
 DRAFT = "draft"
 DECISION = "decision"
-SOURCES = (MECHANICAL, DRAFT, DECISION)
+#: A decision a person answered - by writing the value, or by saying the
+#: image is decorative and meaning it. Its own source rather than folded into
+#: `MECHANICAL`, because the list's whole argument is that every row says
+#: where its replacement came from, and "somebody decided this" is neither
+#: derived nor drafted. It arrives ticked: the decision has just been made.
+ANSWERED = "answered"
+SOURCES = (MECHANICAL, DRAFT, DECISION, ANSWERED)
 
 #: Which writer a selected row goes to. Prose lives at character offsets in a
 #: file and is written by `file_writer`; markup is an element located in the
@@ -223,6 +229,43 @@ def collect(result=None, drafts: dict | None = None, audit_result=None,
     return rows, skipped
 
 
+def answer_decision(item, text: str = "", decorative: bool = False) -> bool:
+    """A person answers one decision, by writing the value or accepting it.
+
+    `decorative` takes the rule's own correction unchanged - for an image
+    that is `alt=""`, which is a true statement about a picture that carries
+    no meaning and a lie about one that does. That is exactly why it is a
+    person saying it here rather than the tool assuming it.
+    """
+    if item.source != DECISION or item.plan is None:
+        return False
+    plan = item.plan if decorative else item.plan.with_text(text)
+    if not decorative:
+        plan.needs_input = ""
+    else:
+        plan = _without_input(plan)
+    item.plan = plan
+    item.after = plan.replacement
+    item.source = ANSWERED
+    item.reason = ""
+    item.selected = True
+    return True
+
+
+def _without_input(plan):
+    """The same correction, no longer waiting on anybody.
+
+    A shallow copy rather than `dataclasses.replace`: the plan is whatever
+    the writer that made it uses, and this must not require it to be a
+    dataclass to keep working.
+    """
+    import copy
+
+    answered = copy.copy(plan)
+    answered.needs_input = ""
+    return answered
+
+
 def fill_decisions(items, provider, page_text: str = "",
                    language: str = "en") -> int:
     """Ask a model for the values the decisions are missing.
@@ -257,6 +300,20 @@ def fill_decisions(items, provider, page_text: str = "",
     return answered
 
 
+def by_file(items, root: str | None = None) -> list:
+    """`(short path, how many rows)` for the rows that would be written.
+
+    The confirmation asks about files, not about rows: "12 fragments" is a
+    number, and "5 of them in uk.json" is the thing somebody checks before
+    saying yes.
+    """
+    counts: dict = {}
+    for item in selected(items):
+        key = short_path(item.path, root) or item.where
+        counts[key] = counts.get(key, 0) + 1
+    return sorted(counts.items())
+
+
 # ------------------------------------------------------------------ writing
 
 @dataclass
@@ -267,10 +324,19 @@ class WriteOutcome:
     files_changed: list = field(default_factory=list)
     skipped: list = field(default_factory=list)
     errors: list = field(default_factory=list)
+    #: Files that now have a `.bak` beside them, so the outcome can offer to
+    #: put every one of them back rather than naming undo in the abstract.
+    backups: list = field(default_factory=list)
 
 
-def write(items) -> WriteOutcome:
-    """Write the selected rows through the writer each of them belongs to."""
+def write(items, backup: bool = True) -> WriteOutcome:
+    """Write the selected rows through the writer each of them belongs to.
+
+    `backup` is passed on rather than assumed: the `.bak` copy beside each
+    file is this tool's undo, and someone whose repository is already in git
+    may not want a second one. Off is a choice made in the confirmation, not
+    a default.
+    """
     from audit import fixer
     from file_writer import apply_replacements
 
@@ -280,7 +346,7 @@ def write(items) -> WriteOutcome:
     markup_plans = [i.plan for i in chosen if i.writer == MARKUP]
 
     if text_plans:
-        result = apply_replacements(text_plans)
+        result = apply_replacements(text_plans, backup=backup)
         outcome.written += result.passages_applied
         outcome.files_changed += result.files_changed
         outcome.skipped += [f"{b}: stale" for b in result.passages_skipped_stale]
@@ -288,12 +354,16 @@ def write(items) -> WriteOutcome:
                             for b in result.passages_skipped_overlap]
         outcome.errors += result.errors
     if markup_plans:
-        result = fixer.apply_fixes(markup_plans)
+        result = fixer.apply_fixes(markup_plans, backup=backup)
         outcome.written += len(result.applied)
         outcome.files_changed += [p for p in result.files_changed
                                   if p not in outcome.files_changed]
         outcome.skipped += [f"{s.rule_id}: {s.reason}" for s in result.skipped]
         outcome.errors += result.errors
+
+    import backups as _backups
+
+    outcome.backups = _backups.existing_for(outcome.files_changed)
     return outcome
 
 
