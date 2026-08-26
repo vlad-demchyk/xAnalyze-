@@ -201,5 +201,69 @@ class SuppressionSettingsTab(unittest.TestCase):
         self.assertIn("dashes", known["style"])
 
 
+@unittest.skipIf(QApplication is None, "PySide6 not available")
+class ADismissedFindingIsReadable(unittest.TestCase):
+    """The list used to be sixteen hex characters and a Remove button.
+
+    Nothing stored what a fingerprint had been, so the one action the tab
+    offers - bring it back - could not be taken on purpose.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_the_row_shows_the_note_and_keeps_the_value(self):
+        window = MainWindow()
+        window.settings.ignore = {
+            "fingerprints": ["4c1f9a2b7d3e5061"],
+            "labels": {"4c1f9a2b7d3e5061": "empty-heading \u00b7 about.html"},
+        }
+        dlg = SettingsDialog(window.settings, window.lang, parent=window)
+        listbox = dlg._suppression_lists["fingerprints"]
+        self.assertIn("empty-heading", listbox.item(0).text())
+        self.assertIn("4c1f9a2b7d3e5061", listbox.item(0).text())
+
+    def test_saving_keeps_the_note_of_what_survived_and_drops_the_rest(self):
+        window = MainWindow()
+        window.settings.ignore = {
+            "fingerprints": ["aaaa1111bbbb2222", "cccc3333dddd4444"],
+            "labels": {"aaaa1111bbbb2222": "one", "cccc3333dddd4444": "two"},
+        }
+        window.settings.save = lambda: None
+        dlg = SettingsDialog(window.settings, window.lang, parent=window)
+        dlg._suppression_lists["fingerprints"].takeItem(0)
+        dlg._on_accept()
+        self.assertEqual(window.settings.ignore["fingerprints"], ["cccc3333dddd4444"])
+        self.assertEqual(window.settings.ignore["labels"],
+                         {"cccc3333dddd4444": "two"})
+
+    def test_dismissing_a_finding_writes_the_note_beside_it(self):
+        with tempfile.TemporaryDirectory() as folder:
+            window = MainWindow()
+            window.source = SOURCE_REPO
+            window.repo_path_edit.setText(folder)
+            from models import CodeBlock, FileResult, RepoAnalysisResult
+
+            block = CodeBlock(block_id="c1", file_path=str(Path(folder) / "about.md"),
+                              start=0, end=27, line_number=1,
+                              text="Our comprehensive platform.")
+            span = TextSpan(block_id="c1", start=4, end=17, score=0.8,
+                            detector_name="offline", confidence=Confidence.HIGH,
+                            details={"source": "style"})
+            window.result = RepoAnalysisResult(
+                root_dir=folder,
+                files=[FileResult(path=block.file_path, blocks=[block])],
+                spans=[span])
+            window._on_ignore_span_clicked(span, block)
+            written = (Path(folder) / suppression.IGNORE_FILENAME).read_text()
+            self.assertIn("style", written)
+            self.assertIn("about.md", written)
+            # And the note does not become part of the entry on the way back.
+            parsed = suppression.Suppressions.parse(written)
+            self.assertEqual(len(parsed.fingerprints), 1)
+            self.assertEqual(len(parsed.fingerprints[0]), 16)
+
+
 if __name__ == "__main__":
     unittest.main()

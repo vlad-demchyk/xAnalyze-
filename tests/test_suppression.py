@@ -207,3 +207,84 @@ class KnownIds(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheFileIsADocument(unittest.TestCase):
+    """`.xanalyze-ignore` is committed and reviewed like any other file.
+
+    Every case here failed before: the writer rebuilt the file from the
+    dataclass, so one dismissal in the window deleted every comment somebody
+    had written; a trailing note was read as part of the value, so a rule
+    switched off with a reason next to it stayed on; and a line opening with
+    `#` was always a comment, which quietly threw away every CSS id selector.
+    """
+
+    SAMPLE = ("# vendored code we do not own\n"
+              "[paths]\n"
+              "vendor/\n"
+              "third_party/\n"
+              "\n"
+              "# generated\n"
+              "*.min.js\n"
+              "\n"
+              "[rules]\n"
+              "meta-viewport  # we ship a fixed-width admin on purpose\n")
+
+    def test_a_note_next_to_a_rule_is_not_part_of_the_rule(self):
+        parsed = suppression.Suppressions.parse(self.SAMPLE)
+        self.assertEqual(parsed.rules, ["meta-viewport"])
+        self.assertTrue(parsed.ignores_rule("meta-viewport"))
+        self.assertEqual(parsed.labels["meta-viewport"],
+                         "we ship a fixed-width admin on purpose")
+
+    def test_writing_it_back_keeps_the_comments(self):
+        parsed = suppression.Suppressions.parse(self.SAMPLE)
+        written = parsed.render()
+        for comment in ("# vendored code we do not own", "# generated",
+                        "# we ship a fixed-width admin on purpose"):
+            self.assertIn(comment, written)
+
+    def test_a_new_entry_lands_in_its_own_section(self):
+        parsed = suppression.Suppressions.parse(self.SAMPLE)
+        parsed.paths.append("build/")
+        written = parsed.render()
+        self.assertIn("build/", written)
+        # Still under [paths], not appended after [rules] at the end.
+        self.assertLess(written.index("build/"), written.index("[rules]"))
+        self.assertIn("# generated", written)
+
+    def test_a_removed_entry_disappears_and_the_rest_stays(self):
+        parsed = suppression.Suppressions.parse(self.SAMPLE)
+        parsed.paths.remove("third_party/")
+        written = parsed.render()
+        self.assertNotIn("third_party/", written)
+        self.assertIn("vendor/", written)
+        self.assertIn("# vendored code we do not own", written)
+
+    def test_an_id_selector_is_a_selector_and_not_a_comment(self):
+        parsed = suppression.Suppressions.parse("[selectors]\n#main .ads\n.faq #q1\n")
+        self.assertEqual(parsed.selectors, ["#main .ads", ".faq #q1"])
+
+    def test_a_note_inside_the_selector_section_still_works(self):
+        parsed = suppression.Suppressions.parse(
+            "[selectors]\n# third-party embeds\n.ads  # sold, not ours\n")
+        self.assertEqual(parsed.selectors, [".ads"])
+        self.assertEqual(parsed.labels[".ads"], "sold, not ours")
+
+
+class ADismissedFindingSaysWhatItWas(unittest.TestCase):
+    """A fingerprint is a one-way hash, so the note is the only record."""
+
+    def test_a_text_finding_gets_a_readable_note(self):
+        b = block(url="https://example.com/about")
+        spans, _ = analyse(b)
+        label = suppression.span_label(spans[0], b)
+        self.assertIn("example.com/about", label)
+        self.assertTrue(label.strip())
+
+    def test_the_note_is_one_line_and_bounded(self):
+        b = block(text="comprehensive " * 60)
+        spans, _ = analyse(b)
+        label = suppression.span_label(spans[0], b)
+        self.assertNotIn("\n", label)
+        self.assertLess(len(label), 160)

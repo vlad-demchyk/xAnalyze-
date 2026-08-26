@@ -62,6 +62,58 @@ _SECTIONS = {
 
 _SECTION_RE = re.compile(r"^\[(?P<name>[\w-]+)\]\s*$")
 
+#: A `#` only opens a trailing note when whitespace comes before it. Without
+#: that guard a CSS id selector (`#main`) or a path containing a hash would be
+#: read as an empty value plus a comment, and the entry would silently stop
+#: matching anything.
+_TRAILING_NOTE_RE = re.compile(r"\s#")
+
+#: Inside `[selectors]` that guard is not enough: `#main` is the commonest CSS
+#: selector there is, and `.faq #main` is an ordinary descendant selector. There
+#: a note has to be a `#` followed by a space, which is how people write notes
+#: anyway. Narrow on purpose - applying it everywhere would turn `#todo` in
+#: somebody's existing file from a comment into a phrase.
+_SELECTOR_NOTE_RE = re.compile(r"\s#(?=\s|$)")
+
+
+def _is_note_line(line: str, section: str) -> bool:
+    """Whether a line that opens with `#` is a note rather than a value."""
+    if not line.startswith("#"):
+        return False
+    return section != "selectors" or line[1:2] in ("", " ", "\t")
+
+
+def _split_note(line: str, section: str = "") -> tuple:
+    """One line as the value people meant and the note they wrote next to it."""
+    pattern = _SELECTOR_NOTE_RE if section == "selectors" else _TRAILING_NOTE_RE
+    match = pattern.search(line)
+    if not match:
+        return line.strip(), ""
+    return line[:match.start()].strip(), line[match.start():].strip()
+
+
+@dataclass
+class _Line:
+    """One line of the file as it was written.
+
+    Kept so that writing the file back is an edit of a document somebody
+    maintains, not a dump of a dataclass. `kind` is `header`, `comment`,
+    `blank` or `value`.
+    """
+    kind: str
+    section: str = ""
+    value: str = ""
+    note: str = ""
+
+    def render(self) -> str:
+        if self.kind == "header":
+            return f"[{self.section}]"
+        if self.kind == "comment":
+            return self.note
+        if self.kind == "blank":
+            return ""
+        return f"{self.value}  {self.note}".rstrip() if self.note else self.value
+
 
 @dataclass
 class Suppressions:
@@ -71,6 +123,15 @@ class Suppressions:
     paths: list = field(default_factory=list)
     selectors: list = field(default_factory=list)
     fingerprints: list = field(default_factory=list)
+
+    #: The note written next to a value, by value. A fingerprint is a hash,
+    #: so without this the list of dismissed findings is a list of hashes and
+    #: "un-hide this one" is a blind action.
+    labels: dict = field(default_factory=dict)
+
+    #: The file as it was read, line by line. Empty for a list that never came
+    #: from a file. See `render`.
+    layout: list = field(default_factory=list, repr=False, compare=False)
 
     def __post_init__(self):
         # Phrases and rules are matched case-insensitively; paths and
@@ -90,6 +151,7 @@ class Suppressions:
             paths=list(data.get("paths") or []),
             selectors=list(data.get("selectors") or []),
             fingerprints=list(data.get("fingerprints") or []),
+            labels=dict(data.get("labels") or {}),
         )
 
     def to_dict(self) -> dict:
@@ -100,6 +162,18 @@ class Suppressions:
             "selectors": list(self.selectors),
             "fingerprints": list(self.fingerprints),
         }
+
+    def as_settings(self) -> dict:
+        """`to_dict` plus the notes, for `Settings.ignore`.
+
+        Kept apart from `to_dict` because that one is five parallel lists and
+        every caller merges it by extending them; a dict among them would be
+        extended into a list of keys.
+        """
+        data = self.to_dict()
+        if self.labels:
+            data["labels"] = dict(self.labels)
+        return data
 
     @classmethod
     def parse(cls, text: str) -> "Suppressions":
@@ -112,42 +186,64 @@ class Suppressions:
         """
         buckets = {"phrases": [], "rules": [], "paths": [], "selectors": [],
                    "fingerprints": []}
+        labels: dict = {}
+        layout: list = []
         current = "phrases"
         for raw_line in text.splitlines():
             line = raw_line.strip()
-            if not line or line.startswith("#"):
+            if not line:
+                layout.append(_Line("blank"))
+                continue
+            if _is_note_line(line, current):
+                layout.append(_Line("comment", section=current, note=line))
                 continue
             match = _SECTION_RE.match(line)
             if match:
                 current = _SECTIONS.get(match.group("name").lower(), current)
+                layout.append(_Line("header", section=current))
                 continue
-            buckets[current].append(line)
-        return cls(**buckets)
+            value, note = _split_note(line, current)
+            if not value:
+                # A line that is only a note once the `#` is honoured.
+                layout.append(_Line("comment", section=current, note=note))
+                continue
+            buckets[current].append(value)
+            if note:
+                labels[value] = note.lstrip("#").strip()
+            layout.append(_Line("value", section=current, value=value, note=note))
+        return cls(**buckets, labels=labels, layout=layout)
 
     @classmethod
     def load(cls, settings=None, root: str | None = None) -> "Suppressions":
         """The user's list and the project's list, merged."""
         merged = {"phrases": [], "rules": [], "paths": [], "selectors": [],
                   "fingerprints": []}
+        labels: dict = {}
+
+        def take(other: "Suppressions") -> None:
+            for key, values in other.to_dict().items():
+                merged[key].extend(values)
+            # First note wins: the personal list is read first, and a note
+            # somebody typed on their own machine is about their own decision.
+            for value, note in other.labels.items():
+                labels.setdefault(value, note)
 
         if settings is not None:
-            for key, values in cls.from_dict(getattr(settings, "ignore", None)).to_dict().items():
-                merged[key].extend(values)
+            take(cls.from_dict(getattr(settings, "ignore", None)))
 
         for path in _ignore_files(root):
             try:
                 text = path.read_text(encoding="utf-8")
             except OSError:
                 continue
-            for key, values in cls.parse(text).to_dict().items():
-                merged[key].extend(values)
+            take(cls.parse(text))
 
         # De-duplicate while keeping the order they were written in, so the
         # settings dialog shows the list back the way the user typed it.
         for key, values in merged.items():
             seen = set()
             merged[key] = [v for v in values if not (v in seen or seen.add(v))]
-        return cls(**merged)
+        return cls(**merged, labels=labels)
 
     # ------------------------------------------------------------ matching
 
@@ -201,26 +297,80 @@ class Suppressions:
 
     # --------------------------------------------------------------- writing
 
+    #: The order sections are written in when the file is generated rather
+    #: than edited: the most surgical level first, as in the module docstring.
+    _SECTION_ORDER = ("fingerprints", "phrases", "rules", "paths", "selectors")
+
     def render(self) -> str:
         """The inverse of `parse`: back into the section format on disk.
 
-        Round-trips through `parse` losslessly for content (comments are the
-        one thing not preserved - there is nowhere to put them back once the
-        file has been read into a dataclass).
+        A list that came from a file is written back **as an edit of that
+        file**: every comment, blank line and grouping the author typed stays
+        where they put it, removed entries disappear, and new ones are added
+        at the end of the section they belong to. This is a file the README
+        tells people to commit and review, and the previous version rewrote it
+        from the dataclass - so one dismissal in the window deleted every
+        reason anybody had written down.
         """
-        sections = (
-            ("fingerprints", self.fingerprints),
-            ("phrases", self.phrases),
-            ("rules", self.rules),
-            ("paths", self.paths),
-            ("selectors", self.selectors),
-        )
+        if not self.layout:
+            return self._render_fresh()
+
+        remaining = {name: list(values) for name, values in self._sections()}
         lines: list = []
-        for name, values in sections:
+        #: Where a new entry for each section should be inserted: after the
+        #: last line already belonging to that section's block.
+        insert_at: dict = {}
+        for entry in self.layout:
+            if entry.kind == "value":
+                values = remaining.get(entry.section, [])
+                if entry.value not in values:
+                    continue  # removed since the file was read
+                values.remove(entry.value)
+                note = self.labels.get(entry.value, "")
+                lines.append(_Line("value", entry.section, entry.value,
+                                   f"# {note}" if note else "").render())
+            else:
+                lines.append(entry.render())
+            if entry.kind in ("header", "value"):
+                insert_at[entry.section] = len(lines)
+
+        for name in self._SECTION_ORDER:
+            new_values = remaining.get(name) or []
+            if not new_values:
+                continue
+            written = [_Line("value", name, value,
+                             f"# {self.labels[value]}" if self.labels.get(value) else "").render()
+                       for value in new_values]
+            at = insert_at.get(name)
+            if at is None:
+                if lines and lines[-1] != "":
+                    lines.append("")
+                lines.append(f"[{name}]")
+                lines.extend(written)
+            else:
+                lines[at:at] = written
+                # Everything after the insertion point moved down by as much.
+                for section, index in insert_at.items():
+                    if index > at:
+                        insert_at[section] = index + len(written)
+                insert_at[name] = at + len(written)
+
+        return "\n".join(lines).rstrip() + "\n" if lines else ""
+
+    def _sections(self):
+        return tuple((name, getattr(self, name)) for name in self._SECTION_ORDER)
+
+    def _render_fresh(self) -> str:
+        lines: list = []
+        for name, values in self._sections():
             if not values:
                 continue
             lines.append(f"[{name}]")
-            lines.extend(values)
+            lines.extend(
+                _Line("value", name, value,
+                      f"# {self.labels[value]}" if self.labels.get(value) else "").render()
+                for value in values
+            )
             lines.append("")
         return "\n".join(lines).rstrip() + "\n" if lines else ""
 
@@ -266,7 +416,43 @@ def issue_fingerprint(issue) -> str:
     return fingerprint(issue.source, issue.snippet or issue.selector, issue.rule_id)
 
 
-def add_fingerprint_to_ignore_file(root: str, value: str) -> Path:
+def _short_source(source: str) -> str:
+    """The part of a path or URL worth putting in a one-line note."""
+    source = (source or "").strip()
+    if not source:
+        return ""
+    if "://" in source:
+        return source.split("://", 1)[1].split("?", 1)[0] or source
+    return Path(source).name or source
+
+
+def span_label(span, block) -> str:
+    """What a dismissed text finding was, in one readable line.
+
+    The fingerprint is a one-way hash, so this note is the only thing that
+    can answer "what am I un-hiding?" - and the window used to answer it with
+    sixteen hex characters.
+    """
+    kind = (span.details or {}).get("source") or span.detector_name
+    source = _short_source(getattr(block, "file_path", None)
+                           or getattr(block, "page_url", "") or "")
+    text = " ".join((block.text[span.start:span.end] or "").split())
+    return " · ".join(part for part in (kind, source, _clip(text)) if part)
+
+
+def issue_label(issue) -> str:
+    """The audit counterpart of `span_label`."""
+    where = issue.selector or (f"line {issue.line}" if issue.line else "")
+    return " · ".join(part for part in (issue.rule_id, _short_source(issue.source),
+                                        where) if part)
+
+
+def _clip(text: str, limit: int = 60) -> str:
+    """Short enough to stay one line in a file people read in a diff."""
+    return text if len(text) <= limit else text[:limit - 1].rstrip() + "\u2026"
+
+
+def add_fingerprint_to_ignore_file(root: str, value: str, label: str = "") -> Path:
     """Append one "ignore this exact finding" line to the project's ignore
     file, creating it if it does not exist yet.
 
@@ -284,6 +470,10 @@ def add_fingerprint_to_ignore_file(root: str, value: str) -> Path:
                 if ignore_path.is_file() else Suppressions())
     if value not in existing.fingerprints:
         existing.fingerprints.append(value)
+    if label:
+        # A fingerprint is a one-way hash of the finding, so this note is the
+        # only thing that can ever tell the reader what they hid.
+        existing.labels[value] = label
     ignore_path.write_text(existing.render(), encoding="utf-8")
     return ignore_path
 

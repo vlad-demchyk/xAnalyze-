@@ -12,8 +12,8 @@ import json
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QFrame, QGroupBox,
-    QHBoxLayout, QLabel, QLineEdit, QListWidget, QMessageBox, QPlainTextEdit, QPushButton,
-    QScrollArea, QSpinBox, QTabWidget, QVBoxLayout, QWidget,
+    QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox,
+    QPlainTextEdit, QPushButton, QScrollArea, QSpinBox, QTabWidget, QVBoxLayout, QWidget,
 )
 
 import cli_install
@@ -23,6 +23,27 @@ from i18n.translations import LANGUAGES, t
 from llm import credentials
 from llm.base import LLMAuthError, LLMProviderFactory, LLMUnavailable
 from ui import theme
+
+def _suppression_item(value: str, note: str) -> QListWidgetItem:
+    """One suppression row, shown the way the file shows it.
+
+    A fingerprint is sixteen hex characters, so a row without its note tells
+    the reader nothing about what pressing Remove would bring back. The note
+    is displayed exactly as it is written on disk (`value  # note`) rather
+    than in some list-only format, so the window and a diff of
+    `.xanalyze-ignore` read the same.
+    """
+    item = QListWidgetItem(f"{value}  # {note}" if note else value)
+    item.setData(Qt.ItemDataRole.UserRole, value)
+    if note:
+        item.setToolTip(note)
+    return item
+
+
+def _suppression_value(item: QListWidgetItem) -> str:
+    """The entry itself, never the row's display text."""
+    return item.data(Qt.ItemDataRole.UserRole) or item.text()
+
 
 PROVIDER_ANTHROPIC = "anthropic"
 PROVIDER_XFORMAT = "xformat"
@@ -298,6 +319,7 @@ class SettingsDialog(QDialog):
         layout.addWidget(note)
 
         own = suppression.Suppressions.from_dict(self.settings.ignore)
+        self._suppression_labels = dict(own.labels)
         self._suppression_lists: dict[str, QListWidget] = {}
         for key, label_key in _SUPPRESSION_LEVELS:
             group = QGroupBox(t(label_key, self.lang))
@@ -305,7 +327,8 @@ class SettingsDialog(QDialog):
             group_layout = QVBoxLayout(group)
 
             listbox = QListWidget()
-            listbox.addItems(getattr(own, key))
+            for value in getattr(own, key):
+                listbox.addItem(_suppression_item(value, own.labels.get(value, "")))
             listbox.setMaximumHeight(90)
             self._suppression_lists[key] = listbox
             group_layout.addWidget(listbox)
@@ -338,9 +361,10 @@ class SettingsDialog(QDialog):
                         value = entry.text().strip()
                     if not value:
                         return
-                    existing = [listbox.item(i).text() for i in range(listbox.count())]
+                    existing = [_suppression_value(listbox.item(i))
+                                for i in range(listbox.count())]
                     if value not in existing:
-                        listbox.addItem(value)
+                        listbox.addItem(_suppression_item(value, ""))
                     if isinstance(entry, QComboBox):
                         entry.setCurrentIndex(-1)
                         entry.clearEditText()
@@ -585,10 +609,20 @@ class SettingsDialog(QDialog):
         self.settings.unicode_categories = [
             key for key, box in self.category_boxes.items() if box.isChecked()
         ]
-        self.settings.ignore = {
-            key: [listbox.item(i).text() for i in range(listbox.count())]
+        # Rebuilt from the rows rather than edited in place, so a removal in
+        # the list is a removal in settings - and the notes are carried across
+        # for the values that survived, since the note is the only thing that
+        # says what a fingerprint was.
+        ignore = {
+            key: [_suppression_value(listbox.item(i)) for i in range(listbox.count())]
             for key, listbox in self._suppression_lists.items()
         }
+        kept = {value for values in ignore.values() for value in values}
+        labels = {value: note for value, note in self._suppression_labels.items()
+                  if value in kept}
+        if labels:
+            ignore["labels"] = labels
+        self.settings.ignore = ignore
 
         self.settings.llm_provider = self.provider_combo.currentData()
         self.settings.claude_model = self.model_edit.text().strip() or self.settings.claude_model

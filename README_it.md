@@ -1591,6 +1591,41 @@ third_party/
 Sopprimi scoperte specifiche tramite impostazioni o `.xanalyze-ignore`:
 - Per selettore CSS (escludi regioni)
 - Per rule ID (disabilita regole)
+- Per impronta (una scoperta esatta, nascosta una volta, assente dopo una nuova scansione)
+- Per frase o per percorso
+
+Le voci stanno sotto un'intestazione di sezione, e tutto ciò che precede la
+prima intestazione viene letto come frase, perché è quello che si scrive per
+primo:
+
+```
+[rules]
+meta-viewport  # l'area admin ha una larghezza fissa di proposito
+
+[selectors]
+# incorporamenti di terze parti
+#promo-banner
+.ads
+
+[fingerprints]
+083bea550659aadb  # style · about.md · comprehensive
+```
+
+**Il file resta tuo.** Commenti, righe vuote e raggruppamenti sopravvivono a
+una scrittura dall'applicazione: nascondere una scoperta nella finestra
+aggiunge una riga nella sezione giusta e lascia tutto il resto dove l'hai
+scritto.
+
+**Una nota dopo `#` è una nota, non parte della voce.** Scrivi il motivo
+accanto alla regola che hai disattivato e la regola resta disattivata. Dentro
+`[selectors]` un `#` seguito subito da un nome è un selettore di id
+(`#promo-banner`), quindi lì una nota richiede uno spazio dopo il `#`.
+
+**Nascondere una scoperta registra che cosa fosse.** Un'impronta è un hash a
+senso unico della scoperta, quindi l'applicazione scrive accanto una nota
+leggibile. Senza quella nota, riportare in vista una scoperta significa
+cancellare una riga di caratteri esadecimali e rifare la scansione per
+scoprire che cosa facesse.
 
 ---
 

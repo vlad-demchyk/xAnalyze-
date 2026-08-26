@@ -2361,7 +2361,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             return str(Path(path).parent) if path else None
         return None
 
-    def _add_fingerprint_suppression(self, value: str) -> None:
+    def _add_fingerprint_suppression(self, value: str, label: str = "") -> None:
         """Record "ignore this exact finding", in whichever list applies.
 
         The project's `.xanalyze-ignore` when the source is a folder or a
@@ -2371,20 +2371,25 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         """
         root = self._ignore_scan_root()
         if root:
-            suppression.add_fingerprint_to_ignore_file(root, value)
+            suppression.add_fingerprint_to_ignore_file(root, value, label)
             return
         fingerprints = list((self.settings.ignore or {}).get("fingerprints") or [])
         if value not in fingerprints:
             fingerprints.append(value)
             ignore = dict(self.settings.ignore or {})
             ignore["fingerprints"] = fingerprints
+            if label:
+                labels = dict(ignore.get("labels") or {})
+                labels[value] = label
+                ignore["labels"] = labels
             self.settings.ignore = ignore
             self.settings.save()
 
     def _on_ignore_span_clicked(self, span: TextSpan, block) -> None:
         """"Ignore this finding": suppress it and drop it from the list
         immediately, with an honest recount - not a re-run of the scan."""
-        self._add_fingerprint_suppression(suppression.span_fingerprint(span, block))
+        self._add_fingerprint_suppression(suppression.span_fingerprint(span, block),
+                                          suppression.span_label(span, block))
         if self.result is not None:
             self.result.spans = [s for s in self.result.spans if s is not span]
         self._collapse_inline_detail()
@@ -2394,7 +2399,8 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
 
     def _on_ignore_issue_clicked(self, issue) -> None:
         """The audit counterpart of `_on_ignore_span_clicked`."""
-        self._add_fingerprint_suppression(suppression.issue_fingerprint(issue))
+        self._add_fingerprint_suppression(suppression.issue_fingerprint(issue),
+                                          suppression.issue_label(issue))
         if self.audit_result is not None:
             for document in self.audit_result.documents:
                 if issue in document.issues:

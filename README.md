@@ -1773,6 +1773,38 @@ third_party/
 Suppress specific findings via settings or `.xanalyze-ignore`:
 - By CSS selector (exclude regions)
 - By rule ID (disable rules)
+- By fingerprint (one exact finding, dismissed once, gone after a re-scan)
+- By phrase, or by path
+
+Entries go under a section header, and anything before the first header is
+read as a phrase, which is what people write first:
+
+```
+[rules]
+meta-viewport  # we ship a fixed-width admin on purpose
+
+[selectors]
+# third-party embeds
+#promo-banner
+.ads
+
+[fingerprints]
+083bea550659aadb  # style · about.md · comprehensive
+```
+
+**The file stays yours.** Comments, blank lines and grouping survive a write
+from the app: dismissing a finding in the window adds one line to the right
+section and leaves everything else where you typed it.
+
+**A note after `#` is a note, not part of the entry.** Write the reason next
+to the rule you switched off and the rule is still switched off. Inside
+`[selectors]` a `#` that is followed immediately by a name is an id selector
+(`#promo-banner`), so a note there needs a space after the `#`.
+
+**Dismissing a finding records what it was.** A fingerprint is a one-way hash
+of the finding, so the app writes a readable note beside it. Without that
+note, un-hiding a finding later means removing a line of hex and re-scanning
+to find out what it did.
 
 ---
 

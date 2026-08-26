@@ -781,14 +781,18 @@ class MainViewModel(QObject):
     def ignore_span(self, span: TextSpan, block):
         root = self._ignore_scan_root()
         fingerprint = suppression.span_fingerprint(span, block)
+        label = suppression.span_label(span, block)
         if root:
-            suppression.add_fingerprint_to_ignore_file(root, fingerprint)
+            suppression.add_fingerprint_to_ignore_file(root, fingerprint, label)
         else:
             fingerprints = list((self.settings.ignore or {}).get("fingerprints") or [])
             if fingerprint not in fingerprints:
                 fingerprints.append(fingerprint)
                 ignore = dict(self.settings.ignore or {})
                 ignore["fingerprints"] = fingerprints
+                labels = dict(ignore.get("labels") or {})
+                labels[fingerprint] = label
+                ignore["labels"] = labels
                 self.settings.ignore = ignore
                 self.settings.save()
         if self.result is not None:
