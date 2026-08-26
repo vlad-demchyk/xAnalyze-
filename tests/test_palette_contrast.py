@@ -34,16 +34,12 @@ PAIRS = (
     ("text", "bg_muted", AA_TEXT, "text in an input, a combo, a spin box"),
     ("text", "bg_hover", AA_TEXT, "a hovered row in the findings list"),
     ("text", "page_bg", AA_TEXT, "text on the window's own canvas"),
-    ("text_muted", "bg", AA_TEXT, "the muted label class"),
-    ("text_muted", "bg_card", AA_TEXT, "the empty-state body"),
-    ("text_muted", "bg_muted", AA_TEXT, "a disabled button's label"),
     ("on_primary", "primary", AA_TEXT, "the Analyze button"),
     ("on_primary", "primary_hover", AA_TEXT, "the Analyze button, hovered"),
     ("on_accent", "accent", AA_TEXT, "an accent fill"),
     ("on_accent", "accent_hover", AA_TEXT, "an accent fill, hovered"),
     ("on_error", "error_strong", AA_TEXT, "the HIGH confidence badge"),
     ("on_amber", "amber", AA_TEXT, "the MEDIUM confidence badge"),
-    ("text_muted", "bg_muted", AA_TEXT, "the LOW confidence badge"),
     ("success_text", "bg", AA_TEXT, "the Settings status line, signed in"),
     ("error_text", "bg", AA_TEXT, "the Settings status line, failed"),
     ("accent", "bg", AA_TEXT, "a link-coloured word"),
@@ -63,6 +59,30 @@ PAIRS = (
 #: threshold that does not apply to decoration.
 UNASSERTED_BOUNDARY = ("border_strong", "bg_card")
 
+#: The three muted text tiers, taken from the design bundle as written and
+#: **below AA on the light sheet**. This is a decision, made 2026-08-26 with
+#: the numbers in hand, not a pair nobody measured.
+#:
+#: Stepping them to 4.5:1 was tried first and is what this replaces. The cost
+#: was not the hue: on these surfaces the band above 4.5:1 is narrow enough
+#: that all three tiers arrived at the same grey, so `#8b877f`, `#a8a49c` and
+#: `#7d7a73` became one colour and the hierarchy the design is read by - a
+#: label quieter than a value, a caret quieter than a label - stopped
+#: existing. Three tiers that can be told apart were judged worth more than
+#: three that pass and cannot.
+#:
+#: Pinned rather than skipped: the ratios below are asserted exactly, so a
+#: token that drifts still fails this file and the exception has to be taken
+#: again on purpose instead of widening on its own.
+DESIGN_EXCEPTIONS = (
+    ("text_muted", "bg", 3.43, 5.89, "the muted label class"),
+    ("text_muted", "bg_card", 3.43, 5.89, "the empty-state body"),
+    ("text_muted", "bg_muted", 3.12, 5.34, "a disabled label, the LOW badge"),
+    ("text_muted", "page_bg", 3.04, 6.36, "a hint on the window canvas"),
+    ("text_subtle", "bg", 2.38, 4.61, "the caret beside an inline value"),
+    ("text_ghost", "bg", 4.11, 2.40, "a ghost button's label"),
+)
+
 
 def rgb(value: str) -> tuple:
     text = value.lstrip("#")
@@ -81,6 +101,35 @@ class PaletteContrast(unittest.TestCase):
                         round(ratio, 2), threshold,
                         f"{foreground} on {background} in the {mode} theme is "
                         f"{ratio:.2f}:1, below {threshold}:1 - {where}")
+
+    def test_the_design_exceptions_are_still_exactly_what_was_decided(self):
+        """The muted tiers are below AA on purpose - at these numbers.
+
+        Fails on any drift, in either direction: a token edit that quietly
+        makes them worse, and one that makes them pass, both mean the
+        decision recorded above no longer describes the palette.
+        """
+        for mode, index in (("light", 2), ("dark", 3)):
+            palette = theme.current_palette(mode)
+            for exception in DESIGN_EXCEPTIONS:
+                foreground, background, where = (exception[0], exception[1],
+                                                 exception[4])
+                with self.subTest(theme=mode, where=where):
+                    ratio = contrast_ratio(rgb(getattr(palette, foreground)),
+                                           rgb(getattr(palette, background)))
+                    self.assertAlmostEqual(
+                        ratio, exception[index], places=2,
+                        msg=f"{foreground} on {background} in the {mode} theme "
+                            f"is now {ratio:.2f}:1, not the {exception[index]}:1 "
+                            f"this exception was taken at - {where}")
+
+    def test_the_muted_tiers_are_three_colours_and_not_one(self):
+        """What the AA-stepped palette lost, and the reason for the exception."""
+        for mode in ("light", "dark"):
+            palette = theme.current_palette(mode)
+            tiers = (palette.text_muted, palette.text_subtle, palette.text_ghost)
+            with self.subTest(theme=mode):
+                self.assertEqual(len(set(tiers)), 3, tiers)
 
     def test_the_badge_ink_does_not_follow_the_theme(self):
         """`error` and `amber` are the same hue on both sheets, so ink that

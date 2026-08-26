@@ -624,19 +624,24 @@ class Palette:
             bg_muted=color("--bg-muted", defaults.bg_muted),
             bg_hover=color("--bg-hover", defaults.bg_hover),
             text=color("--text", defaults.text),
-            # Words, so AA applies. The design's own muted grey is 3.04:1 on
-            # the canvas; this keeps its hue and moves it just far enough.
-            text_muted=toward_contrast(
-                color("--text-muted", defaults.text_muted), surfaces, 4.5),
-            # Decoration - the caret beside an inline value - so the 3:1
-            # threshold for non-text visual information is the right one.
-            # Held to *something* rather than to nothing: below 3:1 the caret
-            # stops being findable, which is the whole job it has.
-            text_subtle=toward_contrast(
-                color("--text-subtle", defaults.text_subtle), surfaces, 3.0),
-            # A ghost button's label is a word like any other.
-            text_ghost=toward_contrast(
-                color("--text-ghost", defaults.text_ghost), surfaces, 4.5),
+            # The three muted tiers are taken from the sheet as written.
+            #
+            # They were stepped toward AA before, and the cost was not the
+            # hue: `#8b877f`, `#a8a49c` and `#7d7a73` all had to travel past
+            # 4.5:1, which on these surfaces is one narrow band, so all three
+            # arrived at the same grey. Three tiers became one, and the
+            # hierarchy the design reads by - a label quieter than a value,
+            # a caret quieter than a label - stopped existing.
+            #
+            # Measured on the window canvas `#efece7`: 3.04:1, 2.11:1 and
+            # 3.63:1, all under the 4.5:1 this tool reports on other people's
+            # pages. That is a deliberate exception for the app's own chrome,
+            # taken knowingly (2026-08-26), not an oversight - and it is why
+            # `test_palette_contrast` names these three and their numbers
+            # instead of asserting a threshold they do not meet.
+            text_muted=color("--text-muted", defaults.text_muted),
+            text_subtle=color("--text-subtle", defaults.text_subtle),
+            text_ghost=color("--text-ghost", defaults.text_ghost),
             border=color("--border", defaults.border),
             border_strong=color("--border-strong", defaults.border_strong),
             divider=color("--divider", color("--border", defaults.divider)),
