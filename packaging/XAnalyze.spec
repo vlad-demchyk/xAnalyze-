@@ -56,6 +56,29 @@ datas = [
     *collect_data_files("textual"),
 ]
 
+#: The C2PA reader, when the build environment has it. Optional in
+#: `requirements.txt` and optional here for the same reason - but a frozen
+#: app has no pip, so for anyone who installs a bundle "optional" would mean
+#: "absent forever": the strongest provenance a file can carry would be
+#: reported as present-and-unread on every machine. The import lives inside
+#: a function (`audit.media._c2pa_module`), which PyInstaller does not
+#: follow, so it has to be named. 27 MB against a 1.1 GB bundle.
+def _c2pa_bundle():
+    try:
+        import c2pa
+    except Exception:  # noqa: BLE001 - building without it is allowed
+        return [], []
+    from pathlib import Path as _Path
+    package = _Path(c2pa.__file__).parent
+    binaries = [(str(lib), "c2pa/c2pa")
+                for lib in package.rglob("*.dylib")]
+    binaries += [(str(lib), "c2pa/c2pa") for lib in package.rglob("*.so")]
+    names = collect_submodules("c2pa") + collect_submodules("cryptography")
+    return binaries, names
+
+
+_C2PA_BINARIES, _C2PA_IMPORTS = _c2pa_bundle()
+
 hiddenimports = [
     # Registered by import side effect; PyInstaller follows the package
     # __init__ files, but naming them keeps a future lazy import from
@@ -67,12 +90,13 @@ hiddenimports = [
     *collect_submodules("textual"),
     "keyring.backends.macOS",
     "keyring.backends.fail",
+    *_C2PA_IMPORTS,
 ]
 
 analysis = Analysis(
     [str(ROOT / "app_entry.py")],
     pathex=[str(ROOT)],
-    binaries=[],
+    binaries=_C2PA_BINARIES,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],

@@ -1060,9 +1060,11 @@ pip install c2pa-python cryptography
 ```
 
 Senza di essi la segnalazione lo dice, invece di fingere che il file taccia.
-**I bundle scaricabili non contengono il lettore**: un'app congelata non ha
-pip, quindi un `.app` o un tarball CLI riporta le Content Credentials come
-presenti e non lette. Se serve il manifesto stesso, esegui dal sorgente.
+**I bundle scaricabili contengono il lettore**, perché un'app congelata non ha
+pip: lasciarlo opzionale lì avrebbe significato assente per sempre, e la
+provenienza più forte che un file possa portare si leggerebbe come presente e
+non letta su ogni macchina che non compila dal sorgente. Costa 27 MB su un
+bundle da 1.1 GB.
 
 Quando il manifesto viene letto, tre esiti restano distinti, perché sono tre
 affermazioni diverse:

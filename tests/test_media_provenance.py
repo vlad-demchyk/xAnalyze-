@@ -781,3 +781,42 @@ class ARealSignedFile(Temp):
         found = media.read_provenance_bytes(bytes(raw))
         self.assertEqual(found.kind, media.SIGNED_UNVERIFIED)
         self.assertIn("failed validation", found.detail)
+
+
+class TheBundlesCarryTheReader(unittest.TestCase):
+    """`requirements.txt` may call the reader optional; a bundle may not.
+
+    A frozen app has no pip, so "optional" there means absent forever, and
+    the strongest provenance a file can carry would read as
+    present-and-unread on every machine that did not build from source.
+    The import lives inside a function, which PyInstaller does not follow,
+    so the spec has to name it - and a spec edit that quietly drops the
+    name would show up nowhere until someone scanned a signed image.
+    """
+
+    SPECS = ("packaging/XAnalyze-cli.spec", "packaging/XAnalyze.spec")
+
+    def spec_text(self, name: str) -> str:
+        root = Path(__file__).resolve().parent.parent
+        return (root / name).read_text(encoding="utf-8")
+
+    def test_every_spec_names_the_reader(self):
+        for name in self.SPECS:
+            with self.subTest(spec=name):
+                text = self.spec_text(name)
+                self.assertIn("_C2PA_IMPORTS", text)
+                self.assertIn("_C2PA_BINARIES", text)
+
+    def test_the_native_library_is_collected_too(self):
+        # `c2pa` is a uniffi package: without its dylib the import
+        # succeeds and every call fails.
+        for name in self.SPECS:
+            with self.subTest(spec=name):
+                self.assertIn("dylib", self.spec_text(name))
+
+    def test_building_without_the_reader_is_still_allowed(self):
+        # It stays optional at build time: an environment that lacks it
+        # must produce a bundle, not a traceback.
+        for name in self.SPECS:
+            with self.subTest(spec=name):
+                self.assertIn("except Exception", self.spec_text(name))

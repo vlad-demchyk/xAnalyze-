@@ -1136,9 +1136,11 @@ pip install c2pa-python cryptography
 ```
 
 Without them the finding says so, in those words, instead of pretending the
-file is quiet. **The downloadable bundles do not carry the reader**: a frozen
-app has no pip, so a `.app` or a CLI tarball reports Content Credentials as
-present-and-unread. Run from source if you need the manifest itself.
+file is quiet. **The downloadable bundles carry the reader**, because a frozen
+app has no pip: leaving it optional there would have meant absent forever, and
+the strongest provenance a file can carry would read as present-and-unread on
+every machine that did not build from source. It costs 27 MB of a 1.1 GB
+bundle.
 
 When the manifest is read, three outcomes are kept apart, because they are
 three different statements:
