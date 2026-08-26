@@ -296,6 +296,123 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Una parte della pagina esclusa: un selettore CSS.",
         "en": "A part of the page excluded - a CSS selector.",
     },
+    # --- Setup screen (artboard 3b) ----------------------------------------
+    "setup_title": {
+        "uk": "Новий прогін", "it": "Nuova scansione", "en": "New run",
+    },
+    "setup_subtitle": {
+        "uk": "Офлайн-перевірка нічого не коштує і не надсилає текст нікуди.",
+        "it": "Il controllo offline non costa nulla e non invia il testo da "
+              "nessuna parte.",
+        "en": "The offline check costs nothing and sends the text nowhere.",
+    },
+    "setup_step_source": {
+        "uk": "1 · ЩО ДИВИМОСЬ", "it": "1 · CHE COSA GUARDIAMO",
+        "en": "1 · WHAT WE LOOK AT",
+    },
+    "setup_step_reading": {
+        "uk": "2 · ЯК ЧИТАЄМО", "it": "2 · COME LEGGIAMO", "en": "2 · HOW WE READ",
+    },
+    "setup_step_question": {
+        "uk": "3 · ЩО ШУКАЄМО", "it": "3 · CHE COSA CERCHIAMO",
+        "en": "3 · WHAT WE LOOK FOR",
+    },
+    "setup_step_judge": {
+        "uk": "4 · ХТО ОЦІНЮЄ", "it": "4 · CHI VALUTA", "en": "4 · WHO JUDGES",
+    },
+    "setup_source_site_hint": {
+        "uk": "обхід за посиланнями", "it": "seguendo i collegamenti",
+        "en": "following its links",
+    },
+    "setup_source_repo_hint": {
+        "uk": "код як написаний", "it": "il codice come è scritto",
+        "en": "the code as written",
+    },
+    "setup_source_file_hint": {
+        "uk": "одна сторінка", "it": "una sola pagina", "en": "one page",
+    },
+    "setup_depth_zero": {
+        "uk": "0 - лише вказана сторінка",
+        "it": "0 - solo la pagina indicata",
+        "en": "0 - only the page you name",
+    },
+    "setup_reading_code": {
+        "uk": "Код", "it": "Codice", "en": "Code",
+    },
+    "setup_reading_code_hint": {
+        "uk": "розмітка, шаблони, локалі - швидко",
+        "it": "markup, template, localizzazioni - veloce",
+        "en": "markup, templates, locales - fast",
+    },
+    "setup_reading_browser": {
+        "uk": "У браузері", "it": "Nel browser", "en": "In a browser",
+    },
+    "setup_reading_browser_hint": {
+        "uk": "axe-core, фокус, виміри · +кілька с/стор.",
+        "it": "axe-core, focus, misure · +alcuni s/pag.",
+        "en": "axe-core, focus, measurements · +a few s/page",
+    },
+    "setup_reading_note": {
+        "uk": "Спосіб читання випливає з джерела, його не обирають: сайт "
+              "читається обома, і різниця між прочитаннями сама є знахідкою.",
+        "it": "Il modo di leggere segue dalla sorgente e non si sceglie: un "
+              "sito viene letto in entrambi i modi, e la differenza fra le "
+              "due letture è essa stessa un rilievo.",
+        "en": "How a source is read follows from what it is, and is not "
+              "chosen: a site is read both ways, and the difference between "
+              "the two readings is itself a finding.",
+    },
+    "setup_check_accessibility_hint": {
+        "uk": "{count} правил · WCAG, SEO, швидкість",
+        "it": "{count} regole · WCAG, SEO, velocità",
+        "en": "{count} rules · WCAG, SEO, speed",
+    },
+    "setup_check_ai_hint": {
+        "uk": "кліше, структура, символи",
+        "it": "cliché, struttura, caratteri",
+        "en": "clichés, structure, characters",
+    },
+    "setup_checks_note": {
+        "uk": "Обидві читають ті самі сторінки - другий прогін не піде в мережу.",
+        "it": "Entrambe leggono le stesse pagine - la seconda scansione non "
+              "andrà in rete.",
+        "en": "Both read the same pages - a second run will not go to the "
+              "network.",
+    },
+    "setup_checks_one_at_least": {
+        "uk": "Прогін без жодного питання нічого не шукає.",
+        "it": "Una scansione senza domande non cerca nulla.",
+        "en": "A run with neither question asked looks for nothing.",
+    },
+    "setup_method_local_hint": {
+        "uk": "без мережі, без витрат", "it": "senza rete, senza costi",
+        "en": "no network, no cost",
+    },
+    "setup_method_embedding_hint": {
+        "uk": "embeddings, локально", "it": "embedding, in locale",
+        "en": "embeddings, locally",
+    },
+    "setup_method_ai_hint": {
+        "uk": "модель перевіряє й доповнює",
+        "it": "il modello verifica ed estende",
+        "en": "the model checks and extends",
+    },
+    "setup_method_needs_account": {
+        "uk": "Потрібен акаунт xFormat або власний ключ.",
+        "it": "Serve un account xFormat o una chiave personale.",
+        "en": "Needs an xFormat account or your own key.",
+    },
+    "setup_summary": {
+        "uk": "{source} {target}, читати {reading}, шукати {checks}, оцінює {method}",
+        "it": "{source} {target}, leggere {reading}, cercare {checks}, valuta {method}",
+        "en": "{source} {target}, read {reading}, look for {checks}, judged by {method}",
+    },
+    "setup_footer": {
+        "uk": "Готово до роботи",
+        "it": "Pronto",
+        "en": "Ready",
+    },
+
     "preview_empty_title": {
         "uk": "Сторінку ще не відкрито",
         "it": "Nessuna pagina ancora aperta",

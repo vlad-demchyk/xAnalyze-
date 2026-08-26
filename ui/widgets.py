@@ -802,6 +802,19 @@ class FlowLayout(QLayout):
     def addItem(self, item) -> None:  # noqa: N802 - Qt's spelling
         self._items.append(item)
 
+    def insertWidget(self, index: int, widget) -> None:  # noqa: N802 - Qt's spelling
+        """Put a widget back where it was.
+
+        `QBoxLayout` has this and `QLayout` does not, so a widget lent to
+        another layout and returned would always come back last. The toolbar
+        lends its Analyze button to the setup screen, and Analyze arriving
+        back after Cancel is a row nobody laid out.
+        """
+        self.addWidget(widget)          # reparents and appends, as Qt wants
+        item = self._items.pop()
+        self._items.insert(max(0, min(index, len(self._items))), item)
+        self.invalidate()
+
     def count(self) -> int:
         return len(self._items)
 

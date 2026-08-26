@@ -67,6 +67,7 @@ from ui.window_parts.run_progress import (
     DONE, PENDING, RUNNING, RunProgressPanel,
 )
 from ui.window_parts.runs_panel import RunsPanel
+from ui.window_parts.setup_screen import SetupScreen
 from ui.window_parts.shared import (
     MODE_AUDIT, MODE_FILE, MODE_REPO, MODE_WEB, _SEVERITY_BADGE,
     _SEVERITY_CONFIDENCE, _SUPPRESSED_NOTE, _browser_url,
@@ -459,6 +460,63 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self.col1_stack.setCurrentIndex(4)
         self.breakpoint_row.setVisible(False)
         self.col1_header.setText(t("comparison_title", self.lang))
+
+    # ------------------------------------------------------- setup vs work
+
+    def _show_setup_if_nothing_has_run(self) -> None:
+        """The setup screen until there is something to show instead.
+
+        "Something" is a result, not a press: a run that fails on its first
+        page should leave the person on the screen where the address is,
+        which is the setup screen, rather than on three empty columns.
+        """
+        self.show_setup(self.result is None and self.audit_result is None)
+
+    def show_setup(self, setup: bool) -> None:
+        if setup == (self.body_stack.currentIndex() == 0):
+            return
+        self.body_stack.setCurrentIndex(0 if setup else 1)
+        # The target fields move with the question being asked. On the setup
+        # screen the address *is* the task and sits in the middle of it; in
+        # the working layout it is one value on a line above the findings.
+        if setup:
+            self.setup_screen.target_layout.insertWidget(
+                0, self.source_controls_stack, stretch=1)
+            self.setup_screen.target_layout.addWidget(self.analyze_btn)
+        else:
+            self._strip_layout.insertWidget(self._strip_target_index,
+                                            self.source_controls_stack)
+            self._toolbar_actions.insertWidget(self._analyze_index,
+                                               self.analyze_btn)
+        # A `QStackedWidget` asks for the widest of *all* its pages, always,
+        # so the setup screen's four cards would put a floor under the window
+        # even while the working layout is showing - and the window has to be
+        # able to shrink past its own narrowest breakpoint. Same fix as
+        # `_size_stack_to_its_page`: the page that is not showing stops
+        # contributing a size hint.
+        for index in range(self.body_stack.count()):
+            page = self.body_stack.widget(index)
+            page.setSizePolicy(
+                QSizePolicy.Policy.Preferred if index == self.body_stack.currentIndex()
+                else QSizePolicy.Policy.Ignored,
+                QSizePolicy.Policy.Preferred if index == self.body_stack.currentIndex()
+                else QSizePolicy.Policy.Ignored)
+        self.inline_strip.setVisible(not setup)
+        # The top row keeps only what is about the window, not about the run:
+        # the run is the screen. "More…" reveals the judge and the provider,
+        # which are card 4; Cancel belongs to a run in flight and there is
+        # none while this screen is up.
+        self.advanced_toggle.setVisible(not setup)
+        if setup:
+            self.advanced_row.setVisible(False)
+        self.cancel_btn.setVisible(not setup)
+        # The depth is a number with no unit. In the strip a hairline and the
+        # words around it said what it was; on its own in the target row it
+        # needs its label back.
+        self.depth_label.setVisible(setup and self.source == SOURCE_SITE)
+        self._size_stack_to_its_page()
+        if setup:
+            self.setup_screen.refresh()
 
     def _show_preview_column(self) -> None:
         """Give the column back to the preview it belongs to.
@@ -1002,6 +1060,12 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         strip.addWidget(self.source_controls_stack)
         strip.addWidget(hairline())
         strip.addWidget(self.checks_combo)
+        # Kept so the target fields can be lent to the setup screen and given
+        # back. They are one set of widgets with one set of pickers; a second
+        # address field on the setup screen would be a second place for the
+        # same value to be wrong in.
+        self._strip_layout = strip
+        self._strip_target_index = strip.indexOf(self.source_controls_stack)
         self.inline_strip.setMinimumWidth(0)
         controls.addWidget(self.inline_strip)
 
@@ -1056,6 +1120,10 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self.settings_btn.setProperty("class", theme.CLASS_QUIET)
         self.runs_btn.clicked.connect(self._on_runs_clicked)
 
+        # Remembered for the same reason as the target fields: the button
+        # moves to the setup screen and comes back.
+        self._toolbar_actions = controls
+        self._analyze_index = controls.count()
         controls.addWidget(self.analyze_btn)
         controls.addWidget(self.cancel_btn)
         controls.addWidget(self.runs_btn)
@@ -1117,7 +1185,24 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         # look the surfaces exist to avoid.
         self.columns_splitter.setHandleWidth(gap)
         self.columns_splitter.setChildrenCollapsible(False)
-        root.addWidget(self.columns_splitter, stretch=1)
+
+        # Two bodies, one at a time: the setup screen while nothing has run
+        # (artboard 3b), the working layout once something has (3a). The
+        # window used to open on the working one with all three columns
+        # empty, which is the settings of a run written in eight words across
+        # the top of a blank window.
+        self.body_stack = QStackedWidget()
+        self.setup_screen = SetupScreen(self.app_state, self.palette_tokens,
+                                        self.lang)
+        self.setup_screen.analyze_requested.connect(self._on_analyze_clicked)
+        self.body_stack.addWidget(self.setup_screen)       # index 0
+        self.body_stack.addWidget(self.columns_splitter)   # index 1
+        # Starts on the working layout so that the first `show_setup(True)`
+        # is a real change and actually moves the fields across. It ran as a
+        # no-op when the stack already sat on index 0, which left the setup
+        # screen with an empty space where the address belongs.
+        self.body_stack.setCurrentIndex(1)
+        root.addWidget(self.body_stack, stretch=1)
 
         # Column 1: graphical copy of the site OR the raw source file being
         # analyzed, depending on mode.
@@ -1304,6 +1389,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         # The preview is the widest: it holds a rendered page at up to three
         # widths, and the other two hold text that wraps.
         self.columns_splitter.setSizes([380, 450, 380])
+        self._show_setup_if_nothing_has_run()
 
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
@@ -2315,6 +2401,9 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         return {}
 
     def _reset_scan_ui(self) -> None:
+        # A run is starting: the working layout is where it is watched, and
+        # the run's own progress panel is the preview column's page for it.
+        self.show_setup(False)
         self.analyze_btn.setEnabled(False)
         self.cancel_btn.setEnabled(True)
         self.flagged_list.clear()

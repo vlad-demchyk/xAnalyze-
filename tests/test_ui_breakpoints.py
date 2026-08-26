@@ -45,6 +45,9 @@ class Breakpoints(unittest.TestCase):
 
     def _window_at(self, width: int) -> MainWindow:
         window = MainWindow()
+        # The working layout, which is what this file is about. The window
+        # opens on the setup screen (artboard 3b) while nothing has run.
+        window.show_setup(False)
         window.show()
         self.app.processEvents()
         window.resize(WIDE_BREAKPOINT + 400, 800)

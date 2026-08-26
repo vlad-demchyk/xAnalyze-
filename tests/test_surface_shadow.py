@@ -159,6 +159,10 @@ class RenderedWindow:
 
         cls.palette = theme.current_palette(cls.THEME)
         cls.window = MainWindow()
+        # The working layout: this file measures the surfaces of the toolbar,
+        # the inline strip and the three columns, and the window opens on the
+        # setup screen while nothing has run.
+        cls.window.show_setup(False)
         cls.window.resize(1300, 800)
         # On the window, not on the application: setting the sheet on the
         # QApplication re-polishes every live widget in the process and

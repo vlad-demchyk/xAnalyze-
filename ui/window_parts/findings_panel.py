@@ -280,9 +280,16 @@ class FindingsPanelMixin:
             QDesktopServices.openUrl(QUrl(url))
 
     def _focus_target(self) -> None:
-        """Put the cursor where the answer goes, rather than only saying so."""
+        """Put the cursor where the answer goes, rather than only saying so.
+
+        And go back to the screen where the question is asked. This is the
+        way out of the working layout: a run that came back with nothing has
+        no findings to look at, and the next move is the target, which lives
+        on the setup screen (artboard 3b).
+        """
         from analysis_modes import SOURCE_REPO
 
+        self.show_setup(True)
         widget = (self.repo_path_edit if self.source == SOURCE_REPO
                   else self.url_edit)
         widget.setFocus()

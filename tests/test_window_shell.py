@@ -70,6 +70,11 @@ class WindowCase(unittest.TestCase):
         cls.app = QApplication.instance() or QApplication([])
     def setUp(self):
         self.window = MainWindow()
+        # Every case below is about the working layout - the top row, the
+        # three columns, the fields in the strip. The window opens on the
+        # setup screen (artboard 3b) while nothing has run; `TheSetupScreen`
+        # covers that, and covers the fact that it is where it opens.
+        self.window.show_setup(False)
         # Styled, the way the app actually runs. It matters for anything
         # measured: the top row is 52px styled and 42px bare, because QSS
         # padding is what gives a control its height, so measuring the bare
@@ -164,7 +169,7 @@ class TopRow(WindowCase):
         self.assertEqual(widgets, [self.window.toolbar,
                                    self.window.summary_bar,
                                    self.window.diagnosis_strip,
-                                   self.window.columns_splitter])
+                                   self.window.body_stack])
 
     def test_the_run_history_is_behind_a_button_not_in_the_row(self):
         """A list cannot live on a one-line row. It moved into a popup, and
@@ -238,6 +243,79 @@ class TopRow(WindowCase):
         self.window.resize(1400, 800)
         self.app.processEvents()
         self.assertLessEqual(self.window.toolbar.height(), TOP_ROW_HEIGHT + 4)
+
+
+class TheSetupScreen(unittest.TestCase):
+    """Artboard 3b: the screen the window opens on.
+
+    It used to open on the working layout - three columns of results, all
+    empty - with the whole of the run's settings folded into one line of
+    inline values above them. That line is right during work and wrong
+    before any: it is the entire task, written in eight words across the top
+    of a blank window.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def setUp(self):
+        self.window = MainWindow()
+        self.window.show()
+        self.app.processEvents()
+
+    def tearDown(self):
+        self.window.close()
+        self.window.deleteLater()
+        self.app.processEvents()
+
+    def test_the_window_opens_on_it(self):
+        self.assertEqual(self.window.body_stack.currentIndex(), 0)
+        self.assertFalse(self.window.inline_strip.isVisible())
+
+    def test_the_target_fields_move_there_and_come_back(self):
+        """One set of fields, lent to whichever surface is asking. A second
+        address field on the setup screen would be a second place for the
+        same value to be wrong in."""
+        screen = self.window.setup_screen
+        self.assertGreaterEqual(
+            screen.target_layout.indexOf(self.window.source_controls_stack), 0)
+        self.window.show_setup(False)
+        self.assertEqual(
+            self.window._strip_layout.indexOf(self.window.source_controls_stack),
+            self.window._strip_target_index)
+        self.assertEqual(
+            self.window._toolbar_actions.indexOf(self.window.analyze_btn),
+            self.window._analyze_index)
+        self.window.show_setup(True)
+        self.assertGreaterEqual(
+            screen.target_layout.indexOf(self.window.source_controls_stack), 0)
+
+    def test_starting_a_run_gives_the_window_to_the_working_layout(self):
+        self.window._reset_scan_ui()
+        self.assertEqual(self.window.body_stack.currentIndex(), 1)
+        self.assertTrue(self.window.inline_strip.isVisible())
+
+    def test_a_choice_made_here_is_the_same_choice_the_top_row_shows(self):
+        """Both surfaces render one `AppState`, rather than each keeping a
+        copy of the decision."""
+        screen = self.window.setup_screen
+        screen.source_buttons[SOURCE_REPO][0].setChecked(True)
+        self.assertEqual(self.window.app_state.source, SOURCE_REPO)
+        self.window.app_state.set_source(SOURCE_SITE)
+        self.assertTrue(screen.source_buttons[SOURCE_SITE][0].isChecked())
+
+    def test_it_does_not_put_a_floor_under_the_window(self):
+        """Four cards side by side are wide, and a stacked widget asks for
+        the widest of all its pages whether it is showing them or not."""
+        self.window.show_setup(False)
+        self.assertLess(self.window.minimumSizeHint().width(), MEDIUM_BREAKPOINT)
+
+    def test_the_summary_names_what_the_run_will_be(self):
+        self.window.app_state.set_target("example.com")
+        self.window.setup_screen.refresh()
+        text = self.window.setup_screen.summary.text()
+        self.assertIn("example.com", text)
 
 
 class ThreeColumnsInReadingOrder(WindowCase):

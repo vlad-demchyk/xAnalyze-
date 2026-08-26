@@ -67,6 +67,7 @@ Desktop and headless analyzer: AI-generated text detection, non-keyboard charact
 - **Repository Facts** — what the repo reveals about itself: commits naming an assistant as author, committed assistant configuration, and a `.env` no ignore rule covers
 - **String Roles** — a tool schema's field descriptions are told apart from page copy, so a model-facing `description:` is not judged as if a person would read it
 - **Blame on a Finding** — each finding can name the commit that last touched its line, so "who wrote this" is a record rather than a guess
+- **Setup Screen** — the window opens on the run you are about to make: what is looked at, how it is read, what is looked for, who judges, and a sentence naming the result before you press anything
 - **Noise Control** — one screen for everything you have hidden, saying what each entry was, which list it is written in (yours or the project's), and putting it back into that one
 - **Styled Reports** — branded PDF/HTML for humans
 - **Agent Briefings** — markdown/JSON for coding agents
