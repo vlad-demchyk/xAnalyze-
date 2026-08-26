@@ -112,7 +112,7 @@ correzione già pronta.
 - **Trascina una pagina** — un `.html` salvato o una cartella trascinati sulla finestra diventano l'obiettivo, e la schermata di preparazione mostra nome e dimensione del file. Un rilievo visto a una sola larghezza su tre lo dice: il pulsante del menu mobile non è affatto nel DOM desktop
 - **Report stilizzati** — PDF/HTML brandizzati per persone
 - **Briefing per agenti** — markdown/JSON per coding agent
-- **CLI + GUI + TUI** — un binario, tre interfacce
+- **CLI + GUI + TUI** — un binario, tre interfacce, tutte e tre nella tua lingua: l'interfaccia terminale parla ucraino, italiano e inglese come la finestra, e cambiare lingua la ricostruisce all'istante
 - **Audit responsive** — test a larghezza desktop, tablet e mobile
 - **Rendering browser** — Chromium reale per siti renderizzati lato client (React, Vue, Next.js)
 
@@ -1661,6 +1661,11 @@ Ogni esecuzione avviene su un thread di lavoro, così l'interfaccia continua a
 rispondere mentre un crawl macina, e il suo avanzamento compare nella riga di
 stato. Al termine, il risultato è mostrato nell'interfaccia — un riepilogo, i
 documenti scritti e il log completo — non lasciato nel terminale sotto.
+
+L'interfaccia terminale è scritta nella lingua dell'interfaccia, come la
+finestra: menu, moduli, stati e suggerimenti dei tasti nel footer vengono dalla
+stessa tabella, e cambiare lingua nelle sue Impostazioni ricostruisce le
+schermate nella nuova lingua subito, non al prossimo avvio.
 
 Navigazione con frecce o tasti 1-7; anche `Tab` sposta tra i controlli. Il
 footer elenca i tasti che lo schermo corrente accetta. `Esc` torna indietro,

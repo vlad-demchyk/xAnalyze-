@@ -1307,6 +1307,16 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Quando è un falso positivo",
         "en": "When this is a false positive",
     },
+    "status_report_saved": {
+        "uk": "Звіт збережено: {path}",
+        "it": "Report salvato: {path}",
+        "en": "Report saved: {path}",
+    },
+    "status_run_documents": {
+        "uk": "Документи прогону: {path}",
+        "it": "Documenti dell'esecuzione: {path}",
+        "en": "Run documents: {path}",
+    },
     "audit_also_found_by": {
         "uk": "Це саме знайшли також: {engines}",
         "it": "Trovato anche da: {engines}",
@@ -1425,6 +1435,349 @@ _STRINGS: dict[str, dict[str, str]] = {
 
     # --- Replacement list (artboard 3l) ------------------------------------
     # --- Action dialogs (artboard 3j) --------------------------------------
+    # --- TUI: the terminal interface speaks the interface language too -----
+    # The screens were written in English literals, so `ui_language` - which
+    # the window and every report already honour - stopped at the terminal.
+    "tui_hint_move": {
+        "uk": "Стрілки або Tab - переміщення, Enter - вибір.",
+        "it": "Frecce o Tab per spostarsi, Invio per scegliere.",
+        "en": "Arrows or Tab to move, Enter to choose.",
+    },
+    "tui_menu_scan": {
+        "uk": "Скан - AI-патерни й символи",
+        "it": "Scansione - pattern AI e caratteri",
+        "en": "Scan - AI patterns & characters",
+    },
+    "tui_menu_audit": {
+        "uk": "Аудит - доступність, SEO, швидкодія",
+        "it": "Audit - accessibilità, SEO, prestazioni",
+        "en": "Audit - accessibility, SEO, performance",
+    },
+    "tui_menu_fullscan": {
+        "uk": "Повний прогін - усе за один раз",
+        "it": "Scansione completa - tutto in una volta",
+        "en": "Full Scan - everything in one run",
+    },
+    "tui_menu_reports": {
+        "uk": "Звіти - попередні прогони",
+        "it": "Report - esecuzioni precedenti",
+        "en": "Reports - previous analyses",
+    },
+    "tui_menu_settings": {
+        "uk": "Налаштування - конфігурація",
+        "it": "Impostazioni - configurazione",
+        "en": "Settings - configuration",
+    },
+    "tui_menu_update": {
+        "uk": "Оновлення - перевірити нову версію",
+        "it": "Aggiornamento - cerca una nuova versione",
+        "en": "Update - check for a new version",
+    },
+    "tui_menu_uninstall": {
+        "uk": "Видалення - прибрати з цієї машини",
+        "it": "Disinstalla - rimuovi da questa macchina",
+        "en": "Uninstall - remove from this machine",
+    },
+    "tui_quit": {"uk": "Вийти", "it": "Esci", "en": "Quit"},
+    "tui_back": {"uk": "Назад", "it": "Indietro", "en": "Back"},
+    "tui_save": {"uk": "Зберегти", "it": "Salva", "en": "Save"},
+    "tui_reload": {"uk": "Перечитати", "it": "Ricarica", "en": "Reload"},
+    "tui_next": {"uk": "Далі", "it": "Avanti", "en": "Next"},
+    "tui_previous": {"uk": "Назад по колу", "it": "Precedente", "en": "Previous"},
+    "tui_run": {"uk": "Запустити", "it": "Esegui", "en": "Run"},
+    "tui_stop": {"uk": "Зупинити", "it": "Ferma", "en": "Stop"},
+    "tui_target_path": {
+        "uk": "Ціль (файл або тека):",
+        "it": "Obiettivo (file o cartella):",
+        "en": "Target (file or directory):",
+    },
+    "tui_target_any": {
+        "uk": "Ціль (адреса, тека або файл):",
+        "it": "Obiettivo (indirizzo, cartella o file):",
+        "en": "Target (address, folder or file):",
+    },
+    "tui_need_target": {
+        "uk": "Вкажіть ціль.",
+        "it": "Indica un obiettivo.",
+        "en": "Enter a target.",
+    },
+    "tui_scan_title": {
+        "uk": "Скан - AI-патерни й символи",
+        "it": "Scansione - pattern AI e caratteri",
+        "en": "Scan - AI patterns & characters",
+    },
+    "tui_scan_run": {"uk": "Запустити скан", "it": "Esegui la scansione", "en": "Run Scan"},
+    "tui_scan_of": {"uk": "Скан: {target}", "it": "Scansione: {target}", "en": "Scan of {target}"},
+    "tui_label_detector": {"uk": "детектор", "it": "detector", "en": "detector"},
+    "tui_label_scope": {"uk": "область", "it": "ambito", "en": "scope"},
+    "tui_label_depth": {"uk": "глибина", "it": "profondità", "en": "depth"},
+    "tui_label_widths": {"uk": "ширини", "it": "larghezze", "en": "widths"},
+    "tui_label_language": {"uk": "мова звіту", "it": "lingua del report", "en": "report language"},
+    "tui_label_category": {"uk": "категорія", "it": "categoria", "en": "category"},
+    "tui_keep_typography": {
+        "uk": "Лишити типографіку (не чіпати тире й лапки)",
+        "it": "Mantieni la tipografia (non toccare trattini e virgolette)",
+        "en": "Keep proper typography (skip em dashes, curly quotes)",
+    },
+    "tui_incremental": {
+        "uk": "Інкрементально - брати кеш для незмінених файлів",
+        "it": "Incrementale - riusa la cache per i file non modificati",
+        "en": "Incremental - reuse the cache for unchanged files",
+    },
+    "tui_audit_title": {
+        "uk": "Аудит - доступність, SEO, швидкодія",
+        "it": "Audit - accessibilità, SEO, prestazioni",
+        "en": "Audit - accessibility, SEO, performance",
+    },
+    "tui_audit_run": {"uk": "Запустити аудит", "it": "Esegui l'audit", "en": "Run Audit"},
+    "tui_audit_of": {"uk": "Аудит: {target}", "it": "Audit: {target}", "en": "Audit of {target}"},
+    "tui_browser_pass": {
+        "uk": "Прохід у браузері (для SPA-сайтів)",
+        "it": "Passaggio nel browser (per siti SPA)",
+        "en": "Browser rendering (for SPA sites)",
+    },
+    "tui_ai_pass": {
+        "uk": "Прохід моделі (перевіряє alt-тексти, витрачає запити)",
+        "it": "Passaggio del modello (controlla gli alt, consuma richieste)",
+        "en": "AI pass (checks alt text, costs requests)",
+    },
+    "tui_autofix": {
+        "uk": "Виправляти відоме (пише у файли, лишає .bak)",
+        "it": "Correggi il noto (scrive nei file, lascia .bak)",
+        "en": "Auto-fix known issues (writes files, keeps .bak)",
+    },
+    "tui_fullscan_title": {
+        "uk": "Повний прогін - усе за один раз",
+        "it": "Scansione completa - tutto in una volta",
+        "en": "Full Scan - everything in one run",
+    },
+    "tui_fullscan_run": {
+        "uk": "Запустити повний прогін",
+        "it": "Esegui la scansione completa",
+        "en": "Run Full Scan",
+    },
+    "tui_fullscan_of": {
+        "uk": "Повний прогін: {target}",
+        "it": "Scansione completa: {target}",
+        "en": "Full scan of {target}",
+    },
+    "tui_agent_mode": {
+        "uk": "Режим агента (офлайн + судить агент)",
+        "it": "Modalità agente (offline + giudica l'agente)",
+        "en": "Agent mode (offline + agent judges)",
+    },
+    "tui_no_browser": {
+        "uk": "Без браузера (лише статичне читання, значно швидше)",
+        "it": "Senza browser (solo lettura statica, molto più veloce)",
+        "en": "No browser (static fetch only, much faster)",
+    },
+    "tui_devserver": {
+        "uk": "Запустити dev-сервер, якщо репозиторій його має",
+        "it": "Avvia il dev server se il repository ne ha uno",
+        "en": "Start the dev server if the repo has one",
+    },
+    "tui_documents_hint": {
+        "uk": "Документи лягають у теку на робочому столі, по теці на ціль.",
+        "it": "I documenti finiscono in una cartella per obiettivo sulla "
+              "scrivania.",
+        "en": "Documents go to a folder per target on your Desktop.",
+    },
+    "tui_run_starting": {
+        "uk": "{title}: старт…", "it": "{title}: avvio…", "en": "{title}: starting…",
+    },
+    "tui_run_failed": {
+        "uk": "Не вдалося: {error}", "it": "Non riuscito: {error}",
+        "en": "Failed: {error}",
+    },
+    "tui_run_done": {"uk": "Готово.", "it": "Fatto.", "en": "Done."},
+    "tui_written": {"uk": "Записано:", "it": "Scritti:", "en": "Written:"},
+    "tui_nothing_written": {
+        "uk": "Цей прогін не записав жодного документа.",
+        "it": "Questa esecuzione non ha scritto alcun documento.",
+        "en": "No documents were written by this run.",
+    },
+    "tui_col_what": {"uk": "Що", "it": "Che cosa", "en": "What"},
+    "tui_col_count": {"uk": "Скільки", "it": "Quante", "en": "Count"},
+    "tui_nothing_selected": {
+        "uk": "Нічого не обрано.", "it": "Niente selezionato.",
+        "en": "Nothing selected.",
+    },
+    "tui_no_report_path": {
+        "uk": "Цей прогін не записав, куди пішов його звіт.",
+        "it": "Questa esecuzione non ha registrato dove è finito il report.",
+        "en": "This run did not record where its report went.",
+    },
+    "tui_no_folder": {
+        "uk": "Для цього прогону теки не записано.",
+        "it": "Nessuna cartella registrata per questa esecuzione.",
+        "en": "No folder recorded for this run.",
+    },
+    "tui_update_checking": {
+        "uk": "Питаю GitHub Releases…", "it": "Interrogo GitHub Releases…",
+        "en": "Checking GitHub Releases…",
+    },
+    "tui_update_check_failed": {
+        "uk": "Перевірка не вдалася: {error}",
+        "it": "Verifica non riuscita: {error}",
+        "en": "Check failed: {error}",
+    },
+    "tui_update_available": {
+        "uk": "Доступна нова версія: {version}",
+        "it": "Nuova versione disponibile: {version}",
+        "en": "New version available: {version}",
+    },
+    "tui_update_current": {
+        "uk": "Уже остання версія ({version}).",
+        "it": "Già aggiornato ({version}).",
+        "en": "Already up to date ({version}).",
+    },
+    "tui_update_confirm": {
+        "uk": "Натисніть «Встановити» ще раз для підтвердження.",
+        "it": "Premi «Installa» di nuovo per confermare.",
+        "en": "Press Install again to confirm.",
+    },
+    "tui_update_installing": {
+        "uk": "Встановлюю…", "it": "Installazione…", "en": "Installing…",
+    },
+    "tui_update_install_failed": {
+        "uk": "Встановлення не вдалося: {error}",
+        "it": "Installazione non riuscita: {error}",
+        "en": "Install failed: {error}",
+    },
+    "tui_update_press_install": {
+        "uk": "Натисніть «Встановити», щоб завантажити і замінити цю "
+              "інсталяцію.",
+        "it": "Premi «Installa» per scaricare e sostituire questa "
+              "installazione.",
+        "en": "Press Install to download and replace this installation.",
+    },
+    "tui_update_unfinished": {
+        "uk": "Встановлення не завершилось (код {code}).",
+        "it": "L'installazione non è terminata (codice {code}).",
+        "en": "Install did not finish (exit {code}).",
+    },
+    "tui_update_restart": {
+        "uk": "Перезапустіть xanalyze, щоб працювала нова версія.",
+        "it": "Riavvia xanalyze per usare la nuova versione.",
+        "en": "Restart xanalyze to run the new version.",
+    },
+    "tui_reports_title": {"uk": "Звіти", "it": "Report", "en": "Reports"},
+    "tui_open_report": {"uk": "Відкрити звіт", "it": "Apri il report", "en": "Open report"},
+    "tui_open_folder": {"uk": "Відкрити теку", "it": "Apri la cartella", "en": "Open folder"},
+    "tui_refresh": {"uk": "Оновити список", "it": "Aggiorna", "en": "Refresh"},
+    "tui_reports_hint": {
+        "uk": "Enter або o відкриває обраний звіт.",
+        "it": "Invio oppure o apre il report selezionato.",
+        "en": "Enter or o opens the selected report.",
+    },
+    "tui_set_scope": {
+        "uk": "Область репозиторія", "it": "Ambito del repository",
+        "en": "Repository scope",
+    },
+    "tui_set_method": {
+        "uk": "Метод за замовчуванням", "it": "Metodo predefinito",
+        "en": "Default method",
+    },
+    "tui_set_account": {
+        "uk": "Акаунт для AI", "it": "Account per l'AI", "en": "AI account",
+    },
+    "tui_set_cc_model": {
+        "uk": "Модель (Claude Code)", "it": "Modello (Claude Code)",
+        "en": "Model (Claude Code)",
+    },
+    "tui_set_cc_effort": {
+        "uk": "Зусилля (Claude Code)", "it": "Sforzo (Claude Code)",
+        "en": "Effort (Claude Code)",
+    },
+    "tui_set_depth": {
+        "uk": "Глибина обходу", "it": "Profondità della scansione",
+        "en": "Crawl depth",
+    },
+    "tui_set_max_pages": {
+        "uk": "Максимум сторінок за прогін", "it": "Pagine massime per scansione",
+        "en": "Max pages per crawl",
+    },
+    "tui_flag_prefer_cc": {
+        "uk": "Використовувати Claude Code, коли запущено в ньому",
+        "it": "Usa Claude Code quando è avviato al suo interno",
+        "en": "Use Claude Code when run inside it",
+    },
+    "tui_ro_version": {"uk": "Версія", "it": "Versione", "en": "Version"},
+    "tui_ro_model": {"uk": "Модель Claude", "it": "Modello Claude", "en": "Claude model"},
+    "tui_ro_categories": {
+        "uk": "Категорії символів", "it": "Categorie di caratteri",
+        "en": "Character categories",
+    },
+    "tui_ro_api": {"uk": "API xFormat", "it": "API xFormat", "en": "xFormat API"},
+    "tui_col_setting": {"uk": "Налаштування", "it": "Impostazione", "en": "Setting"},
+    "tui_col_value": {"uk": "Значення", "it": "Valore", "en": "Value"},
+    "tui_settings_title": {"uk": "Налаштування", "it": "Impostazioni", "en": "Settings"},
+    "tui_settings_saved": {
+        "uk": "Збережено: {what}.",
+        "it": "Salvato: {what}.",
+        "en": "Saved: {what}.",
+    },
+    "tui_settings_nothing": {
+        "uk": "Нічого не змінилось.",
+        "it": "Niente è cambiato.",
+        "en": "Nothing changed.",
+    },
+    "tui_settings_reloaded": {
+        "uk": "Перечитано з диска.",
+        "it": "Ricaricato dal disco.",
+        "en": "Reloaded from disk.",
+    },
+    "tui_settings_save_failed": {
+        "uk": "Не вдалося зберегти: {error}",
+        "it": "Impossibile salvare: {error}",
+        "en": "Could not save: {error}",
+    },
+    "tui_settings_language_note": {
+        "uk": "Мову змінено - екрани перебудовано.",
+        "it": "Lingua cambiata - schermate ricostruite.",
+        "en": "Language changed - the screens were rebuilt.",
+    },
+    "tui_config_file": {
+        "uk": "Файл налаштувань: {path}",
+        "it": "File di impostazioni: {path}",
+        "en": "Config file: {path}",
+    },
+    "tui_update_title": {"uk": "Оновлення", "it": "Aggiornamento", "en": "Update"},
+    "tui_update_check": {
+        "uk": "Перевірити оновлення",
+        "it": "Cerca aggiornamenti",
+        "en": "Check for updates",
+    },
+    "tui_update_install": {"uk": "Встановити", "it": "Installa", "en": "Install"},
+    "tui_uninstall_title": {
+        "uk": "Видалення", "it": "Disinstallazione", "en": "Uninstall",
+    },
+    "tui_uninstall_remove": {
+        "uk": "Видалити все", "it": "Rimuovi tutto", "en": "Remove everything",
+    },
+    "tui_uninstall_confirm": {
+        "uk": "Точно видалити все?",
+        "it": "Rimuovere davvero tutto?",
+        "en": "Really remove everything?",
+    },
+    "tui_uninstall_kept": {
+        "uk": "Лишається: {what}", "it": "Restano: {what}", "en": "Kept: {what}",
+    },
+    "tui_uninstall_errors": {
+        "uk": "Завершено з помилками: {what}",
+        "it": "Terminato con errori: {what}",
+        "en": "Done with errors: {what}",
+    },
+    "tui_uninstall_done": {
+        "uk": "Видалено записів: {n}.",
+        "it": "Rimosse {n} voci.",
+        "en": "Uninstalled ({n} item(s)).",
+    },
+    "tui_uninstall_none": {
+        "uk": "XAnalyze не встановлено - видаляти нема чого.",
+        "it": "XAnalyze non è installato - non c'è nulla da rimuovere.",
+        "en": "XAnalyze is not installed - nothing to remove.",
+    },
     "rewrite_progress_title": {
         "uk": "Генерую заміну {done}/{total}",
         "it": "Genero la sostituzione {done}/{total}",
@@ -1757,6 +2110,50 @@ _STRINGS: dict[str, dict[str, str]] = {
         "uk": "Кеш суджень моделі: {n} запис(ів) у {path}",
         "it": "Cache dei giudizi del modello: {n} voce/i in {path}",
         "en": "Model judgment cache: {n} entries in {path}",
+    },
+    "settings_cli_group": {
+        "uk": "Команда в терміналі", "it": "Comando nel terminale",
+        "en": "Command line",
+    },
+    "settings_cli_dev_only": {
+        "uk": "Доступно лише у зібраному застосунку для macOS, не в цьому "
+              "запуску з коду.",
+        "it": "Disponibile solo nell'app macOS impacchettata, non in questa "
+              "esecuzione dal codice.",
+        "en": "Only available in the packaged macOS app, not this development "
+              "run.",
+    },
+    "settings_cli_install": {
+        "uk": "Встановити команду «xanalyze»",
+        "it": "Installa il comando «xanalyze»",
+        "en": "Install the 'xanalyze' command",
+    },
+    "settings_cli_remove": {
+        "uk": "Прибрати команду «xanalyze»",
+        "it": "Rimuovi il comando «xanalyze»",
+        "en": "Remove the 'xanalyze' command",
+    },
+    "settings_cli_absent": {
+        "uk": "Не встановлено. Додає «xanalyze» у ваш PATH, щоб запускати "
+              "скани й аудити з термінала, не відкриваючи це вікно.",
+        "it": "Non installato. Aggiunge «xanalyze» al tuo PATH, così puoi "
+              "eseguire scansioni e audit da terminale senza aprire questa "
+              "finestra.",
+        "en": "Not installed. Adds 'xanalyze' to your PATH, so you can run "
+              "scans and audits from a terminal without opening this window.",
+    },
+    "settings_cli_installed": {
+        "uk": "Встановлено: {path}.",
+        "it": "Installato: {path}.",
+        "en": "Installed at {path}.",
+    },
+    "settings_cli_not_on_path": {
+        "uk": " Увага: {dir} схоже не входить у ваш PATH - додайте її у файл "
+              "запуску вашої оболонки, щоб команда працювала.",
+        "it": " Attenzione: {dir} non sembra essere nel tuo PATH - aggiungila "
+              "nel file di avvio della tua shell perché il comando funzioni.",
+        "en": " Note: {dir} does not appear to be on your PATH - add it in "
+              "your shell's startup file to use the command.",
     },
     "settings_clear_cache": {
         "uk": "Очистити кеш", "it": "Svuota la cache", "en": "Clear the cache",

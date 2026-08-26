@@ -27,14 +27,14 @@ class UpdateScreen(XScreen):
     def compose(self) -> ComposeResult:
         yield from self.compose_chrome()
         with Vertical(id="update-view"):
-            yield Label("Update", classes="menu-title")
+            yield Label(self.tr("tui_update_title"), classes="menu-title")
             yield Static("")
             yield Label(f"Current version: {config.APP_VERSION}")
             yield Static("")
             with Horizontal():
-                yield Button("Check for updates", id="check", variant="primary")
-                yield Button("Install", id="install", disabled=True)
-                yield Button("Back", id="back")
+                yield Button(self.tr("tui_update_check"), id="check", variant="primary")
+                yield Button(self.tr("tui_update_install"), id="install", disabled=True)
+                yield Button(self.tr("tui_back"), id="back")
             yield Static("")
             yield Label("", id="update-status")
 
@@ -59,7 +59,7 @@ class UpdateScreen(XScreen):
         if self._busy:
             return
         self._busy = True
-        self._status("Checking GitHub Releases…")
+        self._status(self.tr("tui_update_checking"))
 
         def work() -> None:
             import updater
@@ -78,17 +78,17 @@ class UpdateScreen(XScreen):
 
         self._busy = False
         if error:
-            self._status(f"Check failed: {error}")
+            self._status(self.tr("tui_update_check_failed", error=error))
             return
         self._release = release
         if updater.newer(release.version, config.APP_VERSION):
             self.query_one("#install", Button).disabled = False
-            self._status(f"New version available: {release.version}\n"
-                         f"{release.html_url}\n"
-                         f"Press Install to download and replace this "
-                         f"installation.")
+            self._status(
+                self.tr("tui_update_available", version=release.version)
+                + f"\n{release.html_url}\n"
+                + self.tr("tui_update_press_install"))
         else:
-            self._status(f"Already up to date ({config.APP_VERSION}).")
+            self._status(self.tr("tui_update_current", version=config.APP_VERSION))
 
     def _install(self) -> None:
         """Install the release found by the check.
@@ -102,12 +102,12 @@ class UpdateScreen(XScreen):
         button = self.query_one("#install", Button)
         if str(button.label) != "Really install?":
             button.label = "Really install?"
-            self._status("Press Install again to confirm.")
+            self._status(self.tr("tui_update_confirm"))
             return
         button.label = "Install"
         button.disabled = True
         self._busy = True
-        self._status("Installing…")
+        self._status(self.tr("tui_update_installing"))
 
         # `do_update` is the same flow `xanalyze update` runs: it checks,
         # downloads, and replaces the binary, reporting progress on stderr.
@@ -128,13 +128,13 @@ class UpdateScreen(XScreen):
     def _installed(self, result) -> None:
         self._busy = False
         if result.error:
-            self._status(f"Install failed: {result.error}")
+            self._status(self.tr("tui_update_install_failed", error=result.error))
             return
         tail = [line for line in (result.stderr + "\n" + result.stdout)
                 .splitlines() if line.strip()]
         summary = tail[-1] if tail else ""
         if result.exit_code == 0:
-            self._status(f"{summary}\nRestart xanalyze to run the new version.")
+            self._status(f"{summary}\n" + self.tr("tui_update_restart"))
         else:
-            self._status(f"Install did not finish (exit {result.exit_code}).\n"
-                         f"{summary}")
+            self._status(self.tr("tui_update_unfinished",
+                                 code=result.exit_code) + f"\n{summary}")

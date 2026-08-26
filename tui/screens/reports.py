@@ -83,18 +83,18 @@ class ReportsScreen(XScreen):
     def compose(self) -> ComposeResult:
         yield from self.compose_chrome()
         with Vertical(id="reports-view"):
-            yield Label("Previous runs", classes="menu-title")
+            yield Label(self.tr("tui_reports_title"), classes="menu-title")
             yield Static("")
             yield DataTable(id="reports-table", cursor_type="row")
             yield Static("")
             yield Label("", id="report-detail")
             with Horizontal():
-                yield Button("Open report", id="open", variant="primary")
-                yield Button("Open folder", id="open-folder")
-                yield Button("Refresh", id="refresh")
-                yield Button("Back", id="back")
+                yield Button(self.tr("tui_open_report"), id="open", variant="primary")
+                yield Button(self.tr("tui_open_folder"), id="open-folder")
+                yield Button(self.tr("tui_refresh"), id="refresh")
+                yield Button(self.tr("tui_back"), id="back")
             yield Label("", id="report-status")
-            yield Label("Enter or o opens the selected report.", classes="hint")
+            yield Label(self.tr("tui_reports_hint"), classes="hint")
 
     def on_mount(self) -> None:
         table = self.query_one("#reports-table", DataTable)
@@ -180,11 +180,11 @@ class ReportsScreen(XScreen):
         run = self._selected()
         status = self.query_one("#report-status", Label)
         if run is None:
-            status.update("Nothing selected.")
+            status.update(self.tr("tui_nothing_selected"))
             return
         report = run.get("report")
         if not report:
-            status.update("This run did not record where its report went.")
+            status.update(self.tr("tui_no_report_path"))
             return
         status.update(open_in_os(report))
 
@@ -193,7 +193,7 @@ class ReportsScreen(XScreen):
         status = self.query_one("#report-status", Label)
         report = (run or {}).get("report")
         if not report:
-            status.update("No folder recorded for this run.")
+            status.update(self.tr("tui_no_folder"))
             return
         status.update(open_in_os(str(Path(report).parent)))
 

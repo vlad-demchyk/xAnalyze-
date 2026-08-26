@@ -390,7 +390,8 @@ class AuditPanelMixin:
         if also:
             also_label = ", ".join(also)
             confirm_chip = chip(f"+ {also_label}")
-            confirm_chip.setToolTip(f"Also confirmed by: {also_label}")
+            confirm_chip.setToolTip(t("audit_also_found_by", self.lang,
+                                      engines=also_label))
             chips.addWidget(confirm_chip)
         layout.addWidget(chips_host)
 

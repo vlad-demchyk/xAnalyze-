@@ -168,6 +168,12 @@ class XAnalyzeApp(App):
 
     def __init__(self) -> None:
         super().__init__()
+        #: The interface language, read once and then owned here. Every
+        #: screen asks the app rather than loading `Settings` itself: a
+        #: screen that read the file would keep showing the old language
+        #: after Settings changed it, which is exactly what "the option does
+        #: nothing" looks like from the outside.
+        self.lang = config.Settings.load().ui_language or "uk"
         # Registered here rather than in `on_mount`: the CSS above already
         # references custom variables (`$inline-label` and friends), and the
         # first stylesheet parse - which resolves every `$name` against
@@ -179,24 +185,52 @@ class XAnalyzeApp(App):
             self.register_theme(theme)
         self.theme = DEFAULT_THEME
 
-    def on_mount(self) -> None:
-        from tui.screens.main_menu import MainMenuScreen
-        from tui.screens.scan import ScanScreen
+    #: Screen name -> the class that builds it. One list, because installing
+    #: them and re-installing them after a language change must not drift.
+    SCREENS_IN_ORDER = ("main", "scan", "audit", "fullscan", "settings",
+                        "reports", "update", "uninstall")
+
+    def _screen_classes(self) -> dict:
         from tui.screens.audit import AuditScreen
         from tui.screens.fullscan import FullscanScreen
-        from tui.screens.settings import SettingsScreen
+        from tui.screens.main_menu import MainMenuScreen
         from tui.screens.reports import ReportsScreen
-        from tui.screens.update import UpdateScreen
+        from tui.screens.scan import ScanScreen
+        from tui.screens.settings import SettingsScreen
         from tui.screens.uninstall import UninstallScreen
+        from tui.screens.update import UpdateScreen
 
-        self.install_screen(MainMenuScreen(), name="main")
-        self.install_screen(ScanScreen(), name="scan")
-        self.install_screen(AuditScreen(), name="audit")
-        self.install_screen(FullscanScreen(), name="fullscan")
-        self.install_screen(SettingsScreen(), name="settings")
-        self.install_screen(ReportsScreen(), name="reports")
-        self.install_screen(UpdateScreen(), name="update")
-        self.install_screen(UninstallScreen(), name="uninstall")
+        return {"main": MainMenuScreen, "scan": ScanScreen,
+                "audit": AuditScreen, "fullscan": FullscanScreen,
+                "settings": SettingsScreen, "reports": ReportsScreen,
+                "update": UpdateScreen, "uninstall": UninstallScreen}
+
+    def install_all_screens(self) -> None:
+        classes = self._screen_classes()
+        for name in self.SCREENS_IN_ORDER:
+            self.install_screen(classes[name](), name=name)
+
+    def set_language(self, lang: str) -> None:
+        """Change the language and rebuild the screens in it.
+
+        A screen's labels are written when it is composed, so changing the
+        setting is not enough: the screens are built once at startup and
+        would keep the words they were built with. Rebuilding them is what
+        makes the setting visibly do something, which is the whole point of
+        an option.
+        """
+        if lang == self.lang:
+            return
+        self.lang = lang
+        while len(self.screen_stack) > 1:
+            self.pop_screen()
+        for name in self.SCREENS_IN_ORDER:
+            self.uninstall_screen(name)
+        self.install_all_screens()
+        self.push_screen("settings")
+
+    def on_mount(self) -> None:
+        self.install_all_screens()
         self.push_screen("main")
 
 

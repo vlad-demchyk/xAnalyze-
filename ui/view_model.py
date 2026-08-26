@@ -621,7 +621,10 @@ class MainViewModel(QObject):
         # pressed. The language was missing too, so an Italian window would
         # have printed an English report if it had printed one at all.
         write_styled_report(path, model, self.settings.ui_language)
-        self.status_message.emit(f"Report saved: {path}")
+        from i18n.translations import t
+
+        self.status_message.emit(t("status_report_saved",
+                                   self.settings.ui_language, path=path))
 
     def export_agent_report(self, path: str):
         import cli
@@ -630,7 +633,10 @@ class MainViewModel(QObject):
         class _Args:
             report = path
         cli._write_report(self.audit_result, _Args(), self.settings.ui_language, None)
-        self.status_message.emit(f"Report saved: {path}")
+        from i18n.translations import t
+
+        self.status_message.emit(t("status_report_saved",
+                                   self.settings.ui_language, path=path))
 
     def save_run_documents(self, stage_timings=None, run_began=None):
         """Write this run's folder, and say what ended up in it.
@@ -710,7 +716,10 @@ class MainViewModel(QObject):
         documents = RunDocuments(folder=folder, target=target,
                                  written=written, absent=absent,
                                  comparison=comparison)
-        self.status_message.emit(f"Run documents: {folder.run}")
+        from i18n.translations import t
+
+        self.status_message.emit(t("status_run_documents",
+                                   self.settings.ui_language, path=folder.run))
         return documents
 
     # -- suppression -------------------------------------------------------

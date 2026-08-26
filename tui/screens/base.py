@@ -13,6 +13,27 @@ from textual.app import ComposeResult
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Label
 
+from i18n.translations import t
+
+
+#: Action name -> the key its footer hint is written under. The footer is
+#: part of the interface, so it is translated with everything else; the
+#: bindings themselves are class-level and therefore built in one language,
+#: which is why the descriptions are rewritten per instance below.
+_BINDING_LABELS = {
+    "back": "tui_back",
+    "quit": "tui_quit",
+    "save": "tui_save",
+    "reload": "tui_reload",
+    "focus_next": "tui_next",
+    "focus_previous": "tui_previous",
+    "run": "tui_run",
+    "refresh": "tui_refresh",
+    "open_selected": "tui_open_report",
+    "open_folder": "tui_open_folder",
+    "open_first": "tui_open_report",
+}
+
 
 class XScreen(Screen):
     """Base screen: a header, a footer of key hints, and `Esc` to go back."""
@@ -20,6 +41,47 @@ class XScreen(Screen):
     BINDINGS = [
         ("escape", "back", "Back"),
     ]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._translate_bindings()
+
+    @property
+    def lang(self) -> str:
+        return getattr(self.app, "lang", "uk")
+
+    def tr(self, key: str, **kwargs) -> str:
+        """One string in the interface language, from the shared table."""
+        return t(key, self.lang, **kwargs)
+
+    def _translate_bindings(self) -> None:
+        """Rewrite the footer hints of this instance in the app's language.
+
+        `BINDINGS` is class-level and evaluated at import, so it can only be
+        written in one language. Textual copies it into a per-instance map,
+        and that copy is what the footer reads - so this rewrites the copy
+        and leaves the class alone.
+        """
+        from dataclasses import replace
+
+        language = getattr(self.app, "lang", None) or "uk"
+        mapping = getattr(self._bindings, "key_to_bindings", None)
+        if not mapping:
+            return
+        for key, bindings in list(mapping.items()):
+            rewritten = []
+            for binding in bindings:
+                action = (binding.action or "").split("(")[0]
+                label_key = _BINDING_LABELS.get(action)
+                if action == "go":
+                    # The menu's number keys: each one names a screen, and
+                    # the screen's own name is already translated.
+                    target = (binding.action or "").strip("go()'\" ")
+                    label_key = f"tui_menu_{target}"
+                if label_key and binding.description:
+                    binding = replace(binding, description=t(label_key, language))
+                rewritten.append(binding)
+            mapping[key] = rewritten
 
     def compose_chrome(self) -> ComposeResult:
         yield Header()
@@ -96,7 +158,7 @@ class RunScreen(XScreen):
         self._title = title
         self._run = runner.start(command, args)
         self._set_busy(True)
-        self.status(f"{title}: starting…")
+        self.status(self.tr("tui_run_starting", title=title))
         self._timer = self.set_interval(self.poll_interval, self._poll)
         return True
 
@@ -125,7 +187,7 @@ class RunScreen(XScreen):
         from tui.screens.results import ResultsScreen
 
         if result.error:
-            self.status(f"Failed: {result.error}")
+            self.status(self.tr("tui_run_failed", error=result.error))
             return
-        self.status("Done.", ok=True)
+        self.status(self.tr("tui_run_done"), ok=True)
         self.app.push_screen(ResultsScreen(title, result))

@@ -20,11 +20,10 @@ class FullscanScreen(RunScreen):
     def compose(self) -> ComposeResult:
         yield from self.compose_chrome()
         with Vertical(id="fullscan-form"):
-            yield Label("Full Scan — AI + accessibility + SEO",
-                        classes="menu-title")
+            yield Label(self.tr("tui_fullscan_title"), classes="menu-title")
             yield Static("")
 
-            yield Label("Target (URL, directory, or .html file):")
+            yield Label(self.tr("tui_target_any"))
             # `example.com` is enough - the scheme is added for you.
             yield Input(placeholder="example.com or ./repo", id="target")
 
@@ -37,7 +36,7 @@ class FullscanScreen(RunScreen):
             # read as a form - which is the whole difference the redesign
             # was for.
             with Horizontal(classes="sentence"):
-                yield Static("language", classes="inline-label")
+                yield Static(self.tr("tui_label_language"), classes="inline-label")
                 yield Select(
                     [
                         ("auto", ""),
@@ -51,7 +50,7 @@ class FullscanScreen(RunScreen):
                     classes="inline-select",
                 )
                 yield Static("·", classes="inline-sep")
-                yield Static("depth", classes="inline-label")
+                yield Static(self.tr("tui_label_depth"), classes="inline-label")
                 yield Select(
                     [
                         ("1", "1"),
@@ -65,7 +64,7 @@ class FullscanScreen(RunScreen):
                     classes="inline-select",
                 )
                 yield Static("·", classes="inline-sep")
-                yield Static("breakpoints", classes="inline-label")
+                yield Static(self.tr("tui_label_widths"), classes="inline-label")
                 yield Select(
                     [
                         ("desktop", "desktop"),
@@ -80,26 +79,22 @@ class FullscanScreen(RunScreen):
                 )
 
             yield Static("")
-            yield Checkbox("Agent mode (offline + agent judges)", id="agent")
-            yield Checkbox("No browser (static fetch only, much faster)",
-                           id="no-browser")
+            yield Checkbox(self.tr("tui_agent_mode"), id="agent")
+            yield Checkbox(self.tr("tui_no_browser"), id="no-browser")
             # Off by default: a repo's dev server may already be running
             # elsewhere, and starting a second one on a different port is a
             # confusing outcome, not a helpful one. A repo scanned with this
             # unchecked is scanned statically, same as always.
-            yield Checkbox("Start dev server if the repo has one "
-                           "(package.json, manage.py, Gemfile+bin/rails)",
-                           id="devserver")
+            yield Checkbox(self.tr("tui_devserver"), id="devserver")
 
             yield Static("")
             with Horizontal():
-                yield Button("Run Full Scan", id="run", variant="primary")
-                yield Button("Back", id="back")
+                yield Button(self.tr("tui_fullscan_run"), id="run", variant="primary")
+                yield Button(self.tr("tui_back"), id="back")
 
             yield Static("")
             yield Label("", id="fullscan-status")
-            yield Label("Documents go to a folder per target on your Desktop.",
-                        classes="hint")
+            yield Label(self.tr("tui_documents_hint"), classes="hint")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "back":
@@ -114,7 +109,7 @@ class FullscanScreen(RunScreen):
     def _run_fullscan(self) -> None:
         target = self.query_one("#target", Input).value.strip()
         if not target:
-            self.status("Enter a target.")
+            self.status(self.tr("tui_need_target"))
             return
 
         args = argparse.Namespace(

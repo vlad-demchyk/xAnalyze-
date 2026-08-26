@@ -191,7 +191,7 @@ class MenuNavigation(unittest.TestCase):
             async with app.run_test() as pilot:
                 await pilot.pause()
                 missing = []
-                for _key, name, _label in MENU:
+                for _key, name in MENU:
                     if name not in app._installed_screens:
                         missing.append(name)
                 return missing
@@ -802,3 +802,91 @@ class TheOtherFormsBecameSentencesToo(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class InterfaceLanguage(unittest.TestCase):
+    """`ui_language` stops at the terminal no longer.
+
+    The window and every report already honoured the setting; the TUI was
+    written in English literals, so choosing Ukrainian changed everything
+    except the interface the choice was made in - which is what "the option
+    does nothing" looks like from the outside.
+    """
+
+    def _app(self, lang):
+        import config
+
+        app = XAnalyzeApp()
+        app.lang = lang
+        return app
+
+    def test_the_menu_is_written_in_the_configured_language(self):
+        from i18n.translations import t
+
+        async def body():
+            app = self._app("uk")
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                return [button.label.plain
+                        for button in app.screen.query(Button)]
+
+        labels = run(body())
+        self.assertTrue(any(t("tui_menu_scan", "uk") in text for text in labels),
+                        labels)
+        self.assertFalse(any("Full Scan" in text for text in labels), labels)
+
+    def test_italian_is_a_different_menu_again(self):
+        from i18n.translations import t
+
+        async def body():
+            app = self._app("it")
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                return [button.label.plain
+                        for button in app.screen.query(Button)]
+
+        labels = run(body())
+        self.assertTrue(
+            any(t("tui_menu_audit", "it") in text for text in labels), labels)
+
+    def test_the_footer_hints_are_translated_too(self):
+        from i18n.translations import t
+
+        async def body():
+            app = self._app("uk")
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                mapping = app.screen._bindings.key_to_bindings
+                return [b.description for bindings in mapping.values()
+                        for b in bindings]
+
+        descriptions = run(body())
+        self.assertIn(t("tui_quit", "uk"), descriptions)
+        self.assertNotIn("Quit", descriptions)
+
+    def test_changing_the_language_rebuilds_the_screens_in_it(self):
+        """Saved and not applied, the language is an option that appears to
+        do nothing until the next launch."""
+        from i18n.translations import t
+
+        async def body():
+            app = self._app("en")
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                app.set_language("uk")
+                await pilot.pause()
+                return app.lang, [button.label.plain
+                                  for button in app.screen.query(Button)]
+
+        lang, labels = run(body())
+        self.assertEqual(lang, "uk")
+        self.assertTrue(any(t("tui_save", "uk") == text for text in labels),
+                        labels)
+
+    def test_the_language_it_starts_in_is_the_saved_one(self):
+        import config
+
+        with mock.patch.object(config.Settings, "load",
+                               staticmethod(lambda: config.Settings(ui_language="it"))):
+            app = XAnalyzeApp()
+        self.assertEqual(app.lang, "it")

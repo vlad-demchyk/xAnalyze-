@@ -628,10 +628,10 @@ class SettingsDialog(QDialog):
         defaults_btn.clicked.connect(self._show_endpoint_defaults)
         layout.addWidget(defaults_btn)
 
-        # Plain English, not routed through `i18n.translations.t()` — same
-        # rule the Suppression tab follows above: this is a small, technical,
-        # macOS-only action, not part of the shared vocabulary.
-        cli_group = QGroupBox("Command line")
+        # Translated like everything else. It was English on the grounds of
+        # being small and technical, which is a rule that ends with half a
+        # settings screen in one language and half in another.
+        cli_group = QGroupBox(t("settings_cli_group", self.lang))
         cli_layout = QVBoxLayout(cli_group)
         self.cli_status_label = QLabel()
         self.cli_status_label.setWordWrap(True)
@@ -893,27 +893,25 @@ class SettingsDialog(QDialog):
         previous install this same session) is never shown stale."""
         bundled = cli_install.bundled_cli_path()
         if bundled is None:
-            self.cli_status_label.setText(
-                "Only available in the packaged macOS app, not this development run.")
+            self.cli_status_label.setText(t("settings_cli_dev_only", self.lang))
             self.cli_install_btn.setEnabled(False)
-            self.cli_install_btn.setText("Install 'xanalyze' command")
+            self.cli_install_btn.setText(t("settings_cli_install", self.lang))
             return
 
         self.cli_install_btn.setEnabled(True)
         target = cli_install.installed_target()
         if target is None:
-            self.cli_status_label.setText(
-                "Not installed. Adds 'xanalyze' to your PATH, so you can run scans "
-                "and audits from a terminal without opening this window.")
-            self.cli_install_btn.setText("Install 'xanalyze' command")
+            self.cli_status_label.setText(t("settings_cli_absent", self.lang))
+            self.cli_install_btn.setText(t("settings_cli_install", self.lang))
             return
 
         path_note = "" if cli_install.is_dir_on_path(cli_install.USER_BIN_DIR) else (
-            f" Note: {cli_install.USER_BIN_DIR} does not appear to be on your PATH — "
-            "add it in your shell's startup file to use the command.")
+            t("settings_cli_not_on_path", self.lang,
+              dir=cli_install.USER_BIN_DIR))
         self.cli_status_label.setText(
-            f"Installed at {cli_install.USER_BIN_DIR / cli_install.CLI_NAME}.{path_note}")
-        self.cli_install_btn.setText("Remove 'xanalyze' command")
+            t("settings_cli_installed", self.lang,
+              path=cli_install.USER_BIN_DIR / cli_install.CLI_NAME) + path_note)
+        self.cli_install_btn.setText(t("settings_cli_remove", self.lang))
 
     def _on_cli_install_clicked(self) -> None:
         try:

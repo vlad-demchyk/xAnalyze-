@@ -24,15 +24,15 @@ class UninstallScreen(XScreen):
     def compose(self) -> ComposeResult:
         yield from self.compose_chrome()
         with Vertical(id="uninstall-view"):
-            yield Label("Uninstall", classes="menu-title")
+            yield Label(self.tr("tui_uninstall_title"), classes="menu-title")
             yield Static("")
             yield Label("", id="uninstall-list")
             yield Static("")
-            yield Button("Remove everything", id="remove", variant="error")
+            yield Button(self.tr("tui_uninstall_remove"), id="remove", variant="error")
             yield Static("")
             yield Label("", id="uninstall-status")
             yield Static("")
-            yield Button("Back", id="back")
+            yield Button(self.tr("tui_back"), id="back")
 
     def on_screen_resume(self) -> None:
         self._armed = False
@@ -41,13 +41,13 @@ class UninstallScreen(XScreen):
         if items:
             listing.update("\n".join(f"• {i.label}" for i in items))
         else:
-            listing.update("XAnalyze is not installed - nothing to remove.")
+            listing.update(self.tr("tui_uninstall_none"))
         self.query_one("#remove", Button).display = bool(items)
         status = self.query_one("#uninstall-status", Label)
         status.update("")
         notes = uninstaller.remaining_notes()
         if notes:
-            status.update("Kept: " + "; ".join(notes))
+            status.update(self.tr("tui_uninstall_kept", what="; ".join(notes)))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "back":
@@ -62,15 +62,15 @@ class UninstallScreen(XScreen):
             # Two presses rather than one: a destructive action behind a
             # single mis-click is how "I didn't mean to" stories start.
             self._armed = True
-            button.label = "Really remove everything?"
+            button.label = self.tr("tui_uninstall_confirm")
             return
         removed, errors = uninstaller.remove_all(uninstaller.enumerate_items())
         self._armed = False
-        button.label = "Remove everything"
+        button.label = self.tr("tui_uninstall_remove")
         button.display = False
         listing = self.query_one("#uninstall-list", Label)
         listing.update("XAnalyze is not installed - nothing to remove.")
         if errors:
-            status.update("Done with errors: " + "; ".join(errors))
+            status.update(self.tr("tui_uninstall_errors", what="; ".join(errors)))
         else:
-            status.update(f"Uninstalled ({len(removed)} item(s)).")
+            status.update(self.tr("tui_uninstall_done", n=len(removed)))

@@ -126,7 +126,7 @@ not at a score, and most of them arrive with the correction attached.
 - **Drop a page in** — a saved `.html` page or a folder dropped on the window becomes the target, and the setup screen shows the file's own name and size. A finding seen at one width out of three says so, because the mobile menu's unnamed button is not in the desktop DOM at all
 - **Styled Reports** — branded PDF/HTML for humans
 - **Agent Briefings** — markdown/JSON for coding agents
-- **CLI + GUI + TUI** — one binary, three interfaces
+- **CLI + GUI + TUI** — one binary, three interfaces, all three in your language: the terminal interface speaks Ukrainian, Italian and English like the window does, and changing the language rebuilds it on the spot
 - **Responsive Audit** — test at desktop, tablet, and mobile widths
 - **Browser Rendering** — real Chromium for client-side rendered sites (React, Vue, Next.js)
 
@@ -1844,6 +1844,11 @@ Every run happens on a worker thread, so the interface keeps answering while a
 crawl grinds, and its progress appears on the status line. When it finishes,
 the result is shown in the interface - a summary, the documents that were
 written, and the full log - not left in the terminal underneath.
+
+The terminal interface is written in the interface language, like the window:
+its menu, its forms, its statuses and its footer key hints all come from the
+same table, and changing the language in its own Settings rebuilds the screens
+in the new one immediately rather than at the next launch.
 
 Navigate with arrow keys or number shortcuts (1-7); `Tab` also moves between
 controls. The footer lists the keys the current screen accepts. `Esc` goes

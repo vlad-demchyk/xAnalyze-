@@ -19,17 +19,17 @@ class ScanScreen(RunScreen):
     def compose(self) -> ComposeResult:
         yield from self.compose_chrome()
         with Vertical(id="scan-form"):
-            yield Label("Scan — AI patterns & characters", classes="menu-title")
+            yield Label(self.tr("tui_scan_title"), classes="menu-title")
             yield Static("")
 
-            yield Label("Target (file or directory):")
+            yield Label(self.tr("tui_target_path"))
             yield Input(placeholder="./src or ./page.html", id="target")
 
             # One sentence, not two labelled dropdowns - see
             # FullscanScreen.compose for why, and ui.widgets.InlineValue for
             # the Qt window's version of the same idea.
             with Horizontal(classes="sentence"):
-                yield Static("detector", classes="inline-label")
+                yield Static(self.tr("tui_label_detector"), classes="inline-label")
                 yield Select(
                     [
                         ("offline — heuristic, free", "offline"),
@@ -44,7 +44,7 @@ class ScanScreen(RunScreen):
                     classes="inline-select",
                 )
                 yield Static("·", classes="inline-sep")
-                yield Static("scope", classes="inline-label")
+                yield Static(self.tr("tui_label_scope"), classes="inline-label")
                 yield Select(
                     [
                         ("content", "content"),
@@ -58,15 +58,13 @@ class ScanScreen(RunScreen):
                 )
 
             yield Static("")
-            yield Checkbox("Keep proper typography (skip em dashes, curly quotes)",
-                           id="no-typography")
-            yield Checkbox("Incremental — reuse the cache for unchanged files",
-                           id="incremental")
+            yield Checkbox(self.tr("tui_keep_typography"), id="no-typography")
+            yield Checkbox(self.tr("tui_incremental"), id="incremental")
 
             yield Static("")
             with Horizontal():
-                yield Button("Run Scan", id="run", variant="primary")
-                yield Button("Back", id="back")
+                yield Button(self.tr("tui_scan_run"), id="run", variant="primary")
+                yield Button(self.tr("tui_back"), id="back")
 
             yield Static("")
             yield Label("", id="scan-status")
@@ -85,7 +83,7 @@ class ScanScreen(RunScreen):
     def _run_scan(self) -> None:
         target = self.query_one("#target", Input).value.strip()
         if not target:
-            self.status("Enter a target path.")
+            self.status(self.tr("tui_need_target"))
             return
 
         args = argparse.Namespace(
@@ -109,4 +107,4 @@ class ScanScreen(RunScreen):
             language=None,
             provider=None,
         )
-        self.start_run(cmd_scan, args, title=f"Scan of {target}")
+        self.start_run(cmd_scan, args, title=self.tr("tui_scan_of", target=target))

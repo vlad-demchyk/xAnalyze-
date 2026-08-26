@@ -19,11 +19,10 @@ class AuditScreen(RunScreen):
     def compose(self) -> ComposeResult:
         yield from self.compose_chrome()
         with Vertical(id="audit-form"):
-            yield Label("Audit — accessibility, SEO, performance",
-                        classes="menu-title")
+            yield Label(self.tr("tui_audit_title"), classes="menu-title")
             yield Static("")
 
-            yield Label("Target (URL, directory, or .html file):")
+            yield Label(self.tr("tui_target_any"))
             # No scheme needed: `example.com` is accepted, the same as in the
             # CLI. See `cli_impl.auditpass.looks_like_url`.
             yield Input(placeholder="example.com or ./src", id="target")
@@ -32,7 +31,7 @@ class AuditScreen(RunScreen):
             # FullscanScreen.compose for why, and ui.widgets.InlineValue for
             # the Qt window's version of the same idea.
             with Horizontal(classes="sentence"):
-                yield Static("language", classes="inline-label")
+                yield Static(self.tr("tui_label_language"), classes="inline-label")
                 yield Select(
                     [
                         ("English", "en"),
@@ -45,7 +44,7 @@ class AuditScreen(RunScreen):
                     classes="inline-select",
                 )
                 yield Static("·", classes="inline-sep")
-                yield Static("depth", classes="inline-label")
+                yield Static(self.tr("tui_label_depth"), classes="inline-label")
                 yield Select(
                     [
                         ("0", "0"),
@@ -59,7 +58,7 @@ class AuditScreen(RunScreen):
                     classes="inline-select",
                 )
                 yield Static("·", classes="inline-sep")
-                yield Static("breakpoints", classes="inline-label")
+                yield Static(self.tr("tui_label_widths"), classes="inline-label")
                 yield Select(
                     [
                         ("default", ""),
@@ -75,15 +74,14 @@ class AuditScreen(RunScreen):
                 )
 
             yield Static("")
-            yield Checkbox("Browser rendering (for SPA sites)", id="browser")
-            yield Checkbox("AI pass (checks alt text, costs tokens)", id="ai")
-            yield Checkbox("Auto-fix known issues (writes files, keeps .bak)",
-                           id="fix")
+            yield Checkbox(self.tr("tui_browser_pass"), id="browser")
+            yield Checkbox(self.tr("tui_ai_pass"), id="ai")
+            yield Checkbox(self.tr("tui_autofix"), id="fix")
 
             yield Static("")
             with Horizontal():
-                yield Button("Run Audit", id="run", variant="primary")
-                yield Button("Back", id="back")
+                yield Button(self.tr("tui_audit_run"), id="run", variant="primary")
+                yield Button(self.tr("tui_back"), id="back")
 
             yield Static("")
             yield Label("", id="audit-status")
@@ -101,7 +99,7 @@ class AuditScreen(RunScreen):
     def _run_audit(self) -> None:
         target = self.query_one("#target", Input).value.strip()
         if not target:
-            self.status("Enter a target.")
+            self.status(self.tr("tui_need_target"))
             return
 
         breakpoints = self.query_one("#breakpoints", Select).value or None
@@ -131,4 +129,4 @@ class AuditScreen(RunScreen):
             breakpoints=breakpoints,
             styled_report=None,
         )
-        self.start_run(cmd_audit, args, title=f"Audit of {target}")
+        self.start_run(cmd_audit, args, title=self.tr("tui_audit_of", target=target))

@@ -117,16 +117,16 @@ class ResultsScreen(XScreen):
             yield Static("")
             yield Label("", id="results-paths")
             with Horizontal(id="results-actions"):
-                yield Button("Open report", id="open-report", variant="primary")
-                yield Button("Open folder", id="open-folder")
-                yield Button("Back", id="back")
+                yield Button(self.tr("tui_open_report"), id="open-report", variant="primary")
+                yield Button(self.tr("tui_open_folder"), id="open-folder")
+                yield Button(self.tr("tui_back"), id="back")
             yield Label("", id="report-status")
             yield RichLog(id="results-log", highlight=False, markup=False,
                           wrap=True)
 
     def on_mount(self) -> None:
         table = self.query_one("#results-summary", DataTable)
-        table.add_columns("What", "Count")
+        table.add_columns(self.tr("tui_col_what"), self.tr("tui_col_count"))
         rows = summary_rows(self._result.payload())
         if rows:
             variables = self.app.get_css_variables()
@@ -137,9 +137,10 @@ class ResultsScreen(XScreen):
 
         paths = self.query_one("#results-paths", Label)
         if self._paths:
-            paths.update("Written:\n" + "\n".join(f"  {p}" for p in self._paths))
+            paths.update(self.tr("tui_written") + "\n"
+                         + "\n".join(f"  {p}" for p in self._paths))
         else:
-            paths.update("No documents were written by this run.")
+            paths.update(self.tr("tui_nothing_written"))
         self.query_one("#open-report", Button).disabled = not self._file_paths()
         self.query_one("#open-folder", Button).disabled = not self._paths
 
