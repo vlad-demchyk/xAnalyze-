@@ -920,8 +920,12 @@ class Switch(QAbstractButton):
     that cannot follow the palette.
     """
 
-    WIDTH = 34
-    HEIGHT = 20
+    #: The artboard's own numbers (3d, 3q): a 30x18 track with a 14px knob
+    #: and 2px of padding. Not "about right" - the switch sits at the end of
+    #: a row of text, and a taller one makes every row taller.
+    WIDTH = 30
+    HEIGHT = 18
+    KNOB = 14
 
     def __init__(self, palette=None, parent=None):
         super().__init__(parent)
@@ -940,10 +944,12 @@ class Switch(QAbstractButton):
         radius = self.height() / 2
         track = QRectF(0, 0, float(self.width()), float(self.height()))
 
+        # Read from the palette, and the palette carries the artboard's
+        # values: `accent` #4b46b8 on, `divider` #e2ded7 off, white knob.
         palette = self.palette_
-        on = QColor(palette.accent if palette else "#4c43e8")
-        off = QColor(palette.border_strong if palette else "#c9c5bd")
-        knob = QColor(palette.bg if palette else "#ffffff")
+        on = QColor(palette.accent if palette else "#4b46b8")
+        off = QColor(palette.divider if palette else "#e2ded7")
+        knob = QColor(palette.on_accent if palette else "#ffffff")
         if not self.isEnabled():
             on.setAlpha(90)
             off.setAlpha(90)
@@ -953,7 +959,7 @@ class Switch(QAbstractButton):
         painter.drawRoundedRect(track, radius, radius)
 
         inset = 2.0
-        diameter = self.height() - inset * 2
+        diameter = float(self.KNOB)
         x = (self.width() - diameter - inset) if self.isChecked() else inset
         painter.setBrush(knob)
         painter.drawEllipse(QRectF(x, inset, diameter, diameter))

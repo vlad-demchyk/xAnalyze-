@@ -363,6 +363,10 @@ class Palette:
     #: because the design separates it from `border`: a divider inside a
     #: filled block, not the edge of a surface.
     divider: str = "#e9e7e2"
+    #: The rule between two rows inside one panel - the settings screen's
+    #: statements, the files in a write confirmation. Lighter than `divider`,
+    #: which is the tick between two inline values in a filled strip.
+    rule: str = "#eeebe5"
     primary: str = "#000000"
     primary_hover: str = "#262626"
     on_primary: str = "#ffffff"
@@ -645,6 +649,7 @@ class Palette:
             border=color("--border", defaults.border),
             border_strong=color("--border-strong", defaults.border_strong),
             divider=color("--divider", color("--border", defaults.divider)),
+            rule=color("--rule", color("--divider", defaults.rule)),
             primary=color("--primary", defaults.primary),
             primary_hover=color("--primary-hover", defaults.primary_hover),
             on_primary=color("--on-primary", defaults.on_primary),

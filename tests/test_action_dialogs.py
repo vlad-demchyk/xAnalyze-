@@ -166,3 +166,54 @@ class Reporting(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipIf(QApplication is None, "PySide6 not available")
+class Progressing(unittest.TestCase):
+    """The screen a batch of billable calls runs behind (artboard 3j)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def _items(self, n=12):
+        from models import CodeBlock, Confidence, TextSpan
+
+        return [(CodeBlock(block_id=str(i), file_path="/x/Hero.tsx", start=0,
+                           end=1, text="a", line_number=40 + i),
+                 TextSpan(block_id=str(i), start=0, end=1, score=0.9,
+                          confidence=Confidence.HIGH, detector_name="t"))
+                for i in range(n)]
+
+    def _dialog(self, n=12):
+        from ui.window_parts.action_dialogs import RewriteProgressDialog
+
+        return RewriteProgressDialog(self._items(n), account="xFormat",
+                                     lang="en")
+
+    def test_the_cost_is_exact_not_an_estimate(self):
+        """One request is billed per passage, so the number is the length of
+        the list rather than a guess with a tilde in front of it."""
+        dialog = self._dialog(12)
+        self.assertIn("12", dialog.cost.text())
+        self.assertIn("xFormat", dialog.cost.text())
+
+    def test_the_log_names_what_is_being_written_now(self):
+        dialog = self._dialog(12)
+        dialog.set_progress(3, 12)
+        self.assertIn("Hero.tsx:43", dialog.log.text())
+        self.assertIn("8", dialog.log.text())  # queued behind it
+
+    def test_the_last_line_has_nothing_queued_behind_it(self):
+        dialog = self._dialog(2)
+        dialog.set_progress(2, 2)
+        self.assertNotIn("queued", dialog.log.text())
+
+    def test_stopping_keeps_what_already_came_back(self):
+        stopped = []
+        dialog = self._dialog(4)
+        dialog.stopped.connect(lambda: stopped.append(True))
+        dialog.stop_btn.click()
+        self.assertEqual(stopped, [True])
+        self.assertFalse(dialog.stop_btn.isEnabled())
+        self.assertIn("paid", dialog.log.text())

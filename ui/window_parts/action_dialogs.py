@@ -19,10 +19,10 @@ questions actually being asked.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QDialog, QHBoxLayout, QLabel, QLineEdit, QPushButton, QScrollArea,
-    QVBoxLayout, QWidget,
+    QDialog, QHBoxLayout, QLabel, QLineEdit, QProgressBar, QPushButton,
+    QScrollArea, QVBoxLayout, QWidget,
 )
 
 import replacements
@@ -189,6 +189,104 @@ class DecisionDialog(QDialog):
     def _on_model(self) -> None:
         self.choice = self.MODEL
         self.accept()
+
+
+class RewriteProgressDialog(QDialog):
+    """A model is writing N replacements, and this is where it is (3j).
+
+    It replaced one line in the status bar, which could say the count and
+    nothing else - not which passage is being written, not what is left, and
+    not what it costs. The last of those is the reason this is a screen: one
+    request is billed per passage, so a batch of twelve is twelve requests
+    on somebody's account, and that number belongs in front of them while it
+    is being spent rather than on an invoice afterwards.
+
+    Which item is which is derived from the count rather than sent by the
+    worker: the worker walks the same list this dialog was given, in order,
+    so `done` is an index into it. That keeps the worker's signal as it is -
+    a protocol that carries a name would have to keep carrying it.
+    """
+
+    stopped = Signal()
+
+    #: How many finished lines stay on screen. The log is for "it is moving
+    #: and it is mine", not for a transcript - the list itself is the record.
+    TAIL = 3
+
+    def __init__(self, items, account: str = "", lang: str = "en",
+                 palette=None, parent=None):
+        super().__init__(parent)
+        self.items = list(items)
+        self.lang = lang
+        self.setWindowTitle(t("rewrite_progress_title", lang, done=0,
+                              total=len(self.items)))
+        self.resize(520, 320)
+
+        column = QVBoxLayout(self)
+        column.setSpacing(8)
+        self.heading = _title(t("rewrite_progress_title", lang, done=0,
+                                total=len(self.items)))
+        column.addWidget(self.heading)
+
+        self.bar = QProgressBar()
+        self.bar.setRange(0, max(1, len(self.items)))
+        self.bar.setValue(0)
+        self.bar.setTextVisible(False)
+        column.addWidget(self.bar)
+
+        self.log = _body("")
+        column.addWidget(self.log)
+        column.addStretch(1)
+
+        row = QHBoxLayout()
+        # Exact, not "~": the worker sends one request per passage, so the
+        # number is the length of the list rather than an estimate.
+        self.cost = muted_wrapped(t("rewrite_progress_cost", lang,
+                                    account=account or t("rewrite_progress_account_unknown", lang),
+                                    n=len(self.items)))
+        row.addWidget(self.cost, stretch=1)
+        self.stop_btn = QPushButton(t("rewrite_progress_stop", lang))
+        self.stop_btn.setProperty("class", theme.CLASS_QUIET)
+        self.stop_btn.clicked.connect(self._on_stop)
+        row.addWidget(self.stop_btn)
+        column.addLayout(row)
+        self.set_progress(0, len(self.items))
+
+    def _label(self, index: int) -> str:
+        """What the item at this index is called, in the list's own words."""
+        if not (0 <= index < len(self.items)):
+            return ""
+        item = self.items[index]
+        block = item[0] if isinstance(item, tuple) else item
+        path = getattr(block, "file_path", "") or getattr(block, "page_url", "")
+        line = getattr(block, "line_number", None)
+        name = path.split("/")[-1] if path else str(index + 1)
+        return f"{name}:{line}" if line else name
+
+    def set_progress(self, done: int, total: int) -> None:
+        self.bar.setRange(0, max(1, total))
+        self.bar.setValue(done)
+        self.heading.setText(t("rewrite_progress_title", self.lang,
+                               done=done, total=total))
+        lines = [t("rewrite_progress_done", self.lang, name=self._label(i))
+                 for i in range(max(0, done - self.TAIL), done)]
+        if done < total:
+            lines.append(t("rewrite_progress_writing", self.lang,
+                           name=self._label(done)))
+            left = total - done - 1
+            if left > 0:
+                lines.append(t("rewrite_progress_queued", self.lang, n=left))
+        self.log.setText("\n".join(lines))
+
+    def _on_stop(self) -> None:
+        """Stop asking for more. What came back already is kept.
+
+        Not a rollback: every reply that arrived was paid for, and throwing
+        it away would charge for it twice the next time.
+        """
+        self.stop_btn.setEnabled(False)
+        self.log.setText(t("rewrite_progress_stopping", self.lang))
+        self.stopped.emit()
 
 
 class WriteOutcomeDialog(QDialog):

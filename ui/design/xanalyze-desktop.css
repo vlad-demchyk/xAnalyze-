@@ -42,6 +42,10 @@
   --border: #e2ded7;
   --border-strong: #c9c4ba;
   --divider: #e2ded7;      /* the hairline between inline values - desktop-only */
+  /* The rule between two rows *inside* a panel. Lighter than --divider on
+     purpose: the artboards draw it 13 times as #eeebe5, and at --divider it
+     reads as the edge of a surface rather than as a gap between statements. */
+  --rule: #eeebe5;
 
   /* ── Accent: the muted indigo of the bundle, not the web's brand indigo ── */
   --brand-accent: #4b46b8;
@@ -106,6 +110,10 @@
   --border: #3a3631;
   --border-strong: #5f5a53;
   --divider: #3a3631;
+  /* No dark artboard draws a row rule, so this is the same relationship
+     read the other way: a step from the surface toward the border, not the
+     border itself. */
+  --rule: #302d29;
 
   --brand-accent: #b6b1f0;
   --bg-brand-muted: #332e4d;

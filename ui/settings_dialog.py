@@ -226,7 +226,10 @@ class SettingsDialog(QDialog):
         rule = QWidget()
         rule.setFixedHeight(1)
         rule.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        rule.setStyleSheet(f"background-color: {self._palette.divider};")
+        # `rule`, not `divider`: the artboards draw the line between two rows
+        # inside a panel as #eeebe5, which is lighter than the tick between
+        # two inline values in a filled strip.
+        rule.setStyleSheet(f"background-color: {self._palette.rule};")
         return rule
 
     def _section(self, column, title: str, note: str = "") -> None:

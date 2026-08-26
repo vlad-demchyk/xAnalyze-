@@ -1425,6 +1425,46 @@ _STRINGS: dict[str, dict[str, str]] = {
 
     # --- Replacement list (artboard 3l) ------------------------------------
     # --- Action dialogs (artboard 3j) --------------------------------------
+    "rewrite_progress_title": {
+        "uk": "Генерую заміну {done}/{total}",
+        "it": "Genero la sostituzione {done}/{total}",
+        "en": "Writing replacement {done}/{total}",
+    },
+    "rewrite_progress_done": {
+        "uk": "✓ {name} - готово",
+        "it": "✓ {name} - fatto",
+        "en": "✓ {name} - done",
+    },
+    "rewrite_progress_writing": {
+        "uk": "· {name} - пишеться…",
+        "it": "· {name} - in scrittura…",
+        "en": "· {name} - being written…",
+    },
+    "rewrite_progress_queued": {
+        "uk": "· ще {n} у черзі",
+        "it": "· altre {n} in coda",
+        "en": "· {n} more queued",
+    },
+    "rewrite_progress_cost": {
+        "uk": "{account} · {n} запит(ів) на цей набір",
+        "it": "{account} · {n} richieste per questo gruppo",
+        "en": "{account} · {n} request(s) for this batch",
+    },
+    "rewrite_progress_account_unknown": {
+        "uk": "оплачуваний акаунт",
+        "it": "account a pagamento",
+        "en": "the billed account",
+    },
+    "rewrite_progress_stop": {
+        "uk": "Зупинити", "it": "Ferma", "en": "Stop",
+    },
+    "rewrite_progress_stopping": {
+        "uk": "Зупиняю. Те, що вже повернулось, лишається: за нього вже "
+              "заплачено.",
+        "it": "Interrompo. Ciò che è già tornato resta: è già stato pagato.",
+        "en": "Stopping. What already came back is kept: it has been paid "
+              "for.",
+    },
     "write_confirm_title": {
         "uk": "Записати виправлення у файли?",
         "it": "Scrivere le correzioni nei file?",

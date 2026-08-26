@@ -558,10 +558,14 @@ QPushButton[class="{CLASS_ACCENT}"]:disabled {{
     color: {c(p.text_muted)};
 }}
 
+/* The artboard's own values: the strip is `--bg-hover` (#f6f4f0) with no
+   border at all, and the chosen segment is `--bg-muted` (#f2efeb) at a 5px
+   radius. A bordered strip and a raised white segment were a plausible
+   reading of "segmented control" and not what the design draws. */
 QWidget[class="{CLASS_SEGMENTED}"] {{
-    background-color: {c(p.bg_muted)};
-    border: 1px solid {c(p.border)};
-    border-radius: {p.radius_md}px;
+    background-color: {c(p.bg_hover)};
+    border: none;
+    border-radius: {p.radius_lg}px;
 }}
 
 QPushButton[class="{CLASS_SEGMENT}"] {{
@@ -581,10 +585,11 @@ QPushButton[class="{CLASS_SEGMENT}"]:hover {{
 /* The chosen segment is a raised card on the strip, not a pressed button:
    the strip is the track and the choice is what sits on it. */
 QPushButton[class="{CLASS_SEGMENT}"]:checked {{
-    background-color: {c(p.bg)};
-    border-color: {c(p.border_strong)};
+    background-color: {c(p.bg_muted)};
+    border-color: transparent;
+    border-radius: {p.radius_sm}px;
     color: {c(p.text)};
-    font-weight: 600;
+    font-weight: 500;
 }}
 
 QPushButton[class="{CLASS_RAIL_ITEM}"] {{
@@ -782,13 +787,13 @@ QRadioButton {{
 QRadioButton::indicator {{
     width: 12px;
     height: 12px;
-    border-radius: 7px;
-    border: 1px solid {c(p.border_strong)};
-    background-color: {c(p.bg)};
+    border-radius: 6px;
+    border: none;
+    background-color: {c(p.divider)};
 }}
 
 QRadioButton::indicator:hover {{
-    border-color: {c(p.text_muted)};
+    background-color: {c(p.border_strong)};
 }}
 
 QRadioButton::indicator:checked {{

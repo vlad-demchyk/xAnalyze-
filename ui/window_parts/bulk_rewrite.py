@@ -88,9 +88,14 @@ class BulkRewriteMixin:
         self.generate_list_btn.setEnabled(False)
         self.auto_replace_btn.setEnabled(False)
         worker = RewriteAllWorker(missing, self.settings)
+        # The status bar could say the count and nothing else - not which
+        # passage, not what is left, and not what it costs. One request is
+        # billed per passage, so the number belongs in front of the person
+        # while it is being spent (artboard 3j).
+        progress = self._show_rewrite_progress(missing, worker)
         worker.progress.connect(
-            lambda done, total: self.status_bar.showMessage(t("rewriting_status", self.lang, done=done, total=total))
-        )
+            lambda done, total: progress.set_progress(done, total))
+        worker.finished.connect(progress.close)
         worker.finished_ok.connect(lambda results: self._after_bulk_rewrite(results, auto_replace))
         worker.failed.connect(self._on_failed)
         worker.finished.connect(self._on_rewrite_worker_finished)
@@ -98,6 +103,24 @@ class BulkRewriteMixin:
         self._track_worker(worker)
         self.cancel_btn.setEnabled(True)
         worker.start()
+
+    def _show_rewrite_progress(self, items, worker):
+        """The screen a batch of billable calls runs behind."""
+        from ui.window_parts.action_dialogs import RewriteProgressDialog
+
+        dialog = RewriteProgressDialog(
+            items, account=self._billed_account_label(), lang=self.lang,
+            palette=getattr(self, "palette_tokens", None), parent=self)
+        dialog.stopped.connect(worker.cancel)
+        # Modal without a nested event loop: `exec()` would run one, and the
+        # worker's signals arrive on this one.
+        dialog.setModal(True)
+        dialog.show()
+        return dialog
+
+    def _billed_account_label(self) -> str:
+        """Whose account pays for this batch, in one short phrase."""
+        return t(f"provider_name_{self.settings.llm_provider}", self.lang)
 
     def _on_rewrite_worker_finished(self) -> None:
         self.generate_list_btn.setEnabled(True)
