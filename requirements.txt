@@ -29,3 +29,9 @@ Pillow>=10
 # Both are also what `tests/test_media_provenance.ARealSignedFile` needs to
 # run at all: it signs its own sample, because reading a real signed file is
 # the only thing that catches a reader wired up wrongly.
+
+# Build tool, not a runtime dependency: `venv/bin/pyinstaller packaging/*.spec`
+# produces the CLI and window bundles. Listed because it is not obvious from
+# anywhere else, and a fresh environment fails the build with
+# `No module named PyInstaller` before anything explains why.
+#   pip install pyinstaller
