@@ -136,6 +136,97 @@ not at a score, and most of them arrive with the correction attached.
 
 ---
 
+**The scan knows what stack it is reading.** A project is identified from its
+own marker files - `wp-config.php`, `artisan`, `next.config.mjs`,
+`manage.py`, `config/package-solution.json` - and what it turns out to be
+decides what is vendored rather than written: WordPress core, Composer
+packages, `.svelte-kit/`, SPFx's compiled `lib/`. Detection is evidence, never
+a guess: the report names the file that proved it, and a project nothing
+matches scans exactly as before. Files whose header says a machine wrote them
+(`DO NOT EDIT`, `@generated`) are skipped in any stack.
+
+**A rule that fires on nearly everything is flagged, not trusted.** Findings
+spread evenly across every page of a run are the shape of a broken
+measurement rather than a broken site, and the run says so next to the count.
+
+## Certainty, and choosing a floor
+
+Every finding says how sure it is. `exact` means the markup settles the
+question - there is an `alt` or there is not. `needs-browser` means something
+outside the file decides it: a stylesheet, a rendered page, or a vendored
+engine reporting that it *could not determine* the answer.
+
+    xanalyze audit ./src --confidence exact
+
+keeps the first kind and drops the second. Both are produced either way and
+both are labelled; the floor is a view over one pass, like `--category`, and
+never a decision made for the reader. On ten pages of a real site this took
+335 findings to 227 without losing a single fact.
+
+## What is checked
+
+`accessibility` (28), `best-practices` (8), `performance` (8), `security` (10), `seo` (8)
+
+`security` reads the markup for what it hands away: a cross-origin frame with
+no `sandbox`, a frame granted the camera, a form posting to `http://`, a
+third-party script with no `integrity`, a key written into an attribute, a
+password field the browser is told to remember. Every one is `exact` by
+construction - a security finding that turns out to be wrong costs more trust
+than any other kind, so nothing that has to infer is in there.
+
+## Templates it understands
+
+Fourteen template languages have a **pair** of fixtures in
+`tests/fixtures/frameworks`: the same component written the way its framework
+says to write it, and written wrong. The correct half must produce no
+findings and the broken half must produce the right ones, so this list is a
+measured claim rather than an intention:
+
+`alpine`, `angular`, `blade`, `django`, `erb`, `handlebars`, `liquid`, `php`, `razor`, `react`, `svelte`, `thymeleaf`, `twig`, `vue`
+
+That is what the scan is *checked* against. Markup in anything not on this
+list is still read - the parser does not refuse it - but nothing has proved
+that a correct file in it comes back clean, and a false finding there would
+not be caught by the suite.
+
+## Stacks it recognises
+
+A project is identified from its own marker files, and what it turns out to
+be decides what is vendored rather than written:
+
+`angular`, `astro`, `beehiiv`, `carrd`, `craft`, `django`, `docusaurus`, `dotnet`, `drupal`, `eleventy`, `ember`, `flutter`, `gatsby`, `ghost`, `hugo`, `jekyll`, `joomla`, `laravel`, `magento`, `nextjs`, `nuxt`, `qwik`, `rails`, `remix`, `shopify`, `silverstripe`, `spfx`, `spring`, `squarespace`, `statamic`, `storybook`, `sveltekit`, `symfony`, `typo3`, `vite`, `wagtail`, `webflow`, `wix`, `wordpress`
+
+**Signatures are scored, not counted.** The method is Wappalyzer's, because
+that fingerprint set has been maintained against the whole web for a decade
+and this one has not: every signature carries a confidence, and a platform is
+named only when the ones that matched add up to 100. A literal only one
+platform emits scores 100 alone; something that could be there for another
+reason - the string `SPFx`, a Ghost theme class - scores below and has to be
+corroborated. Where the markup carries a version it is read out, because
+"WordPress" is a guess someone has to verify and "WordPress 7.1" is a fact
+they can act on.
+
+Checked against 13 live sites, 10 platforms and 3 hand-built controls:
+13 correct, 0 missed, 0 false. Two of those started as failures and both were
+worth having - `gohugo.io` writes `<meta name=generator ...>` with no quotes
+around the attribute name, which HTML has always allowed and this was blind
+to; and `ghost.org` came back as Hugo, which turned out to be true.
+
+**Two places the evidence lives.** A checkout is identified by its marker
+files; a crawled site by what it serves - a `<meta name="generator">`, an
+asset host a platform owns, a runtime payload it injects. Until now only the
+first existed, so a site scan knew nothing about what it was reading while
+the same project on disk knew everything. 26 platforms are recognised from
+served markup, 6 of which exist only there (`wix`, `squarespace`, `webflow`, `beehiiv`, `carrd`, `typo3`) - they have no checkout to
+exclude anything from, and what knowing them buys is different: a finding
+inside the shell a platform generates belongs to the platform, not to whoever
+writes the content.
+
+Detection is evidence, never a guess: the report names the file that proved
+it, ambiguous markers must be corroborated (`config.toml` counts as Hugo only
+beside `layouts/` or `archetypes/`), and a project nothing matches scans
+exactly as it did before.
+
 ## Limits
 
 What the tool is weak at, measured rather than guessed. The tracking for each
@@ -170,11 +261,16 @@ you mean one.
 flags deliberate em dashes and curly quotes; `--no-typography` or the Symbols
 section in Settings turns it off.
 
-**Comments and docstrings are judged with a dictionary tuned for page copy.**
-`--scope technical` therefore reports more loosely than `--scope content`.
+**`--scope technical` does not measure style at all.** The phrase list behind
+the style checks is built from marketing copy, and over 7225 comment blocks in
+one real repository and 55756 in another it produced zero style findings. The
+character checks still run. A quiet technical scan therefore means "not
+measured", not "clean", and the scan says so in its own output.
 
-**On a 16-colour terminal the four severity steps collapse.** The TUI's ramp
-needs 256 colours to be told apart.
+**On a 16-colour terminal two of the four severity steps collapse.**
+`sev-high` and `sev-medium` both land on ANSI 7; `critical` and `none` stay
+distinct. Every row is still labelled with its severity in words, so nothing is
+lost except reading the ramp at a glance. 256 colours show all four.
 
 **Content Credentials need an optional reader.** Without `c2pa-python` and
 `cryptography`, XAnalyze reports that a file carries a manifest and says it

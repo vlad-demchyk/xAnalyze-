@@ -131,6 +131,97 @@ correzione già pronta.
 
 ---
 
+**La scansione sa quale stack sta leggendo.** Il progetto viene identificato dai
+suoi file marcatori - `wp-config.php`, `artisan`, `next.config.mjs`,
+`manage.py`, `config/package-solution.json` - e ciò che risulta essere decide
+cosa è codice di terzi anziché scritto qui: il core di WordPress, i pacchetti
+Composer, `.svelte-kit/`, la `lib/` compilata di SPFx. Il riconoscimento è una
+prova, mai una supposizione: il report nomina il file che lo ha dimostrato, e un
+progetto che non corrisponde a nulla viene analizzato esattamente come prima. I
+file la cui intestazione dice che li ha scritti una macchina (`DO NOT EDIT`,
+`@generated`) vengono saltati in qualsiasi stack.
+
+**Una regola che scatta su quasi tutto viene segnalata, non creduta.** Risultati
+distribuiti in modo uniforme su ogni pagina di una scansione sono la forma di una
+misurazione rotta, non di un sito rotto, e la scansione lo dice accanto al numero.
+
+## Certezza e soglia
+
+Ogni risultato dichiara quanto è certo. `exact` significa che il markup risolve
+la domanda: l'attributo `alt` c'è oppure non c'è. `needs-browser` significa che a
+deciderlo è qualcosa fuori dal file - un foglio di stile, una pagina renderizzata,
+o un motore di terze parti che segnala di **non aver potuto determinare** la
+risposta.
+
+    xanalyze audit ./src --confidence exact
+
+tiene il primo tipo ed elimina il secondo. Entrambi vengono prodotti comunque ed
+entrambi sono etichettati; la soglia è una vista su una sola scansione, come
+`--category`, mai una decisione presa al posto di chi legge. Su dieci pagine di un
+sito reale ha portato 335 risultati a 227 senza perdere un solo fatto.
+
+## Cosa viene controllato
+
+`accessibility` (28), `best-practices` (8), `performance` (8), `security` (10), `seo` (8)
+
+`security` legge il markup per ciò che concede: un frame di terze parti senza
+`sandbox`, un frame a cui è data la fotocamera, un form che invia a `http://`, uno
+script di terze parti senza `integrity`, una chiave scritta in un attributo, un
+campo password che il browser deve ricordare. Ognuna è `exact` per costruzione: un
+risultato di sicurezza sbagliato costa più fiducia di qualsiasi altro, quindi nulla
+che debba dedurre entra lì.
+
+## Template che comprende
+
+Quattordici linguaggi di template hanno una **coppia** di fixture in
+`tests/fixtures/frameworks`: lo stesso componente scritto come vuole il suo
+framework, e scritto male. La metà corretta non deve produrre alcun risultato e
+quella rotta deve produrre quelli giusti, quindi questo elenco è un'affermazione
+misurata, non un'intenzione:
+
+`alpine`, `angular`, `blade`, `django`, `erb`, `handlebars`, `liquid`, `php`, `razor`, `react`, `svelte`, `thymeleaf`, `twig`, `vue`
+
+È questo ciò contro cui la scansione è **verificata**. Il markup in qualsiasi
+cosa non elencata viene comunque letto - il parser non lo rifiuta - ma nulla ha
+dimostrato che un file corretto in quel linguaggio torni pulito, e un risultato
+falso lì non verrebbe intercettato dalla suite.
+
+## Stack che riconosce
+
+Un progetto viene identificato dai suoi file marcatori, e ciò che risulta essere
+decide cosa è codice di terzi anziché scritto qui:
+
+`angular`, `astro`, `beehiiv`, `carrd`, `craft`, `django`, `docusaurus`, `dotnet`, `drupal`, `eleventy`, `ember`, `flutter`, `gatsby`, `ghost`, `hugo`, `jekyll`, `joomla`, `laravel`, `magento`, `nextjs`, `nuxt`, `qwik`, `rails`, `remix`, `shopify`, `silverstripe`, `spfx`, `spring`, `squarespace`, `statamic`, `storybook`, `sveltekit`, `symfony`, `typo3`, `vite`, `wagtail`, `webflow`, `wix`, `wordpress`
+
+**Le firme sono pesate, non contate.** Il metodo è quello di Wappalyzer, perché
+quel set di impronte è mantenuto contro tutto il web da un decennio e questo no: ogni
+firma porta una confidenza, e una piattaforma viene nominata solo quando quelle che
+hanno corrisposto sommano 100. Un letterale che solo una piattaforma emette vale 100 da
+solo; qualcosa che potrebbe essere lì per un altro motivo - la stringa `SPFx`, una classe
+di un tema Ghost - vale meno e va corroborato. Dove il markup porta una versione, viene
+letta: "WordPress" è una supposizione da verificare, "WordPress 7.1" è un fatto su cui
+agire.
+
+Verificato su 13 siti reali: 10 piattaforme e 3 controlli costruiti a mano. 13 corretti,
+0 mancati, 0 falsi. Due partivano come fallimenti ed entrambi sono serviti: `gohugo.io`
+scrive `<meta name=generator ...>` senza virgolette attorno al nome dell'attributo - cosa
+che l'HTML ha sempre permesso - e `ghost.org` è tornato come Hugo, il che si è rivelato vero.
+
+**Le prove stanno in due posti.** Un checkout è identificato dai suoi file
+marcatori; un sito scansionato da ciò che serve: un `<meta name="generator">`, un
+host di asset che una piattaforma possiede, un payload di runtime che inietta. Finora
+esisteva solo il primo, quindi una scansione del sito non sapeva nulla di ciò che
+leggeva mentre lo stesso progetto su disco sapeva tutto. 26 piattaforme sono
+riconosciute dal markup servito, 6 delle quali esistono solo lì (`wix`, `squarespace`, `webflow`, `beehiiv`, `carrd`, `typo3`): non hanno un
+checkout da cui escludere qualcosa, e conoscerle serve a un'altra cosa - un risultato
+dentro il guscio generato dalla piattaforma appartiene alla piattaforma, non a chi
+scrive il contenuto.
+
+Il riconoscimento è una prova, mai una supposizione: il report nomina il file che
+lo ha dimostrato, i marcatori ambigui devono essere corroborati (`config.toml`
+vale come Hugo solo accanto a `layouts/` o `archetypes/`), e un progetto che non
+corrisponde a nulla viene analizzato esattamente come prima.
+
 ## Limiti
 
 Dove lo strumento è debole - misurato, non supposto. Il tracciamento di ogni
@@ -167,12 +258,18 @@ Passa tutti e tre i breakpoint, a meno che non ne intenda uno.
 impostazione predefinita e segnala trattini e virgolette voluti;
 `--no-typography` o la sezione «Simboli» nelle impostazioni la spegne.
 
-**Commenti e docstring sono valutati con un dizionario tarato sul testo di
-pagina.** `--scope technical` segnala quindi in modo più largo di
-`--scope content`.
+**`--scope technical` non misura affatto lo stile.** L'elenco di frasi dietro
+i controlli stilistici è costruito su testo di marketing e, su 7225 blocchi di
+commento di un repository reale e 55756 di un altro, non ha prodotto alcuna
+segnalazione stilistica. I controlli sui caratteri restano attivi. Una scansione
+tecnica silenziosa significa quindi «non misurato», non «pulito», e la scansione
+lo dice.
 
-**Su un terminale a 16 colori i quattro livelli di gravità collassano.** La scala
-della TUI ha bisogno di 256 colori per essere distinguibile.
+**Su un terminale a 16 colori due dei quattro livelli di gravità collassano.**
+`sev-high` e `sev-medium` finiscono entrambi su ANSI 7; `critical` e `none`
+restano distinti. Ogni riga porta comunque il nome della gravità, quindi si perde
+solo la lettura a colpo d'occhio della scala. Con 256 colori si vedono tutti e
+quattro.
 
 **Le Content Credentials richiedono un lettore opzionale.** Senza `c2pa-python`
 e `cryptography` XAnalyze dice che il file porta un manifest e che non è riuscito
