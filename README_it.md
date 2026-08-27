@@ -128,6 +128,9 @@ correzione già pronta.
   (Markdown/JSON) e le durate delle fasi, una cartella per esecuzione
 - **Tre interfacce, tre lingue** — CLI, finestra e interfaccia terminale su un
   unico nucleo, tutte e tre in ucraino, italiano o inglese
+- **Un registro delle proprie esecuzioni** — quali pagine sono state lette,
+  quale motore non è partito, quale regola è fallita. Si pulisce da solo per
+  età e dimensione, si legge da tutte e tre le interfacce (`xanalyze logs`)
 
 ---
 
@@ -687,6 +690,43 @@ xanalyze cache clear
 # Percorso file cache
 xanalyze cache path
 ```
+
+---
+
+### `logs` - cosa ha fatto davvero un'esecuzione
+
+Una finestra finita è uno screenshot, e il motivo per cui è così se n'è andato
+con stderr. L'applicazione scrive un registro delle proprie esecuzioni - quali
+pagine sono state lette, quale motore non è partito, quale regola è fallita,
+quanto è durato un comando - e qui lo si rilegge.
+
+```bash
+xanalyze logs                     # ultimi 200 record, a schermo i più vecchi in alto
+xanalyze logs --level warning     # solo ciò che è andato storto
+xanalyze logs --contains crawl    # filtro per sottostringa
+xanalyze logs --run 1756312000-42 # una sola esecuzione
+xanalyze logs --json              # per qualcosa che analizza
+xanalyze logs path                # dove stanno i file
+xanalyze logs clean               # applica subito i limiti
+xanalyze logs clear               # cancella tutti i file
+```
+
+JSON Lines, un file al giorno, in `$XDG_STATE_HOME/xanalyze/logs` (oppure
+`~/.local/state/xanalyze/logs`). `XANALYZE_LOG_DIR` sposta la cartella,
+`XANALYZE_LOG_LEVEL=debug` accende i record per pagina, spenti per impostazione
+predefinita.
+
+**Si pulisce da solo**, perché un log che riempie il disco è un log che la gente
+spegne: i file più vecchi di 14 giorni vengono rimossi e il resto viene tagliato
+a 20 MB, dai più vecchi. Entrambi i limiti, non uno solo: una macchina che
+scansiona tutto il giorno supera la prova dell'età con gigabyte, e una che ha
+scansionato un anno fa supera quella della dimensione tenendo un file che
+nessuno leggerà. La pulizia gira una volta per processo, alla prima scrittura.
+
+Gli stessi record sono nella TUI (**Log**, voce di menu 8) e nella finestra
+(Impostazioni -> Advanced -> **Vedi i log**), perché tutti e tre leggono una
+sola funzione. Il logging non solleva mai eccezioni: un log che può rompere una
+scansione è peggio di nessun log.
 
 ---
 

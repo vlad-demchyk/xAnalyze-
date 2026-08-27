@@ -56,6 +56,7 @@ import requests
 from bs4 import BeautifulSoup, NavigableString
 
 from lang_detect import guess_language
+import applog
 from models import PageDiagnostics, PageResult, TextBlock
 
 USER_AGENT = "AIContentScanner/0.1 (+https://example.local)"
@@ -438,6 +439,9 @@ def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
             diagnostics.final_url = resp.url
             diagnostics.content_type = resp.headers.get("Content-Type", "")
             diagnostics.headers = {k.lower(): v for k, v in resp.headers.items()}
+            applog.debug("crawl.page", url=url, depth=depth,
+                         status=resp.status_code,
+                         type=diagnostics.content_type[:40])
             resp.raise_for_status()
             content_type = diagnostics.content_type
             if "text/html" not in content_type and not content_type.startswith("text/"):
@@ -468,6 +472,8 @@ def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
             else:
                 url_base = url
         except requests.RequestException as exc:
+            applog.warning("crawl.page_failed", url=url, depth=depth,
+                           error=f"{type(exc).__name__}: {exc}")
             diagnostics.reasons.append(EMPTY_ERROR)
             results.append(
                 PageResult(url=url, depth=depth, error=str(exc), diagnostics=diagnostics)

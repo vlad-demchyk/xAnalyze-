@@ -4828,6 +4828,40 @@ _STRINGS: dict[str, dict[str, str]] = {
     # Ownership. The count is said out loud rather than folded into the
     # summary: a person deciding what to do next needs to know that some of
     # what they are looking at is not theirs to change.
+    "settings_view_logs": {"uk": "Переглянути логи", "it": "Vedi i log",
+                           "en": "View logs"},
+    "settings_clean_logs": {"uk": "Прибрати старі логи", "it": "Pulisci i log",
+                            "en": "Clean up logs"},
+    "settings_logs_note": {
+        "uk": "Логи: {n} файл(ів), {mb} МБ, зберігаються {days} днів - {path}",
+        "it": "Log: {n} file, {mb} MB, conservati {days} giorni - {path}",
+        "en": "Logs: {n} file(s), {mb} MB, kept {days} days - {path}",
+    },
+    # The log screen (TUI) and the log panel (window). The CLI prints the
+    # same records through `applog.format_line`.
+    "tui_menu_logs": {"uk": "Логи", "it": "Log", "en": "Logs"},
+    "tui_logs_title": {"uk": "Логи застосунку", "it": "Log dell'applicazione",
+                       "en": "Application log"},
+    "tui_logs_summary": {
+        "uk": "{files} файл(ів), {mb} МБ, рівень {level}, зберігається {days} днів",
+        "it": "{files} file, {mb} MB, livello {level}, conservati {days} giorni",
+        "en": "{files} file(s), {mb} MB, level {level}, kept {days} days",
+    },
+    "tui_logs_errors": {"uk": "Лише помилки", "it": "Solo errori", "en": "Errors only"},
+    "tui_logs_all": {"uk": "Усі", "it": "Tutti", "en": "All"},
+    "tui_logs_hint": {
+        "uk": "Тут видно, що прогін справді зробив: які сторінки прочитано, який рушій не запустився, яке правило впало.",
+        "it": "Qui si vede cosa ha fatto davvero l'esecuzione: quali pagine sono state lette, quale motore non è partito, quale regola è fallita.",
+        "en": "What the run actually did: which pages were read, which engine refused to start, which rule raised.",
+    },
+    "tui_logs_empty": {
+        "uk": "Ще нічого не записано. Запустіть скан, або поставте XANALYZE_LOG_LEVEL=debug.",
+        "it": "Non c'è ancora nulla. Avvia una scansione, o imposta XANALYZE_LOG_LEVEL=debug.",
+        "en": "Nothing logged yet. Run a scan, or set XANALYZE_LOG_LEVEL=debug.",
+    },
+    "tui_col_level": {"uk": "Рівень", "it": "Livello", "en": "Level"},
+    "tui_col_event": {"uk": "Подія", "it": "Evento", "en": "Event"},
+    "tui_col_detail": {"uk": "Деталі", "it": "Dettagli", "en": "Detail"},
     "a11y_perf_image_oversized_title": {
         "uk": "Зображення більше, ніж потрібно будь-якому екрану",
         "it": "Immagine più grande di quanto serva a qualsiasi schermo",

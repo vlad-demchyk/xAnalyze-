@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import sys
 
+import applog
+
 
 #: `--breakpoints` with no value means all of them.
 def _chosen_breakpoints(args):
@@ -73,6 +75,7 @@ def _run_browser_pass(result, suppressions, args=None) -> None:
 
     usable, reason = driver.available()
     if not usable:
+        applog.warning("browser.skipped", reason=str(reason))
         print(f"# browser pass skipped: {reason}", file=sys.stderr)
         return
 
@@ -109,6 +112,8 @@ def _run_browser_pass(result, suppressions, args=None) -> None:
             print(f"# {document.source}: {page_audit.error}", file=sys.stderr)
             continue
         for name, message in page_audit.engine_errors.items():
+            applog.error("browser.engine_error", engine=name,
+                         source=document.source, message=str(message)[:300])
             print(f"# {document.source}: {name} {message}", file=sys.stderr)
         # Deduplicated against the static findings too, not just among
         # themselves: axe and our own rule both report a missing `alt`, and

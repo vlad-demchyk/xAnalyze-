@@ -21,8 +21,8 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QDialog, QHBoxLayout, QLabel, QLineEdit, QProgressBar, QPushButton,
-    QScrollArea, QVBoxLayout, QWidget,
+    QCheckBox, QDialog, QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit,
+    QProgressBar, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
 import replacements
@@ -389,3 +389,67 @@ def muted_wrapped(text: str) -> QLabel:
     label.setWordWrap(True)
     label.setTextFormat(Qt.TextFormat.PlainText)
     return label
+
+
+class LogViewerDialog(QDialog):
+    """The application log, in the window.
+
+    Reads `applog.read_records`, the same call the CLI and the TUI make, so
+    the three surfaces cannot drift into showing different things about the
+    same run. Read-only and monospaced: this is evidence, not a document.
+
+    Filtered to warnings and worse by default, because that is what anyone
+    opens it for. Everything is one checkbox away.
+    """
+
+    def __init__(self, lang: str = "uk", parent=None) -> None:
+        super().__init__(parent)
+        import applog
+
+        self.lang = lang
+        self._applog = applog
+        self.setWindowTitle(t("tui_logs_title", lang))
+        self.resize(880, 560)
+
+        layout = QVBoxLayout(self)
+        self.summary_label = QLabel()
+        self.summary_label.setWordWrap(True)
+        layout.addWidget(self.summary_label)
+
+        self.view = QPlainTextEdit()
+        self.view.setReadOnly(True)
+        font = self.view.font()
+        font.setFamily("monospace")
+        self.view.setFont(font)
+        layout.addWidget(self.view, stretch=1)
+
+        row = QHBoxLayout()
+        self.errors_only = QCheckBox(t("tui_logs_errors", lang))
+        self.errors_only.setChecked(True)
+        self.errors_only.stateChanged.connect(self.refresh)
+        row.addWidget(self.errors_only)
+        row.addStretch(1)
+        refresh_btn = QPushButton(t("tui_refresh", lang))
+        refresh_btn.clicked.connect(self.refresh)
+        row.addWidget(refresh_btn)
+        close_btn = QPushButton(t("close", lang))
+        close_btn.clicked.connect(self.accept)
+        row.addWidget(close_btn)
+        layout.addLayout(row)
+
+        self.refresh()
+
+    def refresh(self) -> None:
+        summary = self._applog.summary()
+        megabytes = summary["bytes"] / (1024 * 1024)
+        self.summary_label.setText(
+            t("tui_logs_summary", self.lang, files=len(summary["files"]),
+              mb=f"{megabytes:.2f}", days=summary["retention_days"],
+              level=summary["level"]))
+        level = "warning" if self.errors_only.isChecked() else ""
+        records = self._applog.read_records(limit=500, level=level)
+        if not records:
+            self.view.setPlainText(t("tui_logs_empty", self.lang))
+            return
+        self.view.setPlainText("\n".join(
+            self._applog.format_line(record) for record in reversed(records)))

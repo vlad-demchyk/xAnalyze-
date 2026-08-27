@@ -13,9 +13,14 @@ from tui.screens.base import XScreen
 #: block of `elif`s plus a matching block of `action_*` methods, which had
 #: already drifted once (the README documented shortcuts 1-6 while the menu
 #: had seven).
+#:
+#: Logs is 8 rather than 5, which would read better. The numbers 1-7 are
+#: documented, are in muscle memory and are what the tests press: a new entry
+#: that renumbers the existing ones makes every one of those wrong, and a
+#: menu shortcut is a promise as much as a label.
 MENU = (
     ("1", "scan"), ("2", "audit"), ("3", "fullscan"), ("4", "reports"),
-    ("5", "settings"), ("6", "update"), ("7", "uninstall"),
+    ("5", "settings"), ("6", "update"), ("7", "uninstall"), ("8", "logs"),
 )
 
 

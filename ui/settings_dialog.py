@@ -663,7 +663,53 @@ class SettingsDialog(QDialog):
         layout.addLayout(actions)
         self._refresh_cache_label()
 
+        # The log belongs beside the cache and the uninstaller: all three
+        # answer "what has this tool put on my machine". It is also the only
+        # place a person can see why a run did what it did after the run has
+        # ended - the CLI and the TUI show the same records.
+        self.logs_label = muted("")
+        self.logs_label.setWordWrap(True)
+        layout.addWidget(self.logs_label)
+        log_actions = QHBoxLayout()
+        self.view_logs_btn = QPushButton(t("settings_view_logs", self.lang))
+        self.view_logs_btn.setProperty("class", theme.CLASS_QUIET)
+        self.view_logs_btn.clicked.connect(self._on_view_logs)
+        log_actions.addWidget(self.view_logs_btn)
+        self.clean_logs_btn = QPushButton(t("settings_clean_logs", self.lang))
+        self.clean_logs_btn.setProperty("class", theme.CLASS_QUIET)
+        self.clean_logs_btn.clicked.connect(self._on_clean_logs)
+        log_actions.addWidget(self.clean_logs_btn)
+        log_actions.addStretch(1)
+        layout.addLayout(log_actions)
+        self._refresh_logs_label()
+
         return w
+
+    def _refresh_logs_label(self) -> None:
+        import applog
+
+        summary = applog.summary()
+        megabytes = summary["bytes"] / (1024 * 1024)
+        self.logs_label.setText(t("settings_logs_note", self.lang,
+                                  n=len(summary["files"]),
+                                  mb=f"{megabytes:.2f}",
+                                  days=summary["retention_days"],
+                                  path=summary["directory"]))
+
+    def _on_view_logs(self) -> None:
+        from ui.window_parts.action_dialogs import LogViewerDialog
+
+        LogViewerDialog(self.lang, parent=self).exec()
+
+    def _on_clean_logs(self) -> None:
+        """Apply the retention limits now rather than at the next write.
+
+        The limits run on their own; this exists for the moment somebody is
+        looking at the number and wants it to be true immediately."""
+        import applog
+
+        applog.clean()
+        self._refresh_logs_label()
 
     def _refresh_cache_label(self) -> None:
         """How much is cached, and where, in one line.

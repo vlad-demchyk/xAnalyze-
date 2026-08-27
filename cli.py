@@ -21,6 +21,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
 
@@ -28,6 +29,7 @@ import detectors  # noqa: F401 - registers the detectors
 import suppression
 import unicode_rules
 import config
+from config import APP_VERSION
 from audit.base import CATEGORIES, CONFIDENCE_ORDER, meets_confidence
 from detectors.factory import DetectorFactory
 from file_writer import ReplacementPlan, apply_replacements
@@ -506,6 +508,62 @@ def _owned_counts(result) -> dict:
         if getattr(issue, "owner", ""):
             counts[issue.owner] = counts.get(issue.owner, 0) + 1
     return counts
+
+
+def cmd_logs(args) -> int:
+    """The app's own log, for whoever has to debug a run that already ended.
+
+    Reading, not tailing: a scan writes in bursts and finishes, and the
+    question afterwards is always "what did that run do", not "what is
+    happening now".
+    """
+    import applog
+
+    if getattr(args, "logs_command", "") == "path":
+        print(applog.log_dir())
+        return EXIT_OK
+
+    if getattr(args, "logs_command", "") == "clear":
+        removed = 0
+        for path in sorted(applog.log_dir().glob(f"{applog.APP_NAME}-*.log")):
+            try:
+                path.unlink()
+                removed += 1
+            except OSError as exc:
+                print(f"# {path.name}: {exc}", file=sys.stderr)
+        print(f"removed {removed} file(s)")
+        return EXIT_OK
+
+    if getattr(args, "logs_command", "") == "clean":
+        result = applog.clean()
+        print(f"expired {result['removed_expired']}, "
+              f"over budget {result['removed_oversize']}, "
+              f"kept {result['kept']}")
+        return EXIT_OK
+
+    summary = applog.summary()
+    if args.json:
+        print(json.dumps(
+            {"summary": summary,
+             "records": applog.read_records(limit=args.limit, level=args.level,
+                                            contains=args.contains, run=args.run)},
+            ensure_ascii=False, indent=2, default=str))
+        return EXIT_OK
+
+    megabytes = summary["bytes"] / (1024 * 1024)
+    print(f"# {summary['directory']}  "
+          f"{len(summary['files'])} file(s), {megabytes:.2f} MB, "
+          f"level {summary['level']}, kept {summary['retention_days']} days")
+    records = applog.read_records(limit=args.limit, level=args.level,
+                                  contains=args.contains, run=args.run)
+    if not records:
+        print("# nothing logged yet - run a scan, or set XANALYZE_LOG_LEVEL=debug")
+        return EXIT_OK
+    # Oldest first on screen: a log reads forwards even though it is
+    # collected backwards.
+    for record in reversed(records):
+        print(applog.format_line(record))
+    return EXIT_OK
 
 
 def _json_default(value):
@@ -1034,6 +1092,23 @@ def build_parser() -> argparse.ArgumentParser:
     from cli_impl.runcmds import add_run_parsers
     add_run_parsers(sub)
 
+    p_logs = sub.add_parser(
+        "logs",
+        help="show the app's own log (what a run actually did)")
+    p_logs.add_argument("--limit", type=int, default=200,
+                        help="how many records, newest first (default 200)")
+    p_logs.add_argument("--level", default="",
+                        choices=["", "debug", "info", "warning", "error"],
+                        help="this level and worse")
+    p_logs.add_argument("--contains", default="", help="substring filter")
+    p_logs.add_argument("--run", default="", help="only this run id")
+    p_logs.add_argument("--json", action="store_true")
+    logs_sub = p_logs.add_subparsers(dest="logs_command")
+    logs_sub.add_parser("path", help="print the log directory").set_defaults(func=cmd_logs)
+    logs_sub.add_parser("clean", help="apply the retention limits now").set_defaults(func=cmd_logs)
+    logs_sub.add_parser("clear", help="delete every log file").set_defaults(func=cmd_logs)
+    p_logs.set_defaults(func=cmd_logs)
+
     p_update = sub.add_parser(
         "update",
         help="self-update the CLI binary from the latest GitHub Release")
@@ -1136,11 +1211,32 @@ def main(argv=None) -> int:
         except Exception:  # noqa: BLE001
             pass  # never let the check break the real command
 
+    # One record in, one out. The pair is what makes a log readable: a
+    # start with no end is a crash, and the exit code is the answer a
+    # person is usually looking for. `logs` itself is not logged - reading
+    # the log would otherwise change it.
+    import applog
+
+    quiet = args.command == "logs"
+    if not quiet:
+        applog.set_run(f"{int(time.time())}-{os.getpid()}")
+        applog.info("command.start", command=args.command,
+                    target=getattr(args, "target", "") or "",
+                    version=APP_VERSION)
+    started = time.monotonic()
     try:
-        return args.func(args)
+        code = args.func(args)
+        if not quiet:
+            applog.info("command.done", command=args.command, exit=code,
+                        seconds=round(time.monotonic() - started, 2))
+        return code
     except SystemExit:
         raise
     except Exception as exc:  # noqa: BLE001
+        if not quiet:
+            applog.error("command.failed", command=args.command,
+                         error=f"{type(exc).__name__}: {exc}",
+                         seconds=round(time.monotonic() - started, 2))
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_ERROR
 

@@ -133,6 +133,9 @@ not at a score, and most of them arrive with the correction attached.
   (Markdown/JSON), and the timings, one folder per run
 - **Three interfaces, three languages** — CLI, window and terminal interface
   over one core, all of them in Ukrainian, Italian or English
+- **A log of its own runs** — which pages were read, which engine refused to
+  start, which rule raised. Self-cleaning by age and size, readable from all
+  three interfaces (`xanalyze logs`)
 
 ---
 
@@ -695,6 +698,42 @@ xanalyze cache clear
 # Show cache file path
 xanalyze cache path
 ```
+
+---
+
+### `logs` - What a run actually did
+
+A finished window is a screenshot; the reason it looks that way is gone with
+stderr. The app writes a log of its own runs - which pages were fetched, which
+engine refused to start, which rule raised, how long a command took - and this
+is where you read it back.
+
+```bash
+xanalyze logs                     # newest 200 records, oldest on screen first
+xanalyze logs --level warning     # only what went wrong
+xanalyze logs --contains crawl    # substring filter
+xanalyze logs --run 1756312000-42 # one run
+xanalyze logs --json              # for something that parses
+xanalyze logs path                # where the files live
+xanalyze logs clean               # apply the retention limits now
+xanalyze logs clear               # delete every file
+```
+
+JSON Lines, one file per day, under `$XDG_STATE_HOME/xanalyze/logs` (or
+`~/.local/state/xanalyze/logs`). `XANALYZE_LOG_DIR` moves it, and
+`XANALYZE_LOG_LEVEL=debug` turns on the per-page records that are off by
+default.
+
+**It cleans up after itself**, because a debug log that fills a disk is a
+debug log people switch off: files older than 14 days go, and whatever is left
+is trimmed to 20 MB, oldest first. Both limits, not either - a machine that
+scans all day passes the age test with gigabytes, and one that scanned once a
+year ago passes the size test while keeping a file nobody will read. The
+cleanup runs once per process on the first write, never per record.
+
+The same records are in the TUI (**Logs**, menu item 8) and in the window
+(Settings -> Advanced -> **View logs**), because all three read one function.
+Logging never raises: a log that can break a scan is worse than no log.
 
 ---
 
