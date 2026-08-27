@@ -85,12 +85,53 @@ def _coverage_line(walked) -> str:
     return line
 
 
-def _print_human(findings, walked=None) -> None:
+#: What a `technical` scan is honestly able to say about style, printed
+#: alongside the result. Measured before it was written (`P-09`): the offline
+#: pass reported **zero** cliche or statistical findings over 7225 comment
+#: blocks in `~/repositories/XFormat` and 55756 in this repository. Not a
+#: threshold that happened to sit high - `CLICHE_PHRASES` in
+#: `detectors/heuristic.py` is a marketing-copy list, and `heuristic.py`'s
+#: floor pins any statistics-only score to 0.32, below reporting. So the
+#: stylistic half of this mode is silent on comments by construction.
+#:
+#: Said rather than fixed with a second dictionary, because there is no
+#: corpus of comments with a known author to build one against, and a list
+#: assembled from examples would be calibrated to whoever assembled it. A
+#: scan that reports nothing and explains why is more use than one that
+#: reports nothing and looks clean.
+TECHNICAL_STYLE_CAVEAT = (
+    "! --scope technical: the character checks ran, the style checks did not "
+    "say anything. The phrase list behind them is built from marketing copy "
+    "and is not calibrated for comments or docstrings, so treat a quiet "
+    "result here as 'not measured', not as 'clean'."
+)
+
+
+def technical_scope_note(scope: str, findings) -> str:
+    """The caveat, when a technical scan produced no stylistic finding.
+
+    Suppressed when the pass did say something: at that point the reader has
+    a finding to judge, and a warning that the check is uncalibrated is more
+    usefully attached to the finding than to the run.
+    """
+    if scope not in ("technical", "both"):
+        return ""
+    for finding in findings:
+        details = finding.get("details") or {}
+        if details.get("cliches") or details.get("source") == "model":
+            return ""
+    return TECHNICAL_STYLE_CAVEAT
+
+
+def _print_human(findings, walked=None, scope: str = "content") -> None:
     coverage = _coverage_line(walked)
+    note = technical_scope_note(scope, findings)
     if not findings:
         print("No findings.")
         if coverage:
             print(coverage)
+        if note:
+            print(note)
         return
     current = None
     # One row per distinct finding, with its copies named under it. Nothing
@@ -115,3 +156,5 @@ def _print_human(findings, walked=None) -> None:
     print(f"\n{c['total']} finding(s) in {c['files']} file(s){tail}.")
     if coverage:
         print(coverage)
+    if note:
+        print(note)

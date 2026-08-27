@@ -25,6 +25,16 @@ Request shape notes, because they are easy to get wrong:
 * Only `text` blocks are read out of `response.content`; a response can
   also contain `thinking` blocks, and treating those as output would
   corrupt the parse.
+* **There is no `temperature` to set, and that is not an oversight** (`P-08`).
+  Sampling parameters — `temperature`, `top_p`, `top_k` — are removed on
+  Claude Opus 5, Opus 4.8, Opus 4.7, Sonnet 5 and Fable 5, and sending one
+  returns a 400. They still work on Opus 4.6 and older, but pinning the judge
+  to a retired model to buy determinism would trade a real capability for a
+  property the run can record instead. So this backend does the recordable
+  thing: every finding carries the model and the effort that produced it, and
+  two runs that disagree can be told apart by configuration rather than
+  guessed at. `judgment_cache` fingerprints the same triple, so a changed
+  model or effort invalidates the cached verdicts rather than mixing them.
 """
 from __future__ import annotations
 
@@ -227,7 +237,15 @@ class ClaudeLLMJudgeDetector(Detector):
                         confidence=score_to_confidence(score),
                         detector_name=self.name,
                         explanation=reason,
-                        details={"source": "model", "model": getattr(self, "model", self.name)},
+                        # The judging configuration travels with the finding.
+                        # A fresh judgement is not reproducible - no seed and
+                        # no temperature are available on the current models
+                        # (see the module docstring, `P-08`) - so the next
+                        # best thing is that a finding can always say what
+                        # produced it.
+                        details={"source": "model",
+                                 "model": getattr(self, "model", self.name),
+                                 "effort": self.effort},
                     )
                 )
         return spans
