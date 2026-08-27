@@ -54,7 +54,21 @@ def _config_dir() -> Path:
     return path
 
 
-CONFIG_FILE = _config_dir() / "settings.json"
+def config_file() -> Path:
+    """Where settings live, resolved now rather than at import.
+
+    It used to be `CONFIG_FILE = _config_dir() / "settings.json"`, a module
+    constant, and that made the real file unavoidable for a test: by the time
+    a test could set `XDG_CONFIG_HOME`, the path had already been computed
+    from whatever the variable was during import. `tests/test_devserver_gui.py`
+    found that out by flipping the developer's own auto-start setting on disk
+    and passing anyway, and three lines in `tests/test_ui_suppression.py` still
+    carry the copy-paste workaround it forced. See `P-13`.
+
+    A function instead, so the environment decides at the moment of the read
+    or the write, and one variable isolates the whole process.
+    """
+    return _config_dir() / "settings.json"
 
 
 @dataclass
@@ -144,9 +158,10 @@ class Settings:
 
     @classmethod
     def load(cls) -> "Settings":
-        if CONFIG_FILE.exists():
+        path = config_file()
+        if path.exists():
             try:
-                data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+                data = json.loads(path.read_text(encoding="utf-8"))
                 merged = {**asdict(cls()), **data}
                 # Drop keys from older/newer versions so an out-of-date config
                 # file can't stop the app from starting.
@@ -157,7 +172,8 @@ class Settings:
         return cls()
 
     def save(self) -> None:
-        CONFIG_FILE.write_text(json.dumps(asdict(self), indent=2, ensure_ascii=False), encoding="utf-8")
+        config_file().write_text(
+            json.dumps(asdict(self), indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 # Values that were *this application's* defaults in an earlier version, and

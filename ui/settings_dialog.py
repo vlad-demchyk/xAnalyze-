@@ -141,7 +141,7 @@ class SettingsDialog(QDialog):
 
         # Said out loud, because "where does this end up" is a question this
         # screen answers for every row on it, and the answer is one file.
-        where = muted(str(config.CONFIG_FILE))
+        where = muted(str(config.config_file()))
         where.setWordWrap(True)
         where.setProperty("class", theme.CLASS_CODE)
         column.addWidget(where)

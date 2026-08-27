@@ -28,17 +28,18 @@ try:
 except Exception:  # noqa: BLE001 - no Qt here is a skip, not a failure
     QApplication = None
 
-#: `config.CONFIG_FILE` is resolved once, at import time, from whatever
-#: `XDG_CONFIG_HOME` happened to be *then* - a `setUp`-time override has
-#: nothing left to change, so `Settings.save()` always lands on the real
-#: `~/.config/xanalyze/settings.json`. This file found that out the hard
-#: way: `test_checked_analyze_starts_the_devserver_flow_instead` checked the
-#: real auto-start toggle for real and left it flipped on disk for whoever
-#: opens the actual app next, with no test failure anywhere to say so.
-#: Patched for the whole module instead of a config-dir fix - the same gap
-#: is codebase-wide (`ui/main_window.py` calls `settings.save()` from five
-#: other places), and closing it everywhere is a larger change than this
-#: file's tests are the reason to make.
+#: This file is where the settings leak was found: a test checked the real
+#: auto-start toggle for real and left it flipped on disk for whoever opened
+#: the actual app next, with no failure anywhere to say so. The workaround
+#: here - patching `Settings.save` for the whole module - was written with a
+#: note that the gap was codebase-wide and closing it properly was a larger
+#: change than this file's tests were the reason to make.
+#:
+#: It has since been closed properly (`P-13`): `config.config_file()` resolves
+#: the path at the moment of the write, and `tests/conftest.py` points
+#: `XDG_CONFIG_HOME` at a temporary directory for the whole run. The patch
+#: below is kept anyway, because these tests assert *that* a save happened,
+#: and a no-op save is a cheaper way to say so than reading a file back.
 _save_patch = None
 
 

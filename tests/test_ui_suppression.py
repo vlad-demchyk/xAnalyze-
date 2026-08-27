@@ -17,6 +17,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 try:
     from PySide6.QtWidgets import QApplication, QLabel, QListWidget
     import suppression
+    from i18n.translations import t
     from ui.main_window import MainWindow, _SUPPRESSED_NOTE
     from ui.settings_dialog import SettingsDialog
     from ui.window_parts.noise_control import HiddenRow, NoiseDialog
@@ -82,7 +83,6 @@ class IgnoreThisFinding(unittest.TestCase):
     def test_a_web_finding_falls_back_to_personal_settings(self):
         window = MainWindow()
         window.source = SOURCE_SITE
-        window.settings.save = lambda: None  # do not touch the real settings.json
         span, block = self._span_and_block()
         window.result = AnalysisResult(root_url="https://example.com/",
                                        pages=[PageResult(url=block.page_url, depth=0,
@@ -118,7 +118,6 @@ class IgnoreThisFinding(unittest.TestCase):
     def test_the_button_removes_the_row_without_a_new_scan(self):
         window = MainWindow()
         window.source = SOURCE_SITE
-        window.settings.save = lambda: None  # do not touch the real settings.json
         span, block = self._span_and_block()
         window.result = AnalysisResult(root_url="https://example.com/",
                                        pages=[PageResult(url=block.page_url, depth=0,
@@ -179,7 +178,6 @@ class NoiseControl(unittest.TestCase):
     def _dialog(self, ignore=None, root=None):
         window = MainWindow()
         window.settings.ignore = ignore or {}
-        window.settings.save = lambda: None  # never the real settings.json
         return NoiseDialog(window.settings, window.lang, root=root,
                            palette=window.palette_tokens, parent=window), window
 
@@ -202,12 +200,19 @@ class NoiseControl(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             Path(folder, suppression.IGNORE_FILENAME).write_text(
                 "[phrases]\nrobust\n", encoding="utf-8")
-            dialog, _ = self._dialog({"phrases": ["comprehensive"]}, root=folder)
+            dialog, window = self._dialog({"phrases": ["comprehensive"]}, root=folder)
             said = {" ".join(c.text() for c in row.findChildren(QLabel)): row
                     for row in self._rows(dialog)}
             personal = [k for k in said if "comprehensive" in k][0]
             project = [k for k in said if "robust" in k][0]
-            self.assertIn("personal", personal)
+            # Asserted through the dictionary, not as the English string it
+            # used to be. The literal "personal" passed only because the
+            # dialog was reading the developer's own `settings.json`, where
+            # `ui_language` happened to be "en"; once tests stopped seeing
+            # that file (`P-13`), the default `uk` made the case fail on a
+            # correct dialog. A test that reads the real settings is a test
+            # whose result depends on who runs it.
+            self.assertIn(t("noise_origin_personal", window.lang), personal)
             self.assertIn(suppression.IGNORE_FILENAME, project)
 
     def test_restoring_a_personal_entry_takes_it_out_of_settings(self):
@@ -260,7 +265,6 @@ class NoiseControl(unittest.TestCase):
         window = MainWindow()
         window.settings.ignore = {"phrases": ["comprehensive", "robust"],
                                   "rules": ["region"]}
-        window.settings.save = lambda: None
         dlg = SettingsDialog(window.settings, window.lang, parent=window)
         self.assertIn("3", dlg.noise_count.text())
 

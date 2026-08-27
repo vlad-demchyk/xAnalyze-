@@ -105,7 +105,7 @@ class SettingsScreen(XScreen):
                 yield Button(self.tr("tui_reload"), id="reload")
                 yield Button(self.tr("tui_back"), id="back")
             yield Label("", id="settings-status")
-            yield Label(self.tr("tui_config_file", path=config.CONFIG_FILE),
+            yield Label(self.tr("tui_config_file", path=config.config_file()),
                         id="config-path")
 
     def _current(self, attribute: str) -> str:

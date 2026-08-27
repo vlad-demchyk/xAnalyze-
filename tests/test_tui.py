@@ -243,7 +243,13 @@ class SchemelessTarget(unittest.TestCase):
                 return str(app.screen.query_one("#fullscan-status", Label)
                            .render())
 
-        self.assertIn("Enter a target", run(body()))
+        # Through the dictionary, not as the English string it used to be:
+        # that literal passed only because the suite was reading the
+        # developer's own `settings.json`, where `ui_language` happened to
+        # be "en". With tests isolated (`P-13`) the default is "uk".
+        from i18n.translations import t
+
+        self.assertIn(t("tui_need_target", XAnalyzeApp().lang), run(body()))
 
 
 class ResultsScreenShowsTheResult(unittest.TestCase):
@@ -409,7 +415,9 @@ class ReportsScreenReacts(unittest.TestCase):
                     return str(app.screen.query_one("#report-status", Label)
                                .render())
 
-        self.assertIn("No runs recorded", run(body()))
+        from i18n.translations import t
+
+        self.assertIn(t("tui_reports_empty", XAnalyzeApp().lang), run(body()))
 
     def test_the_list_is_rebuilt_on_every_visit(self):
         """It used to be built once, in `on_mount`, and never again."""
@@ -473,7 +481,9 @@ class SettingsAreEditable(unittest.TestCase):
 
         calls, status = run(body())
         self.assertEqual(calls, 0)
-        self.assertIn("Nothing changed", status)
+        from i18n.translations import t
+
+        self.assertIn(t("tui_settings_nothing", XAnalyzeApp().lang), status)
 
     def test_integer_settings_are_saved_as_integers(self):
         async def body():
