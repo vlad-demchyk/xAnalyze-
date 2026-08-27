@@ -3606,6 +3606,206 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Set width and height, or reserve the space with an aspect-ratio in CSS or a container of fixed height. For embedded players and banners the most reliable answer is a wrapper with a known aspect ratio, since they do not announce their own size in advance.",
     },
     # ------------------------------------------------------ Best practices
+    "a11y_sec_password_in_get_form_title": {
+        "uk": 'Пароль піде в адресний рядок',
+        "it": 'La password finirà nella barra degli indirizzi',
+        "en": 'The password will go into the address bar',
+    },
+    "a11y_sec_password_in_get_form_found": {
+        "uk": 'Форма з полем пароля надсилається методом {method}.',
+        "it": 'Il form con un campo password invia con il metodo {method}.',
+        "en": 'The form with a password field submits by {method}.',
+    },
+    "a11y_sec_password_in_get_form_why": {
+        "uk": 'Усе з форми потрапляє в рядок запиту: адресний рядок, історію браузера, referrer до наступного сайту, журнал доступу сервера і кожен проксі між ними. HTTPS тут не рятує: адреса зашифрована в дорозі й записана відкрито на обох кінцях.',
+        "it": "Tutto il form finisce nella query string: barra degli indirizzi, cronologia, referrer verso il sito successivo, log di accesso del server e ogni proxy nel mezzo. HTTPS non aiuta: l'URL è cifrato in transito e scritto in chiaro a entrambi i capi.",
+        "en": "Everything in the form goes into the query string: the address bar, the browser history, the referrer sent to the next site, the server's access log and every proxy in between. HTTPS does not help - the URL is encrypted in transit and written in the clear at both ends.",
+    },
+    "a11y_sec_password_in_get_form_fix": {
+        "uk": 'Поставте method="post". Відсутній method означає GET, тож його треба вказати явно.',
+        "it": 'Imposta method="post". Un method assente significa GET, quindi va dichiarato esplicitamente.',
+        "en": 'Set method="post". An absent method means GET, so it has to be stated.',
+    },
+    "a11y_sec_formaction_insecure_title": {
+        "uk": 'Кнопка перекриває дію форми на http',
+        "it": "Il pulsante sovrascrive l'azione del form con http",
+        "en": "A button overrides the form's action with http",
+    },
+    "a11y_sec_formaction_insecure_found": {
+        "uk": 'formaction="{formaction}" надсилає через http.',
+        "it": 'formaction="{formaction}" invia via http.',
+        "en": 'formaction="{formaction}" posts over http.',
+    },
+    "a11y_sec_formaction_insecure_why": {
+        "uk": 'formaction на кнопці перемагає власний action форми, тож форма, яка виглядає безпечною, все одно надсилає у відкритому вигляді через одну зі своїх кнопок. Читання самої форми цього не бачить.',
+        "it": "formaction sul pulsante prevale sull'action del form, quindi un form che sembra sicuro invia comunque in chiaro attraverso uno dei suoi pulsanti. Leggere solo il form non lo mostra.",
+        "en": "formaction on a button wins over the form's own action, so a form that looks safe can still post in the clear through one of its buttons. Reading the form alone misses it.",
+    },
+    "a11y_sec_formaction_insecure_fix": {
+        "uk": 'Змініть formaction на https або приберіть його, щоб кнопка користувалась action форми.',
+        "it": "Cambia formaction in https oppure rimuovilo, così il pulsante usa l'action del form.",
+        "en": "Change formaction to https, or remove it so the button uses the form's action.",
+    },
+    "a11y_sec_credentials_in_url_title": {
+        "uk": 'Логін і пароль записані в адресу',
+        "it": "Credenziali scritte nell'URL",
+        "en": 'A credential written into a URL',
+    },
+    "a11y_sec_credentials_in_url_found": {
+        "uk": 'Атрибут {attribute} містить логін і пароль для {host}.',
+        "it": "L'attributo {attribute} contiene credenziali per {host}.",
+        "en": 'The {attribute} attribute carries a credential for {host}.',
+    },
+    "a11y_sec_credentials_in_url_why": {
+        "uk": 'Форма https://user:pass@host/ кладе облікові дані в розмітку, в історію браузера і в referrer. Браузери роками зрізають цю форму, тож зазвичай це витік, який до того ж уже не працює.',
+        "it": 'La forma https://user:pass@host/ mette le credenziali nel markup, nella cronologia e nel referrer. I browser rimuovono questa forma da anni, quindi di solito è una fuga che per giunta non funziona più.',
+        "en": "The https://user:pass@host/ form puts the credential in the markup, in the browser's history and in the referrer. Browsers have been stripping this form for years, so it is usually a leak that no longer even works.",
+    },
+    "a11y_sec_credentials_in_url_fix": {
+        "uk": 'Приберіть облікові дані з адреси й відкличте їх: усе, що потрапило в розмітку, вважайте опублікованим.',
+        "it": "Togli le credenziali dall'URL e revocale: tutto ciò che è finito nel markup va considerato pubblicato.",
+        "en": 'Take the credential out of the URL and revoke it: anything that reached the markup should be treated as published.',
+    },
+    "a11y_sec_srcdoc_sandbox_title": {
+        "uk": 'Вбудований документ без пісочниці',
+        "it": 'Documento inline nel frame senza sandbox',
+        "en": 'An inline framed document with no sandbox',
+    },
+    "a11y_sec_srcdoc_sandbox_found": {
+        "uk": '<iframe srcdoc="..."> не має атрибута sandbox.',
+        "it": 'L\'<iframe srcdoc="..."> non ha l\'attributo sandbox.',
+        "en": 'The <iframe srcdoc="..."> carries no sandbox attribute.',
+    },
+    "a11y_sec_srcdoc_sandbox_why": {
+        "uk": "Розмітка в srcdoc виконується у походженні сторінки, яка її вбудовує, якщо sandbox не скаже інакше. Тож усе, що туди підставляється - коментар, прев'ю, відрендерений фрагмент - виконується як власний скрипт першої сторони. Це той самий ризик, що й чужий кадр, тільки без походження, яке його видавало б.",
+        "it": "Il markup in srcdoc viene eseguito nell'origine della pagina che lo incorpora, a meno che un sandbox non dica diversamente. Tutto ciò che vi viene interpolato - un commento, un'anteprima, un frammento renderizzato - gira come script di prima parte. È lo stesso rischio di un frame di terze parti, senza l'origine che lo renderebbe evidente.",
+        "en": "srcdoc markup runs in the embedding page's origin unless a sandbox says otherwise, so anything interpolated into it - a comment, a preview, a rendered snippet - runs as first-party script. It is the same risk as a cross-origin frame with the origin removed, which makes it easier to miss.",
+    },
+    "a11y_sec_srcdoc_sandbox_fix": {
+        "uk": 'Додайте sandbox і перелічіть лише потрібне. Для показу чужого вмісту порожній sandbox зазвичай і є правильною відповіддю.',
+        "it": 'Aggiungi sandbox elencando solo il necessario. Per mostrare contenuto altrui, un sandbox vuoto è di solito la risposta giusta.',
+        "en": "Add sandbox and list only what is needed. For showing someone else's content, an empty sandbox is usually the right answer.",
+    },
+    "a11y_sec_frame_sandbox_title": {
+        "uk": 'Чужий кадр без пісочниці',
+        "it": 'Frame di terzi senza sandbox',
+        "en": 'Third-party frame with no sandbox',
+    },
+    "a11y_sec_frame_sandbox_found": {
+        "uk": '<iframe> вказує на {src} і не має атрибута sandbox.',
+        "it": "L'<iframe> punta a {src} e non ha l'attributo sandbox.",
+        "en": 'The <iframe> points at {src} and carries no sandbox attribute.',
+    },
+    "a11y_sec_frame_sandbox_why": {
+        "uk": 'Без sandbox документ у кадрі може перемкнути верхнє вікно, виконувати скрипти у власному походженні, надсилати форми й відкривати спливні вікна. Для власного кадру це правильно; для чужого це важіль, який ви віддали іншому сайту.',
+        "it": 'Senza sandbox il documento nel frame può cambiare la finestra principale, eseguire script nella propria origine, inviare form e aprire popup. Per un frame tuo è corretto; per uno di terzi è una leva che hai ceduto.',
+        "en": 'Without sandbox the framed document can navigate the top-level window, run scripts against its own origin, submit forms and open popups. That is right for a frame you wrote; for one pointing elsewhere it is a lever you handed away.',
+    },
+    "a11y_sec_frame_sandbox_fix": {
+        "uk": 'Додайте sandbox і перелічіть лише те, що кадру справді потрібно: sandbox="allow-scripts". Порожній sandbox забирає все.',
+        "it": 'Aggiungi sandbox elencando solo ciò che serve davvero: sandbox="allow-scripts". Un sandbox vuoto toglie tutto.',
+        "en": 'Add sandbox and list only what the frame genuinely needs: sandbox="allow-scripts". An empty sandbox removes everything.',
+    },
+    "a11y_sec_frame_permissions_title": {
+        "uk": 'Кадру віддано чутливий дозвіл',
+        "it": 'Permesso sensibile concesso a un frame',
+        "en": 'A sensitive permission handed to a frame',
+    },
+    "a11y_sec_frame_permissions_found": {
+        "uk": '<iframe> на {src} отримує через allow: {granted}.',
+        "it": "L'<iframe> su {src} riceve tramite allow: {granted}.",
+        "en": 'The <iframe> at {src} is granted, via allow: {granted}.',
+    },
+    "a11y_sec_frame_permissions_why": {
+        "uk": 'Дозвіл, делегований у розмітці, надається без того, щоб чуже походження перепитало людину в сторінці. Камера, мікрофон, геолокація і платежі це ті чотири, які варто перечитати двічі.',
+        "it": "Un permesso delegato nel markup viene concesso senza che l'origine di terzi richieda di nuovo il consenso. Camera, microfono, geolocalizzazione e pagamenti sono i quattro da rileggere due volte.",
+        "en": 'A permission delegated in markup is granted without the framed origin asking the person in the page again. Camera, microphone, geolocation and payment are the four worth reading twice.',
+    },
+    "a11y_sec_frame_permissions_fix": {
+        "uk": 'Приберіть із allow усе, чого кадр не використовує. Якщо потрібно все перелічене, звузьте походження в самому src.',
+        "it": "Rimuovi da allow tutto ciò che il frame non usa. Se serve davvero tutto, restringi l'origine nello stesso src.",
+        "en": 'Drop from allow everything the frame does not use. If it genuinely needs all of it, narrow the origin in src itself.',
+    },
+    "a11y_sec_form_insecure_action_title": {
+        "uk": 'Форма надсилає дані через http',
+        "it": 'Il form invia i dati via http',
+        "en": 'The form posts over http',
+    },
+    "a11y_sec_form_insecure_action_found": {
+        "uk": '<form action="{action}"> надсилає через http.',
+        "it": '<form action="{action}"> invia via http.',
+        "en": '<form action="{action}"> posts over http.',
+    },
+    "a11y_sec_form_insecure_action_why": {
+        "uk": 'Усе набране в цій формі перетинає мережу відкритим текстом. Те, що сама сторінка на https, робить це легким для пропуску: замок стосується сторінки, а не того, куди йде форма.',
+        "it": 'Tutto ciò che viene digitato attraversa la rete in chiaro. Il fatto che la pagina sia in https rende la cosa facile da mancare: il lucchetto riguarda la pagina, non la destinazione del form.',
+        "en": 'Everything typed into it crosses the network in the clear. The page itself being HTTPS is what makes this easy to miss: the padlock is about the page, not about where the form goes.',
+    },
+    "a11y_sec_form_insecure_action_fix": {
+        "uk": 'Змініть action на https, або на відносний шлях, щоб він успадкував схему сторінки.',
+        "it": 'Cambia action in https, oppure in un percorso relativo così eredita lo schema della pagina.',
+        "en": "Change action to https, or to a relative path so it inherits the page's scheme.",
+    },
+    "a11y_sec_script_integrity_title": {
+        "uk": 'Чужий скрипт без перевірки цілісності',
+        "it": 'Script di terzi senza controllo di integrità',
+        "en": 'Third-party script with no integrity check',
+    },
+    "a11y_sec_script_integrity_found": {
+        "uk": '<script src="{src}"> завантажується з {host} без integrity.',
+        "it": '<script src="{src}"> viene caricato da {host} senza integrity.',
+        "en": '<script src="{src}"> is loaded from {host} with no integrity.',
+    },
+    "a11y_sec_script_integrity_why": {
+        "uk": 'Що б це походження не віддало, воно виконається з повними правами цієї сторінки. Хеш integrity змушує браузер відмовитись від усього іншого, і це різниця між довірою до CDN сьогодні та довірою щодня.',
+        "it": "Qualunque cosa quell'origine serva viene eseguita con tutti i diritti di questa pagina. Un hash integrity fa sì che il browser rifiuti qualsiasi altra cosa: è la differenza tra fidarsi di una CDN oggi e fidarsene ogni giorno.",
+        "en": 'Whatever that origin serves runs with the full rights of this page. An integrity hash makes the browser refuse anything else, which is the difference between trusting a CDN today and trusting it every day.',
+    },
+    "a11y_sec_script_integrity_fix": {
+        "uk": 'Додайте integrity="sha384-..." разом із crossorigin="anonymous", або покладіть файл поруч зі сторінкою.',
+        "it": 'Aggiungi integrity="sha384-..." insieme a crossorigin="anonymous", oppure ospita il file accanto alla pagina.',
+        "en": 'Add integrity="sha384-..." alongside crossorigin="anonymous", or host the file beside the page.',
+    },
+    "a11y_sec_secret_in_markup_title": {
+        "uk": 'Ключ записаний у розмітці',
+        "it": 'Una chiave scritta nel markup',
+        "en": 'A key written into the markup',
+    },
+    "a11y_sec_secret_in_markup_found": {
+        "uk": 'Атрибут {attribute} несе значення довжиною {length} символів.',
+        "it": "L'attributo {attribute} contiene un valore di {length} caratteri.",
+        "en": 'The {attribute} attribute carries a value {length} characters long.',
+    },
+    "a11y_sec_secret_in_markup_why": {
+        "uk": 'Розмітка публічна: її віддають кожному, хто відкриє сторінку, і вона лежить у репозиторії. Ключ тут це ключ опублікований, хай як називається атрибут.',
+        "it": "Il markup è pubblico: viene servito a chiunque apra la pagina ed è nel repository. Una chiave qui è una chiave pubblicata, comunque si chiami l'attributo.",
+        "en": 'Markup is public: it is served to everyone who opens the page and it is in the repository. A key here is a key published, whatever the attribute is called.',
+    },
+    "a11y_sec_secret_in_markup_fix": {
+        "uk": 'Заберіть значення з розмітки. Якщо клієнту потрібен доступ, віддайте його з сервера за сеансом, і відкличте те, що вже опубліковано.',
+        "it": "Togli il valore dal markup. Se il client ha bisogno dell'accesso, forniscilo dal server per sessione, e revoca ciò che è già stato pubblicato.",
+        "en": 'Take the value out of the markup. If the client needs access, hand it out from the server per session, and revoke whatever has already been published.',
+    },
+    "a11y_sec_autocomplete_secret_title": {
+        "uk": 'Браузеру сказано запамʼятати пароль',
+        "it": 'Al browser è stato detto di ricordare la password',
+        "en": 'The browser is told to remember the password',
+    },
+    "a11y_sec_autocomplete_secret_found": {
+        "uk": 'Поле пароля має autocomplete="{autocomplete}".',
+        "it": 'Il campo password ha autocomplete="{autocomplete}".',
+        "en": 'The password field has autocomplete="{autocomplete}".',
+    },
+    "a11y_sec_autocomplete_secret_why": {
+        "uk": 'autocomplete="on" на полі пароля просить браузер зберегти те, що не має пережити запит.',
+        "it": 'autocomplete="on" su un campo password chiede al browser di conservare qualcosa che non dovrebbe sopravvivere alla richiesta.',
+        "en": 'autocomplete="on" on a password field asks the browser to store something that should not outlive the request.',
+    },
+    "a11y_sec_autocomplete_secret_fix": {
+        "uk": 'Використайте autocomplete="current-password" для входу або "new-password" для реєстрації: обидва кажуть менеджеру паролів правду й не просять зайвого.',
+        "it": 'Usa autocomplete="current-password" per l\'accesso o "new-password" per la registrazione: entrambi dicono la verità al gestore di password senza chiedere altro.',
+        "en": 'Use autocomplete="current-password" for sign-in or "new-password" for registration: both tell the password manager the truth without asking for more.',
+    },
     "a11y_bp_mixed_content_title": {
         "uk": "Незахищений ресурс на захищеній сторінці",
         "it": "Risorsa non sicura in una pagina sicura",

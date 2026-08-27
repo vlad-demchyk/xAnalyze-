@@ -39,6 +39,7 @@ class SeoRule(Rule):
 
 class TitleLength(SeoRule):
     id = "seo-title-length"
+    web_only = True
     page_level = True
     severity = MODERATE
 
@@ -62,6 +63,7 @@ class TitleLength(SeoRule):
 
 class MetaDescription(SeoRule):
     id = "seo-meta-description"
+    web_only = True
     page_level = True
     severity = MODERATE
 
@@ -95,6 +97,7 @@ class MetaDescription(SeoRule):
 
 class CanonicalLink(SeoRule):
     id = "seo-canonical"
+    web_only = True
     page_level = True
     severity = MODERATE
 
@@ -124,6 +127,7 @@ class CanonicalLink(SeoRule):
 
 class RobotsNoindex(SeoRule):
     id = "seo-noindex"
+    web_only = True
     page_level = True
     severity = SERIOUS
 
@@ -148,6 +152,7 @@ class RobotsNoindex(SeoRule):
 
 class OpenGraph(SeoRule):
     id = "seo-open-graph"
+    web_only = True
     page_level = True
     severity = MINOR
 
@@ -173,6 +178,7 @@ class OpenGraph(SeoRule):
 
 class StructuredData(SeoRule):
     id = "seo-structured-data"
+    web_only = True
     page_level = True
     severity = MINOR
 

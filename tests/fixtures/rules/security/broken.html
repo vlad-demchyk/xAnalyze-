@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A sign-in page that posts over HTTPS and frames the map with a sandbox in place.">
+  <meta property="og:title" content="Sign in">
+  <meta property="og:description" content="A sign-in page that posts over HTTPS and frames the map with a sandbox in place.">
+  <meta property="og:image" content="https://example.com/a.webp">
+  <link rel="preconnect" href="https://cdn.example.net">
+  <link rel="preconnect" href="https://example.com">
+  <link rel="canonical" href="https://example.com/sign-in">
+  <title>Sign in to the Palmanova catalogue</title>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"Sign in"}</script>
+  <script src="https://cdn.example.net/lib.js" crossorigin="anonymous" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header><nav aria-label="Main"><a href="/">Home</a></nav></header>
+  <main id="main">
+    <h1>Sign in</h1>
+    <form action="http://example.com/session" method="post">
+      <label for="pw">Password</label>
+      <input id="pw" type="password" name="pw" autocomplete="on">
+      <button type="submit">Sign in</button>
+    </form>
+    <iframe src="https://maps.example.net/embed" title="Map of the walls" allow="camera; microphone" width="640" height="480"></iframe>
+    <div data-api-key="sk_live_9f2c41ab77de05639bc8"></div>
+    <form action="https://example.com/login" method="get">
+      <label for="pw2">Password again</label>
+      <input id="pw2" type="password" name="pw2" autocomplete="current-password">
+      <button type="submit" formaction="http://example.com/login">Sign in</button>
+    </form>
+    <a href="https://admin:hunter2@docs.example.net/guide">Read the guide</a>
+    <iframe srcdoc="&lt;p&gt;Preview&lt;/p&gt;" title="Preview" width="320" height="120"></iframe>
+  </main>
+  <footer><p>&copy; Example</p></footer>
+</body>
+</html>
