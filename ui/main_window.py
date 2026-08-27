@@ -101,6 +101,9 @@ _COMBO_CHARS = 10
 #: rather than decreed: trimming the padding to land on 44 would distort the
 #: design's spacing to pay for a difference in font metrics.
 TOP_ROW_HEIGHT = 52
+#: The width the Claude Design bundle (2026-08-24) draws the window at, and
+#: the width it opens at. Not a minimum: the layout wraps below it on purpose.
+DESIGN_WIDTH = 1300
 
 #: Where a copy-scan confidence lands on the severity ramp. Three levels onto
 #: four, by consequence rather than by position: a high-confidence flag is the
@@ -215,7 +218,10 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self.view_model = MainViewModel(self.app_state, self.settings, self)
         self.view_model.repo_ignore_patterns = self.repo_ignore_patterns
 
-        self.resize(1300, 800)
+        self.resize(DESIGN_WIDTH, 800)
+        #: `showEvent` widens the window once, if the language it opened in
+        #: needs more than the design width to keep the controls on one line.
+        self._opening_width_settled = False
         icon = ASSETS / "app-icon.png"
         if icon.is_file():
             self.setWindowIcon(QIcon(str(icon)))
@@ -873,6 +879,10 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         controls = FlowLayout(self.toolbar, margin=0,
                               spacing=self.palette_tokens.space_sm)
         controls.setContentsMargins(10, 8, 10, 8)
+        #: Kept so the window can ask, once it is on screen, how wide this row
+        #: needs to be to stay on one line in the language it is showing. See
+        #: `showEvent` and `P-18`.
+        self.controls_layout = controls
         self.toolbar.setMinimumWidth(0)
 
         # A header strip with the mark and the product name. Not decoration:
@@ -1701,6 +1711,37 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             self._populate_flagged_list()
 
     # ------------------------------------------------------- responsive layout
+
+    def showEvent(self, event) -> None:  # noqa: N802 - Qt override
+        """Open on one line, in whatever language the interface is in.
+
+        The design draws the controls strip as one line at 1300px, and that
+        measurement was taken in English. Ukrainian - the default language -
+        needs 1330px for the same six controls, so the window as written
+        opened already wrapped for its default user, and Italian sat 20px from
+        doing the same. Nothing was broken by it: the row wraps rather than
+        clips, which is the designed answer to a narrow window. It was simply
+        never the width the design asks for.
+
+        Measured rather than tabulated per language, because a translation
+        changing length is not an event anyone would remember to re-measure
+        after - which is how this went unseen. `toolbar.width()` subtracted
+        from the window's gives the chrome around it, so the deficit converts
+        straight into window pixels.
+
+        Once, and only from the opening size: a window the person has already
+        resized, or one restored from a session, is theirs.
+        """
+        super().showEvent(event)
+        if self._opening_width_settled:
+            return
+        self._opening_width_settled = True
+        if self.width() != DESIGN_WIDTH:
+            return
+        needed = self.controls_layout.one_line_width()
+        available = self.toolbar.width()
+        if available and needed > available:
+            self.resize(DESIGN_WIDTH + (needed - available), self.height())
 
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
         super().resizeEvent(event)

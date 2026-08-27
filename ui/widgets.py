@@ -847,6 +847,41 @@ class FlowLayout(QLayout):
     def sizeHint(self) -> QSize:  # noqa: N802
         return self.minimumSize()
 
+    def one_line_width(self) -> int:
+        """The width at which nothing wraps: the sum, not the widest item.
+
+        `minimumSize` deliberately reports the widest single item, because
+        that is the floor below which the row cannot go. This is the opposite
+        question - how wide the row would like to be - and it has an owner:
+        a window that means to *open* on one line has to know the number
+        before it can pick its size.
+
+        It exists because the same row is one line in one language and two in
+        another. The controls strip fits 1300px in English and Italian and
+        needs 1330px in Ukrainian, which is the interface's default language,
+        so the window as drawn opened wrapped for its default user. See
+        `P-18`.
+
+        Answered by searching `heightForWidth`, not by adding up the size
+        hints. The sum is 1313px for the Ukrainian row and the row still wraps
+        at 1313px, because `_layout` below places items by their real geometry
+        and some of them are wider than they hint. Asking the same function
+        that decides the wrapping is the only way to get an answer that agrees
+        with it.
+        """
+        if not self._items:
+            return 0
+        _WIDE = 1 << 16
+        one_line = self.heightForWidth(_WIDE)
+        low, high = self.minimumSize().width(), _WIDE
+        while low < high:
+            middle = (low + high) // 2
+            if self.heightForWidth(middle) <= one_line:
+                high = middle
+            else:
+                low = middle + 1
+        return low
+
     def minimumSize(self) -> QSize:  # noqa: N802
         # The widest single item, not the sum: a row that can wrap is only as
         # wide as the one thing that cannot be broken. A hidden item cannot

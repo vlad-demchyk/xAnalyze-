@@ -35,6 +35,38 @@ _SEVERITY_VARIABLE = {
     "minor": "sev-none",
 }
 
+#: The same four steps as a mark, for terminals that cannot show four
+#: colours. Measured (`P-11`): the dark palette's ramp is `#d97a72`,
+#: `#d89874`, `#cfae66`, `#5f5a53`, and on a 16-colour terminal those become
+#: ANSI 9, **7**, **7**, 8 - `serious` and `moderate` land on the same white,
+#: so four steps read as three and the two in the middle are indistinguishable.
+#: At 256 colours all four differ (173, 174, 179, 240).
+#:
+#: A mark rather than a different colour, because the colours come from the
+#: design system (`ui/tokens.py` parses it, `ui/theme.py` paints with it) and
+#: picking a new one here to dodge an ANSI collision would put this file at
+#: odds with the artboard. The mark also happens to be what a person who
+#: cannot distinguish these hues needs, on any terminal.
+_SEVERITY_MARK = {
+    "critical": "!!!",
+    "serious": "!!",
+    "moderate": "!",
+    "minor": "\u00b7",
+}
+
+
+def _ramp_is_legible(app) -> bool:
+    """Can this terminal show the four steps as four colours?
+
+    Asked of the live console rather than assumed, because the answer is a
+    property of where the program is running - the same build is fine over a
+    modern terminal and flat over `TERM=xterm`. Anything short of 256 colours
+    collapses `serious` into `moderate`; `truecolor` and `256` are fine.
+    """
+    console = getattr(app, "console", None)
+    name = str(getattr(console, "color_system", "") or "")
+    return name in ("256", "truecolor", "windows")
+
 
 def open_in_os(path: str, lang: str = "uk") -> str:
     """Hand a file or folder to the desktop. Returns a message for the user.
@@ -134,6 +166,7 @@ class ResultsScreen(XScreen):
         rows = summary_rows(self._result.payload())
         if rows:
             variables = self.app.get_css_variables()
+            marked = not _ramp_is_legible(self.app)
             for label, value in rows:
                 # The payload's keys are machine names; the table is read by
                 # a person, so each one is said in their language and falls
@@ -141,8 +174,9 @@ class ResultsScreen(XScreen):
                 shown = self.tr(f"tui_sum_{label.replace(' ', '_')}")
                 if shown.startswith("tui_sum_"):
                     shown = label
-                table.add_row(self._severity_cell(label, variables, shown),
-                              value)
+                table.add_row(
+                    self._severity_cell(label, variables, shown, marked=marked),
+                    value)
         else:
             table.add_row(self.tr("tui_no_summary"), "-")
 
@@ -162,7 +196,8 @@ class ResultsScreen(XScreen):
 
     @staticmethod
     def _severity_cell(label: str, variables: dict,
-                       shown: str | None = None) -> Text | str:
+                       shown: str | None = None,
+                       marked: bool = False) -> Text | str:
         """`shown` painted in `label`'s step of the ramp, or left unpainted.
 
         The severity is matched on the payload's own key, not on the words
@@ -173,9 +208,16 @@ class ResultsScreen(XScreen):
         Matched on the last word rather than the whole key, because a row can
         read "critical" (scan) or "audit critical" (audit) for the same
         severity - see `summary_rows`, which reconciles the two shapes.
+
+        `marked` prefixes the step's mark, for a terminal whose palette
+        cannot keep the four steps apart. Set from `_ramp_is_legible`, not
+        from a setting: the person should not have to know why two rows look
+        the same before they can fix it.
         """
         text = label if shown is None else shown
         last_word = label.rsplit(" ", 1)[-1]
+        if marked and last_word in _SEVERITY_MARK:
+            text = f"{_SEVERITY_MARK[last_word]} {text}"
         variable = _SEVERITY_VARIABLE.get(last_word)
         if variable is None or variable not in variables:
             return text

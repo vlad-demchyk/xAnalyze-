@@ -34,7 +34,9 @@ try:
         SOURCE_FILE, SOURCE_REPO, SOURCE_SITE,
     )
     from ui import theme
-    from ui.main_window import MEDIUM_BREAKPOINT, TOP_ROW_HEIGHT, MainWindow
+    from ui.main_window import (
+        DESIGN_WIDTH, MEDIUM_BREAKPOINT, TOP_ROW_HEIGHT, MainWindow,
+    )
 except Exception:  # noqa: BLE001 - no Qt here is a skip, not a failure
     QApplication = None
 
@@ -65,11 +67,23 @@ class WindowCase(unittest.TestCase):
     which is how a genuine layout regression came to depend on test order.
     """
 
+    #: The interface language these cases measure in. Pinned, because the
+    #: labels differ in width per language and this file measures widths: with
+    #: nothing pinned the row's size came from whatever `ui_language` was in
+    #: the developer's own `settings.json`, which is why three cases here
+    #: passed for that person and failed for anyone else (`P-13`, `P-18`).
+    #: `EveryLanguageOpensOnOneLine` covers the other two on purpose.
+    LANG = "en"
+
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
+
     def setUp(self):
         self.window = MainWindow()
+        self.window.settings.ui_language = self.LANG
+        self.window.lang = self.LANG
+        self.window._retranslate_ui()
         # Every case below is about the working layout - the top row, the
         # three columns, the fields in the strip. The window opens on the
         # setup screen (artboard 3b) while nothing has run; `TheSetupScreen`
@@ -93,6 +107,62 @@ class WindowCase(unittest.TestCase):
         self.window.close()
         self.window.deleteLater()
         self.app.processEvents()
+
+
+@unittest.skipIf(QApplication is None, "PySide6 not available")
+class EveryLanguageOpensOnOneLine(unittest.TestCase):
+    """The design draws one line; every language must get one.
+
+    The 1300px the design draws at was measured in English. Ukrainian - the
+    interface's *default* language - needs 1330px for the same six controls,
+    so the window opened already wrapped for its default user, and nothing
+    said so: the row wraps rather than clips, so there was no clipping to
+    see, and the cases in `TopRow` were reading the developer's own
+    `ui_language`, which was English. See `P-18`.
+
+    Written per language rather than as one number, because the number is a
+    property of the translation and changes when the translation does.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_the_row_is_one_line_in_every_language(self):
+        for lang in ("en", "uk", "it"):
+            with self.subTest(language=lang):
+                window = MainWindow()
+                window.settings.ui_language = lang
+                window.lang = lang
+                window._retranslate_ui()
+                window.show_setup(False)
+                window.setStyleSheet(
+                    theme.build_qss(theme.current_palette("light")))
+                window.show()
+                self.app.processEvents()
+                try:
+                    self.assertLessEqual(
+                        window.toolbar.height(), TOP_ROW_HEIGHT + 4,
+                        f"the controls wrapped at the width {lang} opened at "
+                        f"({window.width()}px)")
+                    self.assertGreaterEqual(window.width(), DESIGN_WIDTH)
+                finally:
+                    window.close()
+                    window.deleteLater()
+                    self.app.processEvents()
+
+    def test_a_window_the_person_resized_is_left_alone(self):
+        """The widening happens once, from the opening size, or not at all."""
+        window = MainWindow()
+        window.resize(900, 700)
+        window.show()
+        self.app.processEvents()
+        try:
+            self.assertEqual(window.width(), 900)
+        finally:
+            window.close()
+            window.deleteLater()
+            self.app.processEvents()
 
 
 class TopRow(WindowCase):
