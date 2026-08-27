@@ -63,6 +63,7 @@ def _write_report(result, args, lang: str, fix_outcome=None, ai_findings=None) -
     them from here instead of computing them a second time.
     """
     from audit.explanations import render
+    from audit.saturation import saturated_rules
 
     path = Path(args.report)
     history = _read_history(result.root, result.mode)
@@ -181,6 +182,23 @@ def _write_report(result, args, lang: str, fix_outcome=None, ai_findings=None) -
             "documents_with_findings": len(result.documents_with_issues()),
             "rules_triggered": len(result.by_rule()),
         },
+        # Rules whose findings are spread too evenly across the run to be
+        # describing the content. Not removed - a saturated rule is
+        # sometimes right - but said out loud, because every large false
+        # positive this tool has shipped had exactly this shape. See
+        # `audit.saturation`.
+        # What the target turned out to be, and the evidence that proved it.
+        # For a folder this comes from marker files; for a crawled site, from
+        # the served markup - which had no detection at all until now, so a
+        # site scan knew nothing about what it was reading while the same
+        # project on disk knew everything. See `project_profile`.
+        "detected_stacks": _detected_stacks(result),
+        "saturated_rules": [
+            {"rule": s.rule, "findings": s.findings,
+             "documents": s.documents, "documents_total": s.documents_total,
+             "note": s.message()}
+            for s in saturated_rules(result)
+        ],
         "ai_patterns": ai_stats,
         "typography": typo_stats,
         # Same list as the history entry's, at the top level where
@@ -266,6 +284,35 @@ def _file_map(result, render, lang: str) -> list:
 _PLACES_SHOWN = 15
 
 
+def _detected_stacks(result) -> list:
+    """`[{name, evidence, why, hosted}]` for whatever the target turned out
+    to be. Empty is the normal answer for a hand-built site.
+
+    Read from the markup for a crawl and from marker files for a folder,
+    because those are the two places the evidence exists. Never guessed: a
+    platform is named only when a literal it emits is present.
+    """
+    import project_profile
+
+    if result.mode == "repo":
+        profile = project_profile.detect(result.root)
+    else:
+        markup = "\n".join(
+            (getattr(document, "source", "") or "")
+            for document in result.documents)
+        # The documents carry addresses, not bodies, by the time the report is
+        # written; the crawl attaches what it saw to the result instead.
+        markup = getattr(result, "markup_sample", "") or markup
+        profile = project_profile.detect_from_markup(markup)
+    return [
+        {"name": stack.name,
+         "evidence": profile.evidence.get(stack.name, ""),
+         "why": stack.why,
+         "hosted": bool(getattr(stack, "hosted", False))}
+        for stack in profile.stacks
+    ]
+
+
 def _problem_map(result, render, lang: str) -> list:
     """Every distinct problem once, with every place it was found.
 
@@ -293,6 +340,12 @@ def _problem_map(result, render, lang: str) -> list:
             "ready_fix": first.fix_snippet or "",
             "snippet": first.snippet,
             "selector": first.selector,
+            # How many independent engines found it. 1 unless the browser
+            # pass ran and a second engine corroborated; see
+            # `audit.browser._merge_engine_duplicates`. The number a reader
+            # triages on before anything else.
+            "agreement": (first.details or {}).get("agreement", 1),
+            "confidence": getattr(first, "confidence", "exact"),
             "occurrences": len(others) + 1,
             "places": duplicates.places_of(first, others),
         })

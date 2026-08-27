@@ -505,7 +505,30 @@ def _warn_about_spa(pages) -> None:
 
 def _audit_fullscan_target(is_url: bool, is_page_file: bool, target: str,
                            args, pages):
-    """Phase 2: accessibility/SEO/performance over whichever shape came in."""
+    """Phase 2: accessibility/SEO/performance over whichever shape came in.
+
+    A repository the scanner could not read anything in still gets a result,
+    and that is the point of the last branch. This used to answer `None`, and
+    `None` travels: `_write_markdown_briefing` skips on it and
+    `_styled_report_model` returns `None` on it, so **both** writers returned
+    without a word. The run then exited 0, printed `total_findings: 0`, and
+    wrote neither of the files it had been asked for.
+
+    Reproduced on `~/Desktop/XAnalyze/contrast.html`, which is a directory of
+    old run folders rather than the page its name suggests: `fullscan ...
+    --report r.json` reported a clean target and left no `r.json` behind. An
+    over-broad `--exclude`, an `--ext` that matches nothing, or a path with
+    one wrong component all reach the same place. It is the founding defect
+    of this project wearing a different hat - an empty result reported as a
+    clean one - and it also breaks the contract `--report` makes with
+    whatever runs next.
+
+    An empty `AccessibilityResult` says the true thing instead: zero
+    documents, zero findings, written down. The pass still walks the target
+    for what belongs to the repository rather than to any file in it - a
+    committed `.env` is a finding about a directory with no readable source
+    in it too.
+    """
     import audit
 
     if is_url:
@@ -514,10 +537,12 @@ def _audit_fullscan_target(is_url: bool, is_page_file: bool, target: str,
         return audit.analyze_page_file(target)
     from repo_scanner import scan_repo
 
-    repo_files = scan_repo(target, _build_scan_config(args))
-    if repo_files:
-        return audit.analyze_files(repo_files, target)
-    return None
+    repo_files = scan_repo(target, _build_scan_config(args, target=target))
+    if not repo_files:
+        print(f"# nothing readable in {target} - the report will say so "
+              f"rather than call it clean", file=sys.stderr)
+    return audit.analyze_files(repo_files, target,
+                               force_medium=getattr(args, "medium", None))
 
 
 def _detect_report_language(lang, pages) -> str:
@@ -1215,6 +1240,17 @@ def _run_phases_body(args, state, folder, timings, target, lang, is_url, is_page
     timings.finish()
 
     # Auto-detect report language from site content
+    # The certainty floor, applied once, before anything counts or groups.
+    # `audit` filters in `cli.py`; `fullscan` builds its own result, so the
+    # same view has to be taken here or the flag would mean two things.
+    floor = getattr(args, "confidence", None)
+    if floor and audit_result is not None:
+        from audit.base import meets_confidence
+
+        for document in audit_result.documents:
+            document.issues = [i for i in document.issues
+                               if meets_confidence(i, floor)]
+
     lang = _detect_report_language(lang, pages)
 
     # --- Phase 3: Build combined result ---
@@ -1250,7 +1286,22 @@ def _run_phases_body(args, state, folder, timings, target, lang, is_url, is_page
             args, audit_result, agent_mode, agent_candidates, scan_findings,
             lang)
 
+    def _say_saturation() -> None:
+        """Say it on stderr too, where a person actually looks.
+
+        A saturated rule is the shape every large false positive this tool
+        shipped had, and burying the warning in a JSON key means the number
+        gets acted on before anyone reads it. See `audit.saturation`.
+        """
+        from audit.saturation import saturated_rules
+
+        if audit_result is None:
+            return
+        for note in saturated_rules(audit_result):
+            print(f"# warning: {note.message()}", file=sys.stderr, flush=True)
+
     for label, write in (
+        ("saturation check", _say_saturation),
         ("agent briefing", _briefing),
         ("styled report",
          lambda: _write_styled_report(args, audit_result,

@@ -379,9 +379,15 @@ def _charts(by_severity: dict, by_category: dict, labels: dict, palette,
         key = f"rank{rank}"
         severity_labels[key] = _SEVERITY_LABEL[rank].get(
             lang, _SEVERITY_LABEL[rank]["en"])
-        severity_colours[key] = {0: palette.error, 1: palette.amber,
-                                 2: palette.amber,
-                                 3: palette.text_muted}[rank]
+        # The palette's own four-step ramp, not `error`/`amber`/`amber`.
+        # Ranks 1 and 2 were both `palette.amber`, so "serious" and
+        # "moderate" drew as the same colour and a four-step chart read as
+        # three - the defect the ramp exists to prevent, in the one artifact
+        # whose whole job is to show where the weight is. Same four tokens
+        # the window's `SeverityBar` and the TUI's summary table paint with.
+        severity_colours[key] = {0: palette.sev_critical, 1: palette.sev_high,
+                                 2: palette.sev_medium,
+                                 3: palette.sev_none}[rank]
         severity_pairs.append((key, count))
 
     severity_bars = _bar_chart(severity_pairs, severity_labels, palette,

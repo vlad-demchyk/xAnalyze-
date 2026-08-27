@@ -87,10 +87,28 @@ class ReportFinding:
         explanation and the same (empty) markup, so they are one problem
         with two places; two different images missing `alt` differ in
         `snippet` and stay two problems.
+
+        The snippet is compared with generated identifiers masked, the same
+        way `duplicates.issue_identity` compares it, and for the same reason
+        that function already documents: a theme that stamps a unique id into
+        a component - WordPress writes `aria-controls="page-toc-panel-6a8c2c05ce8bd"`
+        - produces markup that differs on every page while describing one bug
+        in one template.
+
+        It was not masked here, and that mattered, because this is the
+        identity behind the *branded* report - the PDF a person reads. On a
+        three-page crawl of a real WordPress site the two groupings disagreed
+        (374 problems here against 369 there) over the same 552 occurrences,
+        and the human-facing half was the one inflating. The audit-facing
+        half had been protected against exactly this since the function was
+        written.
         """
+        from duplicates import mask_generated_ids
+
         return (self.category, self.severity, self.title, self.found,
-                self.why, self.fix, self.snippet, self.replacement,
-                self.engine, self.wcag)
+                self.why, self.fix,
+                mask_generated_ids(" ".join((self.snippet or "").split())),
+                self.replacement, self.engine, self.wcag)
 
 
 @dataclass

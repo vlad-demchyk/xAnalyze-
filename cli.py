@@ -21,13 +21,14 @@ import argparse
 import json
 import os
 import sys
+from dataclasses import asdict, is_dataclass
 from pathlib import Path
 
 import detectors  # noqa: F401 - registers the detectors
 import suppression
 import unicode_rules
 import config
-from audit.base import CATEGORIES
+from audit.base import CATEGORIES, CONFIDENCE_ORDER, meets_confidence
 from detectors.factory import DetectorFactory
 from file_writer import ReplacementPlan, apply_replacements
 from lang_detect import guess_language
@@ -112,7 +113,8 @@ def cmd_scan(args) -> int:
     if args.json:
         _print_json(findings, walked=walked)
     else:
-        _print_human(findings, walked=walked)
+        _print_human(findings, walked=walked,
+                     scope=getattr(args, "scope", "content"))
     if getattr(args, "styled_report", None):
         _write_styled_text_report(files, findings, args)
     if missing:
@@ -367,8 +369,9 @@ def cmd_audit(args) -> int:
     else:
         from repo_scanner import scan_repo
 
-        files = scan_repo(target, _build_scan_config(args))
-        result = audit.analyze_files(files, target, ai_review=reviewer)
+        files = scan_repo(target, _build_scan_config(args, target=target))
+        result = audit.analyze_files(files, target, ai_review=reviewer,
+                                     force_medium=getattr(args, "medium", None))
 
     # The same suppression list governs both analyses: a user thinking "not
     # this part of the site" means it for the whole tool, not per subsystem.
@@ -392,6 +395,18 @@ def cmd_audit(args) -> int:
     if wanted != set(CATEGORIES):
         for document in result.documents:
             document.issues = [i for i in document.issues if i.category in wanted]
+
+    # A certainty floor, for a reader who wants only what the markup settles.
+    # Every finding has carried its confidence since the rules were written
+    # and nothing let anyone act on it, so "this element is absolutely
+    # positioned and the background color can not be determined" arrived
+    # beside a missing `alt`. Filtered here, next to the category filter, for
+    # the same reason: both are a *view* over one pass, not a different run.
+    floor = getattr(args, "confidence", None)
+    if floor:
+        for document in result.documents:
+            document.issues = [i for i in document.issues
+                               if meets_confidence(i, floor)]
 
     lang = args.language or "en"
 
@@ -440,7 +455,7 @@ def cmd_audit(args) -> int:
                 }
                 for issue in result.issues()
             ],
-        }, ensure_ascii=False, indent=2))
+        }, ensure_ascii=False, indent=2, default=_json_default))
     else:
         for document in result.documents_with_issues():
             print()
@@ -468,6 +483,27 @@ def cmd_audit(args) -> int:
     return EXIT_OK
 
 
+def _json_default(value):
+    """Serialise the dataclasses a finding's `details` can carry.
+
+    `details` is a free-form dict that rules and passes fill in, and one of
+    them puts a whole object there: `audit.repo_facts.blame_issues` writes
+    `details["arrived"] = Arrival(...)` so the window and the report can read
+    `arrival.summary` and `arrival.assistant` by attribute. `json.dumps` has
+    no answer for that, and `audit --json` died with "Object of type Arrival
+    is not JSON serializable" the moment a repo finding was blamed.
+
+    It went unseen because repo mode had no findings to blame: `.tsx` was
+    skipped before any rule ran (`P-19`), so the only repository this was
+    tried on came back empty. Handled here rather than by flattening
+    `Arrival` into a dict at the source, because the attribute access is what
+    every other consumer is written against.
+    """
+    if is_dataclass(value) and not isinstance(value, type):
+        return asdict(value)
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
 def _reaudit(args, target: str, previous):
     """Run the same audit again over the same files, after correcting them."""
     import audit
@@ -476,7 +512,7 @@ def _reaudit(args, target: str, previous):
         return audit.analyze_page_file(target)
     from repo_scanner import scan_repo
 
-    files = scan_repo(target, _build_scan_config(args))
+    files = scan_repo(target, _build_scan_config(args, target=target))
     return audit.analyze_files(files, target)
 
 
@@ -700,6 +736,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_audit.add_argument("--category", nargs="*", default=None,
                          choices=list(CATEGORIES),
                          help="report only these categories (default: all four)")
+    p_audit.add_argument("--medium", default=None, choices=["web", "email"],
+                         help="what these documents are for. Autodetected per "
+                              "file from the markup (Outlook namespaces, merge "
+                              "tags); set it when the deliverable is an email "
+                              "that carries neither. On 'email' the browser-only "
+                              "checks - canonical, Open Graph, structured data, "
+                              "skip link, landmarks, WebP - are skipped, because "
+                              "no mail client has them. Accessibility is not.")
+    p_audit.add_argument("--confidence", default=None,
+                         choices=list(CONFIDENCE_ORDER),
+                         help="report only findings at least this certain: "
+                              "'exact' keeps what the markup settles and drops "
+                              "what needed a browser or a stylesheet to decide "
+                              "(an engine's 'could not determine' is the second "
+                              "kind); default: report both, each labelled")
     p_audit.add_argument("--language", default=None, help="uk | it | en (output language)")
     p_audit.add_argument("--no-ignore", action="store_true",
                          help="report everything, including suppressed findings")
@@ -927,6 +978,13 @@ def build_parser() -> argparse.ArgumentParser:
                             help="agent briefing: .md or .json by suffix")
     p_fullscan.add_argument("--check", action="store_true",
                             help="exit 1 when critical/serious issues found")
+    p_fullscan.add_argument("--medium", default=None, choices=["web", "email"],
+                            help="what these documents are for (see "
+                                 "`audit --medium`)")
+    p_fullscan.add_argument("--confidence", default=None,
+                            choices=list(CONFIDENCE_ORDER),
+                            help="report only findings at least this certain "
+                                 "(see `audit --confidence`)")
     p_fullscan.add_argument("--language", default=None,
                             help="uk | it | en; language of reports (auto-detected if omitted)")
     p_fullscan.add_argument("--breakpoints", nargs="?", const="all", default="desktop",
