@@ -54,10 +54,27 @@ class MixedContent(BestPracticeRule):
 
 
 class TargetBlankWithoutNoopener(BestPracticeRule):
+    """A new tab handed to somebody else's page, with a way back.
+
+    Two corrections, both measured on a run over ten live sites that
+    produced 325 of these:
+
+    * **Cross-origin only.** 144 of the 325 pointed at the page's own host.
+      The risk is that the *opened* page steers the tab that opened it, and
+      a page opening its own site cannot be an attacker without already
+      being one - so those were 144 rows of nothing.
+    * **`minor`, not `moderate`.** Every current browser implies `noopener`
+      for `target="_blank"` and has since 2021. What is left is old
+      in-app webviews, which is a real audience and a much smaller claim
+      than the rule was making.
+    """
     id = "bp-target-blank"
-    severity = MODERATE
+    severity = MINOR
 
     def check(self, document, context) -> list:
+        from urllib.parse import urlparse
+
+        page_host = urlparse(context.source or "").netloc.lower()
         issues = []
         for tag in document.find_all("a", href=True):
             if (tag.get("target") or "").lower() != "_blank":
@@ -65,9 +82,13 @@ class TargetBlankWithoutNoopener(BestPracticeRule):
             rel = {r.lower() for r in (tag.get("rel") or [])}
             if "noopener" in rel or "noreferrer" in rel:
                 continue
-            # The opened page gets a reference back through window.opener and
-            # can navigate this tab somewhere else. Modern browsers imply
-            # noopener, older ones and in-app webviews do not.
+            href = (tag.get("href") or "").strip()
+            target_host = urlparse(href).netloc.lower()
+            if not target_host or (page_host and target_host == page_host):
+                # The page's own host, or a relative link. Nothing to hand
+                # away. A repo-mode fragment has no host to compare against,
+                # so an absolute link there is still reported.
+                continue
             selector, line = context.locate(tag)
             issues.append(Issue(
                 rule_id=self.id, severity=self.severity, category=self.category,

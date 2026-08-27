@@ -1247,33 +1247,56 @@ class AbbreviationExpansion(AccessibilityRule):
         "SVG", "GIF", "WebP", "AVIF", "WOFF", "TTF", "EOT",
     }
 
+    #: Whole words, and case as written. Substring matching is what this
+    #: rule shipped with, and it is why one run produced 446 findings: `UI`
+    #: matched "building" and "guide", `PR` matched "PRODUCT", `HR` matched
+    #: "THROUGH". Compiled once, because it is consulted on every text node
+    #: of every document.
+    _PATTERN = None
+
+    @classmethod
+    def _matcher(cls):
+        if cls._PATTERN is None:
+            import re as _re
+
+            alternatives = "|".join(sorted((_re.escape(a) for a in cls._COMMON_ABBREVS),
+                                           key=len, reverse=True))
+            cls._PATTERN = _re.compile(rf"(?<![A-Za-z0-9])({alternatives})(?![A-Za-z0-9])")
+        return cls._PATTERN
+
     def check(self, document, context) -> list:
+        """One finding per abbreviation per document, not per text node.
+
+        The rule already carried the comment "only report once per page per
+        abbreviation" and had never done it: the loop appended a finding for
+        every text node it saw, so a page that says "API" in the nav, the
+        body and the footer reported it three times. 3.1.4 is about the
+        first occurrence - the reader needs the expansion once.
+        """
         issues = []
-        # Find text nodes that contain abbreviations
+        reported = set()
         for tag in document.find_all(string=True):
             if tag.parent.name in ("script", "style", "code", "pre", "abbr"):
                 continue
-            text = str(tag)
-            for abbrev in self._COMMON_ABBREVS:
-                if abbrev in text:
-                    # Check if this abbreviation is already in an <abbr>
-                    parent = tag.parent
-                    if parent and parent.name == "abbr":
-                        continue
-                    # Check if parent already has an <abbr> child with this text
-                    if parent and parent.find("abbr", string=lambda s: s and abbrev in s):
-                        continue
-                    # Only report once per page per abbreviation
-                    selector, line = context.locate(parent) if parent else ("", None)
-                    issues.append(Issue(
-                        rule_id=self.id, severity=self.severity,
-                        selector=selector, line=line,
-                        snippet=f"...{abbrev}...",
-                        source=context.source,
-                        details={"abbreviation": abbrev},
-                        fix_snippet=f'<abbr title="Full form">{abbrev}</abbr>',
-                    ))
-                    break  # One finding per element
+            parent = tag.parent
+            if parent is not None and parent.find_parent("abbr") is not None:
+                continue
+            for match in self._matcher().finditer(str(tag)):
+                abbrev = match.group(1)
+                if abbrev in reported:
+                    continue
+                if parent and parent.find("abbr", string=lambda s: s and abbrev in s):
+                    continue
+                reported.add(abbrev)
+                selector, line = context.locate(parent) if parent else ("", None)
+                issues.append(Issue(
+                    rule_id=self.id, severity=self.severity,
+                    selector=selector, line=line,
+                    snippet=f"...{abbrev}...",
+                    source=context.source,
+                    details={"abbreviation": abbrev},
+                    fix_snippet=f'<abbr title="Full form">{abbrev}</abbr>',
+                ))
         return issues
 
 

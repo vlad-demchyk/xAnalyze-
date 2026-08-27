@@ -19,6 +19,7 @@ from pathlib import Path, PurePath
 
 from bs4 import BeautifulSoup
 
+import applog
 from project_profile import looks_generated
 
 from . import medium
@@ -156,7 +157,13 @@ SKIP_AUDIT_SUFFIXES = {".mjs", ".ts", ".js", ".py", ".rb", ".go", ".rs", ".java"
 #: own `specs/` holds `read-once` and `resumable-runs`, neither of which is a
 #: test. The JS convention that *is* unambiguous is the filename, `Foo.spec.tsx`,
 #: and that is covered below; RSpec's `foo_spec.rb` is skipped by suffix.
+#: `fixtures`, `__fixtures__` and `testdata` are here because
+#: `project_profile._MARKER_BLIND` already treats them that way and the two
+#: modules were answering the same question differently. A fixture is markup
+#: written to be wrong on purpose, and reporting it as a defect of the
+#: project is the audit failing to know what it is reading.
 SKIP_AUDIT_DIRS = {"test", "tests", "__tests__", "__mocks__",
+                   "fixtures", "__fixtures__", "testdata",
                    "node_modules", "dist", "build", ".next"}
 #: Filename markers that mean the same thing, matched inside the name only.
 SKIP_AUDIT_NAME_MARKERS = (".test.", ".spec.", ".stories.", ".min.")
@@ -291,6 +298,8 @@ def analyze_document(markup: str, source: str, rules=None,
         try:
             found = rule.check(document, context)
         except Exception as exc:  # noqa: BLE001 - one broken rule can't fail the run
+            applog.error("rule.raised", rule=rule.id, source=source,
+                          error=f"{type(exc).__name__}: {exc}")
             report.issues.append(Issue(
                 rule_id=rule.id, severity="minor", source=source,
                 details={"rule_error": str(exc)},
@@ -372,7 +381,10 @@ def analyze_pages(pages, root: str, rules=None, ai_review=None,
         scan = media_pass.scan_page_media(pages, fetch=media_fetch)
         result.media = scan
         result.documents.extend(media_pass.as_web_documents(scan))
-    attribute_ownership(result)
+    owned = attribute_ownership(result)
+    applog.info("audit.web_done", pages=len(pages),
+                documents=len(result.documents), findings=len(result.issues()),
+                counts=result.counts(), platform_owned=owned)
     return result
 
 

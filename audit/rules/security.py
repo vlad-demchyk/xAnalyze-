@@ -180,7 +180,7 @@ class ScriptWithoutIntegrity(SecurityRule):
             if tag.get("integrity"):
                 continue
             host = _host(src)
-            if page_host and host == page_host:
+            if page_host and _same_site(host, page_host):
                 continue
             # Without a host for the page itself - a file on disk, a saved
             # copy, a repo fragment - "cross-origin" cannot be established,
@@ -203,6 +203,26 @@ class ScriptWithoutIntegrity(SecurityRule):
                          "origin_known": settled},
             ))
         return issues
+
+
+def _same_site(host: str, page_host: str) -> bool:
+    """Is this script served from the page's own domain?
+
+    Exact host equality was the test, and it made a site's own asset
+    subdomain look foreign: 61 of 162 findings on a ten-site run were
+    `assets.squarespace.com` on `www.squarespace.com` and the like. SRI on
+    your own CDN is a preference; SRI on somebody else's is the point of the
+    rule.
+
+    Compared by suffix against the page's own domain with `www.` removed,
+    not by a registrable-domain guess. A public-suffix table would let
+    `bar.github.io` pass as `foo.github.io`'s own, which is exactly the kind
+    of wrongly-merged answer that hides a real finding.
+    """
+    if not host or not page_host:
+        return False
+    root = page_host[4:] if page_host.startswith("www.") else page_host
+    return host == page_host or host == root or host.endswith("." + root)
 
 
 class SecretInMarkup(SecurityRule):

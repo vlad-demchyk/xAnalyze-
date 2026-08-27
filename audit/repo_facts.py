@@ -112,6 +112,24 @@ def _git(root: Path, *args: str) -> str | None:
     return done.stdout if done.returncode == 0 else None
 
 
+def _git_status(root: Path, *args: str) -> int | None:
+    """The exit code of one git command, or None when git did not run.
+
+    `_git` folds every non-zero exit into "we do not know", and for most
+    commands that is right. It is wrong for the one command whose *exit
+    code is the answer*: `git check-ignore` exits 1 to say "not ignored"
+    and 128 to say "I could not look", and treating those the same is how
+    a busy repository turns into a security finding.
+    """
+    try:
+        done = subprocess.run(("git", "-C", str(root)) + args,
+                              capture_output=True, text=True,
+                              timeout=_GIT_TIMEOUT)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return done.returncode
+
+
 def _is_env_file(rel: str) -> bool:
     name = rel.rsplit("/", 1)[-1].lower()
     if not _ENV_RE.search("/" + rel.lower()):
@@ -193,10 +211,26 @@ def _git_ignores(root: Path, rel: str, facts: RepoFacts) -> bool:
     its own ignore rules and a second implementation of them would
     eventually disagree - and disagreeing in the safe direction means
     staying quiet about a credential.
+
+    Three answers, not two. `check-ignore` uses its exit code to speak: 0
+    ignored, 1 not ignored, anything else "I could not look". The third was
+    being read as the second.
     """
     if not facts.is_git:
         return False
-    return _git(root, "check-ignore", "-q", rel) is not None
+    code = _git_status(root, "check-ignore", "-q", "--", rel)
+    if code == 0:
+        return True
+    if code == 1:
+        return False
+    # Anything else is git failing to answer, not git saying no. Measured:
+    # an audit that ran while a commit held `index.lock` reported this
+    # repository's `.env.e2e.local` as unignored - a `serious` finding about
+    # a credential, produced by a race and gone on the next run. Silence is
+    # the honest answer, and the reason is recorded so the run can say the
+    # check did not happen rather than that it passed.
+    facts.git_unavailable = facts.git_unavailable or f"check-ignore failed ({code})"
+    return True
 
 
 # --------------------------------------------------------------- as findings
