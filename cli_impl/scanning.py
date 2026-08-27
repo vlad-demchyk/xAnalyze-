@@ -39,19 +39,39 @@ CHARACTER_SOURCE = "characters"
 HYBRID_NAME = "hybrid"
 
 
-def _build_ignore_list(args) -> list:
+def _build_ignore_list(args, target: str | None = None) -> list:
     """Build the ignore pattern list from args and defaults.
 
     Single source of truth for the ignore logic used by scan, audit,
     fullscan, and reaudit.
+
+    `target` adds what the project itself says it vendors. A WordPress
+    install carries `wp-includes/`, a Laravel app carries `vendor/`, a
+    SvelteKit app carries `.svelte-kit/`, and every one of those is code the
+    developer did not write and cannot change. Until this was read from the
+    project, each stack had to be discovered the hard way - `wp-admin/` was
+    added after 455 findings arrived from vendored WordPress core in a real
+    audit. See `project_profile`.
+
+    Detection is evidence-based and additive: an undetected project gets
+    exactly the list it got before, and `--no-default-excludes` still drops
+    the lot.
     """
     use_defaults = getattr(args, "use_default_excludes", True)
     ignore = _parse_ignore_text(DEFAULT_IGNORE_PATTERNS) if use_defaults else []
+    if use_defaults and target:
+        import project_profile
+
+        profile = project_profile.detect(target)
+        for pattern in profile.excludes():
+            if pattern not in ignore:
+                ignore.append(pattern)
     ignore += list(getattr(args, "exclude", None) or [])
     return ignore
 
 
-def _build_scan_config(args, extensions=None) -> "ScanConfig":
+def _build_scan_config(args, extensions=None,
+                       target: str | None = None) -> "ScanConfig":
     """Build a ScanConfig from args.
 
     Single source of truth for scan configuration used by scan, audit,
@@ -61,7 +81,7 @@ def _build_scan_config(args, extensions=None) -> "ScanConfig":
         extensions = tuple(e if e.startswith(".") else "." + e for e in args.ext)
     return ScanConfig(
         extensions=extensions,
-        ignore_patterns=_build_ignore_list(args),
+        ignore_patterns=_build_ignore_list(args, target),
         max_files=getattr(args, "max_files", 5000),
         scope=getattr(args, "scope", "content"),
     )
@@ -76,7 +96,7 @@ def _collect_files(paths: list[str], args, missing_out=None,
     directory, so the caller can say what was read rather than only what was
     found. A file named directly needs none: naming it is the answer.
     """
-    cfg = _build_scan_config(args)
+    cfg = _build_scan_config(args, target=paths[0] if paths else None)
     scope = getattr(args, "scope", "content")
 
     results = []
