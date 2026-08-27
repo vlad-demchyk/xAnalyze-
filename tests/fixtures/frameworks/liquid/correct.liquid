@@ -1,0 +1,5 @@
+<a href="{{ product.url }}"><span class="visually-hidden">{{ product.title }}</span></a>
+<label for="q">{{ 'search.label' | t }}</label>
+<input id="q" name="q" type="search">
+<img src="{{ product.image | img_url }}" alt="{{ product.image.alt }}">
+{% if product.available %}<p>{{ 'in_stock' | t }}</p>{% endif %}

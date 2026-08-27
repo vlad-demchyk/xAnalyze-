@@ -103,5 +103,117 @@ class Pages(unittest.TestCase):
         self.assertIn("seo-image-dimensions", marked)
 
 
+class ReachesTheFragment(unittest.TestCase):
+    """A `.tsx` file must actually be read.
+
+    Every `assertNotIn` in `Fragments` above passed for two months while
+    `.tsx` was in `SKIP_AUDIT_SUFFIXES` and no rule ran on it at all: an
+    empty finding set satisfies "this rule did not fire" perfectly. So the
+    negative cases need a positive one beside them, or they assert nothing.
+    See `P-19`.
+    """
+
+    #: A component whose fields carry a placeholder and nothing else - the
+    #: shape that fills a real admin console, and the shape the audit was
+    #: reporting as clean.
+    UNLABELLED = (
+        'export function Form() {\n'
+        '  return <form>\n'
+        '    <input name="vendor" placeholder="Vendor" />\n'
+        '    <button className="go">Go</button>\n'
+        '  </form>;\n'
+        '}\n'
+    )
+
+    def test_a_component_is_opened_at_all(self):
+        result = _run("src/Form.tsx", self.UNLABELLED)
+        self.assertTrue(result.documents,
+                        "the .tsx file was never read; every negative case "
+                        "above is passing vacuously")
+
+    def test_a_field_with_only_a_placeholder_is_reported(self):
+        self.assertIn("control-name", _rules(_run("src/Form.tsx", self.UNLABELLED)))
+
+    def test_jsx_extensions_are_not_skipped(self):
+        for path in ("src/Form.tsx", "src/Form.jsx"):
+            with self.subTest(path=path):
+                self.assertFalse(engine._is_skipped_path(path))
+
+    def test_plain_script_extensions_stay_skipped(self):
+        """`if (a < b)` in a `.ts` file is an operator, not an open tag."""
+        for path in ("src/util.ts", "src/util.js", "src/util.mjs"):
+            with self.subTest(path=path):
+                self.assertTrue(engine._is_skipped_path(path))
+
+
+class BoundAttributes(unittest.TestCase):
+    """A value the framework computes is not a value the audit can compare.
+
+    Both cases here were live false alarms on `~/repositories/XFormat`, found
+    the moment repo mode could read `.tsx` again (`P-19`).
+    """
+
+    LIST = (
+        'export function Thread({ messages }) {\n'
+        '  return <div>{messages.map((m) => <article id={m.id} key={m.id}>{m.text}</article>)}</div>;\n'
+        '}\n'
+    )
+
+    MEDIA = (
+        'export function Preview({ url }) {\n'
+        '  return <iframe className="preview-iframe" src={url} title="Preview" />;\n'
+        '}\n'
+    )
+
+    def test_a_bound_id_rendered_in_a_list_is_not_a_duplicate(self):
+        self.assertNotIn("duplicate-id", _rules(_run("src/Thread.tsx", self.LIST)))
+
+    def test_a_literal_duplicate_id_is_still_reported(self):
+        """The fix must not blind the rule on the case it exists for."""
+        page = ('<!DOCTYPE html><html lang="en"><head><title>x</title></head>'
+                '<body><h1>x</h1><p id="dup">a</p><p id="dup">b</p></body></html>')
+        self.assertIn("duplicate-id", _rules(_run("public/index.html", page)))
+
+    def test_a_component_iframe_is_not_told_to_reserve_space(self):
+        """Whether `.preview-iframe` sets `aspect-ratio` is the stylesheet's
+        answer, and a fragment carries none."""
+        self.assertNotIn("perf-layout-shift", _rules(_run("src/Preview.tsx", self.MEDIA)))
+
+    def test_a_page_iframe_is_still_told_to(self):
+        page = ('<!DOCTYPE html><html lang="en"><head><title>x</title></head>'
+                '<body><h1>x</h1><iframe src="/e" title="e"></iframe></body></html>')
+        self.assertIn("perf-layout-shift", _rules(_run("public/index.html", page)))
+
+
+class SkippedPaths(unittest.TestCase):
+    """What "not the product" means, and what it must not swallow."""
+
+    def test_real_tests_are_skipped(self):
+        for path in ("src/Panel.test.tsx", "src/Panel.spec.tsx",
+                     "src/Panel.stories.tsx", "src/bundle.min.html",
+                     "src/__tests__/Panel.tsx", "tests/Panel.tsx",
+                     "node_modules/pkg/index.html", "dist/index.html"):
+            with self.subTest(path=path):
+                self.assertTrue(engine._is_skipped_path(path))
+
+    def test_a_screen_whose_name_contains_test_is_not_skipped(self):
+        """Matched as a path segment, never as a substring.
+
+        `"test" in path` also matches the first two, which are real screens
+        in `~/repositories/XFormat` and were being dropped as test files. The
+        last one is why `spec` is not a skipped directory name at all: this
+        repository's own `specs/` holds written specifications.
+        """
+        for path in ("src/features/coach/CoachTestEditor.tsx",
+                     "src/features/smart/components/SmartTestModal.tsx",
+                     "src/features/marketing/Testimonials.tsx",
+                     "specs/read-once/overview.html"):
+            with self.subTest(path=path):
+                self.assertFalse(engine._is_skipped_path(path))
+
+    def test_a_windows_path_is_read_the_same_way(self):
+        self.assertTrue(engine._is_skipped_path(r"src\__tests__\Panel.tsx"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,5 @@
+<div x-data="panel()">
+  <button x-on:click="close()"></button>
+  <input x-model="query" placeholder="Search" />
+  <img x-bind:src="photo.url" />
+</div>

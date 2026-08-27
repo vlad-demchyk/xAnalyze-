@@ -1,0 +1,4 @@
+<a href="{% url 'home' %}"><span class="visually-hidden">{% trans "Home" %}</span></a>
+<label for="q">{% trans "Search" %}</label>
+<input id="q" name="q" type="search">
+<img src="{% static 'a.png' %}" alt="{{ caption }}">

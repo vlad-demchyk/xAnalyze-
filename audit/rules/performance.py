@@ -40,6 +40,7 @@ class PerformanceRule(Rule):
 class RenderBlockingResources(PerformanceRule):
     id = "perf-render-blocking"
     page_level = True
+    web_only = True
     severity = SERIOUS
 
     def check(self, document, context) -> list:
@@ -154,6 +155,7 @@ class ImagesWithoutLazyLoading(PerformanceRule):
 class FontsWithoutDisplaySwap(PerformanceRule):
     id = "perf-font-display"
     page_level = True
+    web_only = True
     severity = MODERATE
     confidence = NEEDS_BROWSER
 
@@ -192,6 +194,7 @@ class FontsWithoutDisplaySwap(PerformanceRule):
 class MissingResourceHints(PerformanceRule):
     id = "perf-preconnect"
     page_level = True
+    web_only = True
     severity = MINOR
 
     def check(self, document, context) -> list:
@@ -229,6 +232,12 @@ class DeprecatedSizeAttributes(PerformanceRule):
     id = "perf-layout-shift"
     severity = MODERATE
     confidence = NEEDS_BROWSER
+    #: Whether the space is reserved is a stylesheet's answer, not the tag's:
+    #: `.preview-iframe` may well set `aspect-ratio`, and a fragment carries
+    #: no stylesheet to read. Exactly the reasoning that already excuses
+    #: `seo-image-dimensions` on a fragment; this rule wanted it too and
+    #: never got it, because `.tsx` was skipped before it could show up.
+    needs_external_css = True
 
     def check(self, document, context) -> list:
         issues = []

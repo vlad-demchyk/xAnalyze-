@@ -323,6 +323,28 @@ class WhenALineLastChanged(Repo):
                 self.assertTrue(arrival.sha)
                 self.assertTrue(arrival.summary)
 
+    def test_a_blamed_finding_survives_json(self):
+        """`audit --json` must be able to print what blame attached.
+
+        `details["arrived"]` is an `Arrival` dataclass, kept as an object so
+        the window and the report can read it by attribute. `json.dumps` has
+        no answer for that, and the CLI died with "Object of type Arrival is
+        not JSON serializable" - unseen, because repo mode had no findings to
+        blame until `.tsx` stopped being skipped (`P-19`).
+        """
+        import json
+
+        import cli
+
+        self.two_authors()
+        result = self.audited()
+        blamed = [i for d in result.documents for i in d.issues
+                  if (i.details or {}).get("arrived")]
+        self.assertTrue(blamed, "nothing was blamed; the case proves nothing")
+        payload = json.dumps([i.details for i in blamed],
+                             default=cli._json_default)
+        self.assertIn("sha", payload)
+
     def test_a_commit_seen_twice_keeps_its_summary(self):
         """`--porcelain` sends a commit's summary once, the first time it
         appears; every later line of it gets a bare header. Reset per line,

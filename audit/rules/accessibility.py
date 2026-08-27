@@ -325,6 +325,15 @@ class DuplicateIds(AccessibilityRule):
             identifier = (tag.get("id") or "").strip()
             if not identifier:
                 continue
+            if is_binding(identifier):
+                # `id={m.id}` is one expression that yields a different id per
+                # render, and a list renders it many times. Comparing the
+                # source text makes every row after the first a duplicate of
+                # itself, which is a statement about the file rather than
+                # about the page. Same reasoning as `bp-inline-handlers` and
+                # `onClick={close}`; found on `ChatMessageRenderer.tsx` and
+                # `SettingsCollapsible.tsx` once repo mode could read `.tsx`.
+                continue
             if identifier in seen:
                 # `for`, `aria-labelledby` and `aria-describedby` all resolve
                 # to the *first* match, so a duplicate silently points every
@@ -785,6 +794,7 @@ class LandmarkRegions(AccessibilityRule):
     linear navigation.
     """
     id = "landmark-regions"
+    web_only = True
     page_level = True
     severity = MODERATE
     wcag = ("1.3.1", "2.4.1")
@@ -824,6 +834,7 @@ class SkipLink(AccessibilityRule):
     requires tabbing through the entire nav.
     """
     id = "skip-link"
+    web_only = True
     page_level = True
     severity = MODERATE
     wcag = ("2.4.1",)
@@ -926,6 +937,7 @@ class HreflangLinks(AccessibilityRule):
     version, and search engines cannot properly index multilingual content.
     """
     id = "hreflang-links"
+    web_only = True
     page_level = True
     severity = MINOR
     wcag = ("3.1.2",)
@@ -1010,6 +1022,9 @@ class ImageModernFormat(AccessibilityRule):
     id = "image-modern-format"
     severity = MINOR
     category = PERFORMANCE
+    # WebP and AVIF are a browser's formats. Mail clients are years behind on
+    # both, and asking an email to ship them is asking it to break.
+    web_only = True
     wcag = ()
 
     _LEGACY_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".bmp")

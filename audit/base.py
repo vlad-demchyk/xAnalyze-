@@ -37,6 +37,7 @@ the finding rather than implying full WCAG coverage.
 """
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
@@ -71,6 +72,36 @@ SEVERITY_ORDER = (CRITICAL, SERIOUS, MODERATE, MINOR)
 # ------------------------------------------------------------- confidence
 EXACT = "exact"                  # the markup answers the question completely
 NEEDS_BROWSER = "needs-browser"  # a static pass can only see part of this
+
+#: Weakest first, so a caller can say "nothing below this" in one comparison.
+#: The order is the whole point: `exact` means the markup settles the
+#: question, `needs-browser` means something outside this file decides it and
+#: the finding is a candidate rather than a fact.
+#:
+#: Every finding has carried this since the rules were written and nothing
+#: exposed it, so an engine's "I could not determine the background colour"
+#: sat in the same list as a missing `alt`. Measured on ten pages of
+#: `https://www.gov.uk/`: 60 of 61 contrast findings were the first kind.
+CONFIDENCE_ORDER = (NEEDS_BROWSER, EXACT)
+
+
+def meets_confidence(issue, floor: str) -> bool:
+    """Is this finding at least as certain as `floor`?
+
+    An unknown confidence counts as meeting the floor. A finding whose
+    certainty nobody recorded is not evidence that it is weak, and dropping
+    it would be the tool hiding what it does not know about itself.
+    """
+    if not floor:
+        return True
+    try:
+        wanted = CONFIDENCE_ORDER.index(floor)
+    except ValueError:
+        return True
+    level = getattr(issue, "confidence", EXACT)
+    if level not in CONFIDENCE_ORDER:
+        return True
+    return CONFIDENCE_ORDER.index(level) >= wanted
 
 
 @dataclass
@@ -141,6 +172,22 @@ class Rule(ABC):
     #: `className`/`style` visible in the snippet either - not a bound
     #: expression to read, evidence genuinely absent rather than hidden.
     needs_external_css: bool = False
+    #: True when the check is about a document a *browser* serves. An HTML
+    #: email is the same file format and almost nothing else: it has no
+    #: canonical URL, is never crawled, is not shared to Open Graph, and lands
+    #: in clients that implement neither landmarks nor skip links.
+    #:
+    #: Measured on `~/repositories/VSC`, a workspace of newsletter and funnel
+    #: deliverables: the six loudest rules in a 1074-finding run were all of
+    #: this kind - `seo-canonical` 93, `seo-structured-data` 93,
+    #: `seo-open-graph` 91, `seo-meta-description` 83, `landmark-regions` 80,
+    #: `skip-link` 67. Asking for them is a category error repeated eighty
+    #: times, not a strict audit.
+    #:
+    #: Accessibility is deliberately **not** web-only. `image-alt`,
+    #: `control-name`, `table-headers` and contrast are as real in a mail
+    #: client as in a browser. See `audit.medium`.
+    web_only: bool = False
 
     @abstractmethod
     def check(self, document, context) -> list:
@@ -189,6 +236,9 @@ class RuleContext:
     #: source file that merely contains markup. Page-level rules are skipped
     #: on a fragment; see `Rule.page_level`.
     document_kind: str = "page"
+    #: "web" for a document a browser serves, "email" for one a mail client
+    #: renders. Web-only rules are skipped on an email; see `Rule.web_only`.
+    medium: str = "web"
     #: Maps a bs4 tag to a CSS-ish path. Injected rather than imported so the
     #: web and repo paths can supply their own (a repo file also wants a line
     #: number, which a live page has no notion of).
@@ -281,6 +331,210 @@ def _open_tag_end(markup: str, start: int) -> int:
     return -1
 
 
+#: The filler `repo_scanner.mask_server_tags` leaves behind: `${` then only
+#: hyphens then `}`. Unmistakable, because a real `${...}` binding carries a
+#: name.
+_SERVER_TAG_FILLER = re.compile(r"\$\{-*\}")
+
+
+def _unmask_server_tags(text: str) -> str:
+    """Put `<?php … ?>` back where the mask stands, for display only.
+
+    The last resort in `snippet_of` is the parser's own re-print, and the
+    parser was handed masked markup. Printing that shows a developer a run of
+    hyphens where their own code is - which is worse than useless in a report
+    (`P-21`). It cannot be un-masked exactly, because the mask deliberately
+    discards what it covered, so this says what *kind* of thing was there.
+    """
+    return _SERVER_TAG_FILLER.sub("<?php \u2026 ?>", text)
+
+
+#: How far back and forward to look for an element whose recorded position
+#: did not land on it. Two lines back covers a tag whose attributes were
+#: rewritten by a mask; a whole file scan would find *an* element of that
+#: name rather than *this* one.
+_TAG_SEARCH_LINES = 2
+
+
+def _find_open_tag(markup: str, line_starts, line, tag) -> str:
+    """The opening tag of `tag`, found by name near the recorded line.
+
+    The parser records a line even when the column is unusable, and the
+    element's own name is the strongest thing left to search on. Bounded to
+    a few lines on purpose: the answer must be *this* element, and a
+    file-wide search for `<a` would confidently return the wrong one.
+
+    Returns "" when it cannot be sure, so the caller can fall back rather
+    than print a guess.
+    """
+    name = getattr(tag, "name", "") or ""
+    if not name or not line or not line_starts:
+        return ""
+    index = int(line) - 1
+    if not 0 <= index < len(line_starts):
+        return ""
+    begin = line_starts[max(0, index - _TAG_SEARCH_LINES)]
+    stop_index = min(len(line_starts) - 1, index + _TAG_SEARCH_LINES)
+    stop = (line_starts[stop_index + 1] if stop_index + 1 < len(line_starts)
+            else len(markup))
+    window = markup[begin:stop]
+    needle = "<" + name
+    at = window.find(needle)
+    while at != -1:
+        after = window[at + len(needle):at + len(needle) + 1]
+        # `<a` must not match `<abbr`. A name is followed by whitespace, `>`
+        # or `/`.
+        if after in ("", " ", "\t", "\n", "\r", ">", "/"):
+            end = _open_tag_end(window, at)
+            if end != -1:
+                return window[at:end]
+            break
+        at = window.find(needle, at + 1)
+    return ""
+
+
+#: How a framework spells "this attribute's value is an expression".
+#:
+#: Vue writes `:alt="photo.caption"` (and `v-bind:alt`), Angular writes
+#: `[alt]` and `[attr.aria-label]`, Alpine and Svelte write `x-bind:` and
+#: `bind:`. The attribute the rule looks for is then *absent*: an `<img>`
+#: with `:alt` has no `alt`, and `image-alt` reported a correct Vue component
+#: as missing its alternative text.
+#:
+#: Measured on `tests/fixtures/frameworks`: before this, the idiomatic Vue
+#: component and the deliberately broken one produced identical findings -
+#: three each - which means the pass could not tell them apart at all. Svelte
+#: and JSX were already fine, because they put the expression in the *value*
+#: (`alt={caption}`), which `is_binding` recognises.
+#: `hx-` is deliberately absent. htmx's `hx-get="/y"` is a *behaviour*, not
+#: "bind the `get` attribute" - reading it as a binding invented a `get`
+#: attribute that no element has. A prefix earns a place here only when the
+#: framework's own meaning is "this attribute's value is an expression".
+_BINDING_PREFIXES = (":", "v-bind:", "x-bind:", "bind:", "th:")
+_ANGULAR_ATTR = re.compile(r"^\[(?:attr\.)?(?P<name>[\w:-]+)\]$")
+
+
+def _bound_target(name: str) -> str:
+    """The plain attribute a bound name stands for, or ""."""
+    match = _ANGULAR_ATTR.match(name)
+    if match:
+        return match.group("name")
+    for prefix in _BINDING_PREFIXES:
+        if name.startswith(prefix) and len(name) > len(prefix):
+            target = name[len(prefix):]
+            # `:` also introduces Vue's shorthand for a *directive argument*
+            # that is not an attribute (`:key`), and XML namespaces
+            # (`xlink:href`, `xmlns:xlink`) share the colon without being
+            # bindings. A namespace has text on both sides; a shorthand
+            # binding does not.
+            if prefix == ":" and not name.startswith(":"):
+                continue
+            if target and ":" not in target:
+                return target
+    return ""
+
+
+#: Attributes that supply an element's **text** rather than one of its
+#: attributes. An element carrying one of these is written empty on purpose:
+#: the framework fills it at runtime.
+#:
+#: This is its own class of blindness, separate from bound attributes. A link
+#: written `<a href="/x" x-text="label"></a>` has no children, so it reads as
+#: an empty link with no accessible name - a *serious* finding against markup
+#: that names itself perfectly well. Alpine, Vue, Angular, Thymeleaf, Knockout
+#: and every `data-i18n` extractor write the same shape.
+_TEXT_DIRECTIVES = (
+    "v-text", "v-html",           # Vue
+    "x-text", "x-html",           # Alpine
+    "th:text", "th:utext",        # Thymeleaf
+    "ng-bind", "ng-bind-html",    # AngularJS
+    "data-i18n", "data-t",        # i18next and friends
+    "data-bind",                  # Knockout
+)
+
+
+def resolve_text_directives(document) -> None:
+    """Give an element that is filled at runtime something to say.
+
+    A placeholder, not the real string - the real string lives in a
+    translation file or a component's state and is not in this document. What
+    matters to every rule that asks "does this have a name" is that the answer
+    is yes, and that it stops being no for the wrong reason.
+
+    Only for an element that is otherwise empty: markup that has both a
+    directive and literal text already answers the question, and the literal
+    is the better answer.
+    """
+    from bs4 import NavigableString
+
+    for tag in document.find_all(True):
+        attrs = getattr(tag, "attrs", None)
+        if not attrs:
+            continue
+        directive = next((name for name in _TEXT_DIRECTIVES if name in attrs), "")
+        if not directive:
+            continue
+        if tag.get_text(strip=True):
+            continue
+        value = attrs.get(directive)
+        if isinstance(value, list):
+            value = " ".join(value)
+        tag.append(NavigableString("{" + str(value or directive).strip() + "}"))
+
+
+def unwrap_template_text(document) -> None:
+    """Make text inside `<template>` readable again, for a fragment.
+
+    BeautifulSoup wraps it in `TemplateString`, and `get_text()` and
+    `stripped_strings` skip that class the way they skip comments and script
+    bodies. On a served page that is right: a `<template>` is an inert
+    prototype the browser does not render.
+
+    In a component file it is exactly wrong. A Vue single-file component
+    *is* a `<template>`, and so is an Angular inline template and the body
+    of a web component. Every label, heading and link inside one read as
+    empty, so `tests/fixtures/frameworks/vue/Correct.vue` - an idiomatic,
+    correct component - reported the same findings as the deliberately
+    broken one beside it. A pass that cannot tell those apart is not
+    measuring the code.
+
+    Fragments only, which is why this is called from the fragment branch:
+    the page case is the one bs4 has right.
+    """
+    from bs4 import NavigableString
+    from bs4.element import TemplateString
+
+    for node in list(document.descendants):
+        if isinstance(node, TemplateString):
+            node.replace_with(NavigableString(str(node)))
+
+
+def resolve_bound_attributes(document) -> None:
+    """Give every bound attribute its plain name back, as a binding value.
+
+    Mutates the parsed tree rather than the source text, so no offset moves
+    and `snippet_of` still quotes the developer's own file. The value becomes
+    `{expression}` - the shape `is_binding` already knows - so a rule that
+    asks "is this a real value or a computed one" gets the right answer
+    without any rule having to learn framework syntax.
+
+    Only ever *adds*: a tag that already carries the plain attribute keeps
+    what it has, because a literal beats an expression when both are written.
+    """
+    for tag in document.find_all(True):
+        attrs = getattr(tag, "attrs", None)
+        if not attrs:
+            continue
+        for name in list(attrs):
+            target = _bound_target(name)
+            if not target or target in attrs:
+                continue
+            value = attrs[name]
+            if isinstance(value, list):
+                value = " ".join(value)
+            attrs[target] = "{" + str(value or "").strip() + "}"
+
+
 def snippet_of(tag, limit: int = 160) -> str:
     """The opening tag as it is written in the file.
 
@@ -309,8 +563,22 @@ def snippet_of(tag, limit: int = 160) -> str:
                 end = _open_tag_end(markup, start)
                 if end != -1:
                     return _clip(markup[start:end], limit)
+        # The position did not land on a tag. That happens when the parsed
+        # text is not character-for-character the file: a server tag in
+        # attribute position (`<a <?php echo $attrs; ?> href=...>`) is masked
+        # before parsing, and the mask can move where the parser thinks the
+        # tag begins. Falling through to `str(tag)` then prints the *mask* -
+        # filler where the developer expects their own code.
+        #
+        # So the element is looked for by name instead, from the start of the
+        # line the parser did record. Not the whole line: a report that
+        # answers "which element" with `></use>` or a line of pure PHP is
+        # pointing at the file rather than at the finding (`P-21`).
+        found = _find_open_tag(markup, line_starts, line, tag)
+        if found:
+            return _clip(found, limit)
 
-    text = str(tag)
+    text = _unmask_server_tags(str(tag))
     closing = text.find(">")
     return _clip(text[:closing + 1] if closing != -1 else text, limit)
 

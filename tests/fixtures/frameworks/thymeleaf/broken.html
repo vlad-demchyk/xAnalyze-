@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" th:content="#{page.description}" content="Search the Palmanova catalogue, review the results and open any record in a single panel.">
+  <meta property="og:title" content="Panel">
+  <meta property="og:description" content="Search the Palmanova catalogue, review the results and open any record in a single panel.">
+  <meta property="og:image" content="https://example.com/a.webp">
+  <link rel="preconnect" href="https://example.com">
+  <link rel="canonical" href="https://example.com/panel">
+  <title th:text="#{page.title}">Panel for searching the catalogue</title>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"Panel"}</script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header><nav aria-label="Main"><a href="/">Home</a></nav></header>
+  <main id="main">
+    <h1>Panel</h1>
+    <button type="button"></button>
+    <input name="q" type="search" placeholder="Search">
+    <img th:src="@{/a.webp}" src="/a.webp" width="640" height="480">
+  </main>
+  <footer><p>&copy; Example</p></footer>
+</body>
+</html>

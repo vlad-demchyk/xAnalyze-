@@ -1,0 +1,5 @@
+<button [attr.aria-label]="closeLabel" (click)="close()">×</button>
+<label for="q">{{ 'search' | translate }}</label>
+<input id="q" [(ngModel)]="query" />
+<img [src]="photo.url" [alt]="photo.caption" />
+<a [routerLink]="['/help']"><span class="sr-only" [textContent]="helpLabel"></span></a>

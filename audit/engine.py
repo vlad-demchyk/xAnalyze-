@@ -14,13 +14,18 @@ the app because there is only one crawler.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
+import re
+from pathlib import Path, PurePath
 
 from bs4 import BeautifulSoup
 
+from project_profile import looks_generated
+
+from . import medium
 from .base import (
     CATEGORIES, SEVERITY_ORDER, Issue, RuleContext, RuleRegistry,
-    remember_source,
+    remember_source, resolve_bound_attributes, resolve_text_directives,
+    unwrap_template_text,
 )
 
 
@@ -54,6 +59,10 @@ class AccessibilityResult:
     #: reason git could not answer, which is the difference between "no
     #: assistant commits" and "no history to look at".
     repo: object = None
+    #: A slice of the markup the crawl actually saw, kept so the report can
+    #: ask what platform served it. The documents keep addresses, not bodies,
+    #: so without this the answer would have to be fetched a second time.
+    markup_sample: str = ""
 
     def issues(self) -> list:
         out = []
@@ -122,15 +131,96 @@ def _line_lookup(raw_text: str):
 #: Suffixes whose contents are a finished document rather than a fragment of
 #: one. Everything else in a repository is source that merely contains markup.
 PAGE_SUFFIXES = {".html", ".htm", ".xhtml"}
-# Files to skip in repo audit — source code, tests, configs
-SKIP_AUDIT_SUFFIXES = {".tsx", ".jsx", ".mjs", ".ts", ".js", ".py", ".rb", ".go", ".rs", ".java", ".c", ".cpp", ".h"}
-SKIP_AUDIT_PATTERNS = {"test", "spec", "__tests__", "node_modules", ".min."}
+#: Suffixes with no markup to read, skipped before a rule ever runs.
+#:
+#: `.tsx` and `.jsx` are deliberately *not* here. They were, and that made the
+#: whole fragment path — `document_kind`, `Rule.page_level`,
+#: `Rule.needs_external_css`, `mask_code_comments` — unreachable for React,
+#: because this check runs before the `kind = "fragment"` branch below. A Vite
+#: repository then audited down to its empty `index.html` shell and reported
+#: zero findings, which reads as clean. See `P-19`.
+#:
+#: `.ts`, `.js` and `.mjs` stay skipped, and the reason is not the same one.
+#: JSX is not valid in them, so their `<` is an operator: `if (a < b)` handed
+#: to an HTML parser is an open tag, and every finding under it would be about
+#: markup nobody wrote. A `.tsx` file's `<` is markup by definition of the
+#: extension.
+SKIP_AUDIT_SUFFIXES = {".mjs", ".ts", ".js", ".py", ".rb", ".go", ".rs", ".java", ".c", ".cpp", ".h"}
+#: Directory names that mean "not the product". Matched as whole path
+#: segments, never as substrings: `test` inside a substring also matches
+#: `src/features/coach/CoachTestEditor.tsx` and `SmartTestModal.tsx`, two real
+#: screens in `~/repositories/XFormat` that were being skipped as tests.
+#:
+#: `spec` and `specs` are deliberately absent. A directory by that name is a
+#: written specification at least as often as a test suite - this repository's
+#: own `specs/` holds `read-once` and `resumable-runs`, neither of which is a
+#: test. The JS convention that *is* unambiguous is the filename, `Foo.spec.tsx`,
+#: and that is covered below; RSpec's `foo_spec.rb` is skipped by suffix.
+SKIP_AUDIT_DIRS = {"test", "tests", "__tests__", "__mocks__",
+                   "node_modules", "dist", "build", ".next"}
+#: Filename markers that mean the same thing, matched inside the name only.
+SKIP_AUDIT_NAME_MARKERS = (".test.", ".spec.", ".stories.", ".min.")
+
+
+def _is_skipped_path(path: str) -> bool:
+    """Is this a file the repo audit has no business reading?
+
+    Split out of `analyze_files` because it is the half of that loop that
+    decides what is *never seen*, and a wrong answer here is invisible: the
+    report simply comes back shorter, and a shorter report reads as a
+    cleaner one.
+    """
+    parts = PurePath(path.replace("\\", "/")).parts
+    if any(part.lower() in SKIP_AUDIT_DIRS for part in parts[:-1]):
+        return True
+    name = parts[-1].lower() if parts else ""
+    if any(marker in name for marker in SKIP_AUDIT_NAME_MARKERS):
+        return True
+    return PurePath(name).suffix in SKIP_AUDIT_SUFFIXES
+
+
+#: How much of the first page to keep for platform detection.
+_MARKUP_SAMPLE = 200_000
+
+#: What a finished document has and a template of one does not. A page is not
+#: one tag, it is the whole shape: a root, and the two halves inside it.
+_PAGE_ROOT = re.compile(r"<!doctype\s+html|<html[\s>]", re.I)
+_PAGE_HALVES = re.compile(r"<head[\s>]|<body[\s>]", re.I)
+
+
+def _document_kind(path: str, markup: str) -> str:
+    """"page" for a finished document, "fragment" for a piece of one.
+
+    The suffix is not enough, and believing it cost a whole framework. An
+    Angular component template is a `.html` file with no `<html>` in it, so
+    every page-level rule fired on it: `bp-charset`, `landmark-regions`,
+    `skip-link`, `seo-canonical`, `seo-open-graph` - eight findings against a
+    file that was never going to be a page on its own. The same is true of
+    every `_header.html` partial ever written.
+
+    So the question is asked of the content instead, and asked about the
+    whole shape rather than one tag: a finished document has a root - a
+    doctype or `<html>` - **and** the halves inside it, a `<head>` or a
+    `<body>`. A fragment has neither, and a file with a stray `<html>` and
+    nothing else is not a page anybody is going to serve. That is evidence
+    rather than a naming convention, and it is the same test in every
+    technology.
+
+    `analyze_page_file` is unaffected - naming a single file on the command
+    line *is* the statement that it is a page.
+    """
+    if Path(path).suffix.lower() not in PAGE_SUFFIXES:
+        return "fragment"
+    text = markup or ""
+    complete = bool(_PAGE_ROOT.search(text)) and bool(_PAGE_HALVES.search(text))
+    return "page" if complete else "fragment"
 
 
 def analyze_document(markup: str, source: str, rules=None,
                      line_numbers: bool = False, ai_review=None,
                      document_kind: str = "page",
-                     source_text: str | None = None) -> DocumentReport:
+                     source_text: str | None = None,
+                     force_medium: str | None = None) -> DocumentReport:
     """Run every rule over one document.
 
     `ai_review` is an optional `AIAccessibilityReview`. It runs on the same
@@ -152,11 +242,39 @@ def analyze_document(markup: str, source: str, rules=None,
 
     context = RuleContext(source=source)
     context.document_kind = document_kind
+    # What the document is *for*, which the file format does not say. See
+    # `audit.medium`: an email and a page are both complete HTML documents.
+    context.medium = force_medium or medium.detect(markup).name
     context.dom_path = _dom_path
     if line_numbers:
         context.line_of = _line_lookup(markup)
 
+    # `:alt="caption"` is an `alt`, spelled the way Vue, Angular, Alpine,
+    # Svelte and Thymeleaf spell it. Given its plain name back before any rule
+    # runs, so no rule has to know five framework syntaxes and none of them
+    # reports a correct component as missing what it has.
+    #
+    # Run for a page as well as a fragment, and safely: both of these only
+    # ever *add* a plain attribute where a bound one exists, and a served page
+    # has no `th:alt`, `[alt]` or `:alt` to find. A Thymeleaf template is a
+    # whole page and still needs them.
+    resolve_bound_attributes(document)
+    # An element whose text arrives at runtime - `x-text`, `v-text`,
+    # `th:text`, `ng-bind`, `data-i18n` - is written empty on purpose. Read
+    # literally it is an empty link with no accessible name.
+    resolve_text_directives(document)
+    if context.medium == medium.EMAIL:
+        # An HTML email is the same file format as a page and almost nothing
+        # else: no canonical URL, never crawled, not shared to Open Graph, and
+        # rendered by clients that implement neither landmarks nor skip links.
+        # The accessibility rules are untouched - `alt`, control names, table
+        # headers and contrast are as real in a mail client as in a browser.
+        rules = [rule for rule in rules if not getattr(rule, "web_only", False)]
     if document_kind != "page":
+        # A Vue single-file component *is* a `<template>`, whose text bs4
+        # hides the way it hides a comment. Fragments only: on a served page
+        # a `<template>` really is an inert prototype.
+        unwrap_template_text(document)
         # A component file is a piece of a page. Asking it for a doctype, a
         # title or exactly one h1 reports the absence of things that belong to
         # the page it will be part of. A rule that needs a stylesheet is
@@ -223,6 +341,12 @@ def analyze_pages(pages, root: str, rules=None, ai_review=None,
                 error=page.error or "no HTML received (see crawl diagnostics)",
             ))
             continue
+        if not result.markup_sample:
+            # The first page that loaded is enough to say what served it: a
+            # platform's signature is in the shell, and the shell is the same
+            # on every page it renders. Bounded, because this is kept for a
+            # regex and not for reading.
+            result.markup_sample = page.raw_html[:_MARKUP_SAMPLE]
         result.documents.append(
             analyze_document(page.raw_html, page.url, rules, ai_review=ai_review))
     if media:
@@ -270,7 +394,8 @@ def analyze_page_file(path: str, rules=None, ai_review=None) -> AccessibilityRes
 
 
 def analyze_files(file_results, root: str, rules=None, ai_review=None,
-                  media: bool = True, repo_facts: bool = True) -> AccessibilityResult:
+                  media: bool = True, repo_facts: bool = True,
+                  force_medium: str | None = None) -> AccessibilityResult:
     """Repo mode: run over the markup files the scanner read.
 
     Only files that actually contain markup are examined. A `.py` opened for
@@ -301,26 +426,48 @@ def analyze_files(file_results, root: str, rules=None, ai_review=None,
             continue
         if "<" not in file_result.raw_text:
             continue
-        # Skip source code files and test files
-        path_lower = file_result.path.lower()
-        if any(path_lower.endswith(ext) for ext in SKIP_AUDIT_SUFFIXES):
+        if _is_skipped_path(file_result.path):
             continue
-        if any(pat in path_lower for pat in SKIP_AUDIT_PATTERNS):
+        if looks_generated(file_result.raw_text):
+            # A finding in a generated file is not wrong, it is unactionable:
+            # the fix belongs in the generator and the file is overwritten on
+            # the next build. The marker is a convention rather than a
+            # technology - protobuf, GraphQL codegen, OpenAPI clients, Prisma
+            # and `.d.ts` emitters all write one - so it is checked here,
+            # where every stack passes through, rather than per stack.
             continue
-        kind = ("page" if Path(file_result.path).suffix.lower() in PAGE_SUFFIXES
-                else "fragment")
+        kind = _document_kind(file_result.path, file_result.raw_text)
         markup = file_result.raw_text
         if kind == "fragment":
             # A source file's comments are prose, and prose talks about markup:
             # `// the <img> is replaced on remount` is an element with no alt
             # to an HTML parser. Masked rather than stripped, so every line and
             # column still points where it did.
-            from repo_scanner import mask_code_comments
-            markup = mask_code_comments(markup, file_result.path)
+            from repo_scanner import mask_code_comments, mask_server_tags
+            # Server tags first, and the order is load-bearing. A PHP block
+            # may hold a `//` comment of its own:
+            #
+            #     <a href="..."<?php echo $aria; // phpcs:ignore ?>>
+            #
+            # Masking comments first blanks from `//` to end of line, which
+            # takes the closing `?>>` with it. The block is then unterminated,
+            # the anchor swallows everything down to the next `?>`, and a link
+            # whose text sits on the following line reports as nameless.
+            # Removing the whole server tag first means its comment never
+            # reaches the comment masker.
+            markup = mask_server_tags(markup)
+            # `<?php echo esc_html($name); ?>` is a *processing instruction*
+            # to the parser and carries no text, so a link or a field named by
+            # the server read as nameless. On three real WordPress projects
+            # this was the largest single source of false `control-name`
+            # criticals.
+            markup = mask_code_comments(markup, file_result.path,
+                                        server_tags_masked=True)
         report = analyze_document(markup, file_result.path, rules,
                                   line_numbers=True, ai_review=ai_review,
                                   document_kind=kind,
-                                  source_text=file_result.raw_text)
+                                  source_text=file_result.raw_text,
+                                  force_medium=force_medium)
         if report.issues or report.error:
             result.documents.append(report)
     if media:

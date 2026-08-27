@@ -186,6 +186,10 @@ Pods/
 ClientSideAssets/
 wp-content/plugins/
 **/app/plugins/
+wp-content/mu-plugins/
+wp-content/uploads/
+wp-admin/
+wp-includes/
 """
 
 _SCRIPT_STYLE_COMMENT_RE = re.compile(
@@ -205,6 +209,63 @@ _CODE_COMMENT_RE = re.compile(
 # `#` immediately followed by `{` is left alone.
 _HASH_COMMENT_RE = re.compile(r"(?<!\$)#(?!\{)[^\n]*")
 _HASH_COMMENT_EXTENSIONS = frozenset((".py", ".rb", ".php"))
+#: File types whose comments only exist inside a server-template block.
+_SERVER_TEMPLATE_EXTENSIONS = frozenset((".php", ".phtml", ".erb", ".ejs"))
+
+
+def _mask_hash_comments(text: str) -> str:
+    """Blank `#` comments, but only where a `#` really starts one.
+
+    The regex above cannot tell a comment from a fragment identifier, and a
+    `.php` file is mostly markup: `<use xlink:href="#it-share">` had
+    everything from the `#` to the end of the line blanked, closing quote
+    included. The attribute was then unterminated, so the parser swallowed
+    the rest of the element - and a share button whose label reads
+    "Condividi" three lines further down came back with no accessible name
+    at all.
+
+    Every SVG sprite reference, every `href="#main"` skip link and every
+    `color:#fff` in a `.py`, `.rb` or `.php` file did this. Found on the
+    Palmanova theme, where it accounted for a large part of the remaining
+    `control-name` criticals after the server-tag fix.
+
+    Quote tracking is per line and deliberately simple. A string that opens
+    on one line and closes on another (a heredoc) is rare in the markup this
+    protects, and resetting per line is what the line-based regex already
+    did; the risk of carrying a wrong quote state across a whole file is the
+    larger one.
+    """
+    out = []
+    for line in text.splitlines(True):
+        quote = ""
+        cut = None
+        index = 0
+        while index < len(line):
+            char = line[index]
+            if quote:
+                if char == "\\":
+                    index += 2
+                    continue
+                if char == quote:
+                    quote = ""
+            elif char in "\"'":
+                quote = char
+            elif char == "#":
+                # The two shapes the old regex already spared: `$#` and
+                # Ruby's `#{...}` interpolation.
+                before = line[index - 1] if index else ""
+                after = line[index + 1] if index + 1 < len(line) else ""
+                if before != "$" and after != "{":
+                    cut = index
+                    break
+            index += 1
+        if cut is None:
+            out.append(line)
+            continue
+        tail = line[cut:]
+        out.append(line[:cut] + "".join(
+            "\n" if ch == "\n" else " " for ch in tail))
+    return "".join(out)
 # Code quoted inside Markdown: fenced blocks and inline spans. A doc that
 # writes `<audio controls>` in backticks is talking *about* an element, and
 # the audit was reporting the sentence as a media element shipped without
@@ -906,7 +967,68 @@ def _extract_locale_blocks(raw_text: str, file_path: str) -> list[CodeBlock]:
     return blocks
 
 
-def mask_code_comments(raw_text: str, file_path: str) -> str:
+#: A server-side template tag: PHP's `<?php ... ?>` and its short form
+#: `<?= ... ?>`, and the ASP/JSP family that shares the shape.
+_SERVER_TAG = re.compile(
+    r"<\?(?:php\b|=)?.*?\?>"        # PHP, long and short
+    r"|<%.*?%>"                      # ERB, EJS, JSP, ASP
+    r"|\{%-?.*?-?%\}"                # Twig, Django, Jinja, Liquid, Nunjucks
+    r"|@\{.*?\}",                    # Razor code block
+    re.S)
+
+
+def mask_server_tags(raw_text: str) -> str:
+    """Rewrite server-side template tags as client-side bindings.
+
+    Covers the shapes that an HTML parser reads as something other than text:
+    PHP's `<?php ?>` and `<?= ?>` (processing instructions), the `<% %>`
+    family shared by ERB, EJS, JSP and ASP, the `{% %}` family shared by
+    Twig, Django, Jinja, Liquid and Nunjucks, and Razor's `@{ }` block.
+
+    `{{ ... }}` is deliberately **not** here. It is Twig, Blade, Handlebars,
+    Vue and Angular's interpolation, and a parser reads it as ordinary text -
+    which is what it becomes. Masking it would take a link's only label away
+    and turn a correct element into an empty one, which is the defect this
+    function exists to prevent, applied backwards.
+
+    An HTML parser reads `<?php echo $name; ?>` as a *processing
+    instruction*, which carries no text. So a link whose accessible name is
+    printed by PHP looks nameless:
+
+        <a href="<?php echo esc_url($u); ?>">
+          <svg aria-hidden="true"></svg>
+          <span class="visually-hidden"><?php echo esc_html($n); ?></span>
+        </a>
+
+    `get_text()` on that anchor returns `""`, and `control-name` reports a
+    critical failure against a link that names itself perfectly well at
+    runtime. Measured across three real WordPress projects, this one cause
+    produced 455, 58 and a share of the `control-name` criticals - the
+    largest single class of false alarm the tool had.
+
+    The replacement is `${...}` rather than a blank, and that choice does two
+    jobs with one substitution. In text it is a non-empty string, so an
+    element named by the server is no longer empty. In an attribute it is a
+    shape `audit.base.is_binding` already recognises, so `id="<?php ... ?>"`
+    is read as a computed value rather than as a literal - which is what
+    stopped `<label for="<?php $id ?>">` from being matched to the field it
+    labels.
+
+    Same length as what it replaces, for the same reason `mask_code_comments`
+    pads rather than deletes: `sourceline` and every offset in a finding
+    index into the original text.
+    """
+    def swap(match):
+        width = len(match.group(0))
+        # `${` + `}` is three characters; the shortest real tag (`<?=?>`) is
+        # five, so the filler is never negative.
+        return "${" + "-" * max(0, width - 3) + "}"
+
+    return _SERVER_TAG.sub(swap, raw_text)
+
+
+def mask_code_comments(raw_text: str, file_path: str,
+                       server_tags_masked: bool = False) -> str:
     """Blank out code comments, keeping every other character where it was.
 
     Spaces rather than deletion because offsets are load-bearing: block spans,
@@ -934,9 +1056,24 @@ def mask_code_comments(raw_text: str, file_path: str) -> str:
         masked = _MARKDOWN_FENCE_RE.sub(_blank_but_newlines, masked)
         masked = _MARKDOWN_INLINE_CODE_RE.sub(_blank_but_newlines, masked)
     masked = _SCRIPT_STYLE_COMMENT_RE.sub(_blank_but_newlines, masked)
+    if server_tags_masked and suffix in _SERVER_TEMPLATE_EXTENSIONS:
+        # Nothing left to do. In a `.php` file every `//`, `/* */` and `#`
+        # comment lives *inside* a `<?php ... ?>` block, and the caller has
+        # already replaced those wholesale. What remains is HTML, where those
+        # three are ordinary text - and masking them there is not a no-op, it
+        # is destructive:
+        #
+        #     <a class="tag" href="...">#<?php echo $t->name; ?></a>
+        #
+        # The `#` is the first character of the link's visible label. Blanking
+        # from it to the end of the line takes the label and the closing tag
+        # with it, and the link then reports as having no accessible name.
+        # Found on the Palmanova theme; the same shape covers every
+        # `href="#main"`, every SVG sprite id and every `color:#fff`.
+        return masked
     masked = _CODE_COMMENT_RE.sub(_blank_but_newlines, masked)
     if suffix in _HASH_COMMENT_EXTENSIONS:
-        masked = _HASH_COMMENT_RE.sub(_blank_but_newlines, masked)
+        masked = _mask_hash_comments(masked)
     return masked
 
 

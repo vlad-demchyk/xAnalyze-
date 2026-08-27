@@ -1,0 +1,3 @@
+<a href="{% url 'home' %}"><i class="icon" aria-hidden="true"></i></a>
+<input name="q" type="search" placeholder="{% trans 'Search' %}">
+<img src="{% static 'a.png' %}">

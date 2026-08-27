@@ -1,0 +1,6 @@
+<div x-data="panel()">
+  <button x-on:click="close()" x-text="closeLabel"></button>
+  <label for="q" x-text="searchLabel"></label>
+  <input id="q" x-model="query" />
+  <img x-bind:src="photo.url" x-bind:alt="photo.caption" />
+</div>
