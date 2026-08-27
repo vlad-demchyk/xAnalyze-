@@ -16,7 +16,14 @@ __pycache__/
 # holds an Anthropic key when the user typed one into Settings.
 settings.json
 .xanalyze/
-.xanalyze-ignore
+
+# `.xanalyze-ignore` is NOT here, and that is a change made on evidence.
+# It was grouped with the settings file above, and it holds no secret: it is
+# a list of paths and phrases a project says are not about itself. Keeping it
+# untracked meant this repository could not tell anyone that `simulations/`
+# is a folder of deliberately broken demo pages - so auditing this checkout
+# reported 141 of its 143 findings from fixtures, for every contributor, for
+# ever. A project's statement about itself belongs in the project.
 
 # Test-account credentials for the live e2e run. The file says of itself that
 # it is ignored by git; it was not, and `git add -A` would have committed a

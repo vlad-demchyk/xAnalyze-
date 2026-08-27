@@ -152,6 +152,15 @@ matches scans exactly as before. Files whose header says a machine wrote them
 spread evenly across every page of a run are the shape of a broken
 measurement rather than a broken site, and the run says so next to the count.
 
+**A rule says only what it can establish without a second request.** The
+address of an image names a source file; Wix, Squarespace, Photon, imgix,
+Cloudflare and Next.js all serve WebP from a `.jpg` URL to a browser that
+accepts it. So `image-modern-format` is silent on those and speaks about
+plain static files - 530 findings across sixteen targets became 71, and the
+459 that went were claims about bytes nobody had looked at. Establishing the
+truth needs a request carrying an `Accept` header, which the pass does not
+make.
+
 ## Certainty, and choosing a floor
 
 Every finding says how sure it is. `exact` means the markup settles the

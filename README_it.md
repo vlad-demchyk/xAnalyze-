@@ -169,6 +169,14 @@ file la cui intestazione dice che li ha scritti una macchina (`DO NOT EDIT`,
 distribuiti in modo uniforme su ogni pagina di una scansione sono la forma di una
 misurazione rotta, non di un sito rotto, e la scansione lo dice accanto al numero.
 
+**Una regola dice solo ciò che può stabilire senza una seconda richiesta.**
+L'indirizzo di un'immagine nomina un file sorgente; Wix, Squarespace, Photon,
+imgix, Cloudflare e Next.js servono WebP da un URL `.jpg` a un browser che lo
+accetta. Quindi `image-modern-format` tace su quelli e parla dei file statici
+semplici: 530 rilievi su sedici bersagli sono diventati 71, e i 459 spariti
+erano affermazioni su byte che nessuno aveva guardato. Stabilire la verità
+richiede una richiesta con un header `Accept`, che questo passaggio non fa.
+
 ## Certezza e soglia
 
 Ogni risultato dichiara quanto è certo. `exact` significa che il markup risolve

@@ -136,5 +136,96 @@ class GitCouldNotLookIsNotAnAnswer(unittest.TestCase):
         self.assertTrue(facts.git_unavailable)
 
 
+class AFormatNobodyLookedAt(unittest.TestCase):
+    """430 of 514 `image-modern-format` findings were about bytes nobody saw.
+
+    Wix, Squarespace, Photon, imgix, Cloudflare and Next.js all serve WebP
+    from a `.jpg` address to a browser that accepts it. The extension names
+    the source file; a pipeline decides what arrives. Establishing which
+    needs a request with an `Accept` header, so the rule says nothing there.
+    """
+
+    def test_a_negotiating_cdn_is_not_a_legacy_format(self):
+        markup = ('<html><body><img src="https://static.wixstatic.com/media/'
+                  'abc~mv2.jpg/v1/fill/w_600/photo.jpg"></body></html>')
+        self.assertNotIn("image-modern-format", _rules_of(markup))
+
+    def test_a_transformed_url_is_not_a_legacy_format(self):
+        markup = '<html><body><img src="/_next/image?url=%2Fa.png&w=640"></body></html>'
+        self.assertNotIn("image-modern-format", _rules_of(markup))
+
+    def test_a_plain_static_file_still_reports(self):
+        markup = '<html><body><img src="/img/photo.jpg"></body></html>'
+        self.assertIn("image-modern-format", _rules_of(markup))
+
+
+class TwoThingsAtOnePlaceAreTwoFindings(unittest.TestCase):
+    """`Issue.key` made the element the whole identity.
+
+    It was `selector or snippet`, so two abbreviations in one paragraph were
+    one finding: the second was dropped as a duplicate of the first at the
+    same selector.
+    """
+
+    def test_both_abbreviations_in_one_paragraph_survive(self):
+        markup = "<html><body><p>Use HTML and CSS.</p></body></html>"
+        found = [i for i in analyze_document(markup, "t").issues
+                 if i.rule_id == "abbreviation-expansion"]
+        self.assertEqual({i.details["abbreviation"] for i in found}, {"HTML", "CSS"})
+
+    def test_two_elements_are_still_two_problems(self):
+        # The counterpart, and the thing the wider key must not break: two
+        # images missing `alt` are two jobs even when the markup matches.
+        markup = '<html><body><img src="a.png"><img src="a.png"></body></html>'
+        found = [i for i in analyze_document(markup, "t").issues
+                 if i.rule_id == "image-alt"]
+        self.assertEqual(len(found), 2)
+
+
+class NamedThingsAreNotEmpty(unittest.TestCase):
+    def test_a_logo_link_with_a_titled_svg_is_not_an_empty_link(self):
+        markup = ('<html><body><a href="/"><svg><title>Home</title></svg></a>'
+                  '</body></html>')
+        self.assertNotIn("seo-empty-link", _rules_of(markup))
+
+    def test_a_link_with_nothing_in_it_still_reports(self):
+        markup = '<html><body><a href="/"><svg></svg></a></body></html>'
+        self.assertIn("seo-empty-link", _rules_of(markup))
+
+
+class SpaceIsReservedHoweverItIsWritten(unittest.TestCase):
+    def test_inline_width_and_height_reserve_the_box(self):
+        markup = ('<html><body><img src="a.png" style="width:96px;height:96px">'
+                  '</body></html>')
+        self.assertNotIn("seo-image-dimensions", _rules_of(markup))
+
+    def test_a_deliberately_prioritised_image_is_not_told_to_defer(self):
+        images = "".join(f'<img src="{n}.png">' for n in range(4))
+        markup = (f'<html><body>{images}'
+                  '<img src="hero.png" fetchpriority="high"></body></html>')
+        found = [i for i in analyze_document(markup, "t").issues
+                 if i.rule_id == "perf-image-loading"
+                 and "hero" in (i.details or {}).get("src", "")]
+        self.assertEqual(found, [])
+
+
+class AnIconIsNotAFormField(unittest.TestCase):
+    def test_a_duplicate_id_inside_svg_is_lighter(self):
+        markup = ('<html><body>'
+                  '<svg><filter id="f0"></filter></svg>'
+                  '<svg><filter id="f0"></filter></svg></body></html>')
+        found = [i for i in analyze_document(markup, "t").issues
+                 if i.rule_id == "duplicate-id"]
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0].severity, "minor")
+        self.assertTrue(found[0].details["in_svg"])
+
+    def test_a_duplicate_id_in_the_page_keeps_its_weight(self):
+        markup = ('<html><body><input id="email"><input id="email"></body></html>')
+        found = [i for i in analyze_document(markup, "t").issues
+                 if i.rule_id == "duplicate-id"]
+        self.assertEqual(found[0].severity, "moderate")
+
+
 if __name__ == "__main__":
     unittest.main()

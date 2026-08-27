@@ -1,0 +1,13 @@
+# What this repository is, and what it only pretends to be.
+#
+# `simulations/` holds sample sites written to be broken on purpose: a page
+# with no alt text, a viewport that blocks zoom, a form posting over http.
+# They are how the tool is demonstrated and end-to-end tested, and auditing
+# this repository reported 141 of its 143 findings from them - a list where
+# every row is a fixture is a list nobody reads.
+#
+# Not hardcoded into the audit: `simulations` is this project's own name for
+# them, not a convention other projects share. The ignore file is where a
+# project says what is true of itself.
+[paths]
+simulations/

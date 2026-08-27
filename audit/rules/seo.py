@@ -216,6 +216,12 @@ class ImagesMissingDimensions(SeoRule):
             style = (tag.get("style") or "").lower()
             if (tag.get("width") and tag.get("height")) or "aspect-ratio" in style:
                 continue
+            # Space reserved in the inline style is space reserved. Only
+            # `aspect-ratio` was accepted, so `style="width:96px;height:96px"`
+            # - which reserves the box exactly - was reported as reserving
+            # nothing.
+            if "width:" in style and "height:" in style:
+                continue
             selector, line = context.locate(tag)
             issues.append(Issue(
                 rule_id=self.id, severity=self.severity, category=self.category,
@@ -236,6 +242,19 @@ class LinksWithoutText(SeoRule):
             if _text_of(tag) or tag.find("img") is not None:
                 continue
             if (tag.get("aria-label") or "").strip():
+                continue
+            if (tag.get("aria-labelledby") or "").strip():
+                continue
+            # A logo is an `<svg>`, not an `<img>`, and an `<svg>` names
+            # itself with a `<title>` or an `aria-label`. Measured on
+            # `ghost.org`, where every header and footer logo link came back
+            # as an empty link - beside a `control-name` finding about the
+            # same element, which is the rule that owns "this control has no
+            # name". Two rows, one problem, and one of them wrong.
+            svg = tag.find("svg")
+            if svg is not None and (svg.find("title") is not None
+                                    or (svg.get("aria-label") or "").strip()
+                                    or (svg.get("aria-labelledby") or "").strip()):
                 continue
             selector, line = context.locate(tag)
             issues.append(Issue(

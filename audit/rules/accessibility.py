@@ -411,11 +411,22 @@ class DuplicateIds(AccessibilityRule):
                 # `for`, `aria-labelledby` and `aria-describedby` all resolve
                 # to the *first* match, so a duplicate silently points every
                 # reference at one element and leaves the other unnamed.
+                #
+                # Inside `<svg>` it is a different weight. `url(#id)` resolves
+                # the same way, but the usual cause is one exported icon
+                # placed twice, whose two `<filter>` or `<mask>` definitions
+                # are identical - the rendering is right and the markup is
+                # not. 130 of these on a sixteen-target run sat beside real
+                # duplicate form ids at the same severity, which is what made
+                # the real ones hard to see.
+                in_svg = tag.find_parent("svg") is not None
                 selector, line = context.locate(tag)
                 issues.append(Issue(
-                    rule_id=self.id, severity=self.severity, selector=selector,
+                    rule_id=self.id,
+                    severity=MINOR if in_svg else self.severity,
+                    selector=selector,
                     line=line, snippet=snippet_of(tag), source=context.source,
-                    details={"id": identifier},
+                    details={"id": identifier, "in_svg": in_svg},
                 ))
             seen[identifier] = tag
         return issues
@@ -440,10 +451,18 @@ class BrokenAriaReference(AccessibilityRule):
                 # A dangling aria-labelledby is worse than none: the element
                 # ends up with no name at all, and the markup looks correct.
                 selector, line = context.locate(tag)
+                raw = (tag.get(attribute) or "").strip()
                 issues.append(Issue(
                     rule_id=self.id, severity=self.severity, selector=selector,
                     line=line, snippet=snippet_of(tag), source=context.source,
-                    details={"attribute": attribute, "missing": missing},
+                    # The raw value as well as the tokens. An author who wrote
+                    # `aria-labelledby="dialog_Privacy policy"` meant one name
+                    # with a space in it, and an id cannot contain one - so the
+                    # finding is right and the list of "missing ids" reads like
+                    # the tool misparsed it. Quoting the value says which it is.
+                    details={"attribute": attribute, "missing": missing,
+                             "value": raw[:120],
+                             "has_space": " " in raw},
                 ))
         return issues
 
@@ -1103,6 +1122,24 @@ class ImageModernFormat(AccessibilityRule):
     _LEGACY_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".bmp")
     _MODERN_EXTENSIONS = (".webp", ".avif", ".svg")
 
+    #: Markers of an image pipeline that picks the format from the request's
+    #: `Accept` header. The extension in such a URL names the source file,
+    #: not what is sent: Wix, Squarespace, Photon, imgix, Cloudflare and
+    #: Next.js all serve WebP from a `.jpg` address to a browser that takes
+    #: it. Measured on sixteen targets: 430 of 514 findings were these, and
+    #: every one of them was a claim about bytes nobody had looked at.
+    #:
+    #: Establishing the truth needs a request with an `Accept` header, which
+    #: is not free and not this pass's job. So the rule says nothing there
+    #: rather than saying something it cannot support.
+    _NEGOTIATED = (
+        "wixstatic.com", "sqspcdn.com", "squarespace-cdn.com",
+        "/cdn-cgi/image/", "imgix.net", "res.cloudinary.com",
+        "/_next/image", "i0.wp.com", "i1.wp.com", "i2.wp.com",
+        "~mv2", "/v1/fill/", "/auto/", "cdn.shopify.com/s/files",
+        "images.ctfassets.net", "cdn.sanity.io", "ucarecdn.com",
+    )
+
     def check(self, document, context) -> list:
         issues = []
         for tag in document.find_all("img"):
@@ -1111,6 +1148,10 @@ class ImageModernFormat(AccessibilityRule):
                 continue
             # Skip data URIs and SVGs
             if src.startswith("data:") or src.endswith(".svg"):
+                continue
+            if any(marker in src for marker in self._NEGOTIATED) or "?" in src:
+                # The address names a source file; a pipeline decides what
+                # actually arrives. See `_NEGOTIATED`.
                 continue
             # Check if using legacy format without srcset
             has_legacy = any(src.endswith(ext) for ext in self._LEGACY_EXTENSIONS)

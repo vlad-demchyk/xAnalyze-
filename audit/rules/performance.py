@@ -142,6 +142,12 @@ class ImagesWithoutLazyLoading(PerformanceRule):
         for tag in images[self.ABOVE_THE_FOLD:]:
             if (tag.get("loading") or "").lower() == "lazy":
                 continue
+            # `fetchpriority="high"` is the author saying this image is the
+            # one the page is judged on. Telling them to defer it is telling
+            # them to undo a decision they made deliberately, and the two
+            # attributes contradict each other by design.
+            if (tag.get("fetchpriority") or "").lower() == "high":
+                continue
             selector, line = context.locate(tag)
             issues.append(Issue(
                 rule_id=self.id, severity=self.severity, category=self.category,

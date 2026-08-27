@@ -143,8 +143,17 @@ class Issue:
     def key(self) -> tuple:
         """Identity for de-duplication across a crawl: the same rule firing
         on the same element of the same document is one problem, even when
-        the crawler reached that page twice."""
-        return (self.source, self.rule_id, self.selector or self.snippet, self.line)
+        the crawler reached that page twice.
+
+        The snippet is part of it, not a fallback for a missing selector.
+        It was `selector or snippet`, and that made the element the whole
+        identity: `abbreviation-expansion` reports what it found, so "HTML"
+        and "CSS" in one paragraph were two findings about two different
+        things at one selector - and the second was dropped as a duplicate
+        of the first. For every rule whose snippet is just the element's
+        markup, this changes nothing: same element, same snippet.
+        """
+        return (self.source, self.rule_id, self.selector, self.snippet, self.line)
 
 
 class Rule(ABC):
