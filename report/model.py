@@ -68,6 +68,14 @@ class ReportFinding:
     #: first. Filled by `ReportModel.grouped_findings`; empty on an
     #: ungrouped finding, where `location` alone is the answer.
     locations: list = field(default_factory=list)
+    #: The platform that emitted the element, when one did - so the branded
+    #: report says which rows are not the reader's to fix. Empty is the
+    #: author's own markup, which is most of them.
+    owner: str = ""
+    #: How many independent engines found this. 1 unless the browser pass ran
+    #: and a second engine corroborated; the number the JSON already carried
+    #: and the printed report did not.
+    agreement: int = 1
 
     @property
     def severity_rank(self) -> int:
@@ -268,6 +276,8 @@ def from_accessibility(result, lang: str = "uk") -> ReportModel:
                 replacement=issue.fix_snippet or "",
                 engine=issue.engine,
                 wcag=explanation.wcag,
+                owner=getattr(issue, "owner", ""),
+                agreement=(issue.details or {}).get("agreement", 1),
             ))
     return ReportModel(meta=ReportMeta(target=result.root, mode=f"audit-{result.mode}"),
                        findings=findings)

@@ -224,6 +224,79 @@ class DocumentLanguage(AccessibilityRule):
         )]
 
 
+class DocumentLanguageMismatch(AccessibilityRule):
+    """The page declares one language and is written in another.
+
+    `html-lang` asks whether the attribute is there. This asks whether it is
+    *true*, which is what 3.1.1 is actually about: a screen reader trusts the
+    attribute completely, so `lang="en"` over Ukrainian copy is read out with
+    English phonetics and is worse than no attribute at all - with none, the
+    reader falls back to the user's own setting.
+
+    Both halves already existed and had never been introduced: the audit
+    knew the declared language and `lang_detect.guess_language_safe` was
+    reading the real one for the text detectors two modules away.
+
+    Deliberately silent in two cases, and the second is the important one:
+
+    * Not enough text to tell. `guess_language_safe` answers `None` there
+      rather than guessing, and this passes it straight through.
+    * **Whenever the detector's answer is English.** It has no "some fourth
+      language" verdict - anything non-Cyrillic with no Italian markers comes
+      back `en` - so `lang="de"` on a German page would be reported as a lie.
+      Ukrainian is decided by the share of Cyrillic letters and Italian by
+      its own markers, and those two are evidence; English is a default
+      wearing the same coat. See the language step in the hunting plan.
+    """
+    id = "html-lang-mismatch"
+    page_level = True
+    severity = SERIOUS
+    wcag = ("3.1.1",)
+
+    #: Below this the page is a shell or a menu, and no detector should be
+    #: asked. The threshold is in words because that is what the detector
+    #: measures.
+    MIN_WORDS = 40
+
+    def check(self, document, context) -> list:
+        from lang_detect import guess_language_safe
+
+        html = document.find("html")
+        if html is None:
+            return []
+        declared = (html.get("lang") or "").strip().lower()
+        if not declared:
+            return []  # `html-lang` already reports the absence
+        body = document.find("body")
+        text = _text_of(body) if body is not None else ""
+        if len(text.split()) < self.MIN_WORDS:
+            return []
+        # Read twice, on the two halves of the page, and report only when
+        # both readings agree. A single stray word is what makes a long
+        # English page look Italian - "per user", "che" in a quoted name -
+        # and a stray word lands in one half, not in both. The same
+        # corroboration the audit already asks of two engines, asked of one
+        # detector on two samples.
+        words = text.split()
+        middle = len(words) // 2
+        readings = (guess_language_safe(" ".join(words[:middle])),
+                    guess_language_safe(" ".join(words[middle:])),
+                    guess_language_safe(text))
+        detected = readings[-1]
+        if detected in (None, "en") or any(r != detected for r in readings):
+            return []
+        if declared.split("-")[0] == detected:
+            return []
+        selector, line = context.locate(html)
+        return [Issue(
+            rule_id=self.id, severity=self.severity, selector=selector, line=line,
+            snippet=snippet_of(html), source=context.source,
+            details={"declared": declared, "detected": detected,
+                     "sample": text[:120]},
+            fix_snippet=f'<html lang="{detected}">',
+        )]
+
+
 class DocumentTitle(AccessibilityRule):
     id = "document-title"
     page_level = True
@@ -1206,6 +1279,7 @@ class AbbreviationExpansion(AccessibilityRule):
 
 for _rule in (
     ImageAlt, ImageAltIsFilename, ControlName, VagueLinkText, DocumentLanguage,
+    DocumentLanguageMismatch,
     DocumentTitle, HeadingOrder, MissingH1, PositiveTabindex, DuplicateIds,
     BrokenAriaReference, ButtonWithoutType, MediaWithoutCaptions, AutoplayingMedia,
     TableStructure, ViewportZoomBlocked, InlineContrast,

@@ -165,7 +165,7 @@ never a decision made for the reader. On ten pages of a real site this took
 
 ## What is checked
 
-`accessibility` (28), `best-practices` (8), `performance` (8), `security` (10), `seo` (8)
+`accessibility` (29), `best-practices` (8), `performance` (8), `security` (10), `seo` (8)
 
 `security` reads the markup for what it hands away: a cross-origin frame with
 no `sandbox`, a frame granted the camera, a form posting to `http://`, a
@@ -173,6 +173,20 @@ third-party script with no `integrity`, a key written into an attribute, a
 password field the browser is told to remember. Every one is `exact` by
 construction - a security finding that turns out to be wrong costs more trust
 than any other kind, so nothing that has to infer is in there.
+
+**Three passes beside the rules, and all three read bytes the run had already
+paid for.** The response headers arrived with every page and were being
+discarded - `Content-Type` was kept and the rest died with the response - so
+a site served with no `Content-Security-Policy`, no `Strict-Transport-Security`,
+no compression and no `Cache-Control` was audited as if how it is served were
+not part of it. The crawl holds every page at once, which is the only place
+the same `<title>`, `description` or `canonical` repeated across pages is
+visible: valid markup on each page, a broken site taken together. And the
+media pass already downloads each image's header for its provenance fields,
+where the pixel dimensions also live, so an image stored at 6000 pixels and
+displayed at 600 is a measurement rather than a guess.
+
+None of the three costs a request that was not already made.
 
 ## Templates it understands
 
@@ -227,6 +241,27 @@ it, ambiguous markers must be corroborated (`config.toml` counts as Hugo only
 beside `layouts/` or `archetypes/`), and a project nothing matches scans
 exactly as it did before.
 
+**And it changes what the report asks of you.** Every finding on a crawled site
+is checked against the code the detected platform injects itself, and one that
+sits inside it is named as the platform's: `20 of these are in markup wix
+generates: not the site owner's to edit`. Nothing is suppressed - the finding
+is real, the script does block rendering - but a person triaging now sees which
+part of the list they can act on. Measured: 20 of 565 findings on `wix.com`
+(React and core-js polyfill bundles from `static.parastorage.com`), 8 of 179 on
+`squarespace.com`, 1 of 12 on `wordpress.org/news`, 1 of 65 on a Shopify store,
+and 0 on a hand-built control.
+
+The test for membership is not "did the author type this" but **can the site
+owner change it at all**, and measuring is what emptied most of the table. A
+CDN is not a platform: `cdn.shopify.com` was in it until a run attributed 20
+findings to Shopify, most of them `<video>` elements with no captions whose only
+Shopify-ness was where the poster image was hosted - a merchant's own uploads
+sit on that host too. A build is the author's: `/_next/static/`, `/_nuxt/` and
+`/_app/immutable/` are their own code compiled, so no framework or generator
+owns anything. A theme is chosen and editable, so `wp-content/themes/` stays
+with the owner while `wp-content/plugins/`, which they cannot edit without
+forking it, does not.
+
 ## Limits
 
 What the tool is weak at, measured rather than guessed. The tracking for each
@@ -239,10 +274,21 @@ corpus*, not in the wild, and `scripts/calibrate.py --confounds` prints what a
 classifier that knows only the length would score, so the difference stays
 visible.
 
-**Italian is the weakest of the three languages.** Measured recall: 27.8%
-Italian against 56.2% English and 60.0% Ukrainian. On one live Italian site
-the offline detector found nothing where a model judge found six passages. If
-Italian copy matters to you, run the hybrid method rather than the offline one.
+**Italian is the weakest of the three languages**, though less so than the
+headline number said. Measured recall is now 61.1% Italian against 65.6%
+English and 60.0% Ukrainian, up from 27.8% after the Italian phrase list was
+brought level with the English one; on the held-out half, the only honest
+number, it is 36.4% against 55.0% and 71.4%. Read by length, the weakness was
+never uniform: at 25 words or more Italian was already the *best* of the three
+(83.3%), and the whole deficit sat in entries of one sentence, where it scored
+nothing at all. On one live Italian site the offline detector found nothing
+where a model judge found six passages. If Italian copy matters to you, run the
+hybrid method rather than the offline one.
+
+`scripts/calibrate.py` prints every figure in word-count bands for this reason:
+the human half of the corpus is largely interface strings and its median length
+differs by language, so a single recall number does not mean the same thing in
+each.
 
 **A model's judgment is not reproducible.** Neither a seed nor a temperature is
 exposed by the providers, so two runs over the same text can disagree. The
@@ -1017,9 +1063,10 @@ rejected on evidence rather than skipped:
   almost no entry in the corpus has them - so they cannot be validated here at
   all.
 
-`scripts/calibrate.py --confounds` prints the length distribution and what a
-classifier that knows *only* the length scores, so the same mistake is visible
-before the next signal is believed. On this corpus that ceiling is 57.9%
+`scripts/calibrate.py` prints what a classifier that knows *only* the length
+scores, and reports precision and recall in word-count bands, so the same
+mistake is visible before the next signal is believed; `--confounds` adds the
+length distribution the two halves are drawn from. On this corpus that ceiling is 57.9%
 precision and the detector reaches 100%, which is what says it is detecting
 writing rather than length - **on this corpus**. Its positives were written by
 models and its negatives are largely interface strings, so the number is a
@@ -1297,6 +1344,20 @@ numbers are reported, because they answer different questions:
 Two findings count as one problem when the rule, the severity and the
 offending markup all match. Two different images missing `alt` stay two
 problems; the same shared logo on five pages is one.
+
+**What a framework stamps into the markup is not part of the element.**
+Comparing the markup literally means one component splits into one finding
+per page as soon as anything generates an identifier for it, and twelve real
+identifier styles were measured: nine of them split. React's `useId`
+(`:r3:`), Emotion (`css-1q2w3e`), styled-components (`sc-bdVaJa`), Svelte and
+Astro's scope hashes, Angular's `_ngcontent-`, Radix, MUI and Ember counters
+are all masked before the comparison, alongside the UUIDs, hex runs and long
+digit runs that were already handled. Masked only inside identifier
+attributes - `class`, `id`, `for`, `aria-controls` and friends - never in
+`src`, `href`, `alt` or `title`: over-masking merges findings that really are
+different, and a wrongly merged problem hides a real one. Tailwind's `mt-4`,
+Bootstrap's `col-md-6` and a hand-written `id="email"` are all left alone,
+and there is a test for each direction.
 
 The complete per-document listing is still there for anything that parses
 rather than reads: write the briefing with a `.json` suffix and it is under

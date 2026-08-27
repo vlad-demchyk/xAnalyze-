@@ -445,6 +445,74 @@ def detect_from_markup(markup: str) -> Profile:
     return profile
 
 
+#: Code a platform injects into the page **itself**, per stack. One test
+#: decides membership, and it is not "did the author type this": it is
+#: **can the site owner change it at all**.
+#:
+#: What this is for: a finding inside markup the platform generated is not the
+#: site owner's to fix. A WordPress site is told about render-blocking
+#: stylesheets, and they are `wp-includes/blocks/*/style.min.css`, enqueued by
+#: core - the owner can no more remove them than they can edit someone else's
+#: server. Reporting that as their problem is the report being technically
+#: right and practically useless, which is how a tool trains people to skim.
+#:
+#: Every entry here was measured against a live site, and measuring is what
+#: emptied most of the list:
+#:
+#: * **A CDN is not a platform.** `cdn.shopify.com` was in this table until a
+#:   run on `shopify.com` attributed 20 findings to Shopify - most of them
+#:   `<video>` elements with no captions, whose only Shopify-ness was where
+#:   the poster image was hosted. A merchant's own uploads sit on that host
+#:   too. Only `shopifycloud`, which is storefront code nobody can edit,
+#:   survived. The same removed `static.wixstatic.com`, `media.beehiiv.com`
+#:   and `website-files.com`.
+#: * **A build is the author's.** `/_next/static/`, `/_nuxt/`,
+#:   `/_app/immutable/` are the author's own code compiled, so Next, Nuxt and
+#:   SvelteKit own nothing - and neither do Hugo, Jekyll, Astro, Vite or
+#:   Eleventy, which is why no generator appears here at all. Detecting Hugo
+#:   says something about the project; it says nothing about who owns a
+#:   finding.
+#: * **A theme is chosen and editable**, so `wp-content/themes/` is the
+#:   owner's responsibility even when they did not type it. A plugin is
+#:   chosen too, but its markup cannot be changed without forking it, so it
+#:   stays here.
+#:
+#: Nothing is ever suppressed by this. The finding is reported either way -
+#: a rule that removes a real finding makes a scan quieter and worse - and
+#: what changes is only who is named as able to act on it.
+PLATFORM_ASSETS: dict = {
+    "wordpress": ("/wp-includes/", "/wp-content/plugins/", "/wp-json/",
+                  "wp-emoji-release.min.js"),
+    "drupal": ("/core/misc/", "/core/modules/", "/core/assets/"),
+    "joomla": ("/media/jui/", "/media/system/js/"),
+    "typo3": ("/typo3temp/", "/typo3conf/"),
+    "shopify": ("shopifycloud",),
+    "wix": ("static.parastorage.com",),
+    "squarespace": ("assets.squarespace.com/universal",),
+    "ghost": ("/public/cards.min.",),
+    "spfx": ("/_layouts/15/",),
+}
+
+
+def platform_owner(stack_names, text: str) -> str:
+    """Which detected platform emitted this markup, or `""` for the author.
+
+    `text` is the offending markup itself, so the answer rests on the same
+    kind of evidence the detection does: a literal path that is in the
+    element or is not. An element carrying no address - a heading with a
+    contrast problem, a field with no label - belongs to whoever wrote the
+    page, which is the answer this returns by staying empty.
+    """
+    if not text:
+        return ""
+    haystack = text.lower()
+    for name in stack_names:
+        for fragment in PLATFORM_ASSETS.get(name, ()):
+            if fragment.lower() in haystack:
+                return name
+    return ""
+
+
 @dataclass
 class Profile:
     """What a directory turned out to be."""

@@ -437,6 +437,7 @@ def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
             diagnostics.status_code = resp.status_code
             diagnostics.final_url = resp.url
             diagnostics.content_type = resp.headers.get("Content-Type", "")
+            diagnostics.headers = {k.lower(): v for k, v in resp.headers.items()}
             resp.raise_for_status()
             content_type = diagnostics.content_type
             if "text/html" not in content_type and not content_type.startswith("text/"):

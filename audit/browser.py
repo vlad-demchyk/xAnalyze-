@@ -452,7 +452,9 @@ def deduplicate(issues: list, markup: str = "") -> list:
             if candidate is not None and candidate.engine != issue.engine:
                 existing = candidate
 
-        if shared and not issue.selector:
+        if family in _DOCUMENT_FAMILIES:
+            signature = (issue.source, family)
+        elif shared and not issue.selector:
             # Several such elements exist and this finding does not say which.
             # Given to nothing else to merge with, rather than to the wrong one.
             unpaired += 1
@@ -602,7 +604,20 @@ _RULE_FAMILIES = {
     # media
     "media-captions": "media", "media-autoplay": "media",
     "axe:video-caption": "media", "axe:audio-caption": "media",
+    # bypassing repeated navigation. Three engines answer this question and
+    # none of them was mapped, so a page with no skip link was reported three
+    # times, by three names, with nothing saying they agreed - on the one
+    # finding where agreement is the whole signal.
+    "skip-link": "skip", "state:no-skip-link": "skip",
+    "axe:bypass": "skip", "htmlcs:2_4_1": "skip",
 }
+
+#: Families whose finding is about the document, not about a node in it.
+#: For these the element and the selector are not identity - "this page has
+#: no way to bypass the navigation" is one fact per page however each engine
+#: chooses to point at it, and matching on the pointer is what kept three
+#: spellings of one fact apart.
+_DOCUMENT_FAMILIES = frozenset(("skip",))
 
 
 def _rule_family(rule_id: str) -> str:

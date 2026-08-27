@@ -303,6 +303,7 @@ def cmd_audit(args) -> int:
     """
     import audit
     from audit.explanations import render, summary_line
+    from i18n.translations import t
 
     # Built before the crawl so a missing sign-in fails immediately, rather
     # than after crawling thirty pages.
@@ -439,6 +440,7 @@ def cmd_audit(args) -> int:
             "root": result.root,
             "mode": result.mode,
             "counts": result.counts(),
+            "platform_owned": _owned_counts(result),
             "rules_run": result.rules_run,
             "issues": [
                 {
@@ -452,6 +454,10 @@ def cmd_audit(args) -> int:
                     "snippet": issue.snippet,
                     "details": issue.details,
                     "fix_snippet": issue.fix_snippet,
+                    # Which platform emitted the element, when one did. An
+                    # agent reading this can skip what the site owner cannot
+                    # change; empty means the page's own markup.
+                    "owner": issue.owner,
                 }
                 for issue in result.issues()
             ],
@@ -463,7 +469,9 @@ def cmd_audit(args) -> int:
             for issue in document.issues:
                 explanation = render(issue, lang)
                 location = f"line {issue.line}" if issue.line else issue.selector[-60:]
-                print(f"  [{issue.severity}] {explanation.title}  ({location})")
+                owned = (f"  <- {t('a11y_owned_marker', lang, platform=issue.owner)}"
+                         if issue.owner else "")
+                print(f"  [{issue.severity}] {explanation.title}  ({location}){owned}")
                 print(f"      {explanation.found}")
                 print(f"      {_wrap(explanation.why)}")
                 print(f"      fix: {_wrap(explanation.fix)}")
@@ -476,11 +484,28 @@ def cmd_audit(args) -> int:
                 print(f"\n{document.source}\n  not checked: {document.error}")
         print()
         print(summary_line(result, lang))
+        for platform, count in sorted(_owned_counts(result).items()):
+            print(t("a11y_platform_owned", lang, count=count, platform=platform))
 
     counts = result.counts()
     if args.check and (counts.get("critical") or counts.get("serious")):
         return EXIT_FINDINGS
     return EXIT_OK
+
+
+def _owned_counts(result) -> dict:
+    """`{platform: findings}` for what a platform emitted itself.
+
+    Reported separately rather than subtracted from the totals. The finding
+    is real - the stylesheet does block rendering - and hiding it would make
+    the run quieter without making the site better. What the split buys is
+    the next question a person actually asks: which of these can I fix?
+    """
+    counts: dict = {}
+    for issue in result.issues():
+        if getattr(issue, "owner", ""):
+            counts[issue.owner] = counts.get(issue.owner, 0) + 1
+    return counts
 
 
 def _json_default(value):

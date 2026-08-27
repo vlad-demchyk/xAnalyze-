@@ -349,6 +349,17 @@ def analyze_pages(pages, root: str, rules=None, ai_review=None,
             result.markup_sample = page.raw_html[:_MARKUP_SAMPLE]
         result.documents.append(
             analyze_document(page.raw_html, page.url, rules, ai_review=ai_review))
+    # What the response said. Free: these bytes arrived with the page, and
+    # until now everything but `Content-Type` was discarded. See
+    # `audit.headers`.
+    from audit import crosspage as crosspage_pass
+    from audit import headers as header_pass
+
+    result.documents.extend(header_pass.as_documents(pages))
+    # What only a whole crawl can see: the same title, description or
+    # canonical repeated across pages. Every rule above reads one document,
+    # so this class of problem was invisible by construction.
+    result.documents.extend(crosspage_pass.as_documents(pages))
     if media:
         from audit import media as media_pass
 
@@ -361,8 +372,44 @@ def analyze_pages(pages, root: str, rules=None, ai_review=None,
         scan = media_pass.scan_page_media(pages, fetch=media_fetch)
         result.media = scan
         result.documents.extend(media_pass.as_web_documents(scan))
+    attribute_ownership(result)
     return result
 
+
+
+def attribute_ownership(result) -> dict:
+    """Name the platform that emitted each finding, where one did.
+
+    Runs once per crawl, after the rules, because it needs two things that
+    only exist together at the end: what the site turned out to be, and every
+    finding's markup.
+
+    Why the detection has to end here rather than in a line of the report:
+    a platform's own bundles are not the site owner's to fix, and a report
+    that mixes them into the same list is asking a person to triage work they
+    cannot do. On `wordpress.org/news` five of the eight `serious` findings
+    were core's own enqueued stylesheets.
+
+    Returns `{platform: count}` for the summary. Nothing is removed and no
+    severity is lowered - see `PLATFORM_ASSETS` for why suppression is the
+    wrong answer here.
+    """
+    from project_profile import detect_from_markup, platform_owner
+
+    names = [stack.name for stack in
+             detect_from_markup(getattr(result, "markup_sample", "") or "").stacks]
+    counts: dict = {}
+    if not names:
+        return counts
+    for issue in result.issues():
+        # The snippet is the offending element, so an address in it is the
+        # address the platform wrote. The selector is a DOM path and carries
+        # no provenance, which is why it is not consulted.
+        owner = platform_owner(names, issue.snippet or "")
+        if owner:
+            issue.owner = owner
+            counts[owner] = counts.get(owner, 0) + 1
+    return counts
 
 def analyze_page_file(path: str, rules=None, ai_review=None) -> AccessibilityResult:
     """One self-contained HTML file, treated as a page rather than as source.

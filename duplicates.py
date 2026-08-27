@@ -119,19 +119,106 @@ _HEXRUN_RE = re.compile(r"\b[0-9a-f]{8,}\b", re.I)
 #: `col-3` and every year in a copyright line.
 _DIGITRUN_RE = re.compile(r"\d{4,}")
 
+#: React's `useId`, which is what every headless component library builds its
+#: `id`/`aria-controls` pairs out of. The value is a render counter, so it
+#: differs on every page while describing one element in one component.
+_REACT_USE_ID_RE = re.compile(r":[rR][0-9a-z]*:")
+
+#: Prefixes a framework or CSS-in-JS runtime stamps in front of a generated
+#: suffix. The prefix is the evidence: nobody types `_ngcontent-ng-c` or
+#: `sc-` by hand, so whatever follows it is machine-made whatever its shape.
+#: Measured need, not a guess - nine of twelve real identifier styles were
+#: splitting one problem into one finding per page before this existed.
+_FRAMEWORK_PREFIXES = (
+    "radix-", "mui-", "css-", "sc-", "svelte-", "astro-", "jsx-",
+    "chakra-", "emotion-", "headlessui-", "downshift-", "ember",
+    "_ngcontent-", "_nghost-", "data-v-",
+)
+_PREFIX_RE = re.compile(
+    r"(?<![\w-])(" + "|".join(re.escape(p) for p in _FRAMEWORK_PREFIXES) +
+    r")[A-Za-z0-9_:-]*", re.I)
+
+#: Attributes whose value is an identifier rather than content. `src`, `href`,
+#: `alt` and `title` are deliberately absent: two images missing `alt` are two
+#: problems, and masking what tells them apart would merge them into one.
+_ID_ATTRS = frozenset((
+    "class", "id", "for", "name", "headers", "list", "form",
+    "aria-controls", "aria-labelledby", "aria-describedby", "aria-owns",
+    "aria-activedescendant",
+))
+_ATTR_RE = re.compile(r"""([\w:.-]+)\s*=\s*("([^"]*)"|'([^']*)')""")
+#: Separators a class or id is built out of. Splitting on them is what keeps
+#: `text-2xl`, `col-md-6` and `mt-4` intact: their parts are all too short or
+#: too plain to look machine-made on their own.
+_TOKEN_SPLIT_RE = re.compile(r"([^A-Za-z0-9]+)")
+
+
+def _looks_generated(token: str) -> bool:
+    """Is this token a hash rather than something a person wrote?
+
+    Two shapes, both measured against real markup:
+
+    * **Digits woven through letters** - `1q2w3e`, `j7pv25f6`, `9a8b7c`. Six
+      characters and at least two digits, which `mt-4`, `col-6` and `text-2xl`
+      cannot reach once the separators have split them up.
+    * **Case flipping** - `bdVaJa`, `hUyXlM`, what styled-components emits.
+      Three or more case changes; `myButton` and `navBar` have one.
+    """
+    if len(token) < 6 or not token.isalnum():
+        return False
+    digits = sum(ch.isdigit() for ch in token)
+    letters = sum(ch.isalpha() for ch in token)
+    if digits >= 2 and letters >= 2:
+        return True
+    flips = sum(1 for a, b in zip(token, token[1:])
+                if a.isalpha() and b.isalpha() and a.islower() != b.islower())
+    return flips >= 3
+
+
+def _mask_value(value: str) -> str:
+    parts = _TOKEN_SPLIT_RE.split(value)
+    return "".join("#" if _looks_generated(part) else part for part in parts)
+
+
+def _mask_identifier_attributes(text: str) -> str:
+    """Mask hash-shaped tokens inside identifier attributes only.
+
+    Scoped to the attributes in `_ID_ATTRS` because the same string means
+    different things in different places: `css-1q2w3e` in a `class` is a
+    build artefact, and a hash in an `href` is the address of a different
+    file. Over-masking merges findings that really are different, and a
+    wrongly merged problem hides a real one.
+    """
+    def replace(match):
+        name = match.group(1).lower()
+        quote = match.group(2)[0]
+        value = match.group(3) if match.group(3) is not None else match.group(4)
+        if name not in _ID_ATTRS and not name.startswith("data-"):
+            return match.group(0)
+        return f"{match.group(1)}={quote}{_mask_value(value)}{quote}"
+
+    return _ATTR_RE.sub(replace, text)
+
 
 def mask_generated_ids(text: str) -> str:
     """Replace machine-generated identifiers with `#`.
 
     Exported because the report, the GUI and the tests all have to agree on
-    what "the same markup" means, and a second copy of these three patterns
-    is how they would stop agreeing.
+    what "the same markup" means, and a second copy of these patterns is how
+    they would stop agreeing.
+
+    The order matters: UUIDs before hex runs, and the whole-token patterns
+    before the attribute-scoped ones, so a value that is already `#` is not
+    picked over again.
     """
     if not text:
         return text
     text = _UUID_RE.sub("#", text)
     text = _HEXRUN_RE.sub("#", text)
-    return _DIGITRUN_RE.sub("#", text)
+    text = _DIGITRUN_RE.sub("#", text)
+    text = _REACT_USE_ID_RE.sub("#", text)
+    text = _PREFIX_RE.sub(lambda m: m.group(1) + "#", text)
+    return _mask_identifier_attributes(text)
 
 
 def group_issues(issues: list) -> list:

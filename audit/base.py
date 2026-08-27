@@ -128,6 +128,11 @@ class Issue:
     source: str = ""
     #: Which of the four audit categories this belongs to.
     category: str = ACCESSIBILITY
+    #: Which platform emitted the markup this was found in, when a platform
+    #: was detected and its own asset paths are in the element - `""` when
+    #: the page's author owns it, which is the answer for anything the
+    #: platform did not generate. Never suppresses: it says who can act.
+    owner: str = ""
     #: Which engine produced it: "static" (our own rules), "axe",
     #: "htmlcs", "browser" (a measurement), or "ai". Kept so the report can
     #: say where a finding came from and so two engines finding the same

@@ -87,6 +87,11 @@ class PageDiagnostics:
     #: than an error that replaces it.
     render_error: str = ""
     has_noscript_notice: bool = False
+    #: The response headers, lower-cased keys. Kept because they arrived
+    #: with the page and were being thrown away: everything except
+    #: `Content-Type` died with the response object, so the audit had ten
+    #: security rules and none of them about how the page is served.
+    headers: dict = field(default_factory=dict)
     reasons: list[str] = field(default_factory=list)
 
 

@@ -181,6 +181,11 @@ def _write_report(result, args, lang: str, fix_outcome=None, ai_findings=None) -
             "documents": len(result.documents),
             "documents_with_findings": len(result.documents_with_issues()),
             "rules_triggered": len(result.by_rule()),
+            # `{platform: findings}` for what the platform emitted itself.
+            # Never subtracted from the counts above - the finding is real -
+            # but a person triaging needs to know which of it they can act
+            # on. See `project_profile.PLATFORM_ASSETS`.
+            "platform_owned": _owned_counts(result),
         },
         # Rules whose findings are spread too evenly across the run to be
         # describing the content. Not removed - a saturated rule is
@@ -274,6 +279,9 @@ def _file_map(result, render, lang: str) -> list:
                 "ready_fix": issue.fix_snippet or "",
                 "snippet": issue.snippet,
                 "confirmed_by": (issue.details or {}).get("also_found_by", []),
+                # Empty unless a detected platform emitted this element; see
+                # `audit.engine.attribute_ownership`.
+                "owner": getattr(issue, "owner", ""),
             })
         files.append(entry)
     return files
@@ -307,10 +315,23 @@ def _detected_stacks(result) -> list:
     return [
         {"name": stack.name,
          "evidence": profile.evidence.get(stack.name, ""),
+         # The markup carries it or it does not. "WordPress" is a guess
+         # someone has to verify; "WordPress 7.1" is a fact they can act on,
+         # and it was being detected and then dropped on the floor here.
+         "version": profile.versions.get(stack.name, ""),
          "why": stack.why,
          "hosted": bool(getattr(stack, "hosted", False))}
         for stack in profile.stacks
     ]
+
+
+def _owned_counts(result) -> dict:
+    counts: dict = {}
+    for issue in result.issues():
+        owner = getattr(issue, "owner", "")
+        if owner:
+            counts[owner] = counts.get(owner, 0) + 1
+    return counts
 
 
 def _problem_map(result, render, lang: str) -> list:
@@ -346,6 +367,7 @@ def _problem_map(result, render, lang: str) -> list:
             # triages on before anything else.
             "agreement": (first.details or {}).get("agreement", 1),
             "confidence": getattr(first, "confidence", "exact"),
+            "owner": getattr(first, "owner", ""),
             "occurrences": len(others) + 1,
             "places": duplicates.places_of(first, others),
         })

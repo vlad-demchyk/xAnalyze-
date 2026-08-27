@@ -116,6 +116,13 @@ def _run_browser_pass(result, suppressions, args=None) -> None:
         document.issues = browser_mod.deduplicate(
             list(document.issues) + list(page_audit.issues),
             markup=getattr(page_audit, "html", "") or "")
+    # Again, because the findings the browser brought arrived after the crawl
+    # attributed the ones it had. A second engine's finding is owned by
+    # whoever emitted the element, exactly as the first engine's is.
+    if getattr(result, "mode", "") == "web":
+        from audit.engine import attribute_ownership
+
+        attribute_ownership(result)
 
 
 #: Extensions that make a file a page rather than a piece of a project.

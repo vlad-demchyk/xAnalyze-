@@ -4825,6 +4825,263 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Critici {critical}, seri {serious}, moderati {moderate}, minori {minor} su {documents} {documents_noun}",
         "en": "{critical} critical, {serious} serious, {moderate} moderate, {minor} minor across {documents} {documents_noun}",
     },
+    # Ownership. The count is said out loud rather than folded into the
+    # summary: a person deciding what to do next needs to know that some of
+    # what they are looking at is not theirs to change.
+    "a11y_perf_image_oversized_title": {
+        "uk": "Зображення більше, ніж потрібно будь-якому екрану",
+        "it": "Immagine più grande di quanto serva a qualsiasi schermo",
+        "en": "Image larger than any screen needs",
+    },
+    "a11y_perf_image_oversized_found": {
+        "uk": "Файл має {width}x{height} пікселів, тоді як межа корисного розміру - {limit} у ширину.",
+        "it": "Il file è {width}x{height} pixel, mentre il limite utile è {limit} di larghezza.",
+        "en": "The file is {width}x{height} pixels, where the useful ceiling is {limit} wide.",
+    },
+    "a11y_perf_image_oversized_why": {
+        "uk": "Браузер завантажує всі пікселі, а потім зменшує їх до розміру верстки. Відвідувач платить трафіком і часом за те, чого не побачить, і найбільше платить той, у кого зʼєднання найгірше.",
+        "it": "Il browser scarica tutti i pixel e poi li rimpicciolisce alla dimensione del layout. Il visitatore paga in traffico e tempo per ciò che non vedrà, e paga di più chi ha la connessione peggiore.",
+        "en": "The browser downloads every pixel and then shrinks them to the layout size. The visitor pays in bandwidth and time for what they will never see, and the one on the worst connection pays most.",
+    },
+    "a11y_perf_image_oversized_fix": {
+        "uk": "Збережіть версію під реальну ширину показу і віддавайте кілька розмірів через srcset. Один файл на всі екрани означає, що телефон вантажить картинку для монітора.",
+        "it": "Salva una versione alla larghezza reale di visualizzazione e servi più misure con srcset. Un solo file per tutti gli schermi significa che il telefono scarica l'immagine del monitor.",
+        "en": "Save a version at the width it is actually displayed at, and serve several sizes through srcset. One file for every screen means the phone downloads the desktop picture.",
+    },
+    # Cross-page rules (`audit.crosspage`): what one document cannot show.
+    "a11y_seo_duplicate_title_title": {
+        "uk": "Однаковий <title> на кількох сторінках",
+        "it": "Stesso <title> su più pagine",
+        "en": "The same <title> on several pages",
+    },
+    "a11y_seo_duplicate_title_found": {
+        "uk": '{count} сторінок мають однаковий заголовок "{value}".',
+        "it": '{count} pagine hanno lo stesso titolo "{value}".',
+        "en": '{count} pages carry the same title "{value}".',
+    },
+    "a11y_seo_duplicate_title_why": {
+        "uk": "Заголовок є головним рядком у видачі й у вкладці браузера. Коли він однаковий, ані пошук, ані людина з десятьма вкладками не можуть відрізнити сторінки одну від одної.",
+        "it": "Il titolo è la riga principale nei risultati di ricerca e nella scheda del browser. Se è identico, né il motore né una persona con dieci schede aperte distingue una pagina dall'altra.",
+        "en": "The title is the headline in search results and in the browser tab. When it repeats, neither the engine nor a person with ten tabs open can tell the pages apart.",
+    },
+    "a11y_seo_duplicate_title_fix": {
+        "uk": "Дайте кожній сторінці заголовок, що описує саме її, і лишіть назву сайту як суфікс.",
+        "it": "Dai a ogni pagina un titolo che descriva quella pagina, tenendo il nome del sito come suffisso.",
+        "en": "Give each page a title that describes that page, and keep the site name as a suffix.",
+    },
+    "a11y_seo_duplicate_description_title": {
+        "uk": "Однаковий опис на кількох сторінках",
+        "it": "Stessa description su più pagine",
+        "en": "The same description on several pages",
+    },
+    "a11y_seo_duplicate_description_found": {
+        "uk": '{count} сторінок мають однакову meta description "{value}".',
+        "it": '{count} pagine hanno la stessa meta description "{value}".',
+        "en": '{count} pages carry the same meta description "{value}".',
+    },
+    "a11y_seo_duplicate_description_why": {
+        "uk": "Опис є текстом під заголовком у видачі. Один опис на весь сайт означає, що жодна сторінка не пояснює, чим вона відрізняється.",
+        "it": "La description è il testo sotto il titolo nei risultati. Una sola description per tutto il sito significa che nessuna pagina spiega in cosa è diversa.",
+        "en": "The description is the text under the headline in search results. One description across the site means no page explains what makes it different.",
+    },
+    "a11y_seo_duplicate_description_fix": {
+        "uk": "Напишіть опис для кожної сторінки окремо, або приберіть шаблонний: відсутній опис пошук складе сам зі змісту сторінки.",
+        "it": "Scrivi una description per ogni pagina, oppure togli quella generica: se manca, il motore la costruisce dal contenuto.",
+        "en": "Write a description per page, or drop the boilerplate one: with none, the engine builds it from the page itself.",
+    },
+    "a11y_seo_duplicate_canonical_title": {
+        "uk": "Кілька сторінок вказують на один canonical",
+        "it": "Più pagine puntano allo stesso canonical",
+        "en": "Several pages name the same canonical",
+    },
+    "a11y_seo_duplicate_canonical_found": {
+        "uk": '{count} сторінок оголошують canonical "{value}".',
+        "it": '{count} pagine dichiarano canonical "{value}".',
+        "en": '{count} pages declare canonical "{value}".',
+    },
+    "a11y_seo_duplicate_canonical_why": {
+        "uk": "Canonical каже пошуку: справжня адреса цієї сторінки інша. Коли його ставлять на кількох різних сторінках, кожна з них просить не індексувати себе - це не втрачена можливість, а прохання зникнути.",
+        "it": "Il canonical dice al motore: l'indirizzo vero di questa pagina è un altro. Quando lo stesso valore è su pagine diverse, ognuna chiede di non essere indicizzata: non è un'occasione persa, è una richiesta di sparire.",
+        "en": "A canonical tells the engine that the page's real address is elsewhere. When several different pages name the same one, each is asking not to be indexed - not a missed opportunity, a request to be dropped.",
+    },
+    "a11y_seo_duplicate_canonical_fix": {
+        "uk": "Кожна сторінка має вказувати canonical на власну адресу. Один спільний canonical правильний лише для справжніх дублів - фільтрів, сортувань, UTM-міток.",
+        "it": "Ogni pagina deve indicare come canonical il proprio indirizzo. Un canonical condiviso è corretto solo per duplicati veri: filtri, ordinamenti, parametri UTM.",
+        "en": "Each page should name its own address as canonical. A shared canonical is right only for genuine duplicates - filters, sort orders, UTM parameters.",
+    },
+    "a11y_html_lang_mismatch_title": {
+        "uk": "Оголошена мова не збігається з текстом",
+        "it": "La lingua dichiarata non è quella del testo",
+        "en": "The declared language is not the one on the page",
+    },
+    "a11y_html_lang_mismatch_found": {
+        "uk": 'Сторінка оголошує lang="{declared}", а текст написаний мовою "{detected}".',
+        "it": 'La pagina dichiara lang="{declared}", ma il testo è in "{detected}".',
+        "en": 'The page declares lang="{declared}" while the text is written in "{detected}".',
+    },
+    "a11y_html_lang_mismatch_why": {
+        "uk": "Читач екрана довіряє атрибуту повністю: він перемикає голос і правила вимови за ним. Хибне оголошення читає текст чужою фонетикою і гірше за відсутній атрибут, бо без нього читач бере мову з налаштувань користувача.",
+        "it": "Lo screen reader si fida completamente dell'attributo: cambia voce e regole di pronuncia in base a esso. Una dichiarazione sbagliata legge il testo con la fonetica di un'altra lingua ed è peggio di un attributo assente, perché senza di esso il lettore usa le impostazioni dell'utente.",
+        "en": "A screen reader trusts the attribute completely: it switches voice and pronunciation rules on it. A wrong declaration reads the text with another language's phonetics, and that is worse than no attribute at all - with none, the reader falls back to the user's own setting.",
+    },
+    "a11y_html_lang_mismatch_fix": {
+        "uk": 'Виправте атрибут на lang="{detected}", або, якщо сторінка справді змішана, лишіть основну мову в <html> і позначте вставки атрибутом lang на їхніх елементах.',
+        "it": 'Correggi l\'attributo in lang="{detected}", oppure, se la pagina è davvero mista, lascia la lingua principale su <html> e marca gli inserti con lang sui loro elementi.',
+        "en": 'Correct the attribute to lang="{detected}", or, if the page really is mixed, keep the main language on <html> and mark the passages with lang on their own elements.',
+    },
+    # Served-response rules (`audit.headers`). The bytes already arrived;
+    # everything but Content-Type was being discarded.
+
+    "a11y_sec_no_csp_title": {
+        "uk": 'Немає Content-Security-Policy',
+        "it": 'Nessuna Content-Security-Policy',
+        "en": 'No Content-Security-Policy',
+    },
+    "a11y_sec_no_csp_found": {
+        "uk": 'Відповідь не несе заголовка {header}, і в розмітці політики теж немає.',
+        "it": "La risposta non porta l'header {header}, e nemmeno il markup contiene una policy.",
+        "en": 'The response carries no {header} header, and the markup holds no policy either.',
+    },
+    "a11y_sec_no_csp_why": {
+        "uk": 'CSP визначає, звідки сторінці дозволено вантажити скрипти й стилі. Без неї будь-який впроваджений скрипт - через коментар, віджет, скомпрометовану залежність - виконується з повними правами сторінки.',
+        "it": 'La CSP dice da dove la pagina può caricare script e stili. Senza, qualsiasi script iniettato - da un commento, da un widget, da una dipendenza compromessa - gira con tutti i permessi della pagina.',
+        "en": "A CSP says where the page may load scripts and styles from. Without one, any injected script - through a comment, a widget, a compromised dependency - runs with the page's full privileges.",
+    },
+    "a11y_sec_no_csp_fix": {
+        "uk": 'Почніть з режиму звіту: Content-Security-Policy-Report-Only, зберіть порушення, потім вмикайте. Політика, зібрана на око, ламає сторінку.',
+        "it": 'Parti in modalità report: Content-Security-Policy-Report-Only, raccogli le violazioni, poi attiva. Una policy scritta a occhio rompe la pagina.',
+        "en": 'Start in report mode: Content-Security-Policy-Report-Only, collect the violations, then enforce. A policy written by guesswork breaks the page.',
+    },
+    "a11y_sec_no_hsts_title": {
+        "uk": 'Немає Strict-Transport-Security',
+        "it": 'Nessuna Strict-Transport-Security',
+        "en": 'No Strict-Transport-Security',
+    },
+    "a11y_sec_no_hsts_found": {
+        "uk": 'Сторінка віддається через HTTPS, але відповідь не несе {header}.',
+        "it": 'La pagina è servita in HTTPS, ma la risposta non porta {header}.',
+        "en": 'The page is served over HTTPS, but the response carries no {header}.',
+    },
+    "a11y_sec_no_hsts_why": {
+        "uk": 'Без HSTS перший візит іде звичайним HTTP і його можна перехопити до редиректу. Заголовок каже браузеру більше ніколи не пробувати HTTP для цього домену.',
+        "it": "Senza HSTS la prima visita passa da HTTP normale e può essere intercettata prima del redirect. L'header dice al browser di non provare mai più HTTP per questo dominio.",
+        "en": 'Without HSTS the first visit goes over plain HTTP and can be intercepted before the redirect. The header tells the browser never to try HTTP for this domain again.',
+    },
+    "a11y_sec_no_hsts_fix": {
+        "uk": 'Strict-Transport-Security: max-age=31536000; includeSubDomains. Спершу переконайтесь, що кожен піддомен уже на HTTPS.',
+        "it": 'Strict-Transport-Security: max-age=31536000; includeSubDomains. Prima assicurati che ogni sottodominio sia già in HTTPS.',
+        "en": 'Strict-Transport-Security: max-age=31536000; includeSubDomains. Make sure every subdomain is already on HTTPS first.',
+    },
+    "a11y_sec_no_nosniff_title": {
+        "uk": 'Немає X-Content-Type-Options',
+        "it": 'Nessun X-Content-Type-Options',
+        "en": 'No X-Content-Type-Options',
+    },
+    "a11y_sec_no_nosniff_found": {
+        "uk": 'Відповідь не несе заголовка {header}.',
+        "it": "La risposta non porta l'header {header}.",
+        "en": 'The response carries no {header} header.',
+    },
+    "a11y_sec_no_nosniff_why": {
+        "uk": 'Без nosniff браузер може вгадати тип вмісту всупереч оголошеному. Завантажений користувачем файл, відданий як текст, тоді виконується як скрипт.',
+        "it": "Senza nosniff il browser può indovinare il tipo di contenuto contro quello dichiarato. Un file caricato dall'utente e servito come testo finisce eseguito come script.",
+        "en": 'Without nosniff a browser may guess the content type against the declared one. A user-uploaded file served as text then runs as a script.',
+    },
+    "a11y_sec_no_nosniff_fix": {
+        "uk": 'X-Content-Type-Options: nosniff. Побічних ефектів у нього немає.',
+        "it": 'X-Content-Type-Options: nosniff. Non ha effetti collaterali.',
+        "en": 'X-Content-Type-Options: nosniff. It has no side effects.',
+    },
+    "a11y_sec_no_referrer_policy_title": {
+        "uk": 'Немає Referrer-Policy',
+        "it": 'Nessuna Referrer-Policy',
+        "en": 'No Referrer-Policy',
+    },
+    "a11y_sec_no_referrer_policy_found": {
+        "uk": 'Відповідь не несе заголовка {header}.',
+        "it": "La risposta non porta l'header {header}.",
+        "en": 'The response carries no {header} header.',
+    },
+    "a11y_sec_no_referrer_policy_why": {
+        "uk": 'За замовчуванням браузер відправляє повну адресу сторінки кожному, на кого веде посилання. Адреса з токеном у запиті або зі шляхом внутрішньої сторінки їде разом із нею.',
+        "it": "Per impostazione predefinita il browser invia l'indirizzo completo della pagina a chiunque venga linkato. Un URL con un token nella query o con il percorso di una pagina interna parte insieme.",
+        "en": 'By default the browser sends the full page address to everything it links to. A URL with a token in the query, or the path of an internal page, travels with it.',
+    },
+    "a11y_sec_no_referrer_policy_fix": {
+        "uk": 'Referrer-Policy: strict-origin-when-cross-origin. Свій домен бачить повний шлях, чужий - лише походження.',
+        "it": "Referrer-Policy: strict-origin-when-cross-origin. Il tuo dominio vede il percorso completo, gli altri solo l'origine.",
+        "en": 'Referrer-Policy: strict-origin-when-cross-origin. Your own domain sees the full path, everyone else only the origin.',
+    },
+    "a11y_sec_no_frame_options_title": {
+        "uk": 'Сторінку можна вбудувати в чужий кадр',
+        "it": 'La pagina può essere incorniciata da altri',
+        "en": 'The page can be framed by anyone',
+    },
+    "a11y_sec_no_frame_options_found": {
+        "uk": 'Немає ні {header}, ні frame-ancestors у CSP.',
+        "it": "Non c'è né {header} né frame-ancestors nella CSP.",
+        "en": 'There is neither {header} nor frame-ancestors in a CSP.',
+    },
+    "a11y_sec_no_frame_options_why": {
+        "uk": 'Чужий сайт може відкрити цю сторінку в невидимому кадрі поверх власних кнопок, і клік користувача піде вашій сторінці. Це clickjacking.',
+        "it": "Un sito terzo può aprire questa pagina in un frame invisibile sopra i propri pulsanti, e il clic dell'utente arriva alla tua pagina. È clickjacking.",
+        "en": "Another site can open this page in an invisible frame over its own buttons, and the user's click lands on yours. That is clickjacking.",
+    },
+    "a11y_sec_no_frame_options_fix": {
+        "uk": "X-Frame-Options: SAMEORIGIN, або frame-ancestors 'self' у CSP, якщо вона вже є.",
+        "it": "X-Frame-Options: SAMEORIGIN, oppure frame-ancestors 'self' nella CSP se già esiste.",
+        "en": "X-Frame-Options: SAMEORIGIN, or frame-ancestors 'self' in the CSP if you already have one.",
+    },
+    "a11y_perf_no_compression_title": {
+        "uk": 'Відповідь без стиснення',
+        "it": 'Risposta senza compressione',
+        "en": 'Response served uncompressed',
+    },
+    "a11y_perf_no_compression_found": {
+        "uk": 'Відповідь не несе {header}, тобто HTML їде як є.',
+        "it": "La risposta non porta {header}: l'HTML viaggia così com'è.",
+        "en": 'The response carries no {header}, so the HTML travels as it is.',
+    },
+    "a11y_perf_no_compression_why": {
+        "uk": 'Розмітка стискається у 3-5 разів майже безкоштовно. Це найдешевше прискорення першого показу, яке взагалі існує, і воно вмикається на сервері, а не в коді.',
+        "it": "Il markup si comprime di 3-5 volte quasi gratis. È l'accelerazione più economica del primo rendering che esista, e si attiva sul server, non nel codice.",
+        "en": 'Markup compresses three to five times over for almost nothing. It is the cheapest first-paint win there is, and it is switched on at the server, not in the code.',
+    },
+    "a11y_perf_no_compression_fix": {
+        "uk": 'Увімкніть gzip або brotli для text/html, text/css і application/javascript.',
+        "it": 'Attiva gzip o brotli per text/html, text/css e application/javascript.',
+        "en": 'Enable gzip or brotli for text/html, text/css and application/javascript.',
+    },
+    "a11y_perf_no_cache_header_title": {
+        "uk": 'Немає Cache-Control',
+        "it": 'Nessun Cache-Control',
+        "en": 'No Cache-Control',
+    },
+    "a11y_perf_no_cache_header_found": {
+        "uk": 'Відповідь не несе заголовка {header}.',
+        "it": "La risposta non porta l'header {header}.",
+        "en": 'The response carries no {header} header.',
+    },
+    "a11y_perf_no_cache_header_why": {
+        "uk": 'Без нього кожен клієнт і кожен проміжний кеш вигадують строк життя самі. Повторний візит або тягне все наново, або показує старе - і ви не обрали, що саме.',
+        "it": "Senza, ogni client e ogni cache intermedia inventano da soli la durata. Una seconda visita o riscarica tutto o mostra roba vecchia, e non l'hai deciso tu.",
+        "en": 'Without it every client and every intermediate cache invents a lifetime of its own. A second visit either refetches everything or shows something stale, and you did not choose which.',
+    },
+    "a11y_perf_no_cache_header_fix": {
+        "uk": 'Для HTML: Cache-Control: no-cache. Для статики з хешем в імені: max-age=31536000, immutable.',
+        "it": "Per l'HTML: Cache-Control: no-cache. Per gli asset con hash nel nome: max-age=31536000, immutable.",
+        "en": 'For HTML: Cache-Control: no-cache. For hashed static assets: max-age=31536000, immutable.',
+    },
+    "a11y_platform_owned": {
+        "uk": "З них {count} у розмітці, яку генерує {platform}: власник сайту цього не редагує",
+        "it": "Di questi {count} sono nel markup generato da {platform}: non è il proprietario del sito a modificarlo",
+        "en": "{count} of these are in markup {platform} generates: not the site owner's to edit",
+    },
+    "a11y_owned_marker": {
+        "uk": "розмітка {platform}",
+        "it": "markup di {platform}",
+        "en": "{platform} markup",
+    },
     "severity_critical": {"uk": "критично", "it": "critico", "en": "critical"},
     "severity_serious": {"uk": "серйозно", "it": "serio", "en": "serious"},
     "severity_moderate": {"uk": "помірно", "it": "moderato", "en": "moderate"},

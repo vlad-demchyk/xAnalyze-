@@ -137,7 +137,28 @@ suoi file marcatori - `wp-config.php`, `artisan`, `next.config.mjs`,
 cosa è codice di terzi anziché scritto qui: il core di WordPress, i pacchetti
 Composer, `.svelte-kit/`, la `lib/` compilata di SPFx. Il riconoscimento è una
 prova, mai una supposizione: il report nomina il file che lo ha dimostrato, e un
-progetto che non corrisponde a nulla viene analizzato esattamente come prima. I
+progetto che non corrisponde a nulla viene analizzato esattamente come prima.
+
+**E cambia ciò che il report ti chiede.** Ogni risultato su un sito scansionato
+viene confrontato con il codice che la piattaforma riconosciuta inietta da sé, e
+quello che ci sta dentro viene nominato come suo: `Di questi 20 sono nel markup
+generato da wix: non è il proprietario del sito a modificarlo`. Nulla viene
+nascosto - il risultato è reale, lo script blocca davvero il rendering - ma chi
+smista la lista vede ora su cosa può agire. Misurato: 20 risultati su 565 su
+`wix.com` (bundle React e core-js da `static.parastorage.com`), 8 su 179 su
+`squarespace.com`, 1 su 12 su `wordpress.org/news`, 1 su 65 su un negozio
+Shopify e 0 su un controllo scritto a mano.
+
+Il criterio non è "l'ha scritto l'autore" ma **il proprietario del sito può
+cambiarlo**, ed è la misura ad aver svuotato quasi tutta la tabella. Una CDN non
+è una piattaforma: `cdn.shopify.com` c'era finché un'esecuzione non ha attribuito
+20 risultati a Shopify, per lo più `<video>` senza sottotitoli il cui unico
+tratto Shopify era dove stava l'immagine di anteprima - anche il commerciante
+carica lì i propri file. Una build è dell'autore: `/_next/static/`, `/_nuxt/` e
+`/_app/immutable/` sono il suo stesso codice compilato, quindi nessun framework
+né generatore possiede alcunché. Un tema è scelto e modificabile, quindi
+`wp-content/themes/` resta al proprietario, mentre `wp-content/plugins/`, che non
+si cambia senza un fork, no. I
 file la cui intestazione dice che li ha scritti una macchina (`DO NOT EDIT`,
 `@generated`) vengono saltati in qualsiasi stack.
 
@@ -162,7 +183,7 @@ sito reale ha portato 335 risultati a 227 senza perdere un solo fatto.
 
 ## Cosa viene controllato
 
-`accessibility` (28), `best-practices` (8), `performance` (8), `security` (10), `seo` (8)
+`accessibility` (29), `best-practices` (8), `performance` (8), `security` (10), `seo` (8)
 
 `security` legge il markup per ciò che concede: un frame di terze parti senza
 `sandbox`, un frame a cui è data la fotocamera, un form che invia a `http://`, uno
@@ -170,6 +191,20 @@ script di terze parti senza `integrity`, una chiave scritta in un attributo, un
 campo password che il browser deve ricordare. Ognuna è `exact` per costruzione: un
 risultato di sicurezza sbagliato costa più fiducia di qualsiasi altro, quindi nulla
 che debba dedurre entra lì.
+
+**Tre passaggi accanto alle regole, e tutti e tre leggono byte già pagati dalla
+scansione.** Gli header della risposta arrivavano con ogni pagina e venivano
+buttati - restava `Content-Type`, il resto moriva con la risposta - quindi un
+sito servito senza `Content-Security-Policy`, senza `Strict-Transport-Security`,
+senza compressione e senza `Cache-Control` veniva verificato come se il modo in
+cui è servito non ne facesse parte. Il crawl tiene tutte le pagine insieme, ed è
+l'unico posto in cui si vede lo stesso `<title>`, `description` o `canonical`
+ripetuto su più pagine: markup valido su ognuna, sito rotto nell'insieme. E il
+passaggio media scarica già l'intestazione di ogni immagine per i campi di
+provenienza, dove stanno anche le dimensioni in pixel, quindi un'immagine salvata
+a 6000 pixel e mostrata a 600 è una misura, non una supposizione.
+
+Nessuno dei tre costa una richiesta che non fosse già fatta.
 
 ## Template che comprende
 
@@ -234,11 +269,21 @@ precisione **su quel corpus**, non nel mondo reale; `scripts/calibrate.py
 --confounds` stampa quanto otterrebbe un classificatore che conosce solo la
 lunghezza, così la differenza resta visibile.
 
-**L'italiano è la più debole delle tre lingue.** Recall misurato: 27.8% in
-italiano contro 56.2% in inglese e 60.0% in ucraino. Su un sito italiano reale
-il detector offline non ha trovato nulla dove un giudice-modello ha trovato sei
-passaggi. Se ti interessa il testo italiano, usa il metodo ibrido e non quello
-offline.
+**L'italiano è la più debole delle tre lingue**, ma meno di quanto dicesse il
+numero complessivo. Il recall misurato è ora 61.1% in italiano contro 65.6% in
+inglese e 60.0% in ucraino - era 27.8%, finché la lista di frasi italiane non è
+stata portata al livello di quella inglese; sulla metà trattenuta, l'unico
+numero onesto, è 36.4% contro 55.0% e 71.4%. Letta per lunghezza, la debolezza
+non è mai stata uniforme: dalle 25 parole in su l'italiano era già **il
+migliore** dei tre (83.3%), e tutto il divario stava nelle voci di una sola
+frase, dove non otteneva nulla. Su un sito italiano reale il detector offline
+non ha trovato nulla dove un giudice-modello ha trovato sei passaggi. Se ti
+interessa il testo italiano, usa il metodo ibrido e non quello offline.
+
+Per questo `scripts/calibrate.py` stampa ogni cifra in fasce di lunghezza: la
+metà umana del corpus è fatta soprattutto di stringhe di interfaccia e la sua
+lunghezza mediana cambia da lingua a lingua, quindi un solo numero di recall non
+significa la stessa cosa in ciascuna.
 
 **Il giudizio di un modello non è riproducibile.** I provider non espongono né
 un seed né una temperature, quindi due esecuzioni sullo stesso testo possono non
@@ -1231,6 +1276,19 @@ punti — ed entrambi i numeri sono riportati, perché rispondono a domande dive
 Due rilievi contano come un problema quando regola, gravità e markup incriminato
 coincidono. Due immagini diverse senza `alt` restano due problemi; lo stesso logo
 condiviso su cinque pagine è uno.
+
+**Ciò che un framework stampa nel markup non fa parte dell'elemento.**
+Confrontare il markup alla lettera significa che un componente si spezza in un
+rilievo per pagina appena qualcosa gli genera un identificatore: dodici stili
+reali sono stati misurati e nove si spezzavano. `useId` di React (`:r3:`),
+Emotion (`css-1q2w3e`), styled-components (`sc-bdVaJa`), gli hash di scope di
+Svelte e Astro, `_ngcontent-` di Angular, i contatori di Radix, MUI ed Ember
+vengono mascherati prima del confronto, accanto a UUID e sequenze esadecimali
+già gestite. Solo dentro gli attributi identificativi - `class`, `id`, `for`,
+`aria-controls` - mai in `src`, `href`, `alt` o `title`: mascherare troppo
+unisce rilievi davvero diversi, e un problema unito per errore ne nasconde uno
+vero. `mt-4` di Tailwind, `col-md-6` di Bootstrap e un `id="email"` scritto a
+mano restano intatti, e c'è un test per ciascuna direzione.
 
 L'elenco completo per documento resta per ciò che analizza invece di leggere:
 salva il briefing con estensione `.json` e lo trovi sotto `files`.

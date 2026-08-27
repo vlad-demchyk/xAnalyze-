@@ -595,6 +595,13 @@ class MediaFetchScan:
     skipped_too_large: int = 0
     unreachable: int = 0
     findings: list = field(default_factory=list)
+    #: `[(source, width, height)]` for every image whose header parsed. Free:
+    #: the pixel dimensions live in the first bytes of a JPEG, PNG or WebP,
+    #: which this pass already downloads for the provenance fields. Reading
+    #: them costs nothing and answers a question the markup cannot: a
+    #: `<img>` with no width attribute says nothing about the 6000-pixel
+    #: original behind it.
+    dimensions: list = field(default_factory=list)
 
     @property
     def unchecked(self) -> int:
@@ -740,7 +747,36 @@ def _data_uri_label(url: str, index: int) -> str:
     return f"data:{kind} #{index}"
 
 
+#: Wider than this and the image is being resized by the browser on every
+#: view. 2500 rather than a display width: what a picture is shown at is a
+#: CSS question this pass cannot see, and 2500 is past the point where any
+#: layout needs the pixels - a full-width hero on a 2x display is 2560, and
+#: everything else is smaller.
+OVERSIZED_WIDTH = 2500
+RULE_OVERSIZED = "perf-image-oversized"
+
+
+def _dimensions_of(data: bytes):
+    """`(width, height)` from an image header, or None.
+
+    Pillow reads the header and stops; the truncated body a capped download
+    leaves behind is not needed for the size and is never decoded.
+    """
+    from io import BytesIO
+
+    try:
+        from PIL import Image
+
+        with Image.open(BytesIO(data)) as image:
+            return image.size
+    except Exception:  # noqa: BLE001 - an unreadable header is not a finding
+        return None
+
+
 def _record(scan: MediaFetchScan, source: str, data: bytes, complete: bool) -> None:
+    size = _dimensions_of(data)
+    if size:
+        scan.dimensions.append((source, size[0], size[1]))
     found = read_provenance_bytes(data, whole=complete)
     if found.kind == UNREADABLE:
         # Only counted as unreachable when we had the whole thing: a partial
@@ -753,9 +789,31 @@ def _record(scan: MediaFetchScan, source: str, data: bytes, complete: bool) -> N
         scan.findings.append((source, found))
 
 
+def oversized_issues(scan: MediaFetchScan) -> list:
+    """One finding per image whose stored pixels exceed any screen's need."""
+    from audit.base import EXACT, Issue, MODERATE, PERFORMANCE
+
+    issues = []
+    for source, width, height in scan.dimensions:
+        if width <= OVERSIZED_WIDTH:
+            continue
+        issues.append(Issue(
+            rule_id=RULE_OVERSIZED, severity=MODERATE, category=PERFORMANCE,
+            confidence=EXACT, source=source, selector="", line=None,
+            snippet=f"{width}x{height}",
+            details={"width": width, "height": height,
+                     "limit": OVERSIZED_WIDTH},
+            engine="media"))
+    return issues
+
+
 def as_web_documents(scan: MediaFetchScan) -> list:
     from audit.engine import DocumentReport
 
-    return [DocumentReport(source=source, issues=[as_issue(source, found)],
-                           elements_checked=1)
+    documents = [DocumentReport(source=issue.source, issues=[issue],
+                                elements_checked=1)
+                 for issue in oversized_issues(scan)]
+    return documents + [
+        DocumentReport(source=source, issues=[as_issue(source, found)],
+                       elements_checked=1)
             for source, found in scan.findings]
