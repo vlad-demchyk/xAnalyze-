@@ -86,10 +86,48 @@ STATE_SCRIPT = """
   // A ring that the design removed and never replaced is the single most
   // common keyboard problem, and it is invisible to any static check
   // because `outline: none` usually lives in a stylesheet, not the markup.
+  //
+  // It is also the check most able to lie, and it did. A document that does
+  // not itself have focus never matches `:focus` in Chromium: `el.focus()`
+  // sets `activeElement`, no focus rule applies, no computed style changes,
+  // and every focusable element on the page reports a missing indicator.
+  // Measured on `https://www.gov.uk/` - whose focus state is among the most
+  // tested on the web - the pass returned 588 serious findings across ten
+  // pages, one for very nearly every element it examined.
+  //
+  // So the precondition is checked first, and a pass that cannot see focus
+  // styles reports *nothing* and says why. A check firing on ~100% of what
+  // it looks at is measuring the harness, not the page.
+  var canSeeFocus = false;
+  if (candidates.length) {
+    try { window.focus(); } catch (e) {}
+    var probe = candidates[0];
+    try { probe.focus({preventScroll: true}); } catch (e) {}
+    try {
+      canSeeFocus = document.hasFocus() && probe.matches(':focus');
+    } catch (e) { canSeeFocus = false; }
+  }
+
   candidates.forEach(function(el) {
+    // Off-canvas, not below the fold. The third condition used to be
+    // `rect.top > innerHeight + scrollY + 2000`, which is a statement about
+    // how long the page is: on `https://www.gov.uk/` it reported 151
+    // `govuk-footer__link` elements - the ordinary footer - as focusable
+    // content outside the viewport. Content further down a page is reached
+    // by scrolling, which is what pages do.
+    //
+    // What the rule is for is the element parked off-screen with
+    // `left: -9999px` and left focusable, so a keyboard lands somewhere the
+    // eye cannot follow. That is what a negative edge means.
+    var rect = el.getBoundingClientRect();
+    if (rect.bottom < 0 || rect.right < 0) {
+      record('focus-outside-viewport', el, {});
+    }
+    if (!canSeeFocus) return;
     var before = getComputedStyle(el);
     var beforeShadow = before.boxShadow, beforeBorder = before.borderColor;
     var beforeOutlineW = before.outlineWidth, beforeOutlineS = before.outlineStyle;
+    var beforeBg = before.backgroundColor, beforeColor = before.color;
     try { el.focus({preventScroll: true}); } catch (e) { return; }
     if (document.activeElement !== el) return;
     var after = getComputedStyle(el);
@@ -99,13 +137,16 @@ STATE_SCRIPT = """
                          after.outlineWidth !== beforeOutlineW);
     var gainedShadow = after.boxShadow !== beforeShadow && after.boxShadow !== 'none';
     var gainedBorder = after.borderColor !== beforeBorder;
-    if (!gainedOutline && !gainedShadow && !gainedBorder) {
+    // Background and text colour count too, and leaving them out was the
+    // second half of the same defect: GOV.UK's indicator is a yellow
+    // background (`#fd0`), not a ring, and 83 rules in its stylesheet set
+    // `background` on `:focus`. WCAG asks for a visible change, not for an
+    // outline specifically.
+    var gainedBackground = after.backgroundColor !== beforeBg;
+    var gainedColor = after.color !== beforeColor;
+    if (!gainedOutline && !gainedShadow && !gainedBorder &&
+        !gainedBackground && !gainedColor) {
       record('focus-not-visible', el, {outline: after.outlineStyle});
-    }
-    var rect = el.getBoundingClientRect();
-    if (rect.bottom < 0 || rect.right < 0 ||
-        rect.top > (window.innerHeight + window.scrollY + 2000)) {
-      record('focus-outside-viewport', el, {});
     }
   });
 
@@ -177,7 +218,8 @@ STATE_SCRIPT = """
   window.scrollTo(scrollX, scrollY);
 
   return JSON.stringify({findings: findings.slice(0, 200),
-                         focusableChecked: candidates.length});
+                         focusableChecked: candidates.length,
+                         focusMeasured: canSeeFocus});
 })()
 """
 

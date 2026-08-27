@@ -39,8 +39,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .base import (
-    ACCESSIBILITY, CRITICAL, MINOR, MODERATE, NEEDS_BROWSER, PERFORMANCE,
-    SERIOUS, Issue,
+    ACCESSIBILITY, CRITICAL, EXACT, MINOR, MODERATE, NEEDS_BROWSER,
+    PERFORMANCE, SERIOUS, Issue,
 )
 
 VENDOR_DIR = Path(__file__).resolve().parent / "vendor"
@@ -269,7 +269,16 @@ def issues_from_axe(payload: str, source: str, exclude_rules=()) -> list:
         for entry in entries:
             if entry.get("id") in exclude_rules:
                 continue
-            severity = _AXE_IMPACT.get(entry.get("impact") or "", MODERATE)
+            # An `incomplete` is axe saying it could not decide, and it
+            # carries the same `impact` as a confirmed failure - so
+            # `aria-valid-attr-value` arrived as *critical* on the Palmanova
+            # site with the message "Unable to determine if aria-controls
+            # referenced ID exists". Checked on the live page: all five
+            # `aria-controls` targets exist. Weighted as a note, the same way
+            # HTML_CodeSniffer's undetermined results are, so an engine's
+            # uncertainty never outranks what it actually found.
+            severity = (MINOR if bucket == "incomplete"
+                        else _AXE_IMPACT.get(entry.get("impact") or "", MODERATE))
             for node in entry.get("nodes", []):
                 issues.append(Issue(
                     rule_id=f"axe:{entry.get('id')}",
@@ -279,7 +288,7 @@ def issues_from_axe(payload: str, source: str, exclude_rules=()) -> list:
                     snippet=node.get("html", ""),
                     source=source,
                     engine="axe",
-                    confidence=NEEDS_BROWSER if bucket == "incomplete" else "exact",
+                    confidence=NEEDS_BROWSER if bucket == "incomplete" else EXACT,
                     details={
                         "engine": "axe-core",
                         "rule": entry.get("id"),
@@ -294,6 +303,24 @@ def issues_from_axe(payload: str, source: str, exclude_rules=()) -> list:
     return issues
 
 
+#: HTML_CodeSniffer code fragments that mean "I could not work this out",
+#: not "this is wrong". Its contrast check reports both through the same
+#: message type, so an element it cannot measure arrived as a *serious*
+#: contrast violation.
+#:
+#: Measured on ten pages of `https://www.gov.uk/`: 60 of 61 `1_4_3` findings
+#: were `.Abs` - "this element is absolutely positioned and the background
+#: color can not be determined". On ten pages of the Palmanova site, 93 of
+#: 103. Reporting an engine's own uncertainty as a violation is the same
+#: defect this project keeps finding in its own checks, arriving through a
+#: vendored one.
+_HTMLCS_UNDETERMINED = (".Abs", ".BgImage", ".Alpha", ".BgGradient")
+
+
+def _is_undetermined(code: str) -> bool:
+    return any(marker in code for marker in _HTMLCS_UNDETERMINED)
+
+
 def issues_from_htmlcs(payload: str, source: str) -> list:
     data = _load(payload)
     if "error" in data:
@@ -306,14 +333,21 @@ def issues_from_htmlcs(payload: str, source: str) -> list:
         if severity is None:
             continue  # Notice: a manual-check prompt, not a finding
         code = message.get("code", "")
+        undetermined = _is_undetermined(code)
         issues.append(Issue(
             rule_id=f"htmlcs:{_short_code(code)}",
-            severity=severity,
+            # An unmeasurable element is not a failing one. Kept - the
+            # element is worth a human's eye - but at the weight of a note
+            # and flagged as needing a browser, so it cannot crowd out the
+            # violations the same rule really did find.
+            severity=MINOR if undetermined else severity,
+            confidence=NEEDS_BROWSER if undetermined else EXACT,
             category=ACCESSIBILITY,
             snippet=message.get("html", ""),
             source=source,
             engine="htmlcs",
             details={"engine": "HTML_CodeSniffer", "code": code,
+                     "undetermined": undetermined,
                      "why": message.get("msg", ""), "element": message.get("tag", "")},
         ))
     return issues
@@ -443,10 +477,34 @@ def deduplicate(issues: list, markup: str = "") -> list:
             confirmations = set(existing.details.get("also_found_by", []))
             confirmations.add(issue.engine)
             existing.details["also_found_by"] = sorted(confirmations)
+            # How many independent engines said it. Recorded rather than left
+            # to be counted from the list, because this is the number a
+            # reader triages on: three engines looking at one page and two of
+            # them agreeing is the strongest evidence a static pass can
+            # produce.
+            existing.details["agreement"] = 1 + len(confirmations)
+            # And the strongest certainty among them wins. An engine that
+            # positively confirmed the problem has settled it; another
+            # engine's inability to decide does not un-settle it. Two
+            # engines that *both* could not decide stay undecided - two
+            # uncertainties are not a certainty, which is the direction this
+            # must not be wrong in.
+            existing.confidence = _stronger(existing.confidence, issue.confidence)
         # Keep the more severe reading of the same problem.
         if SEVERITY_ORDER.index(issue.severity) < SEVERITY_ORDER.index(existing.severity):
             existing.severity = issue.severity
     return [kept[signature] for signature in order]
+
+
+def _stronger(left: str, right: str) -> str:
+    """The more certain of two confidences."""
+    from .base import CONFIDENCE_ORDER
+
+    def rank(value: str) -> int:
+        return (CONFIDENCE_ORDER.index(value)
+                if value in CONFIDENCE_ORDER else len(CONFIDENCE_ORDER))
+
+    return left if rank(left) >= rank(right) else right
 
 
 #: The opening tag of a snippet: name, then everything up to the `>`.
