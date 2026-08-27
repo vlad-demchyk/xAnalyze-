@@ -110,6 +110,74 @@ def _show(label: str, stats: dict) -> None:
           f"false alarms {stats['false_alarms']}/{stats['humans']}")
 
 
+#: The word-count bands the corpus is read in. They exist because the two
+#: halves are not the same length: the human half is largely interface strings
+#: and the model half is paragraphs, so a recall number computed over the whole
+#: corpus is partly a statement about length. Inside a band length is roughly
+#: held still, and what is left is the writing.
+_STRATA = (
+    ("under 10 words", 0, 10),
+    ("10-24 words", 10, 25),
+    ("25+ words", 25, None),
+)
+
+
+def _in_stratum(row: dict, low: int, high) -> bool:
+    words = len(_words_of(row["text"]))
+    return words >= low and (high is None or words < high)
+
+
+def length_only_baseline(rows: list) -> tuple:
+    """The best `(cut, precision, recall)` a word count alone can reach.
+
+    A single rule - "flag everything at least this long" - swept over every
+    cut-off. It knows nothing about writing, so it is the line any real signal
+    has to clear: a feature that scores no better than this has not been shown
+    to detect anything except that generated copy tends to be longer.
+    """
+    models = [r for r in rows if r["label"] == "model"]
+    best = (0, 0.0, 0.0)
+    for cut in range(3, 60):
+        flagged = [r for r in rows if len(_words_of(r["text"])) >= cut]
+        if not flagged or not models:
+            continue
+        hits = [r for r in flagged if r["label"] == "model"]
+        precision = len(hits) / len(flagged)
+        if precision > best[1]:
+            best = (cut, precision, len(hits) / len(models))
+    return best
+
+
+def strata(scored: list, threshold: float) -> None:
+    """The same threshold, read inside comparable lengths.
+
+    Without this, every recall figure in this report means something slightly
+    different per language, because the languages' negatives are not the same
+    size: the Italian human median is 37 characters against Ukrainian's 65,
+    which is the difference between a button label and a sentence.
+
+    Each band also prints what flagging *everything* in it would score. That is
+    the base rate, and a detector whose precision inside a band equals it is
+    not separating anything there - it is only agreeing with the band.
+    """
+    print("by length, at the same threshold")
+    for name, low, high in _STRATA:
+        band = [r for r in scored if _in_stratum(r, low, high)]
+        if not band:
+            print(f"  {name}: empty")
+            continue
+        stats = _rates(band, threshold)
+        base = stats["models"] / len(band) * 100
+        print(f"  {name}: {stats['models']} model, {stats['humans']} human, "
+              f"flag-everything precision {base:5.1f}%")
+        _show("all languages", stats)
+        for language in sorted({r.get("language", "?") for r in band}):
+            subset = [r for r in band if r.get("language") == language]
+            _show(language, _rates(subset, threshold))
+    print("  a band with no model entries can show no recall: that is the "
+          "corpus speaking, not the detector.")
+
+
 def report(scored: list, threshold: float) -> None:
     print(f"at threshold {threshold}")
     _show("all languages", _rates(scored, threshold))
@@ -120,6 +188,15 @@ def report(scored: list, threshold: float) -> None:
                   f"measured, only recall {(_rates(subset, threshold)['recall'] or 0) * 100:.1f}%")
             continue
         _show(language, _rates(subset, threshold))
+
+    print()
+    strata(scored, threshold)
+
+    print()
+    cut, precision, recall = length_only_baseline(scored)
+    print(f"length alone tops out at precision {precision * 100:.1f}% "
+          f"(words>={cut}, recall {recall * 100:.1f}%)")
+    print("  read the numbers above against that line, not against zero.")
 
     print()
     print("score distribution")
@@ -195,18 +272,7 @@ def confounds(rows: list, threshold: float) -> None:
         print(f"  {label:6} n={len(values):3}  median {values[len(values)//2]:3} words"
               f"  ({values[0]}-{values[-1]})")
 
-    models = [r for r in rows if r["label"] == "model"]
-    best_precision = (0, 0.0, 0.0)
-    for cut in range(3, 60):
-        flagged = [r for r in rows if len(_words_of(r["text"])) >= cut]
-        if not flagged or not models:
-            continue
-        hits = [r for r in flagged if r["label"] == "model"]
-        precision = len(hits) / len(flagged)
-        recall = len(hits) / len(models)
-        if precision > best_precision[1]:
-            best_precision = (cut, precision, recall)
-    cut, precision, recall = best_precision
+    cut, precision, recall = length_only_baseline(rows)
     print(f"  a classifier that knows only the length tops out at "
           f"precision {precision*100:.1f}% (words>={cut}, recall {recall*100:.1f}%)")
     print("  read the detector's precision against that line: a signal that "

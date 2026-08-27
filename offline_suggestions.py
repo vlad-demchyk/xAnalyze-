@@ -81,6 +81,21 @@ PHRASE_SUGGESTIONS: dict = {
         'streamline your workflow': None,
         'streamline your workflows': None,
         'bridges the gap between': None,
+        # The vendor register added to the word lists 2026-08-27. Almost all
+        # of it is positioning rather than wording, so the honest answer is
+        # None: what replaces "enterprise-grade" is whatever is actually true
+        # of the product's security, which no table knows.
+        'actionable insights': None,
+        'enterprise-grade': None,
+        'digital transformation': None,
+        'end-to-end solution': None,
+        'of all sizes': None,
+        'grows with your business': None,
+        'adapts to your needs': None,
+        'every aspect of your': None,
+        'democratize access': None,
+        'robust infrastructure': None,
+        'harness the power': "use",
         'not just about': None,
         'modern professional': None,
         # padding / hedging openers — the sentence says the same thing without them
@@ -318,6 +333,16 @@ PHRASE_SUGGESTIONS: dict = {
         "poliedrico": "vario", "onnicomprensivo": "completo",
         "all'avanguardia": "", "consentendo di": "per",
         "permettendoti di": "per", "si distingue per": "",
+        # Le voci aggiunte il 2026-08-27 come specchio di quelle inglesi.
+        # Anche qui quasi tutto è posizionamento, non parole sostituibili.
+        "informazioni actionable": None, "informazioni azionabili": None,
+        "di livello aziendale": None, "trasformazione digitale": None,
+        "soluzione end-to-end": None, "di tutte le dimensioni": None,
+        "cresce con il tuo business": None,
+        "si adatta alle tue esigenze": None, "ogni aspetto del tuo": None,
+        "democratizzare l'accesso": None, "infrastruttura robusta": None,
+        "sfruttando il potere": "usando", "sfrutta il potere": "usa",
+        "decisioni informate": None,
     },
 }
 

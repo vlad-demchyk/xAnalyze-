@@ -13,7 +13,8 @@ flagging the documentation pool is worse than that.
 import unittest
 
 from detectors.heuristic import combine_score
-from scripts.calibrate import load, score_rows, split
+from scripts.calibrate import (_in_stratum, length_only_baseline, load,
+                               score_rows, split)
 
 #: What the corpus currently supports, rounded down hard.
 MIN_HELD_OUT_RECALL = 0.4
@@ -59,6 +60,45 @@ class Separation(unittest.TestCase):
             found = [r for r in subset if r["score"] >= THRESHOLD]
             self.assertGreaterEqual(len(found) / len(subset), MIN_HELD_OUT_RECALL,
                                     f"{language} recall is below the floor")
+
+
+class LengthIsNotTheSignal(unittest.TestCase):
+    """The corpus measures length as well as writing, so both are read.
+
+    Its human half is largely interface strings and its model half is
+    paragraphs, which means a recall figure over the whole corpus is partly a
+    statement about how long the entries are. These check the two things that
+    keep that visible: the detector has to beat what a word count alone scores,
+    and it has to keep working inside a band where length is held still.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.scored = score_rows(load("labelled.jsonl"))
+        if not cls.scored:
+            raise unittest.SkipTest("no corpus")
+
+    def test_the_detector_beats_a_classifier_that_knows_only_length(self):
+        _cut, baseline, _recall = length_only_baseline(self.scored)
+        flagged = [r for r in self.scored if r["score"] >= THRESHOLD]
+        hits = [r for r in flagged if r["label"] == "model"]
+        self.assertTrue(flagged, "nothing was flagged at all")
+        self.assertGreater(len(hits) / len(flagged), baseline,
+                           "the detector scores no better than the length does")
+
+    def test_italian_is_found_at_sentence_length_not_only_at_paragraph_length(self):
+        # Measured 2026-08-27: Italian recall was 0.0% in the 10-24 word band
+        # and 83.3% at 25+ words, so the language was not weak everywhere - it
+        # was weak wherever there was only one sentence to go on. The whole of
+        # the 27.8% Italian figure came from that band.
+        band = [r for r in self.scored
+                if r["label"] == "model" and r["language"] == "it"
+                and _in_stratum(r, 10, 25)]
+        if not band:
+            self.skipTest("no Italian entries of that length")
+        found = [r for r in band if r["score"] >= THRESHOLD]
+        self.assertGreaterEqual(len(found) / len(band), 0.4,
+                                "Italian is back to scoring nothing below 25 words")
 
 
 class Combination(unittest.TestCase):

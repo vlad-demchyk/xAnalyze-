@@ -98,6 +98,14 @@ CLICHE_PHRASES: dict[str, list[str]] = {
         "unlock the full potential", "full potential of your",
         "streamline your workflow", "streamline your workflows",
         "bridges the gap between", "not just about", "modern professional",
+        # The vendor register of 2026 marketing copy, added 2026-08-27 as the
+        # English side of the Italian entries below. Every one is a phrase, not
+        # a word: "robust" is an ordinary adjective and "robust infrastructure"
+        # is a sales pitch, and the phrase is what the tool is pointed at.
+        "actionable insights", "enterprise-grade", "digital transformation",
+        "end-to-end solution", "of all sizes", "grows with your business",
+        "adapts to your needs", "every aspect of your", "democratize access",
+        "robust infrastructure", "harness the power",
         # single overused words
         "delve", "underscore", "pivotal", "realm", "harness", "illuminate",
         "facilitate", "refine", "bolster", "differentiate", "streamline",
@@ -238,6 +246,19 @@ CLICHE_PHRASES: dict[str, list[str]] = {
         "trasformativo", "scalabile", "senza soluzione di continuità",
         "ineguagliabile", "poliedrico", "onnicomprensivo", "all'avanguardia",
         "consentendo di", "permettendoti di", "si distingue per",
+        # Ricavate dalla metà di taratura del corpus (2026-08-27), mai da
+        # quella trattenuta: il numero onesto è quello che segue. Sono lo
+        # specchio delle voci inglesi aggiunte lo stesso giorno. Il motivo per
+        # cui servivano: i positivi italiani facevano scattare 0.67 frasi a
+        # voce contro 1.34 dell'inglese e 1.43 dell'ucraino, cioè esattamente
+        # la metà, e sotto le 25 parole l'italiano non superava mai la soglia.
+        "informazioni actionable", "informazioni azionabili",
+        "di livello aziendale", "trasformazione digitale",
+        "soluzione end-to-end", "di tutte le dimensioni",
+        "cresce con il tuo business", "si adatta alle tue esigenze",
+        "ogni aspetto del tuo", "democratizzare l'accesso",
+        "infrastruttura robusta", "sfruttando il potere",
+        "sfrutta il potere", "decisioni informate",
     ],
 }
 
