@@ -1,9 +1,8 @@
 """Self-update from GitHub Releases.
 
 Checks the configured GitHub repository for a newer release, downloads
-the CLI asset that matches the current platform, and replaces the running
-binary in place.  GUI users get a message pointing them to the .dmg;
-the CLI binary is what this module updates.
+the asset that matches the current platform, and replaces the running
+binary in place.  Updates both CLI and GUI when applicable.
 
 Designed to be called two ways:
 
@@ -48,6 +47,11 @@ _CLI_ASSET_PATTERNS = [
     "xanalyze-cli-macos-{arch}.tar.gz",
     "xanalyze-cli-{arch}.tar.gz",
     "xanalyze-cli.tar.gz",
+]
+
+_GUI_ASSET_PATTERNS = [
+    "XAnalyze.app.zip",
+    "XAnalyze-macos-{arch}.app.zip",
 ]
 
 
@@ -125,6 +129,21 @@ def find_cli_asset(release: ReleaseInfo) -> dict | None:
     # Fallback: any asset whose name contains "cli"
     for asset in release.assets:
         if "cli" in asset["name"].lower():
+            return asset
+    return None
+
+
+def find_gui_asset(release: ReleaseInfo) -> dict | None:
+    """Return the asset dict for the GUI app that matches this machine."""
+    arch = _current_arch()
+    for pattern in _GUI_ASSET_PATTERNS:
+        name = pattern.format(arch=arch)
+        for asset in release.assets:
+            if asset["name"] == name:
+                return asset
+    # Fallback: any asset whose name contains "app" and ends with .zip
+    for asset in release.assets:
+        if "app" in asset["name"].lower() and asset["name"].endswith(".zip"):
             return asset
     return None
 
@@ -211,6 +230,14 @@ def _cli_binary_path() -> Path | None:
     return None
 
 
+def _gui_app_path() -> Path | None:
+    """Path to the installed GUI app, or ``None``."""
+    app = Path("/Applications/XAnalyze.app")
+    if app.exists():
+        return app
+    return None
+
+
 # --------------------------------------------------------- download+replace
 
 def _download(url: str, dest: Path) -> None:
@@ -271,6 +298,23 @@ def _extract_cli_binary(archive: Path) -> Path:
         return extracted
 
 
+def _extract_gui_app(archive: Path) -> Path:
+    """Extract ``XAnalyze.app`` from a zip into a temp dir."""
+    import zipfile
+
+    tmp = Path(tempfile.mkdtemp(prefix="xanalyze-update-gui-"))
+    with zipfile.ZipFile(archive) as zf:
+        zf.extractall(tmp)
+    app = tmp / "XAnalyze.app"
+    if not app.exists():
+        # Walk to find it
+        for p in tmp.rglob("XAnalyze.app"):
+            if p.is_dir():
+                return p
+        raise RuntimeError("XAnalyze.app not found in the archive")
+    return app
+
+
 def _replace_binary(old: Path, new: Path) -> None:
     """Replace *old* with *new*, preserving permissions.
 
@@ -305,6 +349,9 @@ def _replace_binary(old: Path, new: Path) -> None:
 def do_update() -> int:
     """Full update flow: check → download → replace.
 
+    Updates CLI if a frozen binary or symlink is found.
+    Updates GUI if ``/Applications/XAnalyze.app`` exists.
+
     Returns 0 on success, 1 on error.
     """
     print(f"# XAnalyze updater — current version: {config.APP_VERSION}",
@@ -329,57 +376,63 @@ def do_update() -> int:
         print("Already up to date.")
         return 0
 
-    # 2. Find the right asset
-    asset = find_cli_asset(release)
-    if asset is None:
-        print("error: no CLI asset found in the release. "
-              f"Download manually from {release.html_url}", file=sys.stderr)
-        return 1
+    updated = 0
 
-    print(f"# asset: {asset['name']} ({asset['size'] // (1024*1024)} MB)",
-          file=sys.stderr)
+    # 2. Update CLI
+    cli_binary = _cli_binary_path()
+    cli_asset = find_cli_asset(release)
+    if cli_asset and cli_binary:
+        print(f"# CLI asset: {cli_asset['name']} "
+              f"({cli_asset['size'] // (1024*1024)} MB)", file=sys.stderr)
+        print(f"# CLI target: {cli_binary}", file=sys.stderr)
 
-    # 3. Locate the binary to replace
-    binary = _cli_binary_path()
-    if binary is None:
-        print("Running from source — nothing to replace. "
-              "To update the frozen build, download from:\n"
+        tmp_dir = Path(tempfile.mkdtemp(prefix="xanalyze-update-"))
+        archive_path = tmp_dir / cli_asset["name"]
+        try:
+            _download(cli_asset["browser_download_url"], archive_path)
+            extracted = _extract_cli_binary(archive_path)
+            _replace_binary(cli_binary, extracted)
+            updated += 1
+            print(f"# CLI updated: {cli_binary}", file=sys.stderr)
+        except Exception as exc:  # noqa: BLE001
+            print(f"# CLI update failed: {exc}", file=sys.stderr)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+    elif cli_asset is None:
+        print("# no CLI asset found in release", file=sys.stderr)
+
+    # 3. Update GUI
+    gui_app = _gui_app_path()
+    gui_asset = find_gui_asset(release)
+    if gui_asset and gui_app:
+        print(f"# GUI asset: {gui_asset['name']} "
+              f"({gui_asset['size'] // (1024*1024)} MB)", file=sys.stderr)
+        print(f"# GUI target: {gui_app}", file=sys.stderr)
+
+        tmp_dir = Path(tempfile.mkdtemp(prefix="xanalyze-update-gui-"))
+        archive_path = tmp_dir / gui_asset["name"]
+        try:
+            _download(gui_asset["browser_download_url"], archive_path)
+            extracted = _extract_gui_app(archive_path)
+            # Replace: remove old .app, move new one in
+            if gui_app.exists():
+                shutil.rmtree(gui_app)
+            shutil.move(str(extracted), str(gui_app))
+            updated += 1
+            print(f"# GUI updated: {gui_app}", file=sys.stderr)
+        except Exception as exc:  # noqa: BLE001
+            print(f"# GUI update failed: {exc}", file=sys.stderr)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+    elif gui_asset is None:
+        print("# no GUI asset found in release", file=sys.stderr)
+
+    if updated == 0:
+        print("Nothing to update. Download manually from:\n"
               f"  {release.html_url}", file=sys.stderr)
-        return 0
-
-    print(f"# target: {binary}", file=sys.stderr)
-
-    # 4. Download
-    tmp_dir = Path(tempfile.mkdtemp(prefix="xanalyze-update-"))
-    archive_path = tmp_dir / asset["name"]
-    try:
-        _download(asset["browser_download_url"], archive_path)
-    except Exception as exc:  # noqa: BLE001
-        print(f"\nerror: download failed: {exc}", file=sys.stderr)
-        shutil.rmtree(tmp_dir, ignore_errors=True)
         return 1
-
-    # 5. Extract
-    try:
-        extracted = _extract_cli_binary(archive_path)
-    except Exception as exc:  # noqa: BLE001
-        print(f"error: extraction failed: {exc}", file=sys.stderr)
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-        return 1
-
-    # 6. Replace
-    try:
-        _replace_binary(binary, extracted)
-    except Exception as exc:  # noqa: BLE001
-        print(f"error: could not replace binary: {exc}", file=sys.stderr)
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-        return 1
-
-    # 7. Clean up
-    shutil.rmtree(tmp_dir, ignore_errors=True)
 
     print(f"\nUpdated XAnalyze {config.APP_VERSION} → {release.version}")
-    print(f"Binary: {binary}")
     if release.body:
         print(f"\nRelease notes:\n{release.body[:500]}")
     return 0

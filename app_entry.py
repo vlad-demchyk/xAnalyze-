@@ -34,7 +34,33 @@ from pathlib import Path
 _CLI_INVOCATION_NAME = "xanalyze"
 
 
+def _warn_if_stale() -> None:
+    """If this frozen binary was built from a different source version, say so."""
+    import config
+
+    # For onedir builds the executable sits next to _internal/.  Walk up from
+    # the executable's real path until we find a .build_version marker; if the
+    # version inside does not match what was compiled in, the binary is stale.
+    exe = Path(sys.executable).resolve()
+    for candidate in [exe.parent, exe.parent.parent]:
+        marker = candidate / ".build_version"
+        if marker.exists():
+            try:
+                build_ver = marker.read_text().strip()
+            except OSError:
+                return
+            if build_ver != config.APP_VERSION:
+                print(
+                    f"# WARNING: binary is version {config.APP_VERSION} but was "
+                    f"built from source {build_ver}.\n"
+                    f"# Run: make rebuild-cli  (from the repo root)",
+                    file=sys.stderr,
+                )
+            return
+
+
 def run() -> int:
+    _warn_if_stale()
     invoked_as = Path(sys.argv[0]).name
 
     if invoked_as == _CLI_INVOCATION_NAME:
