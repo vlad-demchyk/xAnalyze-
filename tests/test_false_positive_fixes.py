@@ -227,5 +227,107 @@ class AnIconIsNotAFormField(unittest.TestCase):
         self.assertEqual(found[0].severity, "moderate")
 
 
+class AControlNobodyCanReachNeedsNoName(unittest.TestCase):
+    """`critical` findings about elements that are not controls.
+
+    Every upload button in the world hides a file input and clicks it from
+    script. Measured on `XFormat`: `<input type="file" hidden>` and the same
+    with `style="display:none"` were reported as unnamed controls, on the
+    rule whose whole value is that a `critical` here is worth acting on.
+    """
+
+    def test_a_hidden_file_input_is_not_reported(self):
+        markup = '<html><body><input type="file" hidden onchange="x"></body></html>'
+        self.assertNotIn("control-name", _rules_of(markup))
+
+    def test_display_none_counts_too(self):
+        markup = '<html><body><input type="file" style="display:none"></body></html>'
+        self.assertNotIn("control-name", _rules_of(markup))
+
+    def test_a_hidden_ancestor_hides_what_is_inside_it(self):
+        markup = '<html><body><div aria-hidden="true"><button></button></div></body></html>'
+        self.assertNotIn("control-name", _rules_of(markup))
+
+    def test_a_visible_control_with_no_name_still_reports(self):
+        self.assertIn("control-name", _rules_of("<html><body><button></button></body></html>"))
+
+
+class WhatOnlyABrowserKnows(unittest.TestCase):
+    """`aria-controls` points at markup the page has not built yet.
+
+    A dropdown Alpine renders on click, a Wix panel that appears on focus:
+    a fetched page has not clicked anything. A missing *name*, by contrast,
+    is a fact about the page as served.
+    """
+
+    def test_a_dangling_aria_controls_is_not_settled(self):
+        markup = '<html><body><button aria-controls="menu">M</button></body></html>'
+        found = [i for i in analyze_document(markup, "https://t/").issues
+                 if i.rule_id == "aria-reference-broken"]
+        self.assertEqual(found[0].confidence, "needs-browser")
+
+    def test_a_dangling_name_reference_is_settled(self):
+        markup = '<html><body><div aria-labelledby="gone">x</div></body></html>'
+        found = [i for i in analyze_document(markup, "https://t/").issues
+                 if i.rule_id == "aria-reference-broken"]
+        self.assertEqual(found[0].confidence, "exact")
+
+    def test_an_id_with_a_space_can_never_resolve(self):
+        # No browser makes this work: ids cannot contain whitespace.
+        markup = '<html><body><div aria-owns="two words">x</div></body></html>'
+        found = [i for i in analyze_document(markup, "https://t/").issues
+                 if i.rule_id == "aria-reference-broken"]
+        self.assertEqual(found[0].confidence, "exact")
+
+
+class DecisionsTheAuthorAlreadyMade(unittest.TestCase):
+    def test_an_explicitly_eager_image_is_left_alone(self):
+        images = "".join(f'<img src="{n}.png" alt="x">' for n in range(4))
+        markup = f'<html><body>{images}<img src="e.png" alt="x" loading="eager"></body></html>'
+        found = [i for i in analyze_document(markup, "https://t/").issues
+                 if i.rule_id == "perf-image-loading"]
+        self.assertEqual(len(found), 1)
+
+    def test_an_image_with_no_address_loads_nothing(self):
+        images = "".join(f'<img src="{n}.png" alt="x">' for n in range(4))
+        markup = f'<html><body>{images}<img alt="" style="aspect-ratio:3/4"></body></html>'
+        found = [i for i in analyze_document(markup, "https://t/").issues
+                 if i.rule_id == "perf-image-loading"]
+        self.assertEqual(len(found), 1)
+
+    def test_the_recommended_async_css_pattern_is_not_a_defect(self):
+        markup = ('<html><head><link rel="stylesheet" media="print" href="/a.css" '
+                  'onload="this.media=\'all\'"></head></html>')
+        self.assertNotIn("bp-inline-handlers", _rules_of(markup))
+
+    def test_an_inline_handler_on_a_control_still_reports(self):
+        markup = '<html><body><a href="/x" onclick="go()">x</a></body></html>'
+        self.assertIn("bp-inline-handlers", _rules_of(markup))
+
+    def test_nomodule_is_the_browsers_own_opt_out(self):
+        markup = ('<html><head><script nomodule src="https://cdn.other.test/p.js">'
+                  '</script></head></html>')
+        self.assertNotIn("perf-third-party-sync",
+                         _rules_of(markup, "https://www.example.test/"))
+
+
+class ContextIsPartOfLinkPurpose(unittest.TestCase):
+    def test_a_title_that_says_what_the_link_is_for_answers_it(self):
+        markup = '<html><body><a href="/e/" title="More Events">More</a></body></html>'
+        self.assertNotIn("link-text-vague", _rules_of(markup))
+
+    def test_vague_text_with_no_context_still_reports(self):
+        self.assertIn("link-text-vague",
+                      _rules_of('<html><body><a href="/e/">More</a></body></html>'))
+
+
+class TheSitesOwnSubdomainIsTheSite(unittest.TestCase):
+    def test_a_link_to_the_forum_is_not_tabnabbing(self):
+        markup = ('<html><body><a href="https://forum.example.test/" target="_blank">'
+                  'Forum</a></body></html>')
+        self.assertNotIn("bp-target-blank",
+                         _rules_of(markup, "https://www.example.test/"))
+
+
 if __name__ == "__main__":
     unittest.main()

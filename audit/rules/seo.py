@@ -245,6 +245,13 @@ class LinksWithoutText(SeoRule):
                 continue
             if (tag.get("aria-labelledby") or "").strip():
                 continue
+            # `title` is the accessible-name fallback the spec names last,
+            # and a sponsor banner uses exactly that: an anchor with a
+            # background image and `title="CloudCannon"`. It is a weak name -
+            # `link-text-vague` and `control-name` are the rules that argue
+            # about how good a name is - but it is not an empty link.
+            if (tag.get("title") or "").strip():
+                continue
             # A logo is an `<svg>`, not an `<img>`, and an `<svg>` names
             # itself with a `<title>` or an `aria-label`. Measured on
             # `ghost.org`, where every header and footer logo link came back

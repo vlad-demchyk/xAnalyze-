@@ -21,6 +21,18 @@ from ui.theme import build_textual_themes
 DEFAULT_THEME = "xanalyze-dark"
 
 
+def _resolve_theme(theme: str) -> str:
+    """Turn a stored theme preference into a concrete palette name.
+
+    ``"auto"`` has no terminal-side OS detection (unlike Qt), so it
+    resolves to ``"dark"`` — the safer default for a terminal.  Any
+    other value is taken literally.
+    """
+    if theme in ("light", "dark"):
+        return theme
+    return "dark"
+
+
 class XAnalyzeApp(App):
     """Interactive terminal interface for XAnalyze."""
 
@@ -168,12 +180,16 @@ class XAnalyzeApp(App):
 
     def __init__(self) -> None:
         super().__init__()
+        settings = config.Settings.load()
         #: The interface language, read once and then owned here. Every
         #: screen asks the app rather than loading `Settings` itself: a
         #: screen that read the file would keep showing the old language
         #: after Settings changed it, which is exactly what "the option does
         #: nothing" looks like from the outside.
-        self.lang = config.Settings.load().ui_language or "uk"
+        self.lang = settings.ui_language or "uk"
+        #: The resolved theme name, matching the registered `xanalyze-{name}`
+        #: themes. Read from config once; `set_theme` updates it at runtime.
+        self._theme_name = _resolve_theme(settings.theme)
         self._translate_own_bindings()
         # Registered here rather than in `on_mount`: the CSS above already
         # references custom variables (`$inline-label` and friends), and the
@@ -184,7 +200,7 @@ class XAnalyzeApp(App):
         # fails to load at all rather than falling back to something close.
         for theme in build_textual_themes().values():
             self.register_theme(theme)
-        self.theme = DEFAULT_THEME
+        self.theme = f"xanalyze-{self._theme_name}"
 
     def _translate_own_bindings(self) -> None:
         """The app's own footer hints, in the app's language.
@@ -259,6 +275,18 @@ class XAnalyzeApp(App):
             self.uninstall_screen(name)
         self.install_all_screens()
         self.push_screen("settings")
+
+    def set_theme(self, theme: str) -> None:
+        """Change the theme at runtime.
+
+        Textual supports live theme switching, so this is a one-liner
+        unlike ``set_language`` which needs a full screen rebuild.
+        """
+        resolved = _resolve_theme(theme)
+        if resolved == self._theme_name:
+            return
+        self._theme_name = resolved
+        self.theme = f"xanalyze-{resolved}"
 
     def on_mount(self) -> None:
         self.install_all_screens()

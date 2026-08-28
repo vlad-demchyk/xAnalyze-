@@ -149,7 +149,7 @@ class ControlName(AccessibilityRule):
                 continue
             if _accessible_name(tag):
                 continue
-            if tag.get("aria-hidden") == "true":
+            if _is_hidden(tag):
                 continue
             selector, line = context.locate(tag)
             issues.append(Issue(
@@ -158,6 +158,35 @@ class ControlName(AccessibilityRule):
                 details={"element": tag.name},
             ))
         return issues
+
+
+def _is_hidden(tag) -> bool:
+    """Is this control outside the accessibility tree entirely?
+
+    A control nobody can reach needs no name. The commonest case by far is
+    the file input every upload button in the world hides and clicks
+    programmatically - `<input type="file" hidden>`, or the same with
+    `style="display:none"`. Measured on `XFormat`: `critical` findings
+    about controls that are not controls, on the rule whose whole value is
+    that a `critical` here is worth acting on.
+
+    `aria-hidden` is checked on ancestors too: hiding a wrapper hides
+    everything in it, and reporting the child is reporting the same
+    decision the author already made.
+    """
+    if tag.has_attr("hidden"):
+        return True
+    style = (tag.get("style") or "").replace(" ", "").lower()
+    if "display:none" in style or "visibility:hidden" in style:
+        return True
+    for element in [tag, *tag.parents]:
+        if getattr(element, "get", None) is None:
+            continue
+        if element.get("aria-hidden") == "true":
+            return True
+        if element.has_attr("hidden"):
+            return True
+    return False
 
 
 def _has_label(tag, document) -> bool:
@@ -190,6 +219,15 @@ class VagueLinkText(AccessibilityRule):
         for tag in document.find_all("a", href=True):
             text = _text_of(tag).lower().strip(" .!?:»«\"'")
             if not text or text not in vague:
+                continue
+            # 2.4.4 is "Link Purpose **in Context**", and `title` is one of
+            # the context mechanisms the criterion names. `<a title="More
+            # Events">More</a>` on `python.org` says what the link is for;
+            # calling it vague is applying 2.4.9 (link text alone, AAA) and
+            # citing 2.4.4 for it. The title has to add something - repeating
+            # the text is not context.
+            title = (tag.get("title") or "").strip()
+            if title and title.lower() != text:
                 continue
             # Screen reader users navigate by pulling up a list of every link
             # on the page, out of context. Fifteen entries reading "read
@@ -439,6 +477,16 @@ class BrokenAriaReference(AccessibilityRule):
 
     _REFERENCING = ("aria-labelledby", "aria-describedby", "aria-controls", "aria-owns")
 
+    #: A name has to exist whenever the element does, so a dangling
+    #: `aria-labelledby` is a fact about the page as served. What an element
+    #: *controls* is routinely created on demand - a dropdown Alpine renders
+    #: on click, a Wix search panel that appears on focus - and a fetched
+    #: page has not clicked anything. Measured on `wix.com` and a Shopify
+    #: store: every `aria-controls` finding pointed at markup a browser would
+    #: have. Reported at a weight that says the pass could not settle it,
+    #: which `--confidence exact` then drops.
+    _NEEDS_A_BROWSER = ("aria-controls", "aria-owns")
+
     def check(self, document, context) -> list:
         issues = []
         ids = {tag.get("id") for tag in document.find_all(id=True)}
@@ -452,8 +500,16 @@ class BrokenAriaReference(AccessibilityRule):
                 # ends up with no name at all, and the markup looks correct.
                 selector, line = context.locate(tag)
                 raw = (tag.get(attribute) or "").strip()
+                # An id cannot contain whitespace, so a value that does can
+                # never resolve however the page is rendered: that one is
+                # settled from the markup alone.
+                unsettled = (attribute in self._NEEDS_A_BROWSER
+                             and " " not in raw)
                 issues.append(Issue(
-                    rule_id=self.id, severity=self.severity, selector=selector,
+                    rule_id=self.id,
+                    severity=MODERATE if unsettled else self.severity,
+                    confidence=NEEDS_BROWSER if unsettled else EXACT,
+                    selector=selector,
                     line=line, snippet=snippet_of(tag), source=context.source,
                     # The raw value as well as the tokens. An author who wrote
                     # `aria-labelledby="dialog_Privacy policy"` meant one name
@@ -1138,6 +1194,10 @@ class ImageModernFormat(AccessibilityRule):
         "/_next/image", "i0.wp.com", "i1.wp.com", "i2.wp.com",
         "~mv2", "/v1/fill/", "/auto/", "cdn.shopify.com/s/files",
         "images.ctfassets.net", "cdn.sanity.io", "ucarecdn.com",
+        # Cloudinary's own transformation grammar, which runs on custom
+        # domains too: `assets.vercel.com/image/upload/f_auto,c_fill/...`
+        # says "pick the format" in the URL itself.
+        "/image/upload/", "f_auto",
     )
 
     def check(self, document, context) -> list:

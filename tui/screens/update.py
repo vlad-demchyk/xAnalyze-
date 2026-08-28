@@ -29,7 +29,8 @@ class UpdateScreen(XScreen):
         with Vertical(id="update-view"):
             yield Label(self.tr("tui_update_title"), classes="menu-title")
             yield Static("")
-            yield Label(f"Current version: {config.APP_VERSION}")
+            yield Label(self.tr("tui_update_current_version",
+                                version=config.APP_VERSION))
             yield Static("")
             with Horizontal():
                 yield Button(self.tr("tui_update_check"), id="check", variant="primary")

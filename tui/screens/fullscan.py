@@ -54,7 +54,7 @@ class FullscanScreen(RunScreen):
                 yield Select(
                     [
                         ("1", "1"),
-                        ("0 — this page only", "0"),
+                        (self.tr("setup_depth_zero"), "0"),
                         ("2", "2"),
                         ("3", "3"),
                     ],
@@ -141,12 +141,12 @@ class FullscanScreen(RunScreen):
             json=True,
         )
 
-        title = f"Full scan of {target}"
+        title = self.tr("tui_fullscan_of", target=target)
         if args.devserver:
             stack = self._devserver_stack_needing_confirm(target)
             if stack is not None:
-                question = (f"{stack.name}: dependencies are missing for "
-                           f"{target}. Install them and start the dev server?")
+                question = self.tr("devserver_confirm",
+                                   stack=stack.name, repo=target)
                 self.app.push_screen(
                     ConfirmModal(question),
                     lambda confirmed: self._on_devserver_confirmed(confirmed, args, title))

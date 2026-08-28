@@ -126,6 +126,7 @@ class SettingsScreen(XScreen):
     def action_save(self) -> None:
         changed = []
         was_language = self.settings.ui_language
+        was_theme = self.settings.theme
         for attribute, label, _options in CHOICES:
             value = self.query_one(f"#set-{attribute}", Select).value
             if attribute in _INTEGERS:
@@ -140,11 +141,13 @@ class SettingsScreen(XScreen):
                 changed.append(self.tr(label))
         status = self.query_one("#settings-status", Label)
         if not changed:
+            status.set_class(False, "ok")
             status.update(self.tr("tui_settings_nothing"))
             return
         try:
             self.settings.save()
         except OSError as exc:
+            status.set_class(False, "ok")
             status.update(self.tr("tui_settings_save_failed", error=exc))
             return
         status.update(self.tr("tui_settings_saved", what=", ".join(changed)))
@@ -156,6 +159,8 @@ class SettingsScreen(XScreen):
         # here, and this screen comes back saying so.
         if self.settings.ui_language != was_language:
             self.app.set_language(self.settings.ui_language)
+        elif self.settings.theme != was_theme:
+            self.app.set_theme(self.settings.theme)
 
     def action_reload(self) -> None:
         self.settings = config.Settings.load()

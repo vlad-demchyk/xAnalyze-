@@ -85,6 +85,14 @@ class SynchronousThirdPartyScripts(PerformanceRule):
         for tag in document.find_all("script", src=True):
             if tag.has_attr("async") or tag.has_attr("defer"):
                 continue
+            # `nomodule` is the browser's own opt-out: a browser that
+            # understands modules ignores the tag entirely and never fetches
+            # it. Every one of these on `wix.com` was a core-js or
+            # focus-within polyfill that no current browser downloads, and
+            # calling them render-blocking is describing a browser nobody
+            # has used for years.
+            if tag.has_attr("nomodule"):
+                continue
             src = tag.get("src") or ""
             host = _host_of(src)
             if not host or (page_host and host == page_host):
@@ -140,7 +148,18 @@ class ImagesWithoutLazyLoading(PerformanceRule):
             return []
         issues = []
         for tag in images[self.ABOVE_THE_FOLD:]:
-            if (tag.get("loading") or "").lower() == "lazy":
+            loading = (tag.get("loading") or "").lower()
+            if loading == "lazy":
+                continue
+            # `eager` written out is a decision, not an omission. The default
+            # is eager, so an author who typed it meant it - the same reason
+            # `fetchpriority="high"` is left alone below.
+            if loading == "eager":
+                continue
+            # An `<img>` with no address loads nothing, so there is nothing
+            # to defer. A template's placeholder, or a `src` a framework
+            # fills in later.
+            if not (tag.get("src") or tag.get("data-src") or tag.get("srcset")):
                 continue
             # `fetchpriority="high"` is the author saying this image is the
             # one the page is judged on. Telling them to defer it is telling

@@ -1631,6 +1631,11 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Già aggiornato ({version}).",
         "en": "Already up to date ({version}).",
     },
+    "tui_update_current_version": {
+        "uk": "Поточна версія: {version}",
+        "it": "Versione attuale: {version}",
+        "en": "Current version: {version}",
+    },
     "tui_update_confirm": {
         "uk": "Натисніть «Встановити» ще раз для підтвердження.",
         "it": "Premi «Installa» di nuovo per confermare.",

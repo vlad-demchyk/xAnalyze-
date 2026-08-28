@@ -53,6 +53,22 @@ class MixedContent(BestPracticeRule):
         return issues
 
 
+def _same_site(host: str, page_host: str) -> bool:
+    """The page's own domain, subdomains included.
+
+    `forum.squarespace.com` opened from `www.squarespace.com` is the same
+    organisation opening its own forum, and tabnabbing needs somebody else.
+    Exact host equality made every such link a finding - the same mistake
+    `sec-script-integrity` had, and fixed the same way: a suffix match
+    against the page's domain with `www.` removed, never a
+    registrable-domain guess.
+    """
+    if not host or not page_host:
+        return False
+    root = page_host[4:] if page_host.startswith("www.") else page_host
+    return host == page_host or host == root or host.endswith("." + root)
+
+
 class TargetBlankWithoutNoopener(BestPracticeRule):
     """A new tab handed to somebody else's page, with a way back.
 
@@ -84,7 +100,7 @@ class TargetBlankWithoutNoopener(BestPracticeRule):
                 continue
             href = (tag.get("href") or "").strip()
             target_host = urlparse(href).netloc.lower()
-            if not target_host or (page_host and target_host == page_host):
+            if not target_host or (page_host and _same_site(target_host, page_host)):
                 # The page's own host, or a relative link. Nothing to hand
                 # away. A repo-mode fragment has no host to compare against,
                 # so an absolute link there is still reported.
@@ -166,6 +182,14 @@ class InlineEventHandlers(BestPracticeRule):
                 # CSP nothing. Judging it as inline made React source read as
                 # thousands of security findings.
                 if is_binding(tag.get(handler)):
+                    continue
+                # `onload` on a `<link>` or a `<script>` is a loading
+                # callback, not a user interaction - and on a `<link>` it is
+                # the documented way to load CSS without blocking the render
+                # (`media="print" onload="this.media='all'"`). Reporting the
+                # recommended technique as a defect is how a rule teaches
+                # people to skip the category.
+                if tag.name in ("link", "script") and handler in ("onload", "onerror"):
                     continue
                 # Inline handlers are what force a Content-Security-Policy to
                 # allow 'unsafe-inline', which is the single change that turns
