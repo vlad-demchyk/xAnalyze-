@@ -61,6 +61,18 @@ _EM_DASH_RE = re.compile(r"[—–]")
 # wrote it. `efficienza` is what an Italian article about productivity is
 # made of. A candidate phrase belongs here only after it has been counted on
 # both sides.
+#
+# **Audited again 2026-08-31 against `corpus/promotional.jsonl`** - 466 human
+# travel-guide paragraphs from dated Wikivoyage revisions, which is the first
+# time this project had human writing in the register a scan is pointed at.
+# The encyclopedic yardstick could not see these: four paragraphs crossed the
+# line, three of them on one word each - `un vero e proprio` (it),
+# `exceptional`, `innovative` (en) - and the fourth on the Italian structural
+# pattern below. Counted on both sides first: `un vero e proprio` and
+# `exceptional` caught **no** corpus positive at all, and `innovative` caught
+# two that still cross without it. All three removed; held-out recall
+# unchanged at en 11/20, it 4/11, uk 10/14, and false alarms on that register
+# went **4 to 0**.
 CLICHE_PHRASES: dict[str, list[str]] = {
     "en": [
         # padding / hedging openers
@@ -142,8 +154,8 @@ CLICHE_PHRASES: dict[str, list[str]] = {
         # single overused words
         "delve", "underscore", "pivotal", "realm", "harness", "illuminate",
         "facilitate", "refine", "bolster", "differentiate", "streamline",
-        "revolutionize", "innovative", "transformative", "seamless",
-        "comprehensive", "robust", "stellar", "exceptional",
+        "revolutionize", "transformative", "seamless",
+        "comprehensive", "robust", "stellar",
         "unparalleled", "intricate", "nuanced",
         "paramount", "formidable", "nimble", "supercharge", "turbocharge",
         "amplify", "embark", "uncover", "unveil", "tailor", "hone",
@@ -228,7 +240,7 @@ CLICHE_PHRASES: dict[str, list[str]] = {
         # frasi cliché
         "nel mondo di oggi", "non fa eccezione", "è importante sottolineare",
         "vale la pena notare", "in conclusione", "riassumendo", "inoltre,",
-        "per di più,", "senza dubbio", "un vero e proprio",
+        "per di più,", "senza dubbio",
         "soluzione ideale", "ampia gamma", "esperienza senza precedenti",
         "all'avanguardia", "immergiamoci",
         "che si tratti di", "in un mondo sempre più",
@@ -323,7 +335,13 @@ STRUCTURAL_PATTERNS: dict[str, list[re.Pattern]] = {
                    re.IGNORECASE),
     ],
     "it": [
-        re.compile(r"\bnon solo\b.{0,40}\bma anche\b", re.IGNORECASE),
+        # `non solo X ma anche Y` was here as the Italian twin of "not just X
+        # but Y", and it is not one. The English construction is a rhetorical
+        # tic; the Italian is a correlative conjunction - ordinary grammar,
+        # taught as such. Counted 2026-08-31: **0** model entries in the whole
+        # corpus, against two human paragraphs (one travel guide, one
+        # encyclopedic). A pattern that only ever fires on people is not a
+        # detector, so it was removed rather than weighted down.
         re.compile(r"\bnon si tratta di\b.{0,40}\bsi tratta di\b", re.IGNORECASE),
         re.compile(r"\bche tu sia\b.{0,30}\bo\b", re.IGNORECASE),
         re.compile(r"\bniente\s+\w+\.\s*niente\s+\w+\.\s*solo\b", re.IGNORECASE),

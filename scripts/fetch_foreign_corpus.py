@@ -50,11 +50,20 @@ MIN_WORDS = 12
 MAX_PARAGRAPHS = 12
 
 
-def fetch(lang: str, title: str) -> tuple[int, str, str]:
-    url = ("https://%s.wikipedia.org/w/api.php?action=query&prop=revisions"
+def fetch(lang: str, title: str, site: str = "wikipedia",
+          before: str = BEFORE) -> tuple[int, str, str]:
+    """The last revision of one article before a date, with its id.
+
+    `site` and `before` are parameters rather than constants because the same
+    provenance argument holds on any MediaWiki: `fetch_promotional_corpus`
+    reads Wikivoyage, where the prose is written to make somebody want to go
+    somewhere - which is the register a cliché list is most likely to collide
+    with, and the one this corpus had none of.
+    """
+    url = ("https://%s.%s.org/w/api.php?action=query&prop=revisions"
            "&titles=%s&rvlimit=1&rvstart=%s&rvdir=older"
            "&rvprop=ids|timestamp|content&rvslots=main&format=json"
-           % (lang, urllib.parse.quote(title), BEFORE))
+           % (lang, site, urllib.parse.quote(title), before))
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(request, timeout=30) as response:
         data = json.load(response)

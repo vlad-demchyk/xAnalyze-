@@ -39,19 +39,42 @@ this, and it is dated" is checkable rather than asserted. This text is CC BY-SA;
 it is quoted here with attribution, and it is measurement material, not product
 content.
 
+`promotional` — `promotional.jsonl`, 466 paragraphs from dated Wikivoyage
+revisions (2020-2021) in the three languages. A travel guide is marketing
+writing by function: the prose exists to make a place sound worth the trip,
+which is the register a cliché list is likeliest to collide with and the one
+register this corpus had none of. Same MediaWiki provenance as the
+encyclopedic half — article, revision id, revision date — and the same CC
+BY-SA terms.
+
+It paid for itself the day it existed. Four human paragraphs were being
+reported: `un vero e proprio` (it), `exceptional` and `innovative` (en), and
+the Italian structural pattern `non solo X ma anche Y`, which had been added
+as the twin of the English "not just X but Y" and is in fact a correlative
+conjunction — ordinary grammar, 0 model entries in the whole corpus against 2
+human ones. All four removed after counting both sides; held-out recall
+unchanged (en 11/20, it 4/11, uk 10/14), false alarms on that register 4 → 0.
+
 ## What is missing, and why it is not filled in
 
-**Negatives that argue rather than describe.** At 25+ words the human half now
-holds 40 English, 31 Italian and 45 Ukrainian entries, but the prose among them
-is encyclopedic: it explains a subject. Marketing copy written by a person
-persuades, which is the register the model half imitates, and the corpus has
-almost none of it with certain provenance. A false alarm is likelier there than
-anywhere else in this file, and it is the one place still unmeasured.
+**Negatives that argue rather than describe — measured 2026-08-31.**
+`promotional.jsonl` fills this: 466 paragraphs of human travel writing, the
+register that persuades rather than explains. It is a yardstick and not part
+of `labelled.jsonl`, for the reason the section below gives.
 
 **Positives that were not written for this file.** Every `model` entry was
 generated while building this corpus. The label is true by construction, but so
 is the distribution: it is how a model writes when asked to write for a corpus,
 not how generated copy looks in a shipped product.
+
+This is the half that stays open, and it is worth being exact about what it
+blocks. A phrase's **cost** is now measurable in every register a scan meets;
+its **benefit** is not, for phrases that only occur in the wild. Measured
+2026-08-31: the five phrases a model judge named on a live Italian hotel page
+— `atmosfera senza tempo`, `ogni angolo racconta`, `nel cuore di`, `le tre
+anime` — occur **zero** times among the corpus positives, so nothing here can
+say what adding them would catch. Closing that needs generated marketing copy
+whose author confirms it, which is a person's answer and not a fetch.
 
 **The unlabelled pool.** `unlabelled.jsonl` holds real strings whose author is
 not known to whoever assembled this file. Guessing would put a guess into the
