@@ -305,6 +305,8 @@ How many rules each category actually has, which is a claim the suite checks:
 
 Static analysis reads source files. Browser analysis can inspect rendered DOM, client-side content, responsive states, and response headers. Use `--repo` when a rendered URL also has a local checkout and findings should point to source files.
 
+**The state pass** runs in the browser and checks the page in the state a person puts it in: the focus indicator, keyboard traps, focus order, hover-only content, an open modal that lets focus stay behind it, and the form journey - a field with no accessible name after scripts have run, a field named only by its placeholder, a value the browser itself rejects with nothing announcing it, and error text on screen that no field refers to. It reads and never acts: nothing is typed, clicked or submitted, because on a real site each of those fires the page's own handlers. Filling a field to see what the form does with a wrong value is therefore out of scope, and so is INP, which needs real input to measure.
+
 ### Certainty and filters
 
 Findings are labelled `exact`, `needs-browser` or `advisory`. `exact` means the markup settles the question, `needs-browser` means running one will settle it, and `advisory` means nothing will: it is an editorial call, which is what the GEO signals are. Use `--confidence exact` when only facts settled by markup should remain. `--category`, `--scope`, `--breakpoints`, and `--no-typography` are views over the same scan, not changes to the underlying evidence.
@@ -360,7 +362,11 @@ Subsequent runs of the same target are compared using `changes.md`. A lower find
 
 The desktop application provides setup controls for target, analysis type, detector, scope, crawl depth, breakpoints, language, and account. Results show the finding list, source or rendered preview, details, fixes, replacement review, and report export.
 
-Five run parameters are CLI-only and have no window control: `--category` (including the `geo` category), `--confidence`, `--scope`, `--site-controls`, and `--no-typography`. A scan started from the window runs at their defaults, which is not the same thing for each: GEO findings and every breakpoint including `reflow` **do** appear in the window, because the window runs all rules and all widths; `--site-controls` is opt-in and so never runs there, and the robots/sitemap findings are reachable only from `xanalyze`.
+The setup screen's fifth card, **What to show**, carries the run parameters that used to be CLI-only: the six audit categories (including `geo`), the certainty floor (`--confidence`), and `--site-controls`. The scope selector sits with the repository controls, and typography is a character category in Settings.
+
+Category and certainty are a **view over one finished pass**, exactly as `--category` and `--confidence` are: the rules are cheap and share one parse, so narrowing repaints the list and the summary without re-auditing anything, and widening brings every finding straight back. The exported report is written through the same view, so what is on screen and what is in the file cannot disagree. When a filter hides everything, the empty screen says so and gives the unfiltered count rather than reporting the page as clean. `--site-controls` is different in kind - it fetches robots.txt and the sitemaps declared in it - so it is a run choice, off by default and shown only for a site.
+
+The TUI's Audit screen carries the same three, plus every breakpoint the audit knows on both the Audit and Full Scan screens.
 
 Mechanical corrections are selected by default. Model drafts require review. Decisions such as photographic alternative text are never presented as automatic fixes.
 

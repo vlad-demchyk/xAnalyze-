@@ -151,7 +151,11 @@ xanalyze audit https://example.com --json --report briefing.md
 
 Opzioni: `--depth`, `--max-pages`, `--max-files`, `--render`, `--exclude`, `--category`, `--language`, `--no-ignore`, `--json`, `--check`, `--ai`, `--provider`, `--fix`, `--report`, `--browser`, `--breakpoints`, `--site-controls`, `--styled-report`. `--site-controls` recupera separatamente robots.txt e le sitemap dello stesso dominio dichiarate al suo interno.
 
-Cinque parametri di esecuzione esistono solo nella CLI e non hanno un controllo nella finestra: `--category` (compresa la categoria `geo`), `--confidence`, `--scope`, `--site-controls` e `--no-typography`. Una scansione avviata dalla finestra usa i valori predefiniti, e per ciascuno significa qualcosa di diverso: i risultati GEO e tutte le larghezze, `reflow` compresa, nella finestra **compaiono**, perché esegue tutte le regole e tutte le larghezze; `--site-controls` è opt-in e quindi non viene eseguito, così i risultati robots/sitemap sono raggiungibili solo da `xanalyze`.
+La quinta scheda della schermata di configurazione, **Cosa mostrare**, porta i parametri che prima esistevano solo nella CLI: le sei categorie dell'audit (`geo` compresa), la soglia di certezza (`--confidence`) e `--site-controls`. L'ambito (`--scope`) sta con i controlli del repository e la tipografia è una categoria di caratteri nelle Impostazioni.
+
+Categoria e certezza sono una **vista su un'unica scansione già fatta**, esattamente come `--category` e `--confidence`: le regole costano poco e condividono un solo parsing, quindi restringere ridisegna l'elenco e il riepilogo senza rifare l'audit, e allargare riporta indietro tutti i rilievi. Il report esportato passa per la stessa vista, così schermo e file non possono dire cose diverse. Quando un filtro nasconde tutto, la schermata vuota lo dice e mostra il conteggio senza filtro invece di dichiarare pulita la pagina. `--site-controls` è di natura diversa - recupera robots.txt e le sitemap che vi sono dichiarate - quindi è una scelta di esecuzione, spenta di default e visibile solo per un sito.
+
+La schermata Audit della TUI ha gli stessi tre parametri, e gli elenchi di larghezze in Audit e Scansione completa contengono tutte le larghezze che l'audit conosce.
 
 ### `fix`, `undo`, `runs`, `resume`, `cache`, `compare`
 
@@ -233,6 +237,8 @@ potrebbe essere lì per un altro motivo va corroborato.
 Il detector offline combina segnali statistici, struttura, cliché e regole linguistiche. I detector embedding e basati su modello aggiungono un giudizio indipendente. Ogni risultato contiene posizione, punteggio, spiegazione e certezza.
 
 L'audit copre `accessibility` (29), `best-practices` (8), `geo` (2), `performance` (8), `security` (10), `seo` (8) - numeri che la suite verifica contro il registro delle regole. GEO offre solo segnali consultivi su tipo di articolo, autore e data, non una previsione di posizione nelle risposte AI. La modalità statica legge i file; quella browser vede DOM renderizzato, contenuto client-side, stati responsive e header della risposta. `--repo` collega un audit URL al file sorgente.
+
+**Il passaggio sugli stati** gira nel browser e controlla la pagina nello stato in cui la mette una persona: l'indicatore di focus, le trappole per la tastiera, l'ordine di tabulazione, il contenuto solo al passaggio del mouse, una finestra modale aperta che lascia il focus dietro di sé - e il percorso nel modulo: un campo senza nome accessibile dopo l'esecuzione degli script, un campo chiamato solo dal suo placeholder, un valore che il browser stesso rifiuta senza che nulla lo annunci, e un testo di errore a schermo a cui nessun campo rimanda. Legge e non agisce: non scrive, non clicca e non invia nulla, perché su un sito vero ognuna di queste azioni attiva i gestori della pagina. Riempire un campo per vedere come reagisce il modulo resta quindi fuori portata, come l'INP, che senza input reale non si misura.
 
 I risultati hanno livello `exact`, `needs-browser` o `advisory`. `exact` significa che il markup risolve la domanda, `needs-browser` che la risolve l'esecuzione di un browser, `advisory` che nulla la risolve: è una scelta redazionale, ed è ciò che sono i segnali GEO. `--confidence exact` conserva solo i fatti stabiliti dal markup.
 
