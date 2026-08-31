@@ -24,6 +24,11 @@ _PLAIN_HUMAN = (
 )
 
 
+#: Below the measured 88.9%, so ordinary corpus growth does not fail the suite
+#: while a threshold moved without measuring it does.
+MIN_HELD_OUT_RECALL = 0.75
+
+
 def _make_block(text: str, lang: str = "en") -> TextBlock:
     return TextBlock(block_id="test", page_url="test", dom_path="test",
                      text=text, language_hint=lang)
@@ -121,6 +126,37 @@ class TheReferenceIsHalfTheCorpus(unittest.TestCase):
         # 88.9%, 0/187 false alarms). A default that drifts away from the
         # constant is a detector nobody measured.
         self.assertEqual(EmbeddingDetector().threshold, THRESHOLD)
+
+    def test_the_threshold_still_measures_what_it_claims(self):
+        """The number, not just the wiring.
+
+        Asserting that the default equals the constant catches a drifting
+        default and nothing else: set the constant to 0.60 and every other test
+        here still passes. This is the one that fails, because it scores the
+        held-out half - text the reference does not contain - and reads the two
+        numbers the threshold was chosen for.
+
+        The floors are below the measurement (100% precision, 88.9% recall) on
+        purpose: this guards the claim, and `scripts/calibrate.py --detector
+        embedding --holdout --sweep` reports the current figure.
+        """
+        detector = EmbeddingDetector(threshold=0.0)
+        rows = [json.loads(line) for line in
+                CORPUS.read_text(encoding="utf-8").splitlines() if line.strip()]
+        _tune, held_out = split(rows)
+        scored = []
+        for index, row in enumerate(held_out):
+            spans = detector.analyze_block(_make_block(
+                row["text"], row.get("language") or "en"))
+            scored.append((row["label"], max((s.score for s in spans), default=0.0)))
+
+        crossed = [score for label, score in scored
+                   if label == "human" and score >= THRESHOLD]
+        self.assertEqual(crossed, [], "a human entry crossed the shipped line")
+
+        models = [score for label, score in scored if label == "model"]
+        found = [score for score in models if score >= THRESHOLD]
+        self.assertGreaterEqual(len(found) / len(models), MIN_HELD_OUT_RECALL)
 
 
 if __name__ == "__main__":
