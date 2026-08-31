@@ -451,7 +451,10 @@ def _scan_local_target(target, args, lang, agent_mode):
         categories=None,
         json=False,
         check=False,
-        incremental=False,
+        # The file-level cache the pre-commit case uses, keyed on
+        # modification time and size. Off unless asked for, exactly as in
+        # `scan`: a cached answer must be something the reader chose.
+        incremental=bool(getattr(args, "incremental", False)),
         styled_report=None,
         language=lang,
     )
@@ -475,7 +478,25 @@ def _scan_local_target(target, args, lang, agent_mode):
             "candidates_count": len(agent_candidates),
         }
     else:
-        scan_findings, _ = _analyze(files, scan_args)
+        # The same file-level cache `scan --incremental` uses, and for the
+        # same case: a repository of four thousand files where two changed.
+        # Off unless asked for - a cached answer has to be something the
+        # reader chose - and the number reused is printed, not assumed.
+        cached_findings: list = []
+        to_read = files
+        if getattr(scan_args, "incremental", False):
+            from cli_impl.scanning import _split_unchanged, _store_unchanged
+
+            to_read, cached_findings, reused = _split_unchanged(files, scan_args)
+            print(f"# [scan] incremental: {reused} file(s) unchanged since the "
+                  f"last scan, {len(to_read)} re-read",
+                  file=sys.stderr, flush=True)
+        scan_findings, _ = _analyze(to_read, scan_args)
+        if getattr(scan_args, "incremental", False):
+            from cli_impl.scanning import _store_unchanged
+
+            _store_unchanged(to_read, scan_findings, scan_args)
+            scan_findings = scan_findings + cached_findings
         clean_findings = [_public(f) for f in scan_findings]
         scan_result = {
             "findings": clean_findings,
@@ -603,8 +624,9 @@ def _detect_report_language(lang, pages) -> str:
     return Counter(hints).most_common(1)[0][0] if hints else "en"
 
 
-def _issues_at_floor(audit_result, floor: str | None) -> list:
-    """Apply the certainty floor, then flatten - in that order.
+def _issues_at_floor(audit_result, floor: str | None,
+                     unsettled: bool = False) -> list:
+    """Apply the view, then flatten - in that order.
 
     `audit` filters in `cli.py`; `fullscan` builds its own result, so the
     same view has to be taken here or the flag would mean two things.
@@ -618,11 +640,20 @@ def _issues_at_floor(audit_result, floor: str | None) -> list:
     """
     if audit_result is None or not audit_result:
         return []
-    if floor:
-        from audit.base import issues_in_view
+    from audit.base import issues_in_view, unsettled_count
 
-        for document in audit_result.documents:
-            document.issues = issues_in_view(document.issues, (), floor)
+    # `fullscan` loads the page in a real browser, which is what settles
+    # these; what the browser still could not decide is not a finding. Said
+    # out loud rather than dropped in silence.
+    hidden = 0 if unsettled else sum(unsettled_count(d.issues)
+                                     for d in audit_result.documents)
+    for document in audit_result.documents:
+        document.issues = issues_in_view(document.issues, (), floor or "",
+                                         unsettled=unsettled)
+    if hidden:
+        print(f"# [audit] {hidden} check(s) could not be decided and are not "
+              f"listed; add --unsettled to see them",
+              file=sys.stderr, flush=True)
     return [issue for document in audit_result.documents
             for issue in document.issues]
 
@@ -1330,7 +1361,8 @@ def _run_phases_body(args, state, folder, timings, target, lang, is_url, is_page
         elif state is not None:
             state.skip("browser", "no browser pass for this target")
     audit_issues.extend(
-        _issues_at_floor(audit_result, getattr(args, "confidence", None)))
+        _issues_at_floor(audit_result, getattr(args, "confidence", None),
+                         unsettled=bool(getattr(args, "unsettled", False))))
     timings.finish()
 
     lang = _detect_report_language(lang, pages)

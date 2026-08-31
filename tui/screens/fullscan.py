@@ -98,6 +98,7 @@ class FullscanScreen(RunScreen):
                 )
 
             yield Static("")
+            yield Checkbox(self.tr("tui_unsettled"), id="unsettled")
             yield Checkbox(self.tr("tui_site_controls"), id="site-controls")
             yield Checkbox(self.tr("tui_agent_mode"), id="agent")
             yield Checkbox(self.tr("tui_no_browser"), id="no-browser")
@@ -150,6 +151,7 @@ class FullscanScreen(RunScreen):
             scope="both",
             no_typography=False,
             confidence=self.query_one("#confidence", Select).value or None,
+            unsettled=self.query_one("#unsettled", Checkbox).value,
             site_controls=self.query_one("#site-controls", Checkbox).value,
             styled_report=None,
             report=None,

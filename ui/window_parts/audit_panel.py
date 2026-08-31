@@ -103,7 +103,8 @@ class AuditPanelMixin:
             return []
         return issues_in_view(self.audit_result.issues(),
                               self.app_state.categories,
-                              self.app_state.confidence_floor)
+                              self.app_state.confidence_floor,
+                              unsettled=self.app_state.unsettled)
 
     def _view_is_narrowed(self) -> bool:
         """Is anything being hidden right now? The empty state has to know.
@@ -113,7 +114,8 @@ class AuditPanelMixin:
         screen states a fact about the page that is actually a fact about
         the controls.
         """
-        return bool(self.app_state.categories or self.app_state.confidence_floor)
+        return bool(self.app_state.categories or self.app_state.confidence_floor
+                    or not self.app_state.unsettled)
 
     def _add_audit_rows(self) -> int:
         """Append the audit findings to the list and say how many there were.
@@ -160,6 +162,14 @@ class AuditPanelMixin:
                 distinguishing = self._what_tells_it_apart(issue)
                 if distinguishing:
                     label += "   ·   " + distinguishing
+            # How many engines said it, on the row rather than only inside
+            # the opened card. This is the number a reader triages on: two
+            # independent engines agreeing is the strongest evidence a pass
+            # can produce, and it was reachable only by clicking each row.
+            agreement = int((issue.details or {}).get("agreement", 0) or 0)
+            if agreement > 1:
+                label += "   ·   " + t("audit_agreement", self.lang,
+                                       n=agreement)
             if len(places) > 1:
                 label += "   ·   " + t("finding_copies", self.lang,
                                        n=len(places) - 1)

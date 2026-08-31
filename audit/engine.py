@@ -64,6 +64,11 @@ class AccessibilityResult:
     #: ask what platform served it. The documents keep addresses, not bodies,
     #: so without this the answer would have to be fetched a second time.
     markup_sample: str = ""
+    #: What was served, per document, kept only so the browser pass can ask
+    #: whether it has already seen exactly this page. A URL is not an answer
+    #: - a page changes - so the cache is keyed on the bytes rather than on
+    #: the address. Dropped from every report and never serialised.
+    markup_by_source: dict = field(default_factory=dict)
 
     def issues(self) -> list:
         out = []
@@ -93,7 +98,8 @@ class AccessibilityResult:
     def documents_with_issues(self) -> list:
         return [d for d in self.documents if d.issues]
 
-    def narrowed(self, categories=(), confidence: str = "") -> "AccessibilityResult":
+    def narrowed(self, categories=(), confidence: str = "",
+                 unsettled: bool = False) -> "AccessibilityResult":
         """The same run, read through a category and certainty filter.
 
         A copy rather than an edit in place: the run happened once, and a
@@ -105,11 +111,10 @@ class AccessibilityResult:
         """
         from .base import issues_in_view
 
-        if not categories and not confidence:
-            return self
         return replace(self, documents=[
             replace(document,
-                    issues=issues_in_view(document.issues, categories, confidence))
+                    issues=issues_in_view(document.issues, categories,
+                                          confidence, unsettled=unsettled))
             for document in self.documents
         ])
 
@@ -377,6 +382,7 @@ def analyze_pages(pages, root: str, rules=None, ai_review=None,
             # on every page it renders. Bounded, because this is kept for a
             # regex and not for reading.
             result.markup_sample = page.raw_html[:_MARKUP_SAMPLE]
+        result.markup_by_source[page.url] = page.raw_html
         result.documents.append(
             analyze_document(page.raw_html, page.url, rules, ai_review=ai_review))
     # What the response said. Free: these bytes arrived with the page, and
@@ -472,6 +478,7 @@ def analyze_page_file(path: str, rules=None, ai_review=None) -> AccessibilityRes
     except OSError as exc:
         result.documents.append(DocumentReport(source=path, error=str(exc)))
         return result
+    result.markup_by_source[path] = markup
     # Line numbers on: the user has the file open, so "line 42" is directly
     # actionable in a way a CSS selector into a one-file build is not.
     result.documents.append(

@@ -114,7 +114,8 @@ def meets_confidence(issue, floor: str) -> bool:
     return CONFIDENCE_ORDER.index(level) >= wanted
 
 
-def issues_in_view(issues, categories=(), confidence: str = "") -> list:
+def issues_in_view(issues, categories=(), confidence: str = "",
+                   unsettled: bool = False) -> list:
     """The findings a reader asked to see, out of the ones the pass produced.
 
     Both narrowings are a *view* over one pass, never a different run: the
@@ -128,14 +129,44 @@ def issues_in_view(issues, categories=(), confidence: str = "") -> list:
     called it an audit. `categories` empty means every category, which is
     what "no choice made" has to mean here - an empty list is not an
     instruction to report nothing.
+
+    **What is not shown at all: the undecided.** `needs-browser` is an engine
+    saying it could not tell - "this element is on a background image",
+    "absolutely positioned, the background colour cannot be determined". On
+    one page of `python.org` that was **312 of 348** contrast findings, and a
+    report two thirds made of "we do not know" is not a list anybody can work
+    through. `fullscan` loads the page in a real browser precisely so these
+    get settled; what is still undecided after that is not a finding, and
+    where no browser ran it is not one either.
+
+    Nothing is silently lost: `unsettled_count` gives the number a caller
+    prints, and `unsettled=True` brings the list back.
+
+    `advisory` stays. It is not the same thing: the fact is settled (a byline
+    is absent) and only its weight is a person's call, which is exactly what
+    the label says.
     """
     wanted = set(categories or ()) & set(CATEGORIES)
     kept = list(issues)
     if wanted and wanted != set(CATEGORIES):
         kept = [issue for issue in kept if issue.category in wanted]
+    if not unsettled:
+        kept = [issue for issue in kept
+                if getattr(issue, "confidence", EXACT) != NEEDS_BROWSER]
     if confidence:
         kept = [issue for issue in kept if meets_confidence(issue, confidence)]
     return kept
+
+
+def unsettled_count(issues) -> int:
+    """How many findings were left out for being undecided.
+
+    Printed rather than silently dropped: hiding a number is how a report
+    starts to lie by omission, and the reader has to be able to ask for the
+    list back.
+    """
+    return sum(1 for issue in issues
+               if getattr(issue, "confidence", EXACT) == NEEDS_BROWSER)
 
 
 @dataclass

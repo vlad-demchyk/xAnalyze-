@@ -605,7 +605,8 @@ class MainViewModel(QObject):
         # two disagree about one run, and the reader has no way to tell which
         # of them is the audit.
         audited = (self.audit_result.narrowed(self.state.categories,
-                                              self.state.confidence_floor)
+                                              self.state.confidence_floor,
+                                              unsettled=self.state.unsettled)
                    if has_audit else None)
         model = from_accessibility(audited, lang=lang) if has_audit else None
         if has_text:

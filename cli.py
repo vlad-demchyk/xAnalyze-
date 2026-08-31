@@ -30,7 +30,9 @@ import suppression
 import unicode_rules
 import config
 from config import APP_VERSION
-from audit.base import CATEGORIES, CONFIDENCE_ORDER, issues_in_view
+from audit.base import (
+    CATEGORIES, CONFIDENCE_ORDER, issues_in_view, unsettled_count,
+)
 from detectors.factory import DetectorFactory
 from file_writer import ReplacementPlan, apply_replacements
 from lang_detect import guess_language
@@ -400,8 +402,17 @@ def cmd_audit(args) -> int:
     # disagreeing about the same page.
     wanted = set(getattr(args, "category", None) or CATEGORIES)
     floor = getattr(args, "confidence", None) or ""
+    unsettled = bool(getattr(args, "unsettled", False))
+    # Counted before the view narrows, and said out loud below: a number
+    # dropped in silence is a report lying by omission.
+    hidden = 0 if unsettled else sum(unsettled_count(d.issues)
+                                     for d in result.documents)
     for document in result.documents:
-        document.issues = issues_in_view(document.issues, wanted, floor)
+        document.issues = issues_in_view(document.issues, wanted, floor,
+                                         unsettled=unsettled)
+    if hidden:
+        print(f"# {hidden} check(s) could not be decided and are not listed; "
+              f"add --unsettled to see them", file=sys.stderr)
 
     lang = args.language or "en"
 
@@ -822,9 +833,15 @@ def build_parser() -> argparse.ArgumentParser:
                          choices=list(CONFIDENCE_ORDER),
                          help="report only findings at least this certain: "
                               "'exact' keeps what the markup settles and drops "
-                              "what needed a browser or a stylesheet to decide "
-                              "(an engine's 'could not determine' is the second "
-                              "kind); default: report both, each labelled")
+                              "the editorial ones. The undecided are already "
+                              "out - see --unsettled")
+    p_audit.add_argument("--unsettled", action="store_true",
+                         help="also list what could not be decided: an "
+                              "engine's 'this element is on a background "
+                              "image, check by hand'. Out by default - on one "
+                              "page of python.org that was 312 of 348 contrast "
+                              "findings, and a report two thirds made of 'we "
+                              "do not know' is not a list anybody works through")
     p_audit.add_argument("--language", default=None, help="uk | it | en (output language)")
     p_audit.add_argument("--no-ignore", action="store_true",
                          help="report everything, including suppressed findings")
@@ -1063,6 +1080,12 @@ def build_parser() -> argparse.ArgumentParser:
                             choices=list(CONFIDENCE_ORDER),
                             help="report only findings at least this certain "
                                  "(see `audit --confidence`)")
+    p_fullscan.add_argument("--incremental", action="store_true",
+                            help="skip files unchanged since the last scan "
+                                 "(see `scan --incremental`)")
+    p_fullscan.add_argument("--unsettled", action="store_true",
+                            help="also list what could not be decided, even "
+                                 "in the browser (see `audit --unsettled`)")
     p_fullscan.add_argument("--language", default=None,
                             help="uk | it | en; language of reports (auto-detected if omitted)")
     p_fullscan.add_argument("--breakpoints", nargs="?", const="all", default="desktop",

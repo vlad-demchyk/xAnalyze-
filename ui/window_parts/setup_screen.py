@@ -454,6 +454,14 @@ class SetupScreen(QWidget):
 
         card.column.addLayout(row)
 
+        self.unsettled_box = QCheckBox(t("setup_report_unsettled", self.lang))
+        self.unsettled_box.toggled.connect(self.app_state.set_unsettled)
+        card.column.addWidget(self.unsettled_box)
+        self.unsettled_hint = QLabel(t("setup_report_unsettled_hint", self.lang))
+        self.unsettled_hint.setProperty("class", theme.CLASS_MUTED)
+        self.unsettled_hint.setWordWrap(True)
+        card.column.addWidget(self.unsettled_hint)
+
         self.site_controls_box = QCheckBox(
             t("setup_report_site_controls", self.lang))
         self.site_controls_box.toggled.connect(self.app_state.set_site_controls)
@@ -519,6 +527,8 @@ class SetupScreen(QWidget):
         self.categories_hint.setText(t("setup_report_categories_hint", lang))
         self.certainty_label.setText(t("setup_report_certainty", lang))
         self.certainty_hint.setText(t("setup_report_certainty_hint", lang))
+        self.unsettled_box.setText(t("setup_report_unsettled", lang))
+        self.unsettled_hint.setText(t("setup_report_unsettled_hint", lang))
         self.site_controls_box.setText(t("setup_report_site_controls", lang))
         self.site_controls_hint.setText(t("setup_report_site_controls_hint", lang))
         for value, box in self.category_boxes.items():
@@ -581,6 +591,9 @@ class SetupScreen(QWidget):
             self.certainty_combo.blockSignals(True)
             self.certainty_combo.setCurrentIndex(index)
             self.certainty_combo.blockSignals(False)
+        self.unsettled_box.blockSignals(True)
+        self.unsettled_box.setChecked(state.unsettled)
+        self.unsettled_box.blockSignals(False)
         # Two extra requests to a domain, so it exists only where there is a
         # domain: a folder and a single file have no robots.txt to read.
         site = state.source == SOURCE_SITE

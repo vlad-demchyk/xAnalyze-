@@ -68,11 +68,15 @@ class TheViewOverOnePass(unittest.TestCase):
         ]
 
     def test_no_choice_means_every_category(self):
-        """An empty list is "nothing was chosen", never "report nothing"."""
-        self.assertEqual(len(issues_in_view(self.issues)), 4)
+        """An empty list is "nothing was chosen", never "report nothing".
+
+        Three of the four, not four: the undecided one is out by default,
+        which is a different question and the class below covers it.
+        """
+        self.assertEqual(len(issues_in_view(self.issues)), 3)
 
     def test_every_category_chosen_is_the_same_as_none_chosen(self):
-        self.assertEqual(len(issues_in_view(self.issues, CATEGORIES)), 4)
+        self.assertEqual(len(issues_in_view(self.issues, CATEGORIES)), 3)
 
     def test_one_category_keeps_only_it(self):
         kept = issues_in_view(self.issues, (SEO,))
@@ -89,7 +93,7 @@ class TheViewOverOnePass(unittest.TestCase):
                          ["image-alt", "seo-canonical"])
 
     def test_the_floor_is_a_floor_and_not_an_equality(self):
-        kept = issues_in_view(self.issues, (), NEEDS_BROWSER)
+        kept = issues_in_view(self.issues, (), NEEDS_BROWSER, unsettled=True)
         self.assertNotIn("geo-article-provenance", [i.rule_id for i in kept])
         self.assertIn("contrast-inline", [i.rule_id for i in kept])
 
@@ -100,7 +104,47 @@ class TheViewOverOnePass(unittest.TestCase):
     def test_an_unknown_category_narrows_nothing_into_nothing(self):
         """A name the audit does not have is not a filter that hides
         everything: `CATEGORIES` is what the choice is intersected with."""
-        self.assertEqual(len(issues_in_view(self.issues, ("nonsense",))), 4)
+        self.assertEqual(len(issues_in_view(self.issues, ("nonsense",))), 3)
+
+
+class TheUndecidedAreNotFindings(unittest.TestCase):
+    """An engine's "this element is on a background image, check by hand" is
+    not a defect, and it was two thirds of the report.
+
+    Measured on one page of `python.org` with a real browser: 348 contrast
+    findings, **312** of them `needs-browser` against 36 measured failures.
+    `fullscan` loads the page in a browser precisely to settle these; what is
+    still undecided after that is not something the tool knows, and where no
+    browser ran it knows even less.
+    """
+
+    def setUp(self):
+        self.issues = [
+            issue("image-alt", ACCESSIBILITY),
+            issue("contrast-inline", ACCESSIBILITY, NEEDS_BROWSER),
+            issue("geo-article-provenance", GEO, ADVISORY),
+        ]
+
+    def test_they_are_out_of_the_default_view(self):
+        kept = issues_in_view(self.issues)
+        self.assertEqual([i.rule_id for i in kept],
+                         ["image-alt", "geo-article-provenance"])
+
+    def test_asking_brings_them_back(self):
+        self.assertEqual(len(issues_in_view(self.issues, unsettled=True)), 3)
+
+    def test_advisory_is_not_the_same_thing_and_stays(self):
+        """`advisory` is a settled fact whose weight is a person's call - a
+        byline is absent, and whether that matters is editorial. Hiding it
+        with the undecided would lose the GEO pass entirely."""
+        kept = issues_in_view(self.issues)
+        self.assertIn("geo-article-provenance", [i.rule_id for i in kept])
+
+    def test_the_number_hidden_is_available_to_be_printed(self):
+        """Dropped in silence is a report lying by omission."""
+        from audit.base import unsettled_count
+
+        self.assertEqual(unsettled_count(self.issues), 1)
 
 
 class NarrowingIsNotEditing(unittest.TestCase):
@@ -124,9 +168,15 @@ class NarrowingIsNotEditing(unittest.TestCase):
         self.assertEqual(len(narrowed.documents), 2)
         self.assertEqual(len(narrowed.issues()), 1)
 
-    def test_an_empty_view_is_the_result_itself(self):
-        result = result_of(issue("image-alt", ACCESSIBILITY))
-        self.assertIs(result.narrowed(), result)
+    def test_a_narrowing_never_edits_the_original(self):
+        """Even the default narrowing copies: it now drops the undecided, so
+        returning `self` would mean the run had lost them for good."""
+        result = result_of(issue("image-alt", ACCESSIBILITY),
+                           issue("contrast-inline", ACCESSIBILITY, NEEDS_BROWSER))
+        narrowed = result.narrowed()
+        self.assertEqual(len(narrowed.issues()), 1)
+        self.assertEqual(len(result.issues()), 2)
+        self.assertEqual(len(result.narrowed(unsettled=True).issues()), 2)
 
 
 class TheCliTakesTheSameView(unittest.TestCase):

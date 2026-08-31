@@ -108,6 +108,7 @@ class AuditScreen(RunScreen):
                 )
 
             yield Static("")
+            yield Checkbox(self.tr("tui_unsettled"), id="unsettled")
             yield Checkbox(self.tr("tui_site_controls"), id="site-controls")
             yield Checkbox(self.tr("tui_browser_pass"), id="browser")
             yield Checkbox(self.tr("tui_ai_pass"), id="ai")
@@ -155,6 +156,7 @@ class AuditScreen(RunScreen):
             category=([self.query_one("#category", Select).value]
                       if self.query_one("#category", Select).value else None),
             confidence=self.query_one("#confidence", Select).value or None,
+            unsettled=self.query_one("#unsettled", Checkbox).value,
             site_controls=self.query_one("#site-controls", Checkbox).value,
             medium=None,
             language=self.query_one("#language", Select).value,

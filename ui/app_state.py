@@ -70,6 +70,10 @@ class AppState(QObject):
         #: answer and must not be two.
         self._categories: tuple[str, ...] = ()
         self._confidence_floor: str = ""
+        #: Whether the undecided are listed. Off, like everywhere else: an
+        #: engine's "this element is on a background image, check by hand" is
+        #: not a finding, and on one page it was 312 of 348 contrast rows.
+        self._unsettled: bool = False
         #: `--site-controls`: fetch robots.txt and the sitemaps it declares.
         #: Off by default on both surfaces, because it is two extra requests
         #: to an address the user did not name.
@@ -222,6 +226,18 @@ class AppState(QObject):
         if value == self._confidence_floor:
             return
         self._confidence_floor = value or ""
+        self.view_changed.emit()
+        self.any_changed.emit()
+
+    @property
+    def unsettled(self) -> bool:
+        return self._unsettled
+
+    def set_unsettled(self, value: bool) -> None:
+        value = bool(value)
+        if value == self._unsettled:
+            return
+        self._unsettled = value
         self.view_changed.emit()
         self.any_changed.emit()
 
