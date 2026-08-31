@@ -719,8 +719,12 @@ _RULE_FAMILIES = {
     # alt text
     "image-alt": "alt", "image-alt-filename": "alt",
     "axe:image-alt": "alt", "htmlcs:1_1_1": "alt",
-    # accessible name
-    "control-name": "name",
+    # accessible name. The state pass answers this question again, after
+    # scripts have run, so the two must collapse: a field labelled by
+    # JavaScript is a static finding the browser disproves, and one the
+    # markup labelled and a script detached is the opposite - either way it
+    # is one problem with one element, not two rows.
+    "control-name": "name", "state:form-field-unnamed": "name",
     "axe:button-name": "name", "axe:link-name": "name",
     "axe:input-button-name": "name", "axe:aria-input-field-name": "name",
     "axe:label": "name", "htmlcs:4_1_2": "name",

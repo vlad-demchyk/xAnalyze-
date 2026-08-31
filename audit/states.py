@@ -35,6 +35,15 @@ STATE_RULES = {
     "no-skip-link": MODERATE,
     "focus-outside-viewport": MODERATE,
     "modal-focus-not-contained": SERIOUS,
+    # --- the form journey ---------------------------------------------------
+    # A form is the part of a page where a mistake costs the visitor the
+    # whole task, and every check here reads the state the page is *in*: the
+    # accessible name after scripts have run, the browser's own verdict on
+    # what has been typed, the error text that is on screen right now.
+    "form-field-unnamed": SERIOUS,
+    "form-placeholder-as-label": MODERATE,
+    "form-invalid-not-announced": MODERATE,
+    "form-error-not-associated": SERIOUS,
 }
 
 STATE_SCRIPT = """
@@ -214,7 +223,128 @@ STATE_SCRIPT = """
     });
   if (hoverExample) record('hover-only-content', hoverExample, {count: hoverOnly});
 
-  // --- 5. Skip link --------------------------------------------------------
+  // --- 5. The form journey -------------------------------------------------
+  // Read-only, like everything else here, and for a sharper reason: this is
+  // the one region of a page where *acting* has consequences. Typing into a
+  // field fires the page's own handlers - autosave, validation requests,
+  // analytics - and submitting is worse still, so nothing below fills,
+  // clears, clicks or submits anything. What it does instead is read the
+  // live state the browser already maintains:
+  //
+  //   * the accessible name, computed after scripts have run, which is what
+  //     makes this different from the static rule of the same shape - a
+  //     field labelled by JavaScript is labelled, and a field the markup
+  //     labelled and a script detached is not;
+  //   * `el.validity`, the browser's own verdict on what is currently in the
+  //     field. The property is read; the method of a similar name is not,
+  //     because calling it fires an `invalid` event the page can act on;
+  //   * the error text that is on screen at this moment, and whether
+  //     anything points a screen reader at it.
+  //
+  // What is deliberately not here: filling a field to see what a form does
+  // with a wrong value. That is the other half of the journey and there is
+  // no way to do it on somebody's real page without changing their page.
+  var fields = Array.prototype.slice.call(
+    document.querySelectorAll('input,select,textarea')
+  ).filter(function(el) {
+    var type = (el.getAttribute('type') || '').toLowerCase();
+    // Hidden inputs have nothing to label, and the three button types are
+    // named by their own value rather than by a label.
+    if (type === 'hidden' || type === 'submit' || type === 'button' ||
+        type === 'reset') return false;
+    if (el.disabled) return false;
+    if (el.getAttribute('aria-hidden') === 'true') return false;
+    return visible(el);
+  }).slice(0, 60);
+
+  function labelText(el) {
+    var parts = [];
+    var wrapping = el.closest ? el.closest('label') : null;
+    if (wrapping) parts.push(wrapping.textContent || '');
+    var id = el.getAttribute('id');
+    if (id) {
+      try {
+        Array.prototype.forEach.call(
+          document.querySelectorAll('label[for="' + id.replace(/"/g, '\\"') + '"]'),
+          function(label) { parts.push(label.textContent || ''); });
+      } catch (e) { /* an id no selector can express is an id with no label */ }
+    }
+    return parts.join(' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function referencedText(el, attribute) {
+    var value = el.getAttribute(attribute) || '';
+    var text = '';
+    value.split(/\s+/).forEach(function(id) {
+      if (!id) return;
+      var target = document.getElementById(id);
+      if (target) text += ' ' + (target.textContent || '');
+    });
+    return text.replace(/\s+/g, ' ').trim();
+  }
+
+  fields.forEach(function(el) {
+    var named = labelText(el) ||
+                (el.getAttribute('aria-label') || '').trim() ||
+                referencedText(el, 'aria-labelledby') ||
+                (el.getAttribute('title') || '').trim();
+    var placeholder = (el.getAttribute('placeholder') || '').trim();
+    if (!named) {
+      // A placeholder is not a label: it is gone the moment somebody types,
+      // it is not announced by every screen reader, and it fails contrast
+      // far more often than body text does. Reported apart from a field
+      // with nothing at all, because the fix is different - one needs a
+      // label written, the other needs the words it already has moved.
+      record(placeholder ? 'form-placeholder-as-label' : 'form-field-unnamed',
+             el, placeholder ? {placeholder: placeholder} : {});
+    }
+
+    // The browser's own verdict on what is in the field right now, read as a
+    // property. The method that asks the same question fires an `invalid`
+    // event on the way out, and hands the page's own code a reason to react.
+    var validity = null;
+    try { validity = el.validity; } catch (e) { validity = null; }
+    if (validity && validity.valid === false &&
+        (el.getAttribute('aria-invalid') || '').toLowerCase() !== 'true') {
+      record('form-invalid-not-announced', el,
+             {reason: validity.valueMissing ? 'value-missing'
+                      : (validity.typeMismatch ? 'type-mismatch' : 'constraint')});
+    }
+  });
+
+  // Error text that is on screen and pointed at by nothing. The static rule
+  // asks the mirror-image question - a field marked `aria-invalid` with no
+  // description - and neither finds this one: a red sentence under a field,
+  // rendered by the page's own validation, that no `aria-describedby` or
+  // `aria-errormessage` refers to. A screen reader never reaches it.
+  var describedIds = {};
+  fields.forEach(function(el) {
+    ['aria-describedby', 'aria-errormessage'].forEach(function(attribute) {
+      (el.getAttribute(attribute) || '').split(/\s+/).forEach(function(id) {
+        if (id) describedIds[id] = true;
+      });
+    });
+  });
+  var errorNodes = Array.prototype.slice.call(document.querySelectorAll(
+    '[role="alert"],[class*="error"],[class*="invalid"],[id*="error"]'
+  )).filter(function(el) {
+    if (!visible(el)) return false;
+    if (!el.closest || !el.closest('form')) return false;
+    var text = (el.textContent || '').trim();
+    // A wrapper whose class happens to contain "error" is not a message.
+    // Text, and not the whole form's worth of it.
+    if (text.length < 3 || text.length > 200) return false;
+    return el.querySelectorAll('input,select,textarea').length === 0;
+  }).slice(0, 20);
+  errorNodes.forEach(function(el) {
+    var id = el.getAttribute('id');
+    if (id && describedIds[id]) return;
+    if (el.getAttribute('role') === 'alert' && !id) return;  // announced live
+    record('form-error-not-associated', el,
+           {message: (el.textContent || '').trim().slice(0, 80)});
+  });
+
+  // --- 6. Skip link --------------------------------------------------------
   // On a page with a lot of navigation, its absence means every keyboard
   // visit starts by tabbing through the whole menu again.
   var navLinks = document.querySelectorAll('nav a, header a').length;
@@ -232,6 +362,7 @@ STATE_SCRIPT = """
 
   return JSON.stringify({findings: findings.slice(0, 200),
                          focusableChecked: candidates.length,
+                         fieldsChecked: fields.length,
                          focusMeasured: canSeeFocus});
 })()
 """

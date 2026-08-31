@@ -781,10 +781,14 @@ _STRINGS: dict[str, dict[str, str]] = {
         "uk": "доступність не перевірялась", "it": "accessibilita non verificata",
         "en": "accessibility was not checked",
     },
+    # `{noun}` rather than a fixed plural. The line reads "1 знахідок" in
+    # every language otherwise, and it is read far more often since the
+    # category and certainty filters made the number change under the
+    # reader's hand.
     "summary_findings": {
-        "uk": "{count} знахідок",
-        "it": "{count} riscontri",
-        "en": "{count} findings",
+        "uk": "{count} {noun}",
+        "it": "{count} {noun}",
+        "en": "{count} {noun}",
     },
     # The file column of a repository scan (artboard 3f). Files with
     # nothing in them are counted, not listed: four hundred rows with a zero
@@ -5385,6 +5389,163 @@ _STRINGS: dict[str, dict[str, str]] = {
         "uk": "розмітка {platform}",
         "it": "markup di {platform}",
         "en": "{platform} markup",
+    },
+    # --- що показувати з готового аудиту: категорії, певність, robots.txt ---
+    #
+    # Це не окремий прогін, а вигляд: правила дешеві й ділять один розбір,
+    # тому вибір міняє список, а не запускає аудит наново.
+    "setup_step_report": {
+        "uk": "5 · Що показувати", "it": "5 · Cosa mostrare",
+        "en": "5 · What to show",
+    },
+    "setup_report_categories": {
+        "uk": "Категорії", "it": "Categorie", "en": "Categories",
+    },
+    "setup_report_categories_hint": {
+        "uk": "Нічого не позначено - показуються всі шість.",
+        "it": "Se non selezioni nulla, appaiono tutte e sei.",
+        "en": "Nothing ticked means all six are shown.",
+    },
+    "setup_report_certainty": {
+        "uk": "Певність", "it": "Certezza", "en": "Certainty",
+    },
+    "setup_report_certainty_hint": {
+        "uk": "Поріг того, наскільки знахідка доведена. Прогін не змінюється - змінюється список.",
+        "it": "La soglia di quanto un rilievo è dimostrato. La scansione non cambia: cambia l'elenco.",
+        "en": "How settled a finding has to be. The run does not change; the list does.",
+    },
+    "certainty_any": {
+        "uk": "будь-яка", "it": "qualsiasi", "en": "any",
+    },
+    "certainty_advisory": {
+        "uk": "порада і вище", "it": "consultivo e oltre", "en": "advisory and up",
+    },
+    "certainty_needs-browser": {
+        "uk": "потрібен браузер і вище", "it": "serve il browser e oltre",
+        "en": "needs a browser and up",
+    },
+    "certainty_exact": {
+        "uk": "лише точне", "it": "solo certo", "en": "settled only",
+    },
+    "setup_report_site_controls": {
+        "uk": "Прочитати robots.txt і sitemap", "it": "Leggere robots.txt e sitemap",
+        "en": "Read robots.txt and the sitemap",
+    },
+    "setup_report_site_controls_hint": {
+        "uk": "Два додаткові запити до того самого домену. Тільки для сайту.",
+        "it": "Due richieste in più allo stesso dominio. Solo per un sito.",
+        "en": "Two extra requests to the same domain. Sites only.",
+    },
+    "audit_category_accessibility": {
+        "uk": "Доступність", "it": "Accessibilità", "en": "Accessibility",
+    },
+    "audit_category_performance": {
+        "uk": "Продуктивність", "it": "Prestazioni", "en": "Performance",
+    },
+    "audit_category_seo": {"uk": "SEO", "it": "SEO", "en": "SEO"},
+    "audit_category_geo": {
+        "uk": "GEO-готовність", "it": "Prontezza GEO", "en": "GEO readiness",
+    },
+    "audit_category_best-practices": {
+        "uk": "Найкращі практики", "it": "Best practice", "en": "Best practices",
+    },
+    "audit_category_security": {"uk": "Безпека", "it": "Sicurezza", "en": "Security"},
+    "empty_audit_filtered_title": {
+        "uk": "Показувати нічого, але знайдено не нічого",
+        "it": "Niente da mostrare, ma qualcosa è stato trovato",
+        "en": "Nothing to show, but not nothing found",
+    },
+    "empty_audit_filtered_body": {
+        "uk": "Аудит дав {total} знахідок, і жодна не проходить обраний фільтр категорій та певності. Розширте вибір - прогін для цього повторювати не треба.",
+        "it": "L'audit ha prodotto {total} rilievi e nessuno passa il filtro di categoria e certezza scelto. Allarga la selezione: non serve rifare la scansione.",
+        "en": "The audit produced {total} findings and none of them passes the chosen category and certainty filter. Widen it - the run does not have to be repeated.",
+    },
+    # --- становий прохід: подорож формою ------------------------------------
+    "a11y_state:form_field_unnamed_title": {
+        "uk": "Поле форми без назви", "it": "Campo del modulo senza nome",
+        "en": "Form field with no name",
+    },
+    "a11y_state:form_field_unnamed_found": {
+        "uk": "Після виконання скриптів поле не має ані підпису, ані aria-label, ані title.",
+        "it": "Dopo l'esecuzione degli script il campo non ha né etichetta, né aria-label, né title.",
+        "en": "After the scripts have run the field has no label, no aria-label and no title.",
+    },
+    "a11y_state:form_field_unnamed_why": {
+        "uk": "Програма читання оголошує «поле введення» і замовкає. Людина чує, що щось треба вписати, і не чує що саме - а помилка у формі коштує не рядка, а всієї справи, по яку вона прийшла.",
+        "it": "Lo screen reader annuncia «campo di testo» e tace. La persona sente che deve scrivere qualcosa ma non cosa - e un errore in un modulo non costa una riga, costa l'intera operazione per cui è arrivata.",
+        "en": "A screen reader announces \"edit text\" and stops. The person hears that something goes here but not what - and a mistake in a form costs not a line but the whole errand they came to do.",
+    },
+    "a11y_state:form_field_unnamed_fix": {
+        "uk": "Дайте полю <label for=\"...\"> з тим самим id, або aria-label, якщо підпис не має бути видимим.",
+        "it": "Dai al campo una <label for=\"...\"> con lo stesso id, oppure aria-label se l'etichetta non deve vedersi.",
+        "en": "Give the field a <label for=\"...\"> with the matching id, or aria-label where the name must not be visible.",
+    },
+    "a11y_state:form_placeholder_as_label_title": {
+        "uk": "Замість підпису - лише placeholder",
+        "it": "Al posto dell'etichetta solo un placeholder",
+        "en": "A placeholder instead of a label",
+    },
+    "a11y_state:form_placeholder_as_label_found": {
+        "uk": "Єдина назва поля - його placeholder: «{placeholder}».",
+        "it": "L'unico nome del campo è il suo placeholder: «{placeholder}».",
+        "en": "The only name the field has is its placeholder: \"{placeholder}\".",
+    },
+    "a11y_state:form_placeholder_as_label_why": {
+        "uk": "Placeholder зникає з першим введеним символом. Людина, яка відволіклась або повернулась перевірити вписане, більше не бачить, що це за поле; сірий текст до того ж майже завжди не проходить контраст.",
+        "it": "Il placeholder sparisce al primo carattere digitato. Chi si distrae o torna a rileggere quello che ha scritto non vede più di che campo si tratti; e quel grigio quasi mai passa il contrasto.",
+        "en": "A placeholder disappears with the first character typed. Anyone who looks away, or comes back to check what they wrote, can no longer see which field this is - and that grey almost never passes contrast.",
+    },
+    "a11y_state:form_placeholder_as_label_fix": {
+        "uk": "Перенесіть ці слова у <label>, а placeholder лишіть для прикладу формату або приберіть.",
+        "it": "Sposta quelle parole in una <label> e lascia il placeholder per un esempio di formato, o toglilo.",
+        "en": "Move those words into a <label>, and keep the placeholder for an example of the format - or drop it.",
+    },
+    "a11y_state:form_invalid_not_announced_title": {
+        "uk": "Браузер вважає поле невірним, і про це ніхто не каже",
+        "it": "Il browser considera il campo non valido e nessuno lo dice",
+        "en": "The browser calls the field invalid and nothing says so",
+    },
+    "a11y_state:form_invalid_not_announced_found": {
+        "uk": "Поле не проходить власну перевірку браузера ({reason}), але не має aria-invalid=\"true\".",
+        "it": "Il campo non supera la validazione del browser ({reason}) ma non ha aria-invalid=\"true\".",
+        "en": "The field fails the browser's own validation ({reason}) but carries no aria-invalid=\"true\".",
+    },
+    "a11y_state:form_invalid_not_announced_why": {
+        "uk": "Стан «невірно» існує лише візуально. Програма читання оголошує поле звичайним, тож людина дізнається про проблему хіба що після невдалої відправки - і без підказки, яке саме поле винне.",
+        "it": "Lo stato «non valido» esiste solo visivamente. Lo screen reader annuncia un campo normale, quindi la persona lo scopre al massimo dopo un invio fallito, senza sapere quale campo sia.",
+        "en": "The invalid state exists only visually. A screen reader announces an ordinary field, so the person finds out after a failed submit at best, with nothing saying which field it was.",
+    },
+    "a11y_state:form_invalid_not_announced_fix": {
+        "uk": "Проставляйте aria-invalid=\"true\" разом із візуальною позначкою і знімайте його, коли значення виправлено.",
+        "it": "Imposta aria-invalid=\"true\" insieme al segnale visivo e rimuovilo quando il valore è corretto.",
+        "en": "Set aria-invalid=\"true\" alongside the visual marking, and remove it once the value is corrected.",
+    },
+    "a11y_state:form_error_not_associated_title": {
+        "uk": "Повідомлення про помилку ні з чим не звʼязане",
+        "it": "Il messaggio di errore non è collegato a nulla",
+        "en": "The error message is attached to nothing",
+    },
+    "a11y_state:form_error_not_associated_found": {
+        "uk": "На екрані є текст помилки - «{message}» - і жодне поле не посилається на нього через aria-describedby чи aria-errormessage.",
+        "it": "Sullo schermo c'è un testo di errore - «{message}» - e nessun campo lo richiama con aria-describedby o aria-errormessage.",
+        "en": "There is error text on screen - \"{message}\" - and no field refers to it through aria-describedby or aria-errormessage.",
+    },
+    "a11y_state:form_error_not_associated_why": {
+        "uk": "Червоний рядок під полем бачить лише той, хто дивиться. Для програми читання його немає: людина знає, що форма не пройшла, і не знає чому.",
+        "it": "La riga rossa sotto il campo la vede solo chi guarda. Per lo screen reader non esiste: la persona sa che il modulo non è passato, ma non perché.",
+        "en": "A red line under a field is only there for someone looking at it. To a screen reader it does not exist: the person knows the form failed and not why.",
+    },
+    "a11y_state:form_error_not_associated_fix": {
+        "uk": "Дайте повідомленню id і вкажіть його в aria-describedby (або aria-errormessage) поля, якого воно стосується.",
+        "it": "Dai un id al messaggio e indicalo in aria-describedby (o aria-errormessage) del campo a cui si riferisce.",
+        "en": "Give the message an id and name it in the aria-describedby (or aria-errormessage) of the field it is about.",
+    },
+    "tui_label_certainty": {"uk": "певність", "it": "certezza", "en": "certainty"},
+    "tui_all_categories": {"uk": "усі шість", "it": "tutte e sei", "en": "all six"},
+    "tui_site_controls": {
+        "uk": "Прочитати robots.txt і sitemap того самого домену",
+        "it": "Leggere robots.txt e la sitemap dello stesso dominio",
+        "en": "Read robots.txt and the same-domain sitemap",
     },
     "severity_critical": {"uk": "критично", "it": "critico", "en": "critical"},
     "severity_serious": {"uk": "серйозно", "it": "serio", "en": "serious"},
