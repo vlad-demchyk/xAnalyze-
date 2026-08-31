@@ -64,7 +64,7 @@ from dataclasses import dataclass, field
 
 from .base import (
     REWRITE_SYSTEM_PROMPT, AuthStatus, LLMAppNotPermitted, LLMProvider,
-    LLMProviderFactory, LLMAuthError, LLMUnavailable,
+    LLMProviderFactory, LLMAuthError, LLMUnavailable, prompt_language,
 )
 from . import credentials
 
@@ -543,6 +543,7 @@ class XFormatProvider(LLMProvider):
         return content.strip()
 
     def rewrite(self, text: str, language: str | None = None) -> str:
+        language = prompt_language(language)
         prompt = f"{text}\n\n(language: {language})" if language else text
         return self._chat(self.endpoints.rewrite_feature, REWRITE_SYSTEM_PROMPT, prompt)
 

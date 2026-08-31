@@ -42,7 +42,7 @@ from pathlib import Path
 
 from .base import (
     REWRITE_SYSTEM_PROMPT, AuthStatus, LLMAuthError, LLMProvider,
-    LLMProviderFactory, LLMUnavailable,
+    LLMProviderFactory, LLMUnavailable, prompt_language,
 )
 
 #: Overrides binary discovery when the CLI lives somewhere unusual.
@@ -210,6 +210,7 @@ class ClaudeCodeProvider(LLMProvider):
         return AuthStatus(signed_in=True, detail=detail or "signed in")
 
     def rewrite(self, text: str, language: str | None = None) -> str:
+        language = prompt_language(language)
         prompt = f"{text}\n\n(language: {language})" if language else text
         return self._call(REWRITE_SYSTEM_PROMPT, prompt)
 
@@ -228,6 +229,7 @@ class ClaudeCodeProvider(LLMProvider):
         parts = []
         for index, (text, language) in enumerate(items, start=1):
             marker = _MARKER.format(n=index)
+            language = prompt_language(language)
             hint = f" (language: {language})" if language else ""
             parts.append(f"{marker}{hint}\n{text}")
         instruction = (

@@ -297,7 +297,7 @@ class DocumentLanguageMismatch(AccessibilityRule):
     MIN_WORDS = 40
 
     def check(self, document, context) -> list:
-        from lang_detect import guess_language_safe
+        from lang_detect import UNSUPPORTED, guess_language_safe
 
         html = document.find("html")
         if html is None:
@@ -321,7 +321,10 @@ class DocumentLanguageMismatch(AccessibilityRule):
                     guess_language_safe(" ".join(words[middle:])),
                     guess_language_safe(text))
         detected = readings[-1]
-        if detected in (None, "en") or any(r != detected for r in readings):
+        # UNSUPPORTED is not a language code: proposing `<html lang="other">`
+        # would be this rule writing a fact it does not have.
+        if (detected in (None, "en", UNSUPPORTED)
+                or any(r != detected for r in readings)):
             return []
         if declared.split("-")[0] == detected:
             return []

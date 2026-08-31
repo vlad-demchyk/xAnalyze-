@@ -71,6 +71,19 @@ class LLMProvider(ABC):
         return [self.rewrite(text, lang) for text, lang in items]
 
 
+def prompt_language(language: str | None) -> str | None:
+    """The language to name in a prompt, or None to say nothing.
+
+    `lang_detect.UNSUPPORTED` reads as "some language we have no lists for".
+    Passing it through would put `(language: other)` in front of the model,
+    which is worse than saying nothing: it is an instruction to answer in a
+    language that does not exist. Saying nothing leaves the model to follow
+    the passage itself, which is what it does well.
+    """
+    from lang_detect import UNSUPPORTED
+    return None if language == UNSUPPORTED else language
+
+
 class LLMProviderFactory:
     _registry: dict[str, type[LLMProvider]] = {}
 

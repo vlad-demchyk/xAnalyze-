@@ -32,6 +32,8 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
+from lang_detect import UNSUPPORTED
+
 # ---------------------------------------------------------------- categories
 
 CAT_INVISIBLE = "invisible"
@@ -119,6 +121,13 @@ LANGUAGE_EXEMPT = {
     "uk": {"«", "»", "'", "—", "–"},  # « » plus Ukrainian apostrophe, em/en dash
     "it": {"«", "»", "—", "–"},  # « » plus em/en dash (Italian typography)
     "en": set(),
+    # A language we did not recognise gets the union, not the empty set.
+    # Guillemets and the em dash are ordinary punctuation in Russian, German,
+    # French and Polish, and reporting them as anomalies would be this app
+    # asserting a convention it never read. Until Russian was told apart from
+    # Ukrainian it was exempt here by accident; this makes it exempt on
+    # purpose, and for the right reason.
+    UNSUPPORTED: {"«", "»", "'", "—", "–"},
 }
 
 # Confusable letters, per target script. Cyrillic letters that look exactly

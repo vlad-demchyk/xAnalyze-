@@ -5,7 +5,7 @@ import os
 
 from .base import (
     REWRITE_SYSTEM_PROMPT, AuthStatus, LLMProvider, LLMProviderFactory,
-    LLMAuthError, LLMUnavailable,
+    LLMAuthError, LLMUnavailable, prompt_language,
 )
 
 DEFAULT_MODEL = "claude-opus-5"
@@ -45,6 +45,7 @@ class AnthropicProvider(LLMProvider):
 
     def rewrite(self, text: str, language: str | None = None) -> str:
         client = self._get_client()
+        language = prompt_language(language)
         lang_hint = f" (language: {language})" if language else ""
         try:
             response = client.messages.create(

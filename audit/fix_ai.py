@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import re
 
-from lang_detect import guess_language
+from lang_detect import UNSUPPORTED, guess_language
 
 #: One line per item, addressed by number, so a batch cannot silently
 #: reorder. Same shape as the rewriter's batch protocol.
@@ -59,6 +59,11 @@ def fill_locally(plans: list, page_text: str) -> tuple:
     """
     filled, remaining = [], []
     language = guess_language(page_text or "")
+    if language == UNSUPPORTED:
+        # The page is in a language this app cannot name. Leaving `html-lang`
+        # in the queue asks a human; filling it in would write `lang="other"`
+        # into the markup, which is worse than the missing attribute.
+        language = ""
     for plan in plans:
         if plan.rule_id == "html-lang" and language:
             filled.append(plan.with_text(language) if "…" in plan.replacement
