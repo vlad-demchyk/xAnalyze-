@@ -90,6 +90,11 @@ def open_in_os(path: str, lang: str = "uk") -> str:
     return t("tui_opened", lang, name=target.name)
 
 
+#: Worst first, and the order the rows are laid out in. Named once because
+#: three places have to agree on it: the ramp, the mark, and this ordering.
+SEVERITIES = ("critical", "serious", "moderate", "minor")
+
+
 def summary_rows(payload: dict | None) -> list:
     """`(label, value)` pairs for whichever command produced this payload.
 
@@ -109,14 +114,23 @@ def summary_rows(payload: dict | None) -> list:
                 rows.append((key.replace("_", " "), str(summary[key])))
     counts = payload.get("counts")
     if isinstance(counts, dict):
-        # scan: findings by detector, plus the totals.
+        # `counts` carries two different shapes. `scan` fills it with one key
+        # per detector; `audit` fills it with one key per severity. The rows
+        # below take each shape once - the severity names are excluded from
+        # the "by ..." pass precisely because the pass after it owns them.
+        #
+        # Without that exclusion every audit run listed its four numbers
+        # twice, as "by critical" and again as "critical". It was invisible
+        # from a `scan` payload, which has no severity key at all, and the
+        # test that covered this screen used a hand-written payload rather
+        # than one the CLI produces.
         for key in ("total", "distinct", "files"):
             if key in counts:
                 rows.append((key, str(counts[key])))
         for key, value in counts.items():
-            if key not in ("total", "distinct", "files"):
+            if key not in ("total", "distinct", "files") and key not in SEVERITIES:
                 rows.append((f"by {key}", str(value)))
-        for severity in ("critical", "serious", "moderate", "minor"):
+        for severity in SEVERITIES:
             if severity in counts:
                 rows.append((severity, str(counts[severity])))
     audit = payload.get("audit")

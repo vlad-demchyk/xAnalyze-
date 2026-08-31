@@ -310,8 +310,16 @@ class ResultsScreenShowsTheResult(unittest.TestCase):
         foreground - the same colour a run with no findings at all used for
         "target". The severity ramp existing in the palette does nothing for
         anyone if the one screen that lists severities by name never reads
-        it."""
-        from tui.screens.results import ResultsScreen
+        it.
+
+        The cell is matched on its **last word**, the way `_severity_cell`
+        matches, rather than on the whole string. Matching the whole string
+        is what made this test fail for two weeks while the screen was right:
+        the mark prefix for low-colour terminals turned "critical" into
+        "!!! critical", the test found none of its four names, and an empty
+        set is not a missing colour.
+        """
+        from tui.screens.results import ResultsScreen, SEVERITIES
 
         result = RunResult(
             0,
@@ -330,15 +338,43 @@ class ResultsScreenShowsTheResult(unittest.TestCase):
                 styles = {}
                 for row_key, _ in table.rows.items():
                     cell = table.get_cell(row_key, table.ordered_columns[0].key)
-                    label = str(cell)
-                    if label in ("critical", "serious", "moderate", "minor"):
-                        styles[label] = cell.style
+                    last_word = str(cell).rsplit(" ", 1)[-1]
+                    if last_word in SEVERITIES:
+                        styles[last_word] = cell.style
                 return styles
 
         styles = run(body())
-        self.assertEqual(set(styles), {"critical", "serious", "moderate", "minor"})
+        self.assertEqual(set(styles), set(SEVERITIES))
         self.assertEqual(len(set(styles.values())), 4,
                          f"expected four distinct colours, got {styles}")
+
+    def test_a_severity_is_listed_once_not_twice(self):
+        """`counts` means one thing for `scan` (a key per detector) and
+        another for `audit` (a key per severity), and the audit shape fell
+        through both passes: "by critical" and "critical", eight rows for
+        four numbers, on every audit run the interface has ever shown.
+
+        The payload here is the shape `cli.py audit --json` actually prints,
+        not a hand-written one - which is how the defect stayed invisible.
+        """
+        from tui.screens.results import summary_rows
+
+        rows = summary_rows({"root": ".", "mode": "repo",
+                             "counts": {"critical": 0, "serious": 6,
+                                        "moderate": 14, "minor": 10}})
+        self.assertEqual([label for label, _ in rows],
+                         ["critical", "serious", "moderate", "minor"])
+
+        # The other shape keeps its per-detector rows, which are not severities.
+        rows = summary_rows({"counts": {"offline": 1, "total": 1,
+                                        "files": 1, "distinct": 1}})
+        self.assertIn(("by offline", "1"), rows)
+
+    def test_the_ramp_the_mark_and_the_order_name_the_same_four(self):
+        from tui.screens.results import (SEVERITIES, _SEVERITY_MARK,
+                                         _SEVERITY_VARIABLE)
+        self.assertEqual(set(SEVERITIES), set(_SEVERITY_MARK))
+        self.assertEqual(set(SEVERITIES), set(_SEVERITY_VARIABLE))
 
 
 class ReportsScreenReacts(unittest.TestCase):
