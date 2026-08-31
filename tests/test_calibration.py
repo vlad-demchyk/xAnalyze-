@@ -126,6 +126,32 @@ class LengthIsNotTheSignal(unittest.TestCase):
                              f"{language} prose is being flagged as model-written")
 
 
+class TheCorpusIsAlsoADetectorComponent(unittest.TestCase):
+    """Adding correct data to the corpus must not quietly weaken a detector.
+
+    `EmbeddingDetector` scores by nearest-neighbour margin over
+    `labelled.jsonl`, so every human entry added lowers the score of every
+    passage. Measured 2026-08-31: 95 new human paragraphs moved the human
+    side of the margin from 0.461 to 0.541 and took a plainly AI-written
+    passage from 0.590 to 0.549, under the 0.55 the suite asks for. The
+    corpus improved and the detector got worse, which is a coupling that has
+    to be visible rather than discovered by a failing test months later.
+    """
+
+    def test_the_reference_set_is_named_not_inherited(self):
+        from detectors.embedding import REFERENCE_REGISTERS_EXCLUDED
+        self.assertIn("encyclopedic", REFERENCE_REGISTERS_EXCLUDED)
+
+    def test_the_measuring_corpus_is_larger_than_the_reference_set(self):
+        # If these ever coincide again, the coupling is back and the next
+        # honest addition to the corpus silently costs recall.
+        rows = load("labelled.jsonl")
+        from detectors.embedding import REFERENCE_REGISTERS_EXCLUDED
+        reference = [r for r in rows
+                     if r.get("register") not in REFERENCE_REGISTERS_EXCLUDED]
+        self.assertLess(len(reference), len(rows))
+
+
 class Combination(unittest.TestCase):
     """Properties of the score itself, independent of any corpus."""
 

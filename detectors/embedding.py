@@ -3,6 +3,9 @@
 Uses sentence-transformers to compute embeddings and compare with reference
 AI/human texts from the corpus. Complementary to the heuristic detector.
 
+The corpus is a component here, not a yardstick: see
+`REFERENCE_REGISTERS_EXCLUDED` for what that costs and what is done about it.
+
 Approach:
 1. Compute embeddings for AI texts in corpus (reference)
 2. For new text, compute embedding
@@ -27,6 +30,29 @@ DEFAULT_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 
 # Path to corpus relative to project root
 CORPUS_PATH = Path(__file__).resolve().parent.parent / "corpus" / "labelled.jsonl"
+
+#: Registers this detector uses as its reference, and the reason there is a
+#: list at all.
+#:
+#: The score below is a nearest-neighbour margin: `similarity to the closest
+#: model entry` minus `similarity to the closest human entry`. That makes the
+#: corpus a *component* of this detector, not only the yardstick it is judged
+#: by, and the two roles pull opposite ways. Measured 2026-08-31: adding 95
+#: human paragraphs to `labelled.jsonl` - correct data, added to close a
+#: measurement gap - raised the human side of the margin from 0.461 to 0.541
+#: and dropped the score on the same AI passage from 0.590 to 0.549. Nothing
+#: about the detector changed. The corpus got better and the score got worse.
+#:
+#: So the reference set is named rather than inherited. `encyclopedic` is out
+#: because those entries were collected to answer "does the detector flag a
+#: person writing a paragraph", not to stand as examples of the copy this
+#: detector compares against.
+#:
+#: This freezes the reference at what it was when the threshold was chosen.
+#: It does not make the threshold right - it has never been measured on the
+#: corpus the way the offline detector's has. That is `P-27`, and it is the
+#: reason this list is a stopgap with a name rather than a silent filter.
+REFERENCE_REGISTERS_EXCLUDED = ("encyclopedic",)
 
 
 class EmbeddingDetector(Detector):
@@ -76,6 +102,8 @@ class EmbeddingDetector(Detector):
                 for line in f:
                     if line.strip():
                         row = json.loads(line)
+                        if row.get("register") in REFERENCE_REGISTERS_EXCLUDED:
+                            continue
                         texts.append(row["text"])
                         labels.append(row["label"])
 
