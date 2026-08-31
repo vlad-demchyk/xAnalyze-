@@ -17,13 +17,44 @@ that only holds one register will calibrate for one register.
 author is not known to whoever assembled this file, and guessing would put a
 guess into the ground truth, which is the one place a guess must not go.
 
+## Sources
+
+Every entry records where it came from. Three kinds of source are in here, and
+they are not interchangeable:
+
+`locale` — interface strings from the xFormat product (`en.json`, `it.json`,
+`uk.json`). These are button labels and field names: the Italian median is 7
+words. They are the right negatives for the question "does the detector flag a
+menu", and the wrong ones for "does it flag a person's prose".
+
+`documentation` / `product copy` — longer human writing, kept because register
+matters to this detector and a corpus holding one register calibrates for one
+register.
+
+`encyclopedic` — paragraphs taken verbatim from Italian Wikipedia at a named
+revision from 2018, years before language models were writing this kind of copy.
+The source field carries the article, the revision id and the revision date, so
+the claim "a person wrote this, and it is dated" is checkable rather than
+asserted. This text is CC BY-SA; it is quoted here with attribution, and it is
+measurement material, not product content.
+
 ## What is missing, and why it is not filled in
 
-There are no Ukrainian `human` entries yet. There is no local source of
-Ukrainian product copy whose author is certain, and labelling the xFormat
-strings "human" because they read that way would be exactly the mistake this
-file exists to avoid. Until someone who knows confirms them, per-language
-metrics for Ukrainian are reported as unavailable rather than estimated.
+**Human prose in English and Ukrainian.** At 25+ words the human half now holds
+31 Italian entries and only 4 English and 15 Ukrainian. A false-alarm rate for
+those two languages at paragraph length is still a statement about a handful of
+entries. The Italian gap was closed the way this one has to be: a dated source
+with a named author, not text that reads human.
+
+**Positives that were not written for this file.** Every `model` entry was
+generated while building this corpus. The label is true by construction, but so
+is the distribution: it is how a model writes when asked to write for a corpus,
+not how generated copy looks in a shipped product.
+
+**The unlabelled pool.** `unlabelled.jsonl` holds real strings whose author is
+not known to whoever assembled this file. Guessing would put a guess into the
+ground truth, which is the one place a guess must not go, so they stay out of
+every number until someone who knows confirms them.
 
 ## Running it
 

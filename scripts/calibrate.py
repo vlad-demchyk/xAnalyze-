@@ -101,13 +101,21 @@ def _rates(scored: list, threshold: float) -> dict:
     }
 
 
+#: Below this many human entries, "0 false alarms" is a statement about the
+#: corpus, not about the detector. Italian at 25+ words sat at 2 entries while
+#: the report printed the same confident 0/2 it prints for 125, which is how a
+#: measurement ceiling reads as a result.
+_THIN = 10
+
+
 def _show(label: str, stats: dict) -> None:
     def pct(value):
         return "  n/a" if value is None else f"{value * 100:5.1f}%"
 
+    thin = " - too few negatives to read" if 0 < stats["humans"] < _THIN else ""
     print(f"  {label:22} precision {pct(stats['precision'])}   "
           f"recall {pct(stats['recall'])}   "
-          f"false alarms {stats['false_alarms']}/{stats['humans']}")
+          f"false alarms {stats['false_alarms']}/{stats['humans']}{thin}")
 
 
 #: The word-count bands the corpus is read in. They exist because the two
@@ -153,8 +161,10 @@ def strata(scored: list, threshold: float) -> None:
 
     Without this, every recall figure in this report means something slightly
     different per language, because the languages' negatives are not the same
-    size: the Italian human median is 37 characters against Ukrainian's 65,
-    which is the difference between a button label and a sentence.
+    size: the Italian human median was 37 characters against Ukrainian's 65,
+    which is the difference between a button label and a sentence. Reading the
+    bands is also what showed that the Italian false-alarm rate rested on two
+    entries; dated Italian prose was added to the corpus because of it.
 
     Each band also prints what flagging *everything* in it would score. That is
     the base rate, and a detector whose precision inside a band equals it is
