@@ -10,6 +10,8 @@ Desktop and headless analyzer for AI-written text patterns, non-keyboard charact
 - [Quick start](#quick-start)
 - [Usage](#usage)
 - [CLI commands](#cli-commands)
+- [Templates it understands](#templates-it-understands)
+- [Stacks it recognises](#stacks-it-recognises)
 - [Analysis](#analysis)
 - [Reports and runs](#reports-and-runs)
 - [Interfaces](#interfaces)
@@ -38,9 +40,7 @@ XAnalyze scans a website, HTML file, repository, or source directory and reports
 
 ### Detected stacks and templates
 
-The scanner identifies supported stacks from marker files or served markup and excludes generated or vendored code when ownership is clear. Supported checkout stacks include Angular, Astro, Django, Drupal, Eleventy, Gatsby, Ghost, Hugo, Jekyll, Joomla, Laravel, Magento, Next.js, Nuxt, Rails, Remix, Shopify, SPFx, SvelteKit, Symfony, Vite, Wagtail, Webflow, Wix, WordPress, and others.
-
-Template fixtures currently cover Alpine, Angular, Blade, Django, ERB, Handlebars, Liquid, PHP, Razor, React, Svelte, Thymeleaf, Twig, and Vue.
+The scanner identifies a stack from marker files or served markup and excludes generated or vendored code when ownership is clear. The two lists are checked against the code by the suite, so they live in [Templates it understands](#templates-it-understands) and [Stacks it recognises](#stacks-it-recognises) rather than being repeated here.
 
 ## Quick start
 
@@ -247,6 +247,32 @@ xanalyze uninstall
 
 The interactive uninstall lists the files it will remove. Use the non-interactive option only when the removal is intentional.
 
+## Templates it understands
+
+Fourteen template languages have a **pair** of fixtures in
+`tests/fixtures/frameworks`: the same component written the way its framework
+says to write it, and written wrong. The correct half must produce no findings
+and the broken half must produce the right ones, so this list is a measured
+claim rather than an intention:
+
+`alpine`, `angular`, `blade`, `django`, `erb`, `handlebars`, `liquid`, `php`, `razor`, `react`, `svelte`, `thymeleaf`, `twig`, `vue`
+
+That is what the scan is *checked* against. Markup in anything not on this list
+is still read - the parser does not refuse it - but nothing has proved that a
+correct file in it comes back clean, and a false finding there would not be
+caught by the suite.
+
+## Stacks it recognises
+
+A project is identified from its own marker files, and what it turns out to be
+decides what is treated as vendored rather than written here:
+
+`angular`, `astro`, `beehiiv`, `carrd`, `craft`, `django`, `docusaurus`, `dotnet`, `drupal`, `eleventy`, `ember`, `flutter`, `gatsby`, `ghost`, `hugo`, `jekyll`, `joomla`, `laravel`, `magento`, `nextjs`, `nuxt`, `qwik`, `rails`, `remix`, `shopify`, `silverstripe`, `spfx`, `spring`, `squarespace`, `statamic`, `storybook`, `sveltekit`, `symfony`, `typo3`, `vite`, `wagtail`, `webflow`, `wix`, `wordpress`
+
+Signatures are scored, not counted: each carries a confidence and a platform is
+named only when the matches add up to 100, so a string that could be there for
+another reason has to be corroborated.
+
 ## Analysis
 
 ### AI pattern detection
@@ -263,7 +289,9 @@ Use `--scope content` for user-facing copy, `--scope technical` for comments and
 
 ### Website audit
 
-Audit categories are:
+How many rules each category actually has, which is a claim the suite checks:
+
+`accessibility` (29), `best-practices` (8), `performance` (8), `security` (10), `seo` (8)
 
 - **Accessibility**: names, labels, headings, language, keyboard access, media alternatives, and related rules.
 - **SEO**: titles, descriptions, canonicals, headings, links, robots directives, and structured page metadata.

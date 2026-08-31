@@ -10,6 +10,8 @@ Analizzatore desktop e headless per pattern di testo generato dall'AI, caratteri
 - [Avvio rapido](#avvio-rapido)
 - [Utilizzo](#utilizzo)
 - [Comandi CLI](#comandi-cli)
+- [Template che comprende](#template-che-comprende)
+- [Stack che riconosce](#stack-che-riconosce)
 - [Analisi](#analisi)
 - [Report ed esecuzioni](#report-ed-esecuzioni)
 - [Interfacce](#interfacce)
@@ -32,7 +34,7 @@ XAnalyze scansiona siti, file HTML, repository e directory di codice indicando l
 
 `fullscan` unisce controlli del testo, dei caratteri e del sito. Un repository locale viene analizzato staticamente, salvo usare `--devserver`.
 
-Sono riconosciuti stack comuni come Angular, Astro, Django, Drupal, Eleventy, Gatsby, Ghost, Hugo, Jekyll, Joomla, Laravel, Magento, Next.js, Nuxt, Rails, Remix, Shopify, SPFx, SvelteKit, Symfony, Vite, Wagtail, Webflow, Wix e WordPress. Le fixture dei template coprono Alpine, Angular, Blade, Django, ERB, Handlebars, Liquid, PHP, Razor, React, Svelte, Thymeleaf, Twig e Vue.
+Lo stack viene identificato dai file marcatori o dal markup servito. Entrambi gli elenchi sono verificati contro il codice dalla suite, quindi vivono in [Template che comprende](#template-che-comprende) e [Stack che riconosce](#stack-che-riconosce) invece di essere ripetuti qui.
 
 ## Avvio rapido
 
@@ -196,11 +198,37 @@ xanalyze uninstall
 
 La disinstallazione interattiva mostra i file che verranno rimossi. Usa l'opzione non interattiva solo quando la rimozione è voluta.
 
+## Template che comprende
+
+Quattordici linguaggi di template hanno una **coppia** di fixture in
+`tests/fixtures/frameworks`: lo stesso componente scritto come vuole il suo
+framework, e scritto male. La metà corretta non deve produrre alcun risultato e
+quella rotta deve produrre quelli giusti, quindi questo elenco è
+un'affermazione misurata, non un'intenzione:
+
+`alpine`, `angular`, `blade`, `django`, `erb`, `handlebars`, `liquid`, `php`, `razor`, `react`, `svelte`, `thymeleaf`, `twig`, `vue`
+
+È questo ciò contro cui la scansione è **verificata**. Il markup in qualsiasi
+cosa non elencata viene comunque letto - il parser non lo rifiuta - ma nulla ha
+dimostrato che un file corretto in quel linguaggio torni pulito, e un risultato
+falso lì non verrebbe intercettato dalla suite.
+
+## Stack che riconosce
+
+Un progetto viene identificato dai suoi file marcatori, e ciò che risulta essere
+decide cosa è codice di terzi anziché scritto qui:
+
+`angular`, `astro`, `beehiiv`, `carrd`, `craft`, `django`, `docusaurus`, `dotnet`, `drupal`, `eleventy`, `ember`, `flutter`, `gatsby`, `ghost`, `hugo`, `jekyll`, `joomla`, `laravel`, `magento`, `nextjs`, `nuxt`, `qwik`, `rails`, `remix`, `shopify`, `silverstripe`, `spfx`, `spring`, `squarespace`, `statamic`, `storybook`, `sveltekit`, `symfony`, `typo3`, `vite`, `wagtail`, `webflow`, `wix`, `wordpress`
+
+Le firme sono pesate, non contate: ognuna porta una confidenza e una piattaforma
+viene nominata solo quando le corrispondenze sommano 100, quindi un marcatore che
+potrebbe essere lì per un altro motivo va corroborato.
+
 ## Analisi
 
 Il detector offline combina segnali statistici, struttura, cliché e regole linguistiche. I detector embedding e basati su modello aggiungono un giudizio indipendente. Ogni risultato contiene posizione, punteggio, spiegazione e certezza.
 
-L'audit copre accessibilità, SEO, performance, sicurezza e best practice. La modalità statica legge i file; quella browser vede DOM renderizzato, contenuto client-side, stati responsive e header della risposta. `--repo` collega un audit URL al file sorgente.
+L'audit copre `accessibility` (29), `best-practices` (8), `performance` (8), `security` (10), `seo` (8) - numeri che la suite verifica contro il registro delle regole. La modalità statica legge i file; quella browser vede DOM renderizzato, contenuto client-side, stati responsive e header della risposta. `--repo` collega un audit URL al file sorgente.
 
 I risultati hanno livello `exact` o `needs-browser`. `--confidence exact` conserva solo i fatti stabiliti dal markup.
 
