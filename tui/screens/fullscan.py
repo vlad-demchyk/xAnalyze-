@@ -7,6 +7,7 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, Checkbox, Input, Label, Select, Static
 
+from audit.base import CONFIDENCE_ORDER
 from cli import cmd_fullscan
 from tui.screens.base import RunScreen
 from tui.screens.confirm import ConfirmModal
@@ -65,20 +66,39 @@ class FullscanScreen(RunScreen):
                 )
                 yield Static("·", classes="inline-sep")
                 yield Static(self.tr("tui_label_widths"), classes="inline-label")
+                # Every width `responsive.BREAKPOINTS` knows, as on the audit
+                # screen. `tablet` and `reflow` were missing from this list
+                # for the same reason they were missing from that one - the
+                # list was typed out rather than derived - so the width that
+                # finds WCAG 1.4.10 overflow was unreachable from here.
                 yield Select(
                     [
                         ("desktop", "desktop"),
                         ("all", "all"),
                         ("desktop + mobile", "desktop,mobile"),
+                        ("tablet", "tablet"),
                         ("mobile", "mobile"),
+                        ("reflow (320 px)", "reflow"),
                     ],
                     value="desktop",
                     id="breakpoints",
                     compact=True,
                     classes="inline-select",
                 )
+                yield Static("·", classes="inline-sep")
+                yield Static(self.tr("tui_label_certainty"), classes="inline-label")
+                yield Select(
+                    [(self.tr("certainty_any"), "")]
+                    + [(self.tr(f"certainty_{value}"), value)
+                       for value in CONFIDENCE_ORDER],
+                    value="",
+                    id="confidence",
+                    compact=True,
+                    classes="inline-select",
+                )
 
             yield Static("")
+            yield Checkbox(self.tr("tui_site_controls"), id="site-controls")
             yield Checkbox(self.tr("tui_agent_mode"), id="agent")
             yield Checkbox(self.tr("tui_no_browser"), id="no-browser")
             # Off by default: a repo's dev server may already be running
@@ -129,6 +149,8 @@ class FullscanScreen(RunScreen):
             detector="offline",
             scope="both",
             no_typography=False,
+            confidence=self.query_one("#confidence", Select).value or None,
+            site_controls=self.query_one("#site-controls", Checkbox).value,
             styled_report=None,
             report=None,
             check=False,

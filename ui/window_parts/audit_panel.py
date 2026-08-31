@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 import duplicates
 from audit import explanations as audit_explanations
 from audit import responsive
+from audit.base import issues_in_view
 from i18n.translations import t
 from models import Confidence
 from ui import theme
@@ -89,6 +90,31 @@ class AuditPanelMixin:
                 return text if len(text) <= limit else "…" + text[-(limit - 1):]
         return " ".join((getattr(issue, "selector", "") or "").split())
 
+    def _issues_in_view(self) -> list:
+        """The findings the reader asked to see, out of the ones that were found.
+
+        The audit result is never narrowed in place. Category and certainty
+        are a view: the run happened once, and changing either has to change
+        the list without re-auditing the site. The same function serves
+        `--category` and `--confidence` in `cli.py`, so the window and the
+        CLI cannot answer differently about one page.
+        """
+        if self.audit_result is None:
+            return []
+        return issues_in_view(self.audit_result.issues(),
+                              self.app_state.categories,
+                              self.app_state.confidence_floor)
+
+    def _view_is_narrowed(self) -> bool:
+        """Is anything being hidden right now? The empty state has to know.
+
+        Reporting "nothing was found" while a filter is hiding the findings
+        is the same defect as reporting an unreachable folder as clean: the
+        screen states a fact about the page that is actually a fact about
+        the controls.
+        """
+        return bool(self.app_state.categories or self.app_state.confidence_floor)
+
     def _add_audit_rows(self) -> int:
         """Append the audit findings to the list and say how many there were.
 
@@ -98,7 +124,7 @@ class AuditPanelMixin:
         """
         if self.audit_result is None:
             return 0
-        issues = self.audit_result.issues()
+        issues = self._issues_in_view()
         if not issues:
             return 0
 
@@ -173,6 +199,17 @@ class AuditPanelMixin:
             return
         checked = len(self.audit_result.documents)
         unreadable = [d for d in self.audit_result.documents if d.error]
+        # A narrowed view that hides everything says so. The findings are
+        # still there and the audit still ran; what is empty is the filter,
+        # and calling that a clean page would be the window lying about the
+        # site on the strength of its own controls.
+        if self._view_is_narrowed() and self.audit_result.issues():
+            self.empty_state.show_message(
+                t("empty_audit_filtered_title", self.lang),
+                t("empty_audit_filtered_body", self.lang,
+                  total=len(self.audit_result.issues())),
+            )
+            return
         if checked and not unreadable:
             self.empty_state.show_message(
                 t("empty_audit_clean_title", self.lang),

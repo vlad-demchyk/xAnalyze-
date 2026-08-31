@@ -435,6 +435,7 @@ class MainViewModel(QObject):
                    if self.state.source == SOURCE_SITE else None),
             ignore_patterns=self.repo_ignore_patterns,
             settings=self.settings,
+            site_controls=self.state.site_controls,
         )
         if worker is None:
             self.error.emit(self._missing_target_message() if refusal == "no_target"
@@ -599,7 +600,14 @@ class MainViewModel(QObject):
         lang = self.settings.ui_language
         has_text = bool(self.result and self.result.spans)
         has_audit = bool(self.audit_result and self.audit_result.documents)
-        model = from_accessibility(self.audit_result, lang=lang) if has_audit else None
+        # Exported through the same view the window is showing. A report
+        # that carries findings the list on screen is hiding would make the
+        # two disagree about one run, and the reader has no way to tell which
+        # of them is the audit.
+        audited = (self.audit_result.narrowed(self.state.categories,
+                                              self.state.confidence_floor)
+                   if has_audit else None)
+        model = from_accessibility(audited, lang=lang) if has_audit else None
         if has_text:
             # No `lang`: the copy adapter does not take one - it was being
             # passed one anyway, which raised `TypeError` the moment a run

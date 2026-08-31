@@ -30,7 +30,7 @@ import suppression
 import unicode_rules
 import config
 from config import APP_VERSION
-from audit.base import CATEGORIES, CONFIDENCE_ORDER, meets_confidence
+from audit.base import CATEGORIES, CONFIDENCE_ORDER, issues_in_view
 from detectors.factory import DetectorFactory
 from file_writer import ReplacementPlan, apply_replacements
 from lang_detect import guess_language
@@ -393,25 +393,15 @@ def cmd_audit(args) -> int:
     for document in result.documents:
         document.issues = suppression.filter_issues(document.issues, suppressions)
 
-    # Category narrowing is a *view* over one pass, not a different run: the
-    # rules are cheap and share the parse, so filtering after the fact keeps
-    # `--category seo` and a full audit returning identical findings.
+    # Category narrowing and the certainty floor are one *view* over one
+    # pass, not a different run, and `audit.base.issues_in_view` is where
+    # that view lives - the window applies the identical function to the
+    # identical findings, which is what stops the two surfaces from
+    # disagreeing about the same page.
     wanted = set(getattr(args, "category", None) or CATEGORIES)
-    if wanted != set(CATEGORIES):
-        for document in result.documents:
-            document.issues = [i for i in document.issues if i.category in wanted]
-
-    # A certainty floor, for a reader who wants only what the markup settles.
-    # Every finding has carried its confidence since the rules were written
-    # and nothing let anyone act on it, so "this element is absolutely
-    # positioned and the background color can not be determined" arrived
-    # beside a missing `alt`. Filtered here, next to the category filter, for
-    # the same reason: both are a *view* over one pass, not a different run.
-    floor = getattr(args, "confidence", None)
-    if floor:
-        for document in result.documents:
-            document.issues = [i for i in document.issues
-                               if meets_confidence(i, floor)]
+    floor = getattr(args, "confidence", None) or ""
+    for document in result.documents:
+        document.issues = issues_in_view(document.issues, wanted, floor)
 
     lang = args.language or "en"
 
@@ -426,10 +416,8 @@ def cmd_audit(args) -> int:
             for document in result.documents:
                 document.issues = suppression.filter_issues(
                     document.issues, suppressions)
-            if wanted != set(CATEGORIES):
-                for document in result.documents:
-                    document.issues = [i for i in document.issues
-                                       if i.category in wanted]
+            for document in result.documents:
+                document.issues = issues_in_view(document.issues, wanted, floor)
     if getattr(args, "report", None):
         _write_report(result, args, lang, fix_outcome)
     if getattr(args, "styled_report", None):

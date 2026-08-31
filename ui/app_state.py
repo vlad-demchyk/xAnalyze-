@@ -46,6 +46,7 @@ class AppState(QObject):
     ai_available_changed = Signal(bool)   # account state changed
     mode_changed = Signal(str)            # derived mode changed
     scope_changed = Signal(str)           # new scope
+    view_changed = Signal()               # audit categories or certainty floor
 
     # Fired after any axis changes, in addition to the specific signal.
     # Listeners that care about the combined state (e.g. button visibility)
@@ -62,6 +63,17 @@ class AppState(QObject):
         self._target: str = ""
         self._depth: int = 0
         self._scope: str = "content"
+        #: Which audit categories to report, and how certain a finding has to
+        #: be. Empty means every category and every certainty - the state a
+        #: run starts in, and the reason neither is stored as a full tuple of
+        #: everything: "no choice made" and "chose all six" are the same
+        #: answer and must not be two.
+        self._categories: tuple[str, ...] = ()
+        self._confidence_floor: str = ""
+        #: `--site-controls`: fetch robots.txt and the sitemaps it declares.
+        #: Off by default on both surfaces, because it is two extra requests
+        #: to an address the user did not name.
+        self._site_controls: bool = False
 
     # -- source ------------------------------------------------------------
     @property
@@ -180,6 +192,49 @@ class AppState(QObject):
             return
         self._scope = value
         self.scope_changed.emit(value)
+        self.any_changed.emit()
+
+    # -- the view over a finished audit ------------------------------------
+    #
+    # Category and certainty narrow what is *shown*, never what is run: the
+    # rules are cheap and share one parse, so a run is made once and read
+    # through `audit.base.issues_in_view`. Storing them here rather than in
+    # the audit result is what lets the choice change after the run without
+    # re-auditing, and what keeps the window's answer identical to
+    # `--category`/`--confidence` on the same page.
+    @property
+    def categories(self) -> tuple[str, ...]:
+        return self._categories
+
+    def set_categories(self, value) -> None:
+        chosen = tuple(value or ())
+        if chosen == self._categories:
+            return
+        self._categories = chosen
+        self.view_changed.emit()
+        self.any_changed.emit()
+
+    @property
+    def confidence_floor(self) -> str:
+        return self._confidence_floor
+
+    def set_confidence_floor(self, value: str) -> None:
+        if value == self._confidence_floor:
+            return
+        self._confidence_floor = value or ""
+        self.view_changed.emit()
+        self.any_changed.emit()
+
+    # -- site controls -----------------------------------------------------
+    @property
+    def site_controls(self) -> bool:
+        return self._site_controls
+
+    def set_site_controls(self, value: bool) -> None:
+        value = bool(value)
+        if value == self._site_controls:
+            return
+        self._site_controls = value
         self.any_changed.emit()
 
     # -- derived -----------------------------------------------------------

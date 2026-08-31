@@ -26,16 +26,18 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QButtonGroup, QCheckBox, QHBoxLayout, QLabel, QPushButton, QRadioButton,
-    QVBoxLayout, QWidget,
+    QButtonGroup, QCheckBox, QComboBox, QHBoxLayout, QLabel, QPushButton,
+    QRadioButton, QVBoxLayout, QWidget,
 )
 
 from analysis_modes import (
     CHECK_ACCESSIBILITY, CHECK_AI_PATTERNS, METHOD_AI, METHOD_EMBEDDING,
     METHOD_LOCAL, READER_BROWSER, SOURCE_FILE, SOURCE_REPO, SOURCE_SITE,
 )
+from audit.base import CATEGORIES, CONFIDENCE_ORDER
 from i18n.translations import t
 from ui import theme
+from ui.widgets import FlowLayout
 
 #: The three sources, with the sentence each one is described by.
 SOURCES = (
@@ -52,6 +54,12 @@ METHODS = (
     (METHOD_EMBEDDING, "method_embedding", "setup_method_embedding_hint", False),
     (METHOD_AI, "method_both", "setup_method_ai_hint", True),
 )
+
+
+#: The certainty floor, weakest first, with "no floor" in front of it.
+#: Read from `audit.base` rather than spelled again here: a fourth level
+#: would otherwise exist in the audit and not in the window that runs it.
+CERTAINTIES = ("",) + CONFIDENCE_ORDER
 
 
 def _under_home(path) -> str:
@@ -182,6 +190,15 @@ class SetupScreen(QWidget):
         cards.addWidget(self._build_question_card(), stretch=1)
         cards.addWidget(self._build_judge_card(), stretch=1)
         column.addLayout(cards)
+
+        # The fifth choice, on its own line rather than as a fifth column.
+        # Four cards already divide 1300px into quarters, and a fifth would
+        # take each below the width its two-line rows need - the same width
+        # budget the top row is measured against in `test_window_shell`.
+        # It is also a different kind of choice: the four above decide what
+        # the run *is*, this one decides what is shown of it, and it stays
+        # usable after the run because it changes no run at all.
+        column.addWidget(self._build_report_card())
         column.addStretch(1)
 
         bottom = QHBoxLayout()
@@ -377,6 +394,106 @@ class SetupScreen(QWidget):
         self.judge_card = card
         return card
 
+    def _build_report_card(self) -> QWidget:
+        """Category, certainty and site controls: `--category`,
+        `--confidence` and `--site-controls`, which the CLI has had all
+        along and the window did not (`P-23`).
+
+        The first two are a view over one finished pass, so they are wired
+        to `AppState` and read again every time the list is built, and the
+        third is a run choice: two extra requests to the same domain, which
+        is why it is off until asked for and hidden for a folder or a file.
+        """
+        card = SetupCard("setup_step_report", self.lang)
+        row = QHBoxLayout()
+        row.setSpacing(16)
+
+        self.category_boxes = {}
+        categories_holder = QWidget()
+        categories_column = QVBoxLayout(categories_holder)
+        categories_column.setContentsMargins(0, 0, 0, 0)
+        categories_column.setSpacing(4)
+        self.categories_label = QLabel(t("setup_report_categories", self.lang))
+        self.categories_label.setProperty("class", theme.CLASS_FIELD_LABEL)
+        categories_column.addWidget(self.categories_label)
+        # Wraps rather than pushes. Six labelled boxes in a row need about
+        # 700px, and a box layout hands that width to the window as its own
+        # minimum - which is the exact regression the top row was rebuilt to
+        # avoid (`test_window_shell`, the 1271px floor). At 900px the chips
+        # take a second line and the window still opens at 900px.
+        chip_holder = QWidget()
+        chips = FlowLayout(chip_holder, margin=0, spacing=10)
+        chips.setContentsMargins(0, 0, 0, 0)
+        for value in CATEGORIES:
+            box = QCheckBox(t(f"audit_category_{value}", self.lang))
+            box.toggled.connect(self._on_categories_toggled)
+            self.category_boxes[value] = box
+            chips.addWidget(box)
+        categories_column.addWidget(chip_holder)
+        self.categories_hint = QLabel(t("setup_report_categories_hint", self.lang))
+        self.categories_hint.setProperty("class", theme.CLASS_MUTED)
+        self.categories_hint.setWordWrap(True)
+        categories_column.addWidget(self.categories_hint)
+        row.addWidget(categories_holder, stretch=1)
+
+        certainty_holder = QWidget()
+        certainty_column = QVBoxLayout(certainty_holder)
+        certainty_column.setContentsMargins(0, 0, 0, 0)
+        certainty_column.setSpacing(4)
+        self.certainty_label = QLabel(t("setup_report_certainty", self.lang))
+        self.certainty_label.setProperty("class", theme.CLASS_FIELD_LABEL)
+        certainty_column.addWidget(self.certainty_label)
+        self.certainty_combo = QComboBox()
+        self.certainty_combo.currentIndexChanged.connect(self._on_certainty_changed)
+        certainty_column.addWidget(self.certainty_combo)
+        self.certainty_hint = QLabel(t("setup_report_certainty_hint", self.lang))
+        self.certainty_hint.setProperty("class", theme.CLASS_MUTED)
+        self.certainty_hint.setWordWrap(True)
+        certainty_column.addWidget(self.certainty_hint)
+        row.addWidget(certainty_holder, stretch=1)
+
+        card.column.addLayout(row)
+
+        self.site_controls_box = QCheckBox(
+            t("setup_report_site_controls", self.lang))
+        self.site_controls_box.toggled.connect(self.app_state.set_site_controls)
+        card.column.addWidget(self.site_controls_box)
+        self.site_controls_hint = QLabel(
+            t("setup_report_site_controls_hint", self.lang))
+        self.site_controls_hint.setProperty("class", theme.CLASS_MUTED)
+        self.site_controls_hint.setWordWrap(True)
+        card.column.addWidget(self.site_controls_hint)
+
+        self.report_card = card
+        self._fill_certainties()
+        return card
+
+    def _fill_certainties(self) -> None:
+        current = (self.certainty_combo.currentData()
+                   if self.certainty_combo.count() else self.app_state.confidence_floor)
+        self.certainty_combo.blockSignals(True)
+        self.certainty_combo.clear()
+        for value in CERTAINTIES:
+            label = (t("certainty_any", self.lang) if not value
+                     else t(f"certainty_{value}", self.lang))
+            self.certainty_combo.addItem(label, userData=value)
+        index = self.certainty_combo.findData(current or "")
+        self.certainty_combo.setCurrentIndex(max(index, 0))
+        self.certainty_combo.blockSignals(False)
+
+    def _on_categories_toggled(self, _checked: bool) -> None:
+        chosen = tuple(value for value, box in self.category_boxes.items()
+                       if box.isChecked())
+        # Every box ticked and none ticked are the same request - show all
+        # six - and storing the first as a list would make a later category
+        # invisible to anyone who had once ticked the boxes by hand.
+        if len(chosen) == len(CATEGORIES):
+            chosen = ()
+        self.app_state.set_categories(chosen)
+
+    def _on_certainty_changed(self, _index: int) -> None:
+        self.app_state.set_confidence_floor(self.certainty_combo.currentData() or "")
+
     # ------------------------------------------------------------ filling
 
     def _on_checks_toggled(self, _checked: bool) -> None:
@@ -397,6 +514,16 @@ class SetupScreen(QWidget):
         self.drop_title.setText(t("setup_drop_title", lang))
         self.drop_note.setText(t("setup_drop_note", lang))
         self.drop_choose_btn.setText(t("setup_drop_choose", lang))
+        self.report_card.step.setText(t("setup_step_report", lang))
+        self.categories_label.setText(t("setup_report_categories", lang))
+        self.categories_hint.setText(t("setup_report_categories_hint", lang))
+        self.certainty_label.setText(t("setup_report_certainty", lang))
+        self.certainty_hint.setText(t("setup_report_certainty_hint", lang))
+        self.site_controls_box.setText(t("setup_report_site_controls", lang))
+        self.site_controls_hint.setText(t("setup_report_site_controls_hint", lang))
+        for value, box in self.category_boxes.items():
+            box.setText(t(f"audit_category_{value}", lang))
+        self._fill_certainties()
         self.refresh()
 
     def refresh(self) -> None:
@@ -438,6 +565,30 @@ class SetupScreen(QWidget):
         self.account_note.setText("" if ai_ready
                                   else t("setup_method_needs_account", self.lang))
         self.account_note.setVisible(not ai_ready)
+        # The categories and the certainty are about audit findings, so the
+        # card says nothing while nothing is being audited - a control that
+        # governs a list nobody asked for is a control that lies about what
+        # the run will do.
+        auditing = CHECK_ACCESSIBILITY in state.checks
+        self.report_card.setEnabled(auditing)
+        chosen = set(state.categories)
+        for value, box in self.category_boxes.items():
+            box.blockSignals(True)
+            box.setChecked(value in chosen)
+            box.blockSignals(False)
+        index = self.certainty_combo.findData(state.confidence_floor or "")
+        if index >= 0 and index != self.certainty_combo.currentIndex():
+            self.certainty_combo.blockSignals(True)
+            self.certainty_combo.setCurrentIndex(index)
+            self.certainty_combo.blockSignals(False)
+        # Two extra requests to a domain, so it exists only where there is a
+        # domain: a folder and a single file have no robots.txt to read.
+        site = state.source == SOURCE_SITE
+        self.site_controls_box.setVisible(site)
+        self.site_controls_hint.setVisible(site)
+        self.site_controls_box.blockSignals(True)
+        self.site_controls_box.setChecked(state.site_controls)
+        self.site_controls_box.blockSignals(False)
         self._refresh_drop_zone()
         self._refresh_summary()
 

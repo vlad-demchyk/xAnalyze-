@@ -264,8 +264,14 @@ class AuditWorker(QThread):
     def __init__(self, target: str, depth: int, max_pages: int = 30,
                  is_repo: bool = False, is_page_file: bool = False,
                  ignore_patterns=None, max_files: int = 5000,
-                 settings=None, pages: list | None = None, parent=None):
+                 settings=None, pages: list | None = None,
+                 site_controls: bool = False, parent=None):
         super().__init__(parent)
+        #: `--site-controls`: also fetch robots.txt and the same-origin
+        #: sitemaps it declares. Off unless asked for - it is two requests to
+        #: an address the user did not type - and meaningless off the web,
+        #: which is why only the crawl branch below reads it.
+        self.site_controls = site_controls
         #: Pages already fetched - by an earlier run, or by the browser on the
         #: main thread. Given them, this worker does not crawl: a run that asks
         #: both questions about one site must fetch it once.
@@ -316,7 +322,8 @@ class AuditWorker(QThread):
                 if self._cancelled:
                     return
                 self.auditing.emit(self.target)
-                result = audit.analyze_pages(pages, self.target)
+                result = audit.analyze_pages(pages, self.target,
+                                             site_controls=self.site_controls)
                 ignore_root = None
 
             # The same list that governs the text scan: a user who said "not
@@ -335,7 +342,7 @@ class AuditWorker(QThread):
 
 def audit_worker_for(source: str, *, target: str, depth: int, max_pages: int,
                      pages=None, ignore_patterns=None, max_files: int = 5000,
-                     settings=None, parent=None):
+                     settings=None, site_controls: bool = False, parent=None):
     """The right `AuditWorker` for the source, or `(None, message)` on refusal.
 
     One place, because there were two: the window and the view model each
@@ -375,7 +382,7 @@ def audit_worker_for(source: str, *, target: str, depth: int, max_pages: int,
         return None, "not_a_url"
     return AuditWorker(pages=pages, target=address, depth=depth,
                        max_pages=max_pages, settings=settings,
-                       parent=parent), ""
+                       site_controls=site_controls, parent=parent), ""
 
 
 class RewriteAllWorker(QThread):

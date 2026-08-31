@@ -114,6 +114,30 @@ def meets_confidence(issue, floor: str) -> bool:
     return CONFIDENCE_ORDER.index(level) >= wanted
 
 
+def issues_in_view(issues, categories=(), confidence: str = "") -> list:
+    """The findings a reader asked to see, out of the ones the pass produced.
+
+    Both narrowings are a *view* over one pass, never a different run: the
+    rules are cheap and share the parse, so `--category seo` and a full audit
+    return identical findings for the categories they have in common.
+
+    One function because there were two surfaces doing it and only one of
+    them did it. `cli.py` filtered by category and by certainty; the window
+    ran the same pass and showed everything, so `--category seo --confidence
+    exact` and the desktop app disagreed about the same page while both
+    called it an audit. `categories` empty means every category, which is
+    what "no choice made" has to mean here - an empty list is not an
+    instruction to report nothing.
+    """
+    wanted = set(categories or ()) & set(CATEGORIES)
+    kept = list(issues)
+    if wanted and wanted != set(CATEGORIES):
+        kept = [issue for issue in kept if issue.category in wanted]
+    if confidence:
+        kept = [issue for issue in kept if meets_confidence(issue, confidence)]
+    return kept
+
+
 @dataclass
 class Issue:
     """One accessibility problem, at one place in one document."""

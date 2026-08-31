@@ -13,7 +13,7 @@ the app because there is only one crawler.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import re
 from pathlib import Path, PurePath
 
@@ -92,6 +92,26 @@ class AccessibilityResult:
 
     def documents_with_issues(self) -> list:
         return [d for d in self.documents if d.issues]
+
+    def narrowed(self, categories=(), confidence: str = "") -> "AccessibilityResult":
+        """The same run, read through a category and certainty filter.
+
+        A copy rather than an edit in place: the run happened once, and a
+        reader who narrows the view then widens it again must get the
+        findings back without re-auditing anything. Every document is kept,
+        including the ones left with nothing - a page that was read and has
+        no findings *in this view* is not a page that was not read, and the
+        counts printed beside the list are counts of documents.
+        """
+        from .base import issues_in_view
+
+        if not categories and not confidence:
+            return self
+        return replace(self, documents=[
+            replace(document,
+                    issues=issues_in_view(document.issues, categories, confidence))
+            for document in self.documents
+        ])
 
 
 def _dom_path(tag) -> str:

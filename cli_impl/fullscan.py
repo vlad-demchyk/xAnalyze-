@@ -601,11 +601,10 @@ def _issues_at_floor(audit_result, floor: str | None) -> list:
     if audit_result is None or not audit_result:
         return []
     if floor:
-        from audit.base import meets_confidence
+        from audit.base import issues_in_view
 
         for document in audit_result.documents:
-            document.issues = [issue for issue in document.issues
-                               if meets_confidence(issue, floor)]
+            document.issues = issues_in_view(document.issues, (), floor)
     return [issue for document in audit_result.documents
             for issue in document.issues]
 

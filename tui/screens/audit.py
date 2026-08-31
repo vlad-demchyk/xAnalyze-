@@ -7,6 +7,7 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, Checkbox, Input, Label, Select, Static
 
+from audit.base import CATEGORIES, CONFIDENCE_ORDER
 from cli import cmd_audit
 from tui.screens.base import RunScreen
 
@@ -79,7 +80,35 @@ class AuditScreen(RunScreen):
                     classes="inline-select",
                 )
 
+            # The second sentence: what to show of what was found. Both
+            # are a view over one pass - the rules are cheap and share the
+            # parse - so narrowing here costs nothing and hides nothing that
+            # a wider choice would not bring straight back.
+            with Horizontal(classes="sentence"):
+                yield Static(self.tr("tui_label_category"), classes="inline-label")
+                yield Select(
+                    [(self.tr("tui_all_categories"), "")]
+                    + [(self.tr(f"audit_category_{value}"), value)
+                       for value in CATEGORIES],
+                    value="",
+                    id="category",
+                    compact=True,
+                    classes="inline-select",
+                )
+                yield Static("·", classes="inline-sep")
+                yield Static(self.tr("tui_label_certainty"), classes="inline-label")
+                yield Select(
+                    [(self.tr("certainty_any"), "")]
+                    + [(self.tr(f"certainty_{value}"), value)
+                       for value in CONFIDENCE_ORDER],
+                    value="",
+                    id="confidence",
+                    compact=True,
+                    classes="inline-select",
+                )
+
             yield Static("")
+            yield Checkbox(self.tr("tui_site_controls"), id="site-controls")
             yield Checkbox(self.tr("tui_browser_pass"), id="browser")
             yield Checkbox(self.tr("tui_ai_pass"), id="ai")
             yield Checkbox(self.tr("tui_autofix"), id="fix")
@@ -120,7 +149,14 @@ class AuditScreen(RunScreen):
             use_default_excludes=True,
             ext=None,
             scope="content",
-            category=None,
+            # `--category` takes a list; one choice or none, from a screen
+            # that has one line to spend on it. `None` is every category,
+            # which is what the CLI means by the flag being absent.
+            category=([self.query_one("#category", Select).value]
+                      if self.query_one("#category", Select).value else None),
+            confidence=self.query_one("#confidence", Select).value or None,
+            site_controls=self.query_one("#site-controls", Checkbox).value,
+            medium=None,
             language=self.query_one("#language", Select).value,
             no_ignore=False,
             no_typography=False,

@@ -41,7 +41,7 @@ from analysis_modes import (
     METHOD_LOCAL, METHODS, SOURCE_FILE, SOURCE_REPO, SOURCE_SITE,
     AnalysisRequest,
 )
-from i18n.translations import t
+from i18n.translations import plural, t
 from models import AnalysisResult, CodeBlock, Confidence, RepoAnalysisResult, TextBlock, TextSpan
 from repo_scanner import (
     DEFAULT_IGNORE_PATTERNS, SCOPE_BOTH, SCOPE_CONTENT, SCOPE_TECHNICAL,
@@ -276,6 +276,11 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         # entries until the user signed in and out again.
         self.app_state.ai_available_changed.connect(
             lambda _ready: self._retranslate_choices())
+        # Category and certainty are a view over findings that already exist,
+        # so changing either repaints the list instead of re-auditing the
+        # site. Nothing is re-fetched and nothing is re-parsed: that is the
+        # whole difference between this and a run choice.
+        self.app_state.view_changed.connect(self._on_view_narrowed)
 
         # -- ViewModel -> UI updates --
         self.view_model.busy_changed.connect(self._on_busy_changed)
@@ -290,6 +295,14 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self.view_model.undo_outcome.connect(self._on_undo_outcome)
         self.view_model.download_choice_needed.connect(self._on_download_choice_needed)
         self.view_model.unicode_fixed.connect(self._on_unicode_fixed)
+
+    def _on_view_narrowed(self) -> None:
+        """Repaint what is shown of a finished audit, without running one."""
+        if self.audit_result is None:
+            return
+        self._populate_audit_list()
+        self._refresh_summary()
+        self._update_audit_buttons_enabled()
 
     def _setup_shortcuts(self) -> None:
         """Keyboard shortcuts for power users."""
@@ -628,7 +641,10 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         total = 0
 
         if self.audit_result is not None:
-            for issue in self.audit_result.issues():
+            # The same view the list is built from. Counting everything while
+            # showing a narrowed list is how a summary comes to disagree with
+            # the rows underneath it.
+            for issue in self._issues_in_view():
                 if issue.severity in counts:
                     counts[issue.severity] += 1
                     total += 1
@@ -645,9 +661,21 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             return
 
         self.severity_bar.set_counts(counts)
-        self.summary_count.setText(t("summary_findings", self.lang, count=total))
+        self.summary_count.setText(t(
+            "summary_findings", self.lang, count=total,
+            noun=plural(total, self.lang, *self._FINDINGS_NOUN[self.lang])))
         self.summary_label.setText(self._summary_line())
         self.summary_bar.setVisible(True)
+
+    #: The noun after the count, by language. Ukrainian needs all three
+    #: forms; Italian and English only distinguish one from the rest, so the
+    #: third is the same word - the calculation still runs and the table stays
+    #: readable as one shape per language.
+    _FINDINGS_NOUN = {
+        "uk": ("знахідка", "знахідки", "знахідок"),
+        "it": ("riscontro", "riscontri", "riscontri"),
+        "en": ("finding", "findings", "findings"),
+    }
 
     def _summary_line(self) -> str:
         """What was scanned, in the row's quietest ink.
@@ -2698,6 +2726,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             pages=self._reusable_pages() if self.source == SOURCE_SITE else None,
             ignore_patterns=self.repo_ignore_patterns,
             settings=self.settings,
+            site_controls=self.app_state.site_controls,
         )
         if worker is None:
             QMessageBox.warning(self, "", self._missing_target_message()
