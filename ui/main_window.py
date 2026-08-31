@@ -1772,7 +1772,43 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             if worker.isRunning():
                 worker.wait(5000)
         self._persist_settings()
+        self._release_site_view()
         super().closeEvent(event)
+
+    def _release_site_view(self) -> None:
+        """Let go of the preview's `QWebEnginePage` before its profile.
+
+        `audit/driver.close()` spells out why the order matters; this window
+        had the same hazard and left it to interpreter teardown, where Qt's
+        ordering guarantees are gone. `tests/test_window_shell.py` passed
+        every assertion and then aborted the process (SIGABRT alone, SIGSEGV
+        in a full run, printing "Release of profile requested but
+        WebEnginePage still not deleted" once per window built), which is why
+        the release gate in `.github/workflows/release.yml` would have failed
+        on its exit code with nothing failing in it.
+        """
+        from PySide6.QtCore import QCoreApplication, QEvent
+
+        view = getattr(self, "site_view", None)
+        if view is None:
+            return
+        # Set to None *before* anything else: Qt can deliver `closeEvent`
+        # twice, and the second pass would reach a half-released view.
+        self.site_view = None
+        # `setPage(None)` is the whole release. Unlike `audit/driver`, which
+        # builds `QWebEnginePage(profile, None)` and therefore owns it, a bare
+        # `QWebEngineView` creates and **owns** its page - so Qt destroys the
+        # old page inside `setPage`, and calling `deleteLater()` on the
+        # Python wrapper afterwards raises "Internal C++ object already
+        # deleted". That mistake cost 44 red tests before this comment.
+        view.setPage(None)
+        view.deleteLater()
+        app = QCoreApplication.instance()
+        if app is not None:
+            # `DeferredDelete` explicitly: a plain `processEvents` does not run
+            # deferred deletions posted at another event-loop level, so the
+            # view would still be alive when the profile goes.
+            app.sendPostedEvents(None, QEvent.Type.DeferredDelete.value)
 
     def _persist_settings(self) -> None:
         self.settings.ui_language = self.lang

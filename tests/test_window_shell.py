@@ -530,3 +530,29 @@ class DisabledUntilThereIsSomethingToDo(WindowCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ClosingReleasesTheWebView(WindowCase):
+    """`closeEvent` let go of the devserver, the workers and the settings, and
+    left the preview's `QWebEnginePage` to interpreter teardown - where Qt's
+    ordering guarantees are gone.
+
+    The whole file passed every assertion and then aborted the process
+    (SIGABRT alone, SIGSEGV in a full run), printing "Release of profile
+    requested but WebEnginePage still not deleted" once per window built. The
+    exit code is what a CI gate reads, and
+    `.github/workflows/release.yml` runs `pytest tests/` as exactly that - so
+    the release job would have failed with nothing failing in it.
+    """
+
+    def test_the_preview_is_released_on_close(self):
+        self.assertIsNotNone(self.window.site_view)
+        self.window.close()
+        self.assertIsNone(self.window.site_view)
+
+    def test_closing_twice_is_safe(self):
+        """Qt can deliver `closeEvent` more than once, and the second pass
+        used to reach a half-released view."""
+        self.window.close()
+        self.window.close()          # must not raise
+        self.assertIsNone(self.window.site_view)
