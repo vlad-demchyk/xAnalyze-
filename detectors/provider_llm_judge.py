@@ -59,6 +59,15 @@ class ProviderLLMJudgeDetector(ClaudeLLMJudgeDetector):
         Detector.__init__(self, **config)
         self.batch_size = batch_size
         self.model = "(chosen by the account that pays)"
+        # Set for the same reason `model` is, and the reason is not
+        # cosmetic: `_spans_from_payload` is inherited whole, and it stamps
+        # both onto every finding so a verdict can say what produced it.
+        # Skipping the parent constructor skipped this, so both judges on
+        # this path raised `AttributeError: no attribute 'effort'` the moment
+        # a model actually returned a flag - and only then, which is why a
+        # test with an empty verdict never saw it. Neither provider takes an
+        # effort parameter, so what is recorded is that fact.
+        self.effort = "(chosen by the account that pays)"
         self._provider = provider
 
     def _build_provider(self):
@@ -95,9 +104,13 @@ class ProviderLLMJudgeDetector(ClaudeLLMJudgeDetector):
 
     def _analyze_batch(self, provider, batch: list[TextBlock]) -> list[TextSpan]:
         numbered = "\n\n".join(f"[{idx}] {b.text}" for idx, b in enumerate(batch))
+        # The mapping is inside the `try` as well, not only the call. It was
+        # outside, and the comment below already said what should happen to a
+        # failed batch - but a failure in the mapping walked straight past it
+        # and ended the whole scan. A batch that cannot be read is one batch.
         try:
             raw = provider.analyze(_SYSTEM_PROMPT + JSON_INSTRUCTION, numbered)
             data = _parse_json_relaxed(raw)
+            return self._spans_from_payload(data, batch)
         except Exception as exc:  # noqa: BLE001 - one failed batch, not a failed scan
             return [self._error_span(b, exc) for b in batch]
-        return self._spans_from_payload(data, batch)
