@@ -299,6 +299,25 @@ def _repo_content_index(repo_path: str, args) -> dict:
     return index
 
 
+def _note_weak_detector(args, blocks, stats_out) -> None:
+    """Tell the person their detector is the weak one here, if it is.
+
+    On stderr because that is where every other stage note goes, and into
+    `stats_out` so the JSON carries it too: a caller reading the document
+    rather than the terminal needs the same warning, and the window and the
+    TUI have no stderr to read.
+    """
+    import detector_advice
+
+    name = getattr(args, "detector", None) if args is not None else None
+    note = detector_advice.weak_language_note(name or "offline", blocks)
+    if not note:
+        return
+    print(f"# WARNING: {note}", file=sys.stderr, flush=True)
+    if stats_out is not None:
+        stats_out["detector_note"] = note
+
+
 def _content_findings_from_pages(pages, args=None, stats_out: dict | None = None) -> list:
     """The AI-patterns and typography pass for a crawled site.
 
@@ -356,6 +375,13 @@ def _content_findings_from_pages(pages, args=None, stats_out: dict | None = None
     # paying for repeats the judge had stopped paying for.
     groups = duplicates.distinct_blocks(blocks)
     spans_by_id = _judge_distinct(groups, passes, args)
+
+    # Said once per run, and said at all. The offline pass finds 36% of known
+    # Italian AI passages where the embedding detector finds 100%, and until
+    # now that lived only in a calibration report nobody runs - so an Italian
+    # page got a third of the available answer and looked like a clean scan.
+    # See `detector_advice`, which holds the measurement.
+    _note_weak_detector(args, blocks, stats_out)
 
     repo_path = getattr(args, "repo", None) if args is not None else None
     repo_index = _repo_content_index(repo_path, args) if repo_path else None
@@ -1173,7 +1199,11 @@ def _run_phases_body(args, state, folder, timings, target, lang, is_url, is_page
                 "characters": len([f for f in scan_findings
                                    if f.get("source") == "characters"]),
             }
-            if repo_stats:
+            # `counts` is read as numbers - the TUI renders a row per key -
+            # so only the numeric stats go in. The detector note is a
+            # sentence and belongs beside the findings, not among them.
+            note = repo_stats.pop("detector_note", None)
+            if "repo_matched" in repo_stats:
                 counts.update(repo_stats)
                 # One line, not one per passage: `--repo` given but almost
                 # nothing matching is worth knowing about (wrong checkout,
@@ -1187,6 +1217,8 @@ def _run_phases_body(args, state, folder, timings, target, lang, is_url, is_page
                 "findings": scan_findings,
                 "counts": counts,
             }
+            if note:
+                scan_result["detector_note"] = note
 
     guard("audit")
     if already("audit") and not already("browser"):

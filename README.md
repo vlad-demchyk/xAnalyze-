@@ -409,7 +409,7 @@ Comments and blank lines are preserved when the application updates this file.
 ## Limits
 
 - AI-text detection is corpus-dependent. It is not proof of authorship, and model judgments are not deterministic.
-- The corpus is small and language balance differs. Italian is currently weaker on short passages than English and Ukrainian; use the hybrid or model-judged method when Italian matters.
+- **The offline wording pass is weak in Italian, and the tool now says so during a run.** On the held-out corpus it finds 36% of known AI passages in Italian against 55% in English and 71% in Ukrainian, while the embedding detector finds 100%, 85% and 86%. A scan whose page reads as Italian prints a warning naming the better detector, and repeats it in the JSON as `scan.detector_note`. The wording pass is still the default because it is instant, needs no `torch`, names the phrase it matched, and can replace it offline - and it catches four held-out passages the embedding detector misses.
 - **Text detection covers Ukrainian, Italian and English only.** A passage in any other language is named as such and the wording and embedding passes report nothing for it, rather than scoring it against lists and a reference set that do not speak it. Measured on 257 paragraphs in German, French, Spanish, Polish and Russian: 249 are read as unsupported. The character, typography and audit checks are language-independent and keep running, and a model-judged detector is not restricted this way.
 - A repository scan cannot see content created only at render time. Use a URL or `--devserver` for page behavior.
 - A single breakpoint cannot describe responsive behavior. Use `--breakpoints all` when mobile or tablet matters.

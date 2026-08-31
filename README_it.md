@@ -292,7 +292,7 @@ Si possono aggiungere le sezioni `[rules]`, `[selectors]`, `[fingerprints]`, olt
 ## Limiti
 
 - Il detector AI dipende dal corpus e non dimostra l'autore; i giudizi del modello non sono deterministici.
-- L'italiano è più debole sui passaggi brevi; per testi importanti usare hybrid o model-judged.
+- **Il passaggio offline sulle formulazioni è debole in italiano, e ora lo strumento lo dice durante la scansione.** Sulla metà held-out del corpus trova il 36% dei passaggi AI noti in italiano contro il 55% in inglese e il 71% in ucraino, mentre il detector embedding trova 100%, 85% e 86%. Una scansione la cui pagina risulta in italiano stampa un avviso che nomina il detector migliore e lo ripete nel JSON come `scan.detector_note`. Il passaggio sulle formulazioni resta il predefinito perché è istantaneo, non richiede `torch`, nomina la frase trovata e sa sostituirla offline, e intercetta quattro passaggi held-out che embedding non vede.
 - **Il rilevamento del testo copre solo ucraino, italiano e inglese.** Un passaggio in un'altra lingua viene dichiarato tale e il passaggio sulle formulazioni e quello embedding non riportano nulla, invece di misurarlo con liste e un insieme di riferimento che quella lingua non la conoscono. Misurato su 257 paragrafi in tedesco, francese, spagnolo, polacco e russo: 249 vengono letti come lingua non supportata. I controlli sui caratteri, sulla tipografia e sull'audit non dipendono dalla lingua e continuano a funzionare, e un detector giudicato da un modello non ha questo limite.
 - La scansione statica non vede contenuti creati durante il rendering. Usare URL o `--devserver`.
 - Un solo breakpoint non descrive il comportamento responsive. Usare `--breakpoints all`.
