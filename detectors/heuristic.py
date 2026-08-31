@@ -40,11 +40,44 @@ _EM_DASH_RE = re.compile(r"[—–]")
 # often than typical human writers, grouped by language. Matched with word
 # boundaries (case-insensitive), so short items don't false-positive inside
 # unrelated longer words. Not exhaustive — extend freely.
+#
+# **But not by eye.** Audited 2026-08-31 against `corpus/prose.jsonl`, human
+# paragraphs about the subjects a scan is actually pointed at - tourism,
+# software, usability, marketing.
+#
+# Six of those paragraphs were being reported, one phrase each: `nuove
+# possibilità` and `integrazione` (it), `additionally,` (en), `в епоху`,
+# `крім того,` and `феномен` (uk). Eleven more entries matched that human
+# text without pushing a paragraph over the line, and each of them caught no
+# more positives than it cost: `scalable`, `dynamic`, `holistic`, `bandwidth`
+# (en), `efficienza`, `efficiente`, `fondamentale`, `tuttavia,`, `sempre più
+# spesso`, `punto di svolta` (it), `у підсумку,` (uk).
+#
+# All seventeen removed. Held-out recall did not move - en 11/20, it 4/11,
+# uk 10/14 before and after - and false alarms on that prose went **6 to 0**.
+#
+# The pattern is worth naming, because the list invites repeating it: an
+# ordinary word of the register a page is written in is not a marker of who
+# wrote it. `efficienza` is what an Italian article about productivity is
+# made of. A candidate phrase belongs here only after it has been counted on
+# both sides.
 CLICHE_PHRASES: dict[str, list[str]] = {
     "en": [
         # padding / hedging openers
         "it's important to note", "it is important to note",
         "it is worth mentioning", "it should be noted that",
+        # Added 2026-08-31 by the same audit that retired seventeen entries.
+        # The hand-written AI sample in `tests/test_heuristic_detector.py`
+        # contains six constructions of this kind and the list held **none**
+        # of them - it was crossing the threshold on three adjacent
+        # adjectives (`comprehensive`, `robust`, `scalable`) instead, which
+        # is why retiring one adjective dropped it. Each of these was counted
+        # against 985 human entries first: zero hits.
+        "it is worth noting", "delves",
+        "the intricacies of", "when it comes to", "first and foremost",
+        "leverage the power of", "in terms of best practices",
+        "there are several key", "has evolved significantly",
+        "it is important to understand",
         "it is essential to understand", "one must consider",
         "generally speaking", "broadly speaking", "to some extent", "arguably",
         # temporal / scene-setting openers
@@ -52,7 +85,7 @@ CLICHE_PHRASES: dict[str, list[str]] = {
         "in the era of", "in a world where", "in this day and age",
         "in the modern era", "in the ever-evolving landscape",
         # transitions overused as sentence openers
-        "furthermore,", "moreover,", "additionally,", "nevertheless,",
+        "furthermore,", "moreover,", "nevertheless,",
         "consequently,", "subsequently,", "that being said", "at its core",
         # summary / closing clichés
         "in conclusion", "to summarize", "in summary", "to put it simply",
@@ -71,7 +104,7 @@ CLICHE_PHRASES: dict[str, list[str]] = {
         # business clichés
         "synergy", "paradigm shift", "low-hanging fruit", "move the needle",
         "boil the ocean", "circle back", "deep dive", "touch base",
-        "value-add", "win-win", "bandwidth",
+        "value-add", "win-win",
         # structural clichés ("No X. No Y. Just Z." is a regex in
         # STRUCTURAL_PATTERNS — a literal here could never match real text)
         "is the new", "in the world of",
@@ -110,8 +143,8 @@ CLICHE_PHRASES: dict[str, list[str]] = {
         "delve", "underscore", "pivotal", "realm", "harness", "illuminate",
         "facilitate", "refine", "bolster", "differentiate", "streamline",
         "revolutionize", "innovative", "transformative", "seamless",
-        "scalable", "comprehensive", "robust", "stellar", "exceptional",
-        "unparalleled", "dynamic", "intricate", "nuanced", "holistic",
+        "comprehensive", "robust", "stellar", "exceptional",
+        "unparalleled", "intricate", "nuanced",
         "paramount", "formidable", "nimble", "supercharge", "turbocharge",
         "amplify", "embark", "uncover", "unveil", "tailor", "hone",
         "foster", "myriad", "countless", "innumerable", "substantial",
@@ -123,7 +156,7 @@ CLICHE_PHRASES: dict[str, list[str]] = {
         "у сучасному світі", "не є винятком", "варто зазначити",
         "важливо підкреслити", "зануримося", "розкрити потенціал",
         "розкрийте потенціал", "на завершення", "підсумовуючи",
-        "крім того,", "більше того,", "безсумнівно", "це свідчить про",
+        "більше того,", "безсумнівно", "це свідчить про",
         "надзвичайно важливо", "широкий спектр", "справжня знахідка",
         "ідеальне рішення", "у світі, де", "незалежно від того",
         "з кожним днем", "перш за все,", "невід'ємна частина",
@@ -157,10 +190,10 @@ CLICHE_PHRASES: dict[str, list[str]] = {
         "варто зауважити", "слід зазначити", "важливо зазначити", "необхідно розуміти",
         "загалом кажучи", "певною мірою",
         # часові зачини
-        "у сучасному цифровому", "у наш час", "в епоху", "сьогодні, коли",
+        "у сучасному цифровому", "у наш час", "сьогодні, коли",
         "у світі, що швидко змінюється", "дедалі більше",
         # підсумки
-        "підсумовуючи вищесказане", "у підсумку,", "одним словом,",
+        "підсумовуючи вищесказане", "одним словом,",
         # гачки уваги
         "розберімося", "уявіть собі", "а що, якщо", "залишайтеся з нами",
         "давайте розглянемо", "давайте зануримось",
@@ -182,7 +215,7 @@ CLICHE_PHRASES: dict[str, list[str]] = {
         "довіряють тисячі", "тисячі команд", "надійна безпека",
         "змінює те, як", "змінити те, як",
         # окремі слова-маркери
-        "розмаїття", "оптимальний", "функціональність", "феномен",
+        "розмаїття", "оптимальний", "функціональність",
         "невід'ємно", "інноваційність", "ландшафт", "аспект",
         "усвідомленість", "побоювання", "дискомфорт", "новітність",
         "адаптований", "захоплюючий", "сучасність",
@@ -197,8 +230,8 @@ CLICHE_PHRASES: dict[str, list[str]] = {
         "vale la pena notare", "in conclusione", "riassumendo", "inoltre,",
         "per di più,", "senza dubbio", "un vero e proprio",
         "soluzione ideale", "ampia gamma", "esperienza senza precedenti",
-        "all'avanguardia", "punto di svolta", "immergiamoci",
-        "che si tratti di", "in un mondo sempre più", "tuttavia,",
+        "all'avanguardia", "immergiamoci",
+        "che si tratti di", "in un mondo sempre più",
         "nonostante ciò,", "probabilmente,",
         # copy di prodotto e di interfaccia
         "soluzione completa", "tutto in uno", "per tutte le tue",
@@ -218,14 +251,14 @@ CLICHE_PHRASES: dict[str, list[str]] = {
         "in una certa misura",
         # aperture temporali
         "nell'era digitale", "in un mondo in continua evoluzione",
-        "ai giorni nostri", "sempre più spesso",
+        "ai giorni nostri",
         # chiusure
         "per riassumere", "in sintesi", "in definitiva,",
         # ganci di attenzione
         "scopriamo insieme", "immagina di", "e se ti dicessi",
         "resta con noi", "vediamo insieme",
         # espressioni di marketing
-        "non cercare oltre", "libera il potenziale", "nuove possibilità",
+        "non cercare oltre", "libera il potenziale",
         "una vera rivoluzione", "soluzione all'avanguardia",
         "porta a un nuovo livello", "la chiave del successo",
         "una serie di vantaggi", "ampia scelta",
@@ -240,9 +273,9 @@ CLICHE_PHRASES: dict[str, list[str]] = {
         "scelto da migliaia", "migliaia di team", "sicurezza affidabile",
         "cambia il modo in cui",
         # singole parole/aggettivi ricorrenti
-        "dinamico", "efficiente", "innovativo", "stimolante", "efficienza",
-        "agevolare", "massimizzare", "ottimizzazione", "integrazione",
-        "indagare", "rivoluzionario", "imprescindibile", "fondamentale",
+        "dinamico", "innovativo", "stimolante",
+        "agevolare", "massimizzare", "ottimizzazione",
+        "indagare", "rivoluzionario", "imprescindibile",
         "trasformativo", "scalabile", "senza soluzione di continuità",
         "ineguagliabile", "poliedrico", "onnicomprensivo", "all'avanguardia",
         "consentendo di", "permettendoti di", "si distingue per",

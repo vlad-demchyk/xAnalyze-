@@ -102,6 +102,18 @@ PHRASE_SUGGESTIONS: dict = {
         "it's important to note": "", "it is important to note": "",
         "it is worth mentioning": "", "it should be noted that": "",
         "it is essential to understand": "", "one must consider": "",
+        # Added with their phrases 2026-08-31. `""` where the sentence says
+        # the same thing with the opener gone; a word where something has to
+        # stand in its place.
+        "it is worth noting": "", "it is important to understand": "",
+        "when it comes to": "for", "first and foremost": "first",
+        "in terms of best practices": "", "there are several key": "there are",
+        # `delve` is already here with a preposition-aware replacement; the
+        # inflected form was not, so "delves into" matched nothing.
+        "delves": "looks into",
+        "the intricacies of": "the details of",
+        "leverage the power of": "use",
+        "has evolved significantly": "has changed",
         "generally speaking": "", "broadly speaking": "", "to some extent": "",
         "arguably": "",
         # temporal / scene-setting openers

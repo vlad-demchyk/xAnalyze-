@@ -107,6 +107,27 @@ never calibrated for. Two of the numbers it produced on 2026-08-31:
 Both now return nothing outside `supported_languages`, and
 `tests/test_foreign_corpus.py` holds the count.
 
+## `prose.jsonl` - human writing about what a scan is pointed at
+
+334 human paragraphs in English, Italian and Ukrainian, from dated Wikipedia
+revisions, on the subjects the tool is actually aimed at: tourism, software,
+usability, marketing, cloud computing, Renaissance architecture. Rebuild with
+`python scripts/fetch_prose_corpus.py corpus/prose.jsonl`.
+
+Why it is separate from `labelled.jsonl`, and why that separation is the
+point: this file is a **yardstick only**, and merging it would make it a
+component of `EmbeddingDetector` instead - see the section above. No detector
+reads it.
+
+It answers a question the human half of `labelled.jsonl` cannot ask. That half
+is interface strings plus encyclopedic paragraphs about the web, so
+"0 false alarms" was measured on text nobody scans. Measured 2026-08-31, the
+first time this file existed: **six** of these paragraphs were reported, on
+`nuove possibilità`, `integrazione`, `additionally,`, `в епоху`, `крім того,`
+and `феномен` - words an article about productivity or cloud computing is
+simply written in. Seventeen cliché entries were retired, held-out recall did
+not move, and `tests/test_prose_corpus.py` holds the zero.
+
 ## Running it
 
     python scripts/calibrate.py                 # metrics at the current bands
