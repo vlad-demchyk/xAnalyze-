@@ -2905,6 +2905,18 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         finally:
             runner.close()
 
+        # Repaint, or the pass was invisible. The findings are merged into
+        # the documents above and the list on screen was built before that,
+        # so without this the window shows the static pass and nothing else:
+        # measured on one page, 12 rows on screen against 31 findings in the
+        # result - axe, HTML_CodeSniffer, the state pass and every load
+        # measurement, all present and none of them displayed. The CLI never
+        # had it because it prints after the merge.
+        self._populate_audit_list()
+        self._refresh_summary()
+        self._update_audit_buttons_enabled()
+        self.status_bar.showMessage(t("status_idle", self.lang))
+
 
     def _repo_scope(self) -> str:
         return self.scope_combo.currentData() or self.settings.repo_scope or SCOPE_CONTENT

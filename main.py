@@ -27,6 +27,16 @@ from ui.main_window import MainWindow
 
 
 def main() -> int:
+    # `--version` before a QApplication exists. The Makefile tells whoever
+    # builds the bundle to verify it with
+    # `XAnalyze.app/Contents/MacOS/XAnalyze --version`, and that opened the
+    # window and sat there instead: the one instruction written down for
+    # checking a build could not be followed, on the surface where a stale
+    # binary is hardest to notice.
+    if "--version" in sys.argv[1:]:
+        print(f"XAnalyze {config.APP_VERSION}")
+        return 0
+
     app = QApplication(sys.argv)
     app.setApplicationName("XAnalyze")
     app.setOrganizationName("xFormat")

@@ -60,6 +60,19 @@ def _warn_if_stale() -> None:
 
 
 def run() -> int:
+    # A frozen binary re-executes *itself* to start a child process, so
+    # anything that spawns one hands the child our own argv - and `xanalyze`
+    # answered with `invalid choice: 'from multiprocessing.resource_tracker
+    # import main;main(9)'`. Measured on the built CLI: every run of the
+    # embedding detector (`scan --detector embedding`, `compare`) printed an
+    # argparse error and `resource_tracker: process died unexpectedly, some
+    # resources might leak` - the scan finished, and it leaked a semaphore
+    # and shouted about it each time. `freeze_support` is what turns that
+    # re-execution back into a child process; it does nothing when the code
+    # is not frozen, which is why it can sit here unconditionally.
+    import multiprocessing
+
+    multiprocessing.freeze_support()
     _warn_if_stale()
     invoked_as = Path(sys.argv[0]).name
 

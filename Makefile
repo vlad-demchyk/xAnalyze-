@@ -26,7 +26,7 @@ check-cli:
 	fi
 	@BUILD_VER=$$(cat "$(CLI_DIR)/.build_version"); \
 	if [ "$$BUILD_VER" != "$(SOURCE_VERSION)" ]; then \
-		echo "CLI is stale: built $(BUILD_VER), source $(SOURCE_VERSION)"; exit 1; \
+		echo "CLI is stale: built $$BUILD_VER, source $(SOURCE_VERSION)"; exit 1; \
 	fi
 	@echo "CLI $(SOURCE_VERSION) is up to date"
 

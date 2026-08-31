@@ -579,9 +579,27 @@ def _detect_report_language(lang, pages) -> str:
     """Auto-detect the report language from crawled page content."""
     if lang is not None:
         return lang
-    hints = []
+    # Only blocks long enough to *read* vote. Every block used to, and a
+    # navigation label is one or two words: measured on an Italian site whose
+    # prose is 9:2 Italian, the whole-page vote was 23 `en` against 19 `it`
+    # - menu items, button captions and a cookie line - and the report came
+    # out in English. With the short strings out of it the same page votes
+    # 9:2 and reads Italian, which is also what makes `detector_advice`
+    # reach an Italian reader at all: the advice is chosen by this answer.
+    #
+    # The fallback is the old vote rather than `en`: a page that is all
+    # short strings still has a language, and guessing English there would
+    # be the same defect pointing the other way.
+    MIN_WORDS = 8
+    long_hints, all_hints = [], []
     for page in (pages or []):
-        hints.extend(b.language_hint for b in page.blocks if b.language_hint)
+        for block in page.blocks:
+            if not block.language_hint:
+                continue
+            all_hints.append(block.language_hint)
+            if len(block.text.split()) >= MIN_WORDS:
+                long_hints.append(block.language_hint)
+    hints = long_hints or all_hints
     return Counter(hints).most_common(1)[0][0] if hints else "en"
 
 
