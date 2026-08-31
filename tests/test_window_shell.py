@@ -315,6 +315,7 @@ class TopRow(WindowCase):
         self.assertLessEqual(self.window.toolbar.height(), TOP_ROW_HEIGHT + 4)
 
 
+@unittest.skipIf(QApplication is None, "PySide6 not available")
 class TheSetupScreen(unittest.TestCase):
     """Artboard 3b: the screen the window opens on.
 

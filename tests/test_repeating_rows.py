@@ -40,6 +40,7 @@ except Exception:  # noqa: BLE001 - no Qt here is a skip, not a failure
     QApplication = None
 
 
+@unittest.skipIf(QApplication is None, "PySide6 not available")
 class WhichFieldsASentenceUses(unittest.TestCase):
     """`template_fields_for`, which is what makes this language-independent."""
 

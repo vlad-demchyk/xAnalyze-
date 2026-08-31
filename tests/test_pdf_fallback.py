@@ -21,6 +21,12 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from report import export, notice
 from report.model import ReportFinding, ReportMeta, ReportModel
 
+try:
+    from PySide6 import QtWebEngineCore  # noqa: F401
+    HAS_RENDERER = True
+except Exception:  # noqa: BLE001 - no Qt here is a skip, not a failure
+    HAS_RENDERER = False
+
 
 def _model():
     return ReportModel(
@@ -95,6 +101,11 @@ class NoticeContent(unittest.TestCase):
         self.assertIn("could not be printed", page)
 
 
+# A real PDF comes out of QtWebEngine. These cases compare a working
+# render against a broken one, so without the renderer there is no
+# comparison to make - and the ones that only exercise the HTML fallback
+# are deliberately left outside the guard, because they still run.
+@unittest.skipUnless(HAS_RENDERER, "QtWebEngine not available")
 class WhenTheRenderFails(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

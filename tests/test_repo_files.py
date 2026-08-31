@@ -60,6 +60,7 @@ def repo(findings: dict, *, clean_files=0, walk=None) -> "RepoAnalysisResult":
                               diagnostics=walk or ScanDiagnostics())
 
 
+@unittest.skipIf(QApplication is None, "PySide6 not available")
 class Folders(unittest.TestCase):
     def test_a_file_in_a_folder(self):
         self.assertEqual(_folder_of("src/components/Hero.tsx"), "src/components/")

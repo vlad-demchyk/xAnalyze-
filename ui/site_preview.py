@@ -80,7 +80,7 @@ def build_highlight_js(dom_path: str, opening_tag: str = "",
         var cut = opening.indexOf('>');
         if (cut !== -1) {{ opening = opening.slice(0, cut + 1); }}
         if (opening) {{
-            var name = (opening.match(/^<([a-zA-Z][\w:-]*)/) || [])[1];
+            var name = (opening.match(/^<([a-zA-Z][\\w:-]*)/) || [])[1];
             if (name) {{
                 var candidates = document.getElementsByTagName(name);
                 for (var i = 0; i < candidates.length; i++) {{

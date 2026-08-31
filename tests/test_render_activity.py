@@ -23,6 +23,12 @@ from report.activity import (
     ActivityWatch, RenderProcessGone, Stalled, parse_cputime,
 )
 
+try:
+    from PySide6 import QtWebEngineCore  # noqa: F401
+    HAS_RENDERER = True
+except Exception:  # noqa: BLE001 - no Qt here is a skip, not a failure
+    HAS_RENDERER = False
+
 
 class ParseCpuTime(unittest.TestCase):
     """`ps` prints three different shapes depending on the platform."""
@@ -223,11 +229,12 @@ class RendererIntegration(unittest.TestCase):
     because the render keeps making progress, which is the whole claim.
     """
 
+    @unittest.skipUnless(HAS_RENDERER, "QtWebEngine not available")
     def test_a_real_render_survives_a_two_second_stall_window(self):
-        try:
-            from report.pdf import PdfRenderer
-        except Exception:  # noqa: BLE001 - no Qt here is a skip
-            self.skipTest("PySide6 not available")
+        # `report.pdf` imports without Qt - it reaches for QtWebEngine only
+        # when a render starts - so importing it is not the question a skip
+        # can be built on. What the render needs is what is asked for above.
+        from report.pdf import PdfRenderer
         html = "<h1>report</h1>" + "".join(
             f"<p>finding {i}: something worth printing</p>" for i in range(400))
         with PdfRenderer(stall_seconds=2.0) as renderer:
