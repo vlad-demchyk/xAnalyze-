@@ -116,10 +116,17 @@ def _rates(scored: list, threshold: float) -> dict:
     }
 
 
-#: Below this many human entries, "0 false alarms" is a statement about the
-#: corpus, not about the detector. Italian at 25+ words sat at 2 entries while
-#: the report printed the same confident 0/2 it prints for 125, which is how a
-#: measurement ceiling reads as a result.
+#: Below this many entries on a side, that side's number is a statement about
+#: the corpus, not about the detector. Italian at 25+ words sat at 2 negatives
+#: while the report printed the same confident 0/2 it prints for 125, which is
+#: how a measurement ceiling reads as a result.
+#:
+#: It applies to **both** sides, and the positive side is the one that was
+#: missed. Measured 2026-08-31 while re-auditing `P-02`: the negatives at 25+
+#: words went 21 -> 116 when the encyclopedic paragraphs were added, and the
+#: ceiling did not disappear, it moved. The model side of that band is 16
+#: entries - 8 English, 6 Italian, **2 Ukrainian** - and `recall 100.0%` off
+#: two entries printed exactly like `recall 100.0%` off forty-five.
 _THIN = 10
 
 
@@ -127,7 +134,12 @@ def _show(label: str, stats: dict) -> None:
     def pct(value):
         return "  n/a" if value is None else f"{value * 100:5.1f}%"
 
-    thin = " - too few negatives to read" if 0 < stats["humans"] < _THIN else ""
+    notes = []
+    if 0 < stats["humans"] < _THIN:
+        notes.append(f"{stats['humans']} negatives")
+    if 0 < stats["models"] < _THIN:
+        notes.append(f"{stats['models']} positives")
+    thin = f" - too few to read: {', '.join(notes)}" if notes else ""
     print(f"  {label:22} precision {pct(stats['precision'])}   "
           f"recall {pct(stats['recall'])}   "
           f"false alarms {stats['false_alarms']}/{stats['humans']}{thin}")
@@ -199,8 +211,9 @@ def strata(scored: list, threshold: float) -> None:
         for language in sorted({r.get("language", "?") for r in band}):
             subset = [r for r in band if r.get("language") == language]
             _show(language, _rates(subset, threshold))
-    print("  a band with no model entries can show no recall: that is the "
-          "corpus speaking, not the detector.")
+    print("  a band with no model entries can show no recall, and a band with "
+          "two can show any recall at all: that is the corpus speaking, not "
+          "the detector.")
 
 
 def report(scored: list, threshold: float) -> None:
@@ -272,11 +285,17 @@ def confounds(rows: list, threshold: float) -> None:
     entries averaged 4.2 coordinating conjunctions per 100 words against a
     human median of 0.00, in all three languages at once.
 
-    It was measuring length. Model entries here run to a median of 19 words
-    and human entries to 9, because the human half is largely interface
+    It was measuring length, because the human half was largely interface
     strings - "Save", "Carica file" - which contain no conjunctions because
     they contain no clauses. Conditioned on entries of 25 words or more, the
     difference reverses: humans coordinate *more* than models do.
+
+    Re-measured 2026-08-31, after 95 encyclopedic paragraphs took the human
+    side of that band from 21 entries to 116. The reversal held and got
+    firmer - model 3.33 per 100 words against human 4.21, and humans ahead in
+    each language separately (en -3.23, uk -2.00, it -0.46). What the larger
+    corpus changed is which side is now too thin: 16 model entries at 25+
+    words, two of them Ukrainian.
 
     So this reports the two things that make such a mistake visible, and both
     should be read before any new signal is believed:

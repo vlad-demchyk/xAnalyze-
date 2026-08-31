@@ -11,11 +11,13 @@ from 71% to 20% is a change someone needs to look at, and a change that starts
 flagging the documentation pool is worse than that.
 """
 import unittest
+from statistics import median
+from unittest.mock import patch
 
 from corpus_split import split
 from detectors.heuristic import combine_score
-from scripts.calibrate import (_in_stratum, length_only_baseline, load,
-                               needs_holdout, score_rows)
+from scripts.calibrate import (_in_stratum, _words_of, length_only_baseline,
+                               load, needs_holdout, score_rows)
 
 #: What the corpus currently supports, rounded down hard.
 MIN_HELD_OUT_RECALL = 0.4
@@ -106,6 +108,63 @@ class LengthIsNotTheSignal(unittest.TestCase):
         found = [r for r in band if r["score"] >= THRESHOLD]
         self.assertGreaterEqual(len(found) / len(band), 0.4,
                                 "Italian is back to scoring nothing below 25 words")
+
+    def test_a_thin_side_is_marked_thin_on_either_side(self):
+        """`P-02`, re-audited 2026-08-31.
+
+        The `_THIN` note existed and read only the negatives. When 95 dated
+        paragraphs took the 25+ band's human side from 21 entries to 116, the
+        measurement ceiling did not lift - it moved to the other side. The
+        model half of that band is 16 entries, two of them Ukrainian, and
+        `recall 100.0%` computed from two printed exactly like `recall 100.0%`
+        computed from forty-five.
+        """
+        from scripts.calibrate import _THIN, _show
+
+        printed = []
+        with patch("builtins.print", printed.append):
+            _show("thin positives", {"precision": 1.0, "recall": 1.0,
+                                     "false_alarms": 0, "humans": 40,
+                                     "models": 2})
+            _show("thin negatives", {"precision": 1.0, "recall": 0.5,
+                                     "false_alarms": 0, "humans": 2,
+                                     "models": 40})
+            _show("neither", {"precision": 1.0, "recall": 0.5,
+                              "false_alarms": 0, "humans": 40,
+                              "models": 40})
+        self.assertIn("2 positives", printed[0])
+        self.assertIn("2 negatives", printed[1])
+        self.assertNotIn("too few", printed[2])
+        self.assertEqual(_THIN, 10)
+
+    def test_the_conditioned_syntactic_signal_still_reverses(self):
+        """The other half of `P-02`: the signal from the literature.
+
+        Clause coordination looked decisive (4.2 per 100 words against a human
+        median of 0.00) and was reading length. Conditioned on 25+ words the
+        difference reverses, and on the enlarged corpus it reverses harder,
+        not less: humans coordinate more than models in all three languages.
+        Held here because a signal that reversed once can be re-proposed.
+        """
+        conjunctions = {
+            "en": {"and", "but", "or", "yet", "so", "for", "nor"},
+            "it": {"e", "ed", "ma", "o", "oppure", "però", "quindi", "inoltre"},
+            "uk": {"і", "й", "та", "але", "або", "чи", "проте", "однак",
+                   "тож", "тому"},
+        }
+
+        def rate(row):
+            words = [w.lower() for w in _words_of(row["text"])]
+            hits = sum(1 for w in words if w in conjunctions[row["language"]])
+            return hits / len(words) * 100
+
+        band = [r for r in self.scored if _in_stratum(r, 25, None)]
+        model = [rate(r) for r in band if r["label"] == "model"]
+        human = [rate(r) for r in band if r["label"] == "human"]
+        self.assertTrue(model and human)
+        self.assertLess(median(model), median(human),
+                        "clause coordination stopped reversing under length "
+                        "control - re-read it before crediting any signal")
 
     def test_every_language_has_prose_negatives_not_only_interface_strings(self):
         # Measured 2026-08-31: the human half held 2 Italian, 4 English and 15
