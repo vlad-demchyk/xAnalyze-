@@ -40,6 +40,7 @@ UNREACHABLE = "unreachable"
 RENDER_FAILED = "render_failed"
 TRUNCATED = "truncated"
 MEDIA_UNCHECKED = "media_unchecked"
+SATURATED_RULE = "saturated_rule"
 UNKNOWN_FAILURE = "unknown_failure"
 
 #: What a diagnosis offers. Names rather than callables: this module knows
@@ -184,6 +185,27 @@ def diagnose_audit(result) -> list:
                 "found": scan.found},
         evidence_key="diagnosis_media_unchecked_evidence",
         actions=())]
+
+
+def diagnose_saturation(result) -> list:
+    """Rules that fired on so much of the page that they are measuring the
+    harness rather than the content.
+
+    `audit.saturation` has answered this since the focus pass reported 588
+    findings over ten pages of GOV.UK, and the answer went to `stderr` - so
+    it reached whoever ran the CLI and nobody who works in the window, which
+    is the surface where a saturated rule does the most damage: it fills the
+    list a person is reading and pushes everything else off the bottom.
+    """
+    from audit.saturation import saturated_rules
+
+    return [Diagnosis(
+        SATURATED_RULE,
+        fields={"rule": item.rule, "findings": item.findings,
+                "elements": item.elements or item.documents},
+        evidence=item.message(),
+        actions=())
+        for item in saturated_rules(result)]
 
 
 def diagnose_failure(message: str) -> Diagnosis:

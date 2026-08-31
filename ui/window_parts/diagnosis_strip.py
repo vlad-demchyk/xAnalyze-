@@ -196,4 +196,9 @@ class DiagnosisStripMixin:
             items.extend(dx.diagnose_result(self.result))
         if getattr(self, "audit_result", None) is not None:
             items.extend(dx.diagnose_audit(self.audit_result))
+            # A rule that fired on nearly everything used to be said on
+            # stderr only, so it reached whoever ran the CLI and nobody
+            # working in the window - the surface where it does the most
+            # damage, because it fills the list being read.
+            items.extend(dx.diagnose_saturation(self.audit_result))
         self.show_diagnoses(items)
