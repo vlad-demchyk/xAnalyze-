@@ -1,7 +1,27 @@
 """Tests for the embedding detector."""
+import json
 import unittest
-from detectors.embedding import EmbeddingDetector
+
+from corpus_split import is_reference, split
+from detectors.embedding import CORPUS_PATH as CORPUS, THRESHOLD, EmbeddingDetector
 from models import TextBlock, Confidence
+
+
+_MODEL_SHAPED = (
+    "It is worth noting that this comprehensive, robust, and scalable "
+    "solution delves into the intricacies of modern software development. "
+    "Moreover, the landscape has evolved significantly. Furthermore, it is "
+    "important to understand that the beauty of this approach lies in its "
+    "simplicity. When it comes to implementation, there are several key "
+    "considerations. In terms of best practices, first and foremost, you "
+    "should always leverage the power of automation."
+)
+
+_PLAIN_HUMAN = (
+    "I went to the store yesterday. Bought some milk and bread. "
+    "The weather was nice so I walked. Saw my neighbor on the way. "
+    "We talked for a bit about the garden and the kids."
+)
 
 
 def _make_block(text: str, lang: str = "en") -> TextBlock:
@@ -12,30 +32,26 @@ def _make_block(text: str, lang: str = "en") -> TextBlock:
 class TestEmbeddingDetector(unittest.TestCase):
     """Test the embedding detector."""
 
-    def test_ai_text_detected(self):
-        """Obvious AI text should be detected."""
-        block = _make_block(
-            "It is worth noting that this comprehensive, robust, and scalable "
-            "solution delves into the intricacies of modern software development. "
-            "Moreover, the landscape has evolved significantly. Furthermore, it is "
-            "important to understand that the beauty of this approach lies in its "
-            "simplicity. When it comes to implementation, there are several key "
-            "considerations. In terms of best practices, first and foremost, you "
-            "should always leverage the power of automation."
-        )
-        detector = EmbeddingDetector(threshold=0.55)  # Lower threshold for test
-        spans = detector.analyze_block(block)
-        self.assertGreater(len(spans), 0, "AI text should be detected")
-        self.assertGreater(spans[0].score, 0.5,
-                           f"Score {spans[0].score} should be > 0.5 for AI text")
+    def test_ai_text_scores_above_plain_human_prose(self):
+        """The detector separates; it does not promise to clear the line.
+
+        This used to assert that a cliche-stuffed passage is flagged, with a
+        threshold hand-lowered to 0.55 to make it so. It is a weaker claim than
+        it looks: measured on the held-out half, recall at the shipped 0.55 is
+        88.9%, and this passage is one of the misses at 0.549. A single
+        hand-written example is not a contract about recall - `scripts/
+        calibrate.py --detector embedding --holdout` is - so what is asserted
+        here is the thing that must never invert: model-shaped copy scores
+        higher than a person writing plainly.
+        """
+        detector = EmbeddingDetector(threshold=0.0)
+        model_score = detector.analyze_block(_make_block(_MODEL_SHAPED))[0].score
+        human_score = detector.analyze_block(_make_block(_PLAIN_HUMAN))[0].score
+        self.assertGreater(model_score, human_score)
 
     def test_human_text_not_flagged(self):
         """Normal human text should not be flagged."""
-        block = _make_block(
-            "I went to the store yesterday. Bought some milk and bread. "
-            "The weather was nice so I walked. Saw my neighbor on the way. "
-            "We talked for a bit about the garden and the kids."
-        )
+        block = _make_block(_PLAIN_HUMAN)
         detector = EmbeddingDetector()
         spans = detector.analyze_block(block)
         # Should either have no spans or low score
@@ -75,6 +91,36 @@ class TestEmbeddingDetector(unittest.TestCase):
         if spans:
             self.assertGreaterEqual(spans[0].score, 0.0)
             self.assertLessEqual(spans[0].score, 1.0)
+
+
+class TheReferenceIsHalfTheCorpus(unittest.TestCase):
+    """What the detector is built from, and what it may be measured on.
+
+    The score is a nearest-neighbour margin over the corpus, so the corpus is a
+    component of this detector as much as it is the yardstick. Read whole, the
+    detector is asked whether a text resembles a set containing that text and
+    answers yes: scored that way it separated the corpus almost perfectly -
+    model 0.73-0.79 against human near 0.16 - and all of it was self-recognition.
+    """
+
+    def test_the_reference_is_only_the_tune_half(self):
+        detector = EmbeddingDetector()
+        detector._load_corpus()
+        self.assertTrue(all(is_reference(text) for text in detector._reference_texts))
+
+    def test_held_out_entries_are_text_the_detector_has_not_seen(self):
+        rows = [json.loads(line) for line in
+                CORPUS.read_text(encoding="utf-8").splitlines() if line.strip()]
+        tune, held_out = split(rows)
+        self.assertTrue(tune and held_out, "both halves must be populated")
+        seen = {row["text"] for row in tune}
+        self.assertFalse(seen & {row["text"] for row in held_out})
+
+    def test_the_shipped_threshold_is_the_measured_one(self):
+        # 0.55 is where precision reaches 1.0 on the held-out half (recall
+        # 88.9%, 0/187 false alarms). A default that drifts away from the
+        # constant is a detector nobody measured.
+        self.assertEqual(EmbeddingDetector().threshold, THRESHOLD)
 
 
 if __name__ == "__main__":

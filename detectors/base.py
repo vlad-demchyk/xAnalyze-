@@ -33,6 +33,28 @@ class Detector(ABC):
     #: the names in `ui/worker.py` did until a second such detector existed.
     includes_character_pass: bool = False
 
+    #: Whether this backend's answer depends on `corpus/labelled.jsonl`.
+    #:
+    #: A detector that says True cannot be scored against the whole corpus:
+    #: every entry would be matched against itself, and a nearest-neighbour
+    #: margin against a set containing the text is ±1 by construction. Measured
+    #: 2026-08-31: run that way the embedding detector separates the corpus
+    #: almost perfectly - model entries 0.73-0.79, human entries around 0.16 -
+    #: and the separation is entirely self-recognition. Declared here so the
+    #: calibration script can refuse the tautology instead of printing it.
+    uses_corpus_as_reference: bool = False
+
+    @classmethod
+    def calibration_config(cls) -> dict:
+        """Config for scoring a labelled corpus rather than a live page.
+
+        One thing differs from a run: no score may be suppressed, because a
+        threshold sweep cannot see below a cut-off the detector already applied.
+        A backend with no threshold of its own returns the empty dict and is
+        built exactly as it runs.
+        """
+        return {}
+
     def __init__(self, **config):
         self.config = config
 

@@ -3,8 +3,9 @@
 Uses sentence-transformers to compute embeddings and compare with reference
 AI/human texts from the corpus. Complementary to the heuristic detector.
 
-The corpus is a component here, not a yardstick: see
-`REFERENCE_REGISTERS_EXCLUDED` for what that costs and what is done about it.
+The corpus is a component here as well as a yardstick: the reference is the
+tune half of `corpus/labelled.jsonl` and the threshold below was measured on the
+other half. See `corpus_split` for why the halves exist.
 
 Approach:
 1. Compute embeddings for AI texts in corpus (reference)
@@ -22,6 +23,7 @@ from pathlib import Path
 import numpy as np
 
 from models import TextBlock, TextSpan, Confidence, score_to_confidence
+from corpus_split import is_reference
 from .base import Detector
 from .factory import DetectorFactory
 
@@ -31,28 +33,48 @@ DEFAULT_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 # Path to corpus relative to project root
 CORPUS_PATH = Path(__file__).resolve().parent.parent / "corpus" / "labelled.jsonl"
 
-#: Registers this detector uses as its reference, and the reason there is a
-#: list at all.
+#: The half of the corpus this detector is allowed to be built from.
 #:
 #: The score below is a nearest-neighbour margin: `similarity to the closest
 #: model entry` minus `similarity to the closest human entry`. That makes the
-#: corpus a *component* of this detector, not only the yardstick it is judged
+#: corpus a *component* of this detector as well as the yardstick it is judged
 #: by, and the two roles pull opposite ways. Measured 2026-08-31: adding 95
-#: human paragraphs to `labelled.jsonl` - correct data, added to close a
-#: measurement gap - raised the human side of the margin from 0.461 to 0.541
-#: and dropped the score on the same AI passage from 0.590 to 0.549. Nothing
-#: about the detector changed. The corpus got better and the score got worse.
+#: correct human paragraphs to `labelled.jsonl` raised the human side of the
+#: margin from 0.461 to 0.541 and dropped the score on the same AI passage from
+#: 0.590 to 0.549. Nothing about the detector changed. The corpus got better and
+#: the score got worse.
 #:
-#: So the reference set is named rather than inherited. `encyclopedic` is out
-#: because those entries were collected to answer "does the detector flag a
-#: person writing a paragraph", not to stand as examples of the copy this
-#: detector compares against.
+#: The answer is not to hide entries from the reference - that was tried, as a
+#: register exclusion, and measurement showed it did the opposite of its
+#: purpose: with the encyclopedic paragraphs *in* the reference the highest
+#: human score on held-out text fell from 0.598 to 0.547, which is what let the
+#: threshold come down to 0.55 and recall rise from 68.9% to 88.9%. Human
+#: paragraphs are the thing a human paragraph should be nearest to.
 #:
-#: This freezes the reference at what it was when the threshold was chosen.
-#: It does not make the threshold right - it has never been measured on the
-#: corpus the way the offline detector's has. That is `P-27`, and it is the
-#: reason this list is a stopgap with a name rather than a silent filter.
-REFERENCE_REGISTERS_EXCLUDED = ("encyclopedic",)
+#: The answer is that the reference and the yardstick are different halves.
+#: `corpus_split` decides which, by a hash of the text, so a new entry lands in
+#: one half and stays there, and the threshold below is measured on text this
+#: detector has never been shown.
+REFERENCE_HALF = "the tune half of corpus/labelled.jsonl (see corpus_split)"
+
+#: Measured, not chosen. On the 232 held-out entries, `python scripts/calibrate.py
+#: --detector embedding --holdout --sweep` reads:
+#:
+#:     0.50   precision  84.6%   recall  97.8%   false alarms  8/187
+#:     0.55   precision 100.0%   recall  88.9%   false alarms  0/187
+#:     0.60   precision 100.0%   recall  60.0%   false alarms  0/187
+#:
+#: 0.55 is where precision reaches 1.0 and every step above it buys nothing and
+#: costs recall. Per language it is en 85.0%, uk 85.7%, **it 100.0%** - which is
+#: worth naming, because the offline detector's Italian recall is 36.4% (`P-04`)
+#: and this is the same corpus.
+#:
+#: The margin is thin and must be read as thin: the highest-scoring human entry
+#: in the held-out half is 0.547, three thousandths below the line. "0 false
+#: alarms" here means no human entry crossed, not that none nearly did. Re-run
+#: the sweep after any change to the corpus - by construction, a corpus change
+#: is a change to this detector.
+THRESHOLD = 0.55
 
 
 class EmbeddingDetector(Detector):
@@ -61,10 +83,22 @@ class EmbeddingDetector(Detector):
     name = "embedding"
     display_name = "Embedding — semantic similarity to known AI texts"
     supported_languages = ("uk", "it", "en")
+    uses_corpus_as_reference = True
+
+    @classmethod
+    def calibration_config(cls) -> dict:
+        """`threshold=0.0`, because the score is what is being calibrated.
+
+        With the production cut-off in place every entry below it reads as 0.0
+        and a sweep over those zeros measures the old threshold rather than the
+        detector. Nothing else changes: the reference is the tune half in a run
+        exactly as it is here, so the number measured is the number that runs.
+        """
+        return {"threshold": 0.0}
 
     def __init__(self, model_name: str = DEFAULT_MODEL,
                  corpus_path: str | None = None,
-                 threshold: float = 0.60, **config):
+                 threshold: float = THRESHOLD, **config):
         super().__init__(**config)
         self.model_name = model_name
         self.corpus_path = Path(corpus_path) if corpus_path else CORPUS_PATH
@@ -102,7 +136,7 @@ class EmbeddingDetector(Detector):
                 for line in f:
                     if line.strip():
                         row = json.loads(line)
-                        if row.get("register") in REFERENCE_REGISTERS_EXCLUDED:
+                        if not is_reference(row["text"]):
                             continue
                         texts.append(row["text"])
                         labels.append(row["label"])

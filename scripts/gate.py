@@ -143,7 +143,8 @@ def run_smoke(result: Result) -> None:
 def run_quality(result: Result) -> None:
     """Precision and recall against text whose author is known."""
     print("quality")
-    from scripts.calibrate import load, score_rows, split
+    from corpus_split import split
+    from scripts.calibrate import load, score_rows
 
     rows = load("labelled.jsonl")
     if not rows:

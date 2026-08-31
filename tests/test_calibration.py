@@ -12,9 +12,10 @@ flagging the documentation pool is worse than that.
 """
 import unittest
 
+from corpus_split import split
 from detectors.heuristic import combine_score
 from scripts.calibrate import (_in_stratum, length_only_baseline, load,
-                               score_rows, split)
+                               needs_holdout, score_rows)
 
 #: What the corpus currently supports, rounded down hard.
 MIN_HELD_OUT_RECALL = 0.4
@@ -131,25 +132,41 @@ class TheCorpusIsAlsoADetectorComponent(unittest.TestCase):
 
     `EmbeddingDetector` scores by nearest-neighbour margin over
     `labelled.jsonl`, so every human entry added lowers the score of every
-    passage. Measured 2026-08-31: 95 new human paragraphs moved the human
-    side of the margin from 0.461 to 0.541 and took a plainly AI-written
-    passage from 0.590 to 0.549, under the 0.55 the suite asks for. The
-    corpus improved and the detector got worse, which is a coupling that has
-    to be visible rather than discovered by a failing test months later.
+    passage. Measured 2026-08-31: 95 new human paragraphs moved the human side
+    of the margin from 0.461 to 0.541 and took a plainly AI-written passage from
+    0.590 to 0.549.
+
+    The first answer was to hide a register from the reference. Measurement
+    showed it did the opposite of its purpose - with those paragraphs *in* the
+    reference the highest human score on held-out text fell from 0.598 to
+    0.547, which is what let the threshold come down and recall rise from 68.9%
+    to 88.9%. What stays is the split: reference and yardstick are different
+    halves, so the number measured is the number that runs.
     """
 
-    def test_the_reference_set_is_named_not_inherited(self):
-        from detectors.embedding import REFERENCE_REGISTERS_EXCLUDED
-        self.assertIn("encyclopedic", REFERENCE_REGISTERS_EXCLUDED)
-
-    def test_the_measuring_corpus_is_larger_than_the_reference_set(self):
-        # If these ever coincide again, the coupling is back and the next
-        # honest addition to the corpus silently costs recall.
+    def test_the_reference_and_the_yardstick_are_different_halves(self):
         rows = load("labelled.jsonl")
-        from detectors.embedding import REFERENCE_REGISTERS_EXCLUDED
-        reference = [r for r in rows
-                     if r.get("register") not in REFERENCE_REGISTERS_EXCLUDED]
-        self.assertLess(len(reference), len(rows))
+        tune, held_out = split(rows)
+        self.assertTrue(tune, "the detector must have something to be built from")
+        self.assertTrue(held_out, "a detector with nothing held out is unmeasurable")
+        self.assertFalse({r["text"] for r in tune} & {r["text"] for r in held_out})
+
+    def test_the_split_does_not_move_when_the_corpus_grows(self):
+        # By a hash of the text, not by position: an entry added today must not
+        # move an existing entry across the line and silently restate every
+        # number measured before it.
+        rows = load("labelled.jsonl")
+        before = {r["text"] for r in split(rows)[0]}
+        grown = rows + [{"text": "a new entry nobody has measured yet",
+                         "label": "human", "language": "en"}]
+        self.assertEqual(before, {r["text"] for r in split(grown)[0]} - {
+            "a new entry nobody has measured yet"})
+
+    def test_a_corpus_built_detector_refuses_the_whole_corpus_number(self):
+        # Without this the script prints a near-perfect separation that is
+        # entirely self-recognition, and it looks exactly like a result.
+        self.assertTrue(needs_holdout("embedding"))
+        self.assertFalse(needs_holdout("offline"))
 
 
 class Combination(unittest.TestCase):

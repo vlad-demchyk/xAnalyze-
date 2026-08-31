@@ -19,7 +19,6 @@ number averaged across them hides which one is broken.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import sys
 from pathlib import Path
@@ -28,25 +27,40 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from corpus_split import split  # noqa: E402
 from detectors.factory import DetectorFactory  # noqa: E402
 from models import TextBlock, score_to_confidence  # noqa: E402
 
 CORPUS = ROOT / "corpus"
 
 
-def split(rows: list) -> tuple:
-    """Deterministic halves: one to tune against, one to be judged by.
+def needs_holdout(detector_name: str) -> bool:
+    """Whether the whole-corpus number for this detector would be a lie.
 
-    By a hash of the text, so the split does not move when entries are added or
-    reordered. The reason for having it at all: phrase lists are trivially
-    tunable to whatever they were shown, and a number produced on the text used
-    to tune them measures memory rather than detection.
+    True when the detector is built out of the corpus. Its reference is the tune
+    half, so the tune half cannot also be scored: those entries are in the set
+    they would be compared against, and the margin against a set containing the
+    text is +/-1 by construction.
     """
-    train, test = [], []
-    for row in rows:
-        digest = hashlib.sha1(row["text"].encode("utf-8")).digest()[0]
-        (train if digest % 2 == 0 else test).append(row)
-    return train, test
+    detector_cls = DetectorFactory.lookup(detector_name)
+    return bool(detector_cls is not None and detector_cls.uses_corpus_as_reference)
+
+
+#: What the window treats as worth showing, for a detector that does not carry
+#: a cut-off of its own.
+_WINDOW_BAND = 0.33
+
+
+def live_threshold(detector_name: str) -> float:
+    """The cut-off this detector applies in a run.
+
+    Read off the detector rather than passed in, because a report printed at
+    some other number describes a detector nobody is running.
+    """
+    try:
+        return float(DetectorFactory.create(detector_name).threshold)
+    except Exception:
+        return _WINDOW_BAND
 
 
 def load(name: str) -> list:
@@ -57,7 +71,8 @@ def load(name: str) -> list:
             if line.strip()]
 
 
-def score_rows(rows: list, detector_name: str = "offline") -> list:
+def score_rows(rows: list, detector_name: str = "offline",
+               **detector_config) -> list:
     """Attach the highest style score the detector gives each entry.
 
     Style only. The offline detector answers two questions at once - "does this
@@ -71,7 +86,7 @@ def score_rows(rows: list, detector_name: str = "offline") -> list:
     passage if any sentence in it scores, so the number that decides what the
     user sees is the maximum.
     """
-    detector = DetectorFactory.create(detector_name)
+    detector = DetectorFactory.create(detector_name, **detector_config)
     scored = []
     for index, row in enumerate(rows):
         block = TextBlock(block_id=f"row-{index}", text=row["text"],
@@ -299,8 +314,9 @@ def _words_of(text: str) -> list:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--detector", default="offline")
-    parser.add_argument("--threshold", type=float, default=0.33,
-                        help="the band the window treats as worth showing")
+    parser.add_argument("--threshold", type=float, default=None,
+                        help="defaults to the cut-off this detector actually "
+                             "uses, so the report is about what runs")
     parser.add_argument("--sweep", action="store_true")
     parser.add_argument("--review", action="store_true")
     parser.add_argument("--limit", type=int, default=20)
@@ -309,6 +325,8 @@ def main() -> int:
     parser.add_argument("--holdout", action="store_true",
                         help="report the tune half and the held-out half apart")
     args = parser.parse_args()
+    if args.threshold is None:
+        args.threshold = live_threshold(args.detector)
 
     if args.review:
         review(args.detector, args.limit)
@@ -318,6 +336,28 @@ def main() -> int:
     if not rows:
         print("corpus/labelled.jsonl is empty; nothing to calibrate against")
         return 1
+
+    if needs_holdout(args.detector):
+        if not args.holdout:
+            print(f"'{args.detector}' builds its answer out of this corpus, so a "
+                  f"number over the whole corpus would be it recognising itself.")
+            print("  Re-run with --holdout: the tune half becomes its reference "
+                  "and the held-out half is what gets scored.")
+            return 1
+        train_rows, test_rows = split(rows)
+        config = DetectorFactory.lookup(args.detector).calibration_config()
+        scored = score_rows(test_rows, args.detector, **config)
+        if args.confounds:
+            confounds(scored, args.threshold)
+        print(f"reference: the tune half ({len(train_rows)} entries), which the "
+              f"detector reads in a run too. It cannot also be scored.")
+        print(f"held out ({len(scored)} entries) - the only number there is")
+        report(scored, args.threshold)
+        print()
+        if args.sweep:
+            sweep(scored)
+        return 0
+
     scored = score_rows(rows, args.detector)
     if args.confounds:
         confounds(scored, args.threshold)
