@@ -59,13 +59,19 @@ class AuditScreen(RunScreen):
                 )
                 yield Static("·", classes="inline-sep")
                 yield Static(self.tr("tui_label_widths"), classes="inline-label")
+                # Every breakpoint the audit knows, not a subset. `tablet`
+                # and `reflow` existed in `responsive.BREAKPOINTS` and in the
+                # CLI while this list offered neither, so the width that
+                # finds WCAG 1.4.10 overflow was unreachable from the TUI.
                 yield Select(
                     [
                         ("default", ""),
                         ("all", "all"),
                         ("desktop", "desktop"),
                         ("desktop + mobile", "desktop,mobile"),
+                        ("tablet", "tablet"),
                         ("mobile", "mobile"),
+                        ("reflow (320 px)", "reflow"),
                     ],
                     value="",
                     id="breakpoints",

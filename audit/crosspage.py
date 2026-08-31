@@ -21,12 +21,15 @@ Two things this does not do:
 from __future__ import annotations
 
 import re
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
+from bs4 import BeautifulSoup
 from .base import EXACT, Issue, MINOR, MODERATE, SEO
 
 RULE_DUPLICATE_TITLE = "seo-duplicate-title"
 RULE_DUPLICATE_DESCRIPTION = "seo-duplicate-description"
 RULE_DUPLICATE_CANONICAL = "seo-duplicate-canonical"
+RULE_HREFLANG_NOT_RECIPROCAL = "seo-hreflang-not-reciprocal"
 
 _TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.I | re.S)
 _META_DESC_RE = re.compile(
@@ -59,6 +62,30 @@ def facts_of(markup: str) -> dict:
         "description": _first(_META_DESC_RE, markup, _CONTENT_RE),
         "canonical": _first(_CANONICAL_RE, markup, _HREF_RE),
     }
+
+
+def _normal(url: str) -> str:
+    parsed = urlsplit(url)
+    path = parsed.path or "/"
+    if len(path) > 1:
+        path = path.rstrip("/")
+    return urlunsplit((parsed.scheme.lower(), parsed.netloc.lower(), path,
+                       parsed.query, ""))
+
+
+def _alternates(markup: str, base_url: str) -> list[dict]:
+    """The declared language alternatives, resolved to fetchable URLs."""
+    soup = BeautifulSoup(markup or "", "html.parser")
+    links = []
+    for tag in soup.find_all("link", href=True):
+        if "alternate" not in (tag.get("rel") or []):
+            continue
+        language = (tag.get("hreflang") or "").strip().lower()
+        if not language:
+            continue
+        links.append({"language": language,
+                      "url": _normal(urljoin(base_url, tag["href"]))})
+    return links
 
 
 #: field -> (rule, severity). The canonical is the serious one: two pages
@@ -99,6 +126,34 @@ def issues_for(pages) -> list:
                 details={"value": value, "count": len(places),
                          "pages": places[:15]},
                 engine="crawl"))
+    # Reciprocity is only testable when both addresses were actually crawled.
+    # A depth-limited run does not know whether an unvisited translation lacks
+    # a return link, so it remains unknown rather than being called broken.
+    by_url = {}
+    for page in readable:
+        by_url[_normal(page.url)] = page
+        final = getattr(getattr(page, "diagnostics", None), "final_url", "") or ""
+        if final:
+            by_url[_normal(final)] = page
+    reported = set()
+    for page in readable:
+        source_url = _normal(page.url)
+        for alternate in _alternates(page.raw_html, page.url):
+            target = by_url.get(alternate["url"])
+            if target is None or target is page:
+                continue
+            target_links = _alternates(target.raw_html, target.url)
+            if any(link["url"] == source_url for link in target_links):
+                continue
+            key = (source_url, alternate["url"], alternate["language"])
+            if key in reported:
+                continue
+            reported.add(key)
+            issues.append(Issue(
+                rule_id=RULE_HREFLANG_NOT_RECIPROCAL, severity=MODERATE,
+                category=SEO, confidence=EXACT, source=page.url,
+                details={"language": alternate["language"],
+                         "target": alternate["url"]}, engine="crawl"))
     return issues
 
 

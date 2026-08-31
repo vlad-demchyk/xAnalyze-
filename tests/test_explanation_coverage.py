@@ -44,6 +44,31 @@ class NoRawKeysTests(unittest.TestCase):
                 self.assert_readable(explanation, rule_id)
                 self.assertTrue(explanation.why)
 
+    def test_crawl_and_browser_measurements_render_in_every_language(self):
+        """Cross-page and measured findings must not bypass translations."""
+        cases = (
+            ("seo-x-robots-noindex", {"header": "x-robots-tag",
+                                       "content": "noindex"}),
+            ("seo-crawl-http-error", {"status": 404}),
+            ("seo-robots-root-disallowed", {"path": "/"}),
+            ("seo-sitemap-http-error", {"status": 404}),
+            ("seo-sitemap-invalid", {}),
+            ("seo-internal-link-failed", {"href": "/gone",
+                                           "target": "https://example.test/gone",
+                                           "status": 404}),
+            ("seo-hreflang-not-reciprocal", {"language": "uk",
+                                              "target": "https://example.test/uk/article"}),
+            ("geo-article-schema", {}),
+            ("geo-article-provenance", {"missing": "author"}),
+            ("perf-largest-contentful-paint", {"value": 2700,
+                                                "budget": 2500}),
+            ("perf-layout-shift-browser", {"value": 0.12, "budget": 0.1}),
+            ("perf-long-tasks", {"value": 240, "budget": 200}),
+        )
+        for lang in ("uk", "it", "en"):
+            for rule_id, details in cases:
+                self.assert_readable(rendered(rule_id, details, lang), rule_id)
+
     def test_an_axe_rule_we_have_never_seen_still_reads(self):
         """axe and HTML_CodeSniffer ship hundreds of rules between them, and
         new ones arrive with every release. None of them can be allowed to

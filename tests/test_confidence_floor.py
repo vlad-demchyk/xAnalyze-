@@ -21,7 +21,7 @@ from __future__ import annotations
 import unittest
 
 from audit.base import (
-    CONFIDENCE_ORDER, EXACT, NEEDS_BROWSER, Issue, meets_confidence,
+    ADVISORY, CONFIDENCE_ORDER, EXACT, NEEDS_BROWSER, Issue, meets_confidence,
 )
 
 
@@ -32,7 +32,18 @@ def _issue(confidence: str) -> Issue:
 
 class TheOrderIsWeakestFirst(unittest.TestCase):
     def test_needs_browser_is_below_exact(self):
-        self.assertEqual(CONFIDENCE_ORDER, (NEEDS_BROWSER, EXACT))
+        self.assertEqual(CONFIDENCE_ORDER, (ADVISORY, NEEDS_BROWSER, EXACT))
+
+    def test_advisory_is_below_needs_browser(self):
+        """The two are not the same claim.
+
+        `needs-browser` promises that running one settles the question;
+        `advisory` says nothing will, because a person decides. Both were
+        `needs-browser` until the GEO rules needed the second meaning.
+        """
+        self.assertTrue(meets_confidence(_issue(NEEDS_BROWSER), NEEDS_BROWSER))
+        self.assertFalse(meets_confidence(_issue(ADVISORY), NEEDS_BROWSER))
+        self.assertTrue(meets_confidence(_issue(ADVISORY), ADVISORY))
 
 
 class AFloorKeepsWhatMeetsIt(unittest.TestCase):
@@ -43,7 +54,7 @@ class AFloorKeepsWhatMeetsIt(unittest.TestCase):
     def test_the_lowest_floor_keeps_everything(self):
         for level in CONFIDENCE_ORDER:
             with self.subTest(level=level):
-                self.assertTrue(meets_confidence(_issue(level), NEEDS_BROWSER))
+                self.assertTrue(meets_confidence(_issue(level), ADVISORY))
 
     def test_no_floor_keeps_everything(self):
         for floor in ("", None):

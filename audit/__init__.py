@@ -1,5 +1,5 @@
-"""Site and repository auditing: accessibility, performance, SEO and best
-practices, from one pass over one parsed document.
+"""Site and repository auditing: accessibility, performance, SEO, GEO and
+best practices, from one pass over one parsed document.
 
 Importing this package registers every built-in rule with `RuleRegistry`,
 the same way `detectors/` registers its backends.
@@ -7,8 +7,8 @@ the same way `detectors/` registers its backends.
 from . import rules  # noqa: F401 - registers the built-in rules
 
 from .base import (  # noqa: F401
-    ACCESSIBILITY, BEST_PRACTICES, CATEGORIES, CRITICAL, EXACT, MINOR, SECURITY,
-    MODERATE, NEEDS_BROWSER, PERFORMANCE, SEO, SERIOUS, SEVERITY_ORDER,
+    ACCESSIBILITY, BEST_PRACTICES, CATEGORIES, CRITICAL, EXACT, GEO, MINOR,
+    SECURITY, MODERATE, ADVISORY, NEEDS_BROWSER, PERFORMANCE, SEO, SERIOUS, SEVERITY_ORDER,
     Issue, Rule, RuleRegistry,
 )
 from .engine import (  # noqa: F401

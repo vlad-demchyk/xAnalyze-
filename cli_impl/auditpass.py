@@ -115,12 +115,11 @@ def _run_browser_pass(result, suppressions, args=None) -> None:
             applog.error("browser.engine_error", engine=name,
                          source=document.source, message=str(message)[:300])
             print(f"# {document.source}: {name} {message}", file=sys.stderr)
-        # Deduplicated against the static findings too, not just among
-        # themselves: axe and our own rule both report a missing `alt`, and
-        # a run with --browser must not double every such row.
-        document.issues = browser_mod.deduplicate(
-            list(document.issues) + list(page_audit.issues),
-            markup=getattr(page_audit, "html", "") or "")
+        # One function, shared with the window: axe and our own rule both
+        # report a missing `alt` and a `--browser` run must not double every
+        # such row, and a static finding the browser disproved must not reach
+        # the merge at all. See `browser.merge_into_document`.
+        browser_mod.merge_into_document(document, page_audit)
     # Again, because the findings the browser brought arrived after the crawl
     # attributed the ones it had. A second engine's finding is owned by
     # whoever emitted the element, exactly as the first engine's is.

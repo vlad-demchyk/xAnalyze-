@@ -561,7 +561,8 @@ def _audit_fullscan_target(is_url: bool, is_page_file: bool, target: str,
     import audit
 
     if is_url:
-        return audit.analyze_pages(pages, target)
+        return audit.analyze_pages(
+            pages, target, site_controls=getattr(args, "site_controls", False))
     if is_page_file:
         return audit.analyze_page_file(target)
     from repo_scanner import scan_repo
@@ -584,9 +585,46 @@ def _detect_report_language(lang, pages) -> str:
     return Counter(hints).most_common(1)[0][0] if hints else "en"
 
 
+def _issues_at_floor(audit_result, floor: str | None) -> list:
+    """Apply the certainty floor, then flatten - in that order.
+
+    `audit` filters in `cli.py`; `fullscan` builds its own result, so the
+    same view has to be taken here or the flag would mean two things.
+
+    The order is the whole reason this is a function. The filter used to run
+    *after* the documents had already been flattened into the list the JSON
+    and the summary are built from, so `--confidence exact` reached the
+    reports and never the machine-readable output: measured on
+    `https://www.python.org/`, the JSON kept all 1030 findings and all 46
+    GEO rows while the HTML showed 918 and none. One flag, two answers.
+    """
+    if audit_result is None or not audit_result:
+        return []
+    if floor:
+        from audit.base import meets_confidence
+
+        for document in audit_result.documents:
+            document.issues = [issue for issue in document.issues
+                               if meets_confidence(issue, floor)]
+    return [issue for document in audit_result.documents
+            for issue in document.issues]
+
+
+def _count(audit_issues, category: str) -> int:
+    """Findings in one audit category.
+
+    Exists so the category names in the summary come from `audit.base`
+    instead of being retyped: the retyped one was `"best_practices"` against
+    a constant of `"best-practices"`, and that count read 0 forever without
+    failing anything.
+    """
+    return sum(1 for issue in audit_issues if issue.category == category)
+
+
 def _build_combined(args, target: str, is_url: bool, lang: str,
                     scan_result, clean_findings: list, audit_issues: list) -> dict:
     """Phase 3: the single JSON document the command prints."""
+    from audit import base
     return {
         "target": target,
         "is_url": is_url,
@@ -620,10 +658,14 @@ def _build_combined(args, target: str, is_url: bool, lang: str,
                                 if not is_character_finding(f)]),
             "characters": len([f for f in clean_findings
                                if is_character_finding(f)]),
-            "accessibility": sum(1 for i in audit_issues if i.category == "accessibility"),
-            "seo": sum(1 for i in audit_issues if i.category == "seo"),
-            "performance": sum(1 for i in audit_issues if i.category == "performance"),
-            "best_practices": sum(1 for i in audit_issues if i.category == "best_practices"),
+            # The constants, not copies of them. `"best_practices"` was
+            # written here by hand while the category is `"best-practices"`,
+            # so that count was 0 on every scan ever run.
+            "accessibility": _count(audit_issues, base.ACCESSIBILITY),
+            "seo": _count(audit_issues, base.SEO),
+            "geo": _count(audit_issues, base.GEO),
+            "performance": _count(audit_issues, base.PERFORMANCE),
+            "best_practices": _count(audit_issues, base.BEST_PRACTICES),
         },
     }
 
@@ -1270,21 +1312,9 @@ def _run_phases_body(args, state, folder, timings, target, lang, is_url, is_page
                     None, [checkpoint.save_audit(state.run_dir, audit_result)]))
         elif state is not None:
             state.skip("browser", "no browser pass for this target")
-        for doc in audit_result.documents:
-            audit_issues.extend(doc.issues)
+    audit_issues.extend(
+        _issues_at_floor(audit_result, getattr(args, "confidence", None)))
     timings.finish()
-
-    # Auto-detect report language from site content
-    # The certainty floor, applied once, before anything counts or groups.
-    # `audit` filters in `cli.py`; `fullscan` builds its own result, so the
-    # same view has to be taken here or the flag would mean two things.
-    floor = getattr(args, "confidence", None)
-    if floor and audit_result is not None:
-        from audit.base import meets_confidence
-
-        for document in audit_result.documents:
-            document.issues = [i for i in document.issues
-                               if meets_confidence(i, floor)]
 
     lang = _detect_report_language(lang, pages)
 

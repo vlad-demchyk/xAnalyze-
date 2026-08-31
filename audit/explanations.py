@@ -21,7 +21,7 @@ from dataclasses import dataclass
 
 from i18n.translations import plural, t
 
-from .base import NEEDS_BROWSER, RuleRegistry
+from .base import ADVISORY, NEEDS_BROWSER, RuleRegistry
 
 #: `{name}` in a translation string.
 _PLACEHOLDER_RE = re.compile(r"\{(\w+)\}")
@@ -81,8 +81,14 @@ def render(issue, lang: str = "uk") -> IssueExplanation:
         fix_snippet=issue.fix_snippet,
         wcag=_wcag_for(issue.rule_id),
     )
+    # Two different caveats, because the reader is being told two different
+    # things: "go and check this in a browser" and "nothing will check this
+    # for you". Sharing one sentence sent people looking for an answer that
+    # does not exist.
     if issue.confidence == NEEDS_BROWSER:
         explanation.caveat = t("a11y_needs_browser", lang)
+    elif issue.confidence == ADVISORY:
+        explanation.caveat = t("a11y_advisory", lang)
     _add_breakpoints(explanation, details, lang)
     return explanation
 

@@ -96,6 +96,25 @@ class PageDiagnostics:
 
 
 @dataclass
+class LinkRef:
+    """One anchor, read once and reused.
+
+    The crawl already parses every page to find where to go next, and the
+    crawlability pass needs the same anchors to say which internal link
+    reached a failure. Reading the markup a second time for the same list is
+    the cost this record removes; carrying the anchor markup along with the
+    address is what lets the second reader keep the evidence the first one
+    threw away.
+    """
+    #: The `href` exactly as authored, for a report that quotes the page.
+    href: str
+    #: Absolute and normalised the way the crawl compares addresses.
+    url: str
+    #: The anchor element, truncated, so a finding can show what it read.
+    snippet: str = ""
+
+
+@dataclass
 class PageResult:
     url: str
     depth: int
@@ -103,6 +122,14 @@ class PageResult:
     error: str | None = None
     raw_html: str | None = None  # kept so the UI can render a graphical preview
     diagnostics: PageDiagnostics = field(default_factory=PageDiagnostics)
+    #: Anchors found on this page, or `None` when nobody looked.
+    #:
+    #: The distinction is the point: an empty list means the markup was read
+    #: and holds no links, while `None` means this result came from a
+    #: producer that does not extract them. A reader that treats the two as
+    #: the same thing either re-parses pages that were already read, or
+    #: silently reports nothing for a page that genuinely has no anchors.
+    links: list[LinkRef] | None = None
 
 
 @dataclass

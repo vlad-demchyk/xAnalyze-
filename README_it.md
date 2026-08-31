@@ -117,7 +117,7 @@ Per URL e HTML il rendering browser è automatico, salvo usare `--no-browser`. P
 | `--no-judgment-cache` | Non riutilizza i giudizi in cache |
 | `--scope NAME` | `content`, `technical`, `both` |
 | `--no-typography` | Ignora em dash e virgolette curve |
-| `--breakpoints NAMES` | `all`, `desktop`, `tablet`, `mobile` o una lista |
+| `--breakpoints NAMES` | `all`, `desktop`, `tablet`, `mobile`, `reflow` (320 px) o una lista. Senza di esso il passaggio del browser gira a una sola larghezza, 1440x900 - la stessa di `desktop` |
 | `--styled-report PATH` | Report PDF o HTML |
 | `--report PATH` | Briefing Markdown o JSON |
 | `--check` | Esce con stato 1 per problemi seri |
@@ -149,7 +149,9 @@ xanalyze audit ./src --fix
 xanalyze audit https://example.com --json --report briefing.md
 ```
 
-Opzioni: `--depth`, `--max-pages`, `--max-files`, `--render`, `--exclude`, `--category`, `--language`, `--no-ignore`, `--json`, `--check`, `--ai`, `--provider`, `--fix`, `--report`, `--browser`, `--breakpoints`, `--styled-report`.
+Opzioni: `--depth`, `--max-pages`, `--max-files`, `--render`, `--exclude`, `--category`, `--language`, `--no-ignore`, `--json`, `--check`, `--ai`, `--provider`, `--fix`, `--report`, `--browser`, `--breakpoints`, `--site-controls`, `--styled-report`. `--site-controls` recupera separatamente robots.txt e le sitemap dello stesso dominio dichiarate al suo interno.
+
+Cinque parametri di esecuzione esistono solo nella CLI e non hanno un controllo nella finestra: `--category` (compresa la categoria `geo`), `--confidence`, `--scope`, `--site-controls` e `--no-typography`. Una scansione avviata dalla finestra usa i valori predefiniti, e per ciascuno significa qualcosa di diverso: i risultati GEO e tutte le larghezze, `reflow` compresa, nella finestra **compaiono**, perché esegue tutte le regole e tutte le larghezze; `--site-controls` è opt-in e quindi non viene eseguito, così i risultati robots/sitemap sono raggiungibili solo da `xanalyze`.
 
 ### `fix`, `undo`, `runs`, `resume`, `cache`, `compare`
 
@@ -230,9 +232,9 @@ potrebbe essere lì per un altro motivo va corroborato.
 
 Il detector offline combina segnali statistici, struttura, cliché e regole linguistiche. I detector embedding e basati su modello aggiungono un giudizio indipendente. Ogni risultato contiene posizione, punteggio, spiegazione e certezza.
 
-L'audit copre `accessibility` (29), `best-practices` (8), `performance` (8), `security` (10), `seo` (8) - numeri che la suite verifica contro il registro delle regole. La modalità statica legge i file; quella browser vede DOM renderizzato, contenuto client-side, stati responsive e header della risposta. `--repo` collega un audit URL al file sorgente.
+L'audit copre `accessibility` (29), `best-practices` (8), `geo` (2), `performance` (8), `security` (10), `seo` (8) - numeri che la suite verifica contro il registro delle regole. GEO offre solo segnali consultivi su tipo di articolo, autore e data, non una previsione di posizione nelle risposte AI. La modalità statica legge i file; quella browser vede DOM renderizzato, contenuto client-side, stati responsive e header della risposta. `--repo` collega un audit URL al file sorgente.
 
-I risultati hanno livello `exact` o `needs-browser`. `--confidence exact` conserva solo i fatti stabiliti dal markup.
+I risultati hanno livello `exact`, `needs-browser` o `advisory`. `exact` significa che il markup risolve la domanda, `needs-browser` che la risolve l'esecuzione di un browser, `advisory` che nulla la risolve: è una scelta redazionale, ed è ciò che sono i segnali GEO. `--confidence exact` conserva solo i fatti stabiliti dal markup.
 
 La provenienza media legge IPTC/XMP e C2PA. I fatti del repository comprendono `.env`, commit e configurazioni degli assistenti AI e blame. Sono informazioni di provenienza, non difetti dell'uso di un assistente.
 

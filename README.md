@@ -127,7 +127,8 @@ For URLs and HTML files, browser rendering is automatic unless `--no-browser` is
 | `--no-judgment-cache` | Do not reuse cached model judgments |
 | `--scope NAME` | `content`, `technical`, or `both` |
 | `--no-typography` | Ignore em dashes and curly quotes |
-| `--breakpoints NAMES` | `all`, `desktop`, `tablet`, `mobile`, or a list |
+| `--breakpoints NAMES` | `all`, `desktop`, `tablet`, `mobile`, `reflow` (320 px), or a list. Without it the browser pass runs at one width, 1440x900 — the same size as `desktop` |
+| `--site-controls` | Fetch robots.txt and same-origin declared sitemaps as an opt-in external audit |
 | `--styled-report PATH` | PDF or HTML report |
 | `--report PATH` | Markdown or JSON agent briefing |
 | `--check` | Exit with status 1 when serious findings exist |
@@ -293,10 +294,11 @@ Use `--scope content` for user-facing copy, `--scope technical` for comments and
 
 How many rules each category actually has, which is a claim the suite checks:
 
-`accessibility` (29), `best-practices` (8), `performance` (8), `security` (10), `seo` (8)
+`accessibility` (29), `best-practices` (8), `geo` (2), `performance` (8), `security` (10), `seo` (8)
 
 - **Accessibility**: names, labels, headings, language, keyboard access, media alternatives, and related rules.
 - **SEO**: titles, descriptions, canonicals, headings, links, robots directives, and structured page metadata.
+- **GEO readiness**: machine-readable article type, author, and publication date. These are advisory signals, not an AI-answer ranking prediction.
 - **Performance**: image dimensions and formats, resource hints, compression, caching, and render-related issues.
 - **Security**: insecure forms, unsafe frames, missing script integrity, exposed keys, and password handling.
 - **Best practices**: browser and repository hygiene, including assistant provenance facts.
@@ -305,7 +307,7 @@ Static analysis reads source files. Browser analysis can inspect rendered DOM, c
 
 ### Certainty and filters
 
-Findings are labelled `exact` or `needs-browser`. Use `--confidence exact` when only facts settled by markup should remain. `--category`, `--scope`, `--breakpoints`, and `--no-typography` are views over the same scan, not changes to the underlying evidence.
+Findings are labelled `exact`, `needs-browser` or `advisory`. `exact` means the markup settles the question, `needs-browser` means running one will settle it, and `advisory` means nothing will: it is an editorial call, which is what the GEO signals are. Use `--confidence exact` when only facts settled by markup should remain. `--category`, `--scope`, `--breakpoints`, and `--no-typography` are views over the same scan, not changes to the underlying evidence.
 
 ### Media provenance and repository facts
 
@@ -357,6 +359,8 @@ Subsequent runs of the same target are compared using `changes.md`. A lower find
 ### GUI
 
 The desktop application provides setup controls for target, analysis type, detector, scope, crawl depth, breakpoints, language, and account. Results show the finding list, source or rendered preview, details, fixes, replacement review, and report export.
+
+Five run parameters are CLI-only and have no window control: `--category` (including the `geo` category), `--confidence`, `--scope`, `--site-controls`, and `--no-typography`. A scan started from the window runs at their defaults, which is not the same thing for each: GEO findings and every breakpoint including `reflow` **do** appear in the window, because the window runs all rules and all widths; `--site-controls` is opt-in and so never runs there, and the robots/sitemap findings are reachable only from `xanalyze`.
 
 Mechanical corrections are selected by default. Model drafts require review. Decisions such as photographic alternative text are never presented as automatic fixes.
 

@@ -57,7 +57,7 @@ from bs4 import BeautifulSoup, NavigableString
 
 from lang_detect import guess_language_safe
 import applog
-from models import PageDiagnostics, PageResult, TextBlock
+from models import LinkRef, PageDiagnostics, PageResult, TextBlock
 
 USER_AGENT = "AIContentScanner/0.1 (+https://example.local)"
 
@@ -319,14 +319,24 @@ def _dom_path(tag) -> str:
     return " > ".join(reversed(parts))
 
 
-def _find_links(html: str, page_url: str) -> list[str]:
+def _find_links(html: str, page_url: str) -> list[LinkRef]:
+    """Every anchor worth following, read in one pass.
+
+    Returns records rather than bare addresses because two passes want this
+    list: the walk, which needs where to go next, and `audit.crawlability`,
+    which needs to quote the anchor that reached a failure. It used to return
+    strings, so the audit parsed the same markup a second time to get the
+    element back.
+    """
     soup = BeautifulSoup(html, "html.parser")
     links = []
     for a in soup.find_all("a", href=True):
         href = a["href"].strip()
         if not href or href.startswith(("#", "mailto:", "tel:", "javascript:")):
             continue
-        links.append(_normalize(urljoin(page_url, href)))
+        links.append(LinkRef(href=href,
+                             url=_normalize(urljoin(page_url, href)),
+                             snippet=str(a)[:300]))
     return links
 
 
@@ -394,7 +404,8 @@ def page_from_html(html: str, url: str, depth: int = 0) -> PageResult:
     blocks = _extract_text_blocks(html or "", url, diagnostics)
     _diagnose(diagnostics, url, html or "", blocks)
     return PageResult(url=url, depth=depth, blocks=blocks, raw_html=html,
-                      diagnostics=diagnostics)
+                      diagnostics=diagnostics,
+                      links=_find_links(html or "", url))
 
 
 def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
@@ -522,18 +533,23 @@ def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
                 blocks = _extract_text_blocks(html, url, diagnostics)
                 _diagnose(diagnostics, url, html, blocks)
 
+        # Read once, at every depth. This used to happen only below the
+        # depth ceiling, because the walk was the only reader; the audit now
+        # reads the same list, and a page at the last depth has anchors that
+        # matter even though nothing will be queued from them.
+        links = _find_links(html, url_base)
         results.append(
             PageResult(url=url, depth=depth, blocks=blocks, raw_html=html,
-                       diagnostics=diagnostics)
+                       diagnostics=diagnostics, links=links)
         )
 
         if depth < config.max_depth:
-            for link in _find_links(html, url_base):
-                if link in visited:
+            for link in links:
+                if link.url in visited:
                     continue
-                if config.same_domain_only and not _same_domain(link, root_url):
+                if config.same_domain_only and not _same_domain(link.url, root_url):
                     continue
-                queue.append((link, depth + 1))
+                queue.append((link.url, depth + 1))
 
     if walk is not None:
         walk.pages_read = len(results)

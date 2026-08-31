@@ -18,7 +18,7 @@ from corpus_split import split
 from models import TextBlock
 from detectors.heuristic import HeuristicDetector, combine_score
 from scripts.calibrate import (_in_stratum, _words_of, length_only_baseline,
-                               load, needs_holdout, score_rows)
+                               load, needs_holdout, registers, score_rows)
 
 #: What the corpus currently supports, rounded down hard.
 MIN_HELD_OUT_RECALL = 0.4
@@ -137,6 +137,18 @@ class LengthIsNotTheSignal(unittest.TestCase):
         self.assertIn("2 negatives", printed[1])
         self.assertNotIn("too few", printed[2])
         self.assertEqual(_THIN, 10)
+
+    def test_calibration_reports_the_labelled_register_not_an_invented_genre(self):
+        printed = []
+        rows = [
+            {"label": "model", "language": "en", "register": "product copy", "score": 0.8},
+            {"label": "human", "language": "en", "register": "documentation", "score": 0.0},
+        ]
+        with patch("builtins.print", printed.append):
+            registers(rows, THRESHOLD)
+        self.assertEqual(printed[0], "by register")
+        self.assertTrue(any("product copy" in line for line in printed))
+        self.assertTrue(any("documentation" in line for line in printed))
 
     def test_the_conditioned_syntactic_signal_still_reverses(self):
         """The other half of `P-02`: the signal from the literature.

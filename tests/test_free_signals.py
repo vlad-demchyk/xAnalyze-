@@ -98,6 +98,39 @@ class AcrossThePages(unittest.TestCase):
         found = {i.rule_id for i in crosspage.issues_for(pages)}
         self.assertNotIn("seo-duplicate-description", found)
 
+    def test_crawled_hreflang_target_must_link_back(self):
+        pages = [
+            PageResult(url="https://x/en/article", depth=0, raw_html=(
+                '<html><head><link rel="alternate" hreflang="uk" '
+                'href="https://x/uk/article"></head></html>')),
+            PageResult(url="https://x/uk/article", depth=0,
+                       raw_html="<html><head></head></html>"),
+        ]
+        found = [issue for issue in crosspage.issues_for(pages)
+                 if issue.rule_id == "seo-hreflang-not-reciprocal"]
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0].details["target"], "https://x/uk/article")
+
+    def test_reciprocal_hreflang_is_clean(self):
+        pages = [
+            PageResult(url="https://x/en/article", depth=0, raw_html=(
+                '<html><head><link rel="alternate" hreflang="uk" '
+                'href="/uk/article/"></head></html>')),
+            PageResult(url="https://x/uk/article", depth=0, raw_html=(
+                '<html><head><link rel="alternate" hreflang="en" '
+                'href="/en/article"></head></html>')),
+        ]
+        found = [issue for issue in crosspage.issues_for(pages)
+                 if issue.rule_id == "seo-hreflang-not-reciprocal"]
+        self.assertEqual(found, [])
+
+    def test_hreflang_target_outside_the_crawl_is_not_assumed_broken(self):
+        pages = [PageResult(url="https://x/en/article", depth=0, raw_html=(
+            '<html><head><link rel="alternate" hreflang="uk" '
+            'href="/uk/article"></head></html>'))]
+        self.assertNotIn("seo-hreflang-not-reciprocal",
+                         {issue.rule_id for issue in crosspage.issues_for(pages)})
+
 
 class ImageDimensions(unittest.TestCase):
     def test_an_oversized_image_is_a_finding(self):

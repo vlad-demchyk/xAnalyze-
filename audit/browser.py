@@ -60,6 +60,34 @@ _AXE_IMPACT = {
 _HTMLCS_TYPE = {1: SERIOUS, 2: MODERATE}
 
 
+#: The size a browser pass runs at when nobody asked for a particular one.
+#:
+#: It has to be a real size. `QWebEnginePage` with no widget behind it is
+#: 0x0, and a page that believes it is 0 pixels tall has no element with a
+#: layout box: `getBoundingClientRect()` returns zeroes, axe skips the checks
+#: that need geometry, and the state pass concludes that every focused
+#: element is outside the viewport - because it is.
+#:
+#: The default used to be `None`, described as "whatever the engine defaults
+#: to". There is no such default, and the cost was measured 2026-08-31 by
+#: running the same page both ways:
+#:
+#:     https://www.python.org/     151 findings unsized -> 244 sized
+#:                                 (31 axe:color-contrast existed only sized,
+#:                                  htmlcs contrast 87 -> 145)
+#:     https://en.wikipedia.org/wiki/Rome
+#:                                 3 state:focus-outside-viewport existed only
+#:                                 unsized - a finding of the 0x0 layout, not
+#:                                 of the page
+#:     https://www.gov.uk/         17 -> 18, and the one state finding changed
+#:                                 identity between the two runs
+#:
+#: So the unsized pass both lost real findings and invented false ones. This
+#: matches `responsive.BREAKPOINTS[0]`, which owns the same numbers, so a
+#: plain `--browser` run and `--breakpoints desktop` answer the same.
+DEFAULT_VIEWPORT = (1440, 900)
+
+
 @dataclass
 class BrowserAuditOptions:
     """What to run, and what to leave alone."""
@@ -86,12 +114,16 @@ class BrowserAuditOptions:
     #: sit beside it would otherwise be audited half-loaded.
     allow_local_files: bool = False
     #: The size the page believes it is being viewed at, as `(width, height)`
-    #: in CSS pixels, or None for whatever the engine defaults to. Set, it is
-    #: what makes a responsive audit possible: media queries answer to this
-    #: number, so a page audited at one size has only been audited at one
-    #: size - the mobile navigation of most sites does not exist in the DOM
-    #: at desktop width, and neither do its findings.
-    viewport: tuple | None = None
+    #: in CSS pixels. It is what makes a responsive audit possible: media
+    #: queries answer to this number, so a page audited at one size has only
+    #: been audited at one size - the mobile navigation of most sites does not
+    #: exist in the DOM at desktop width, and neither do its findings.
+    #:
+    #: `None` means genuinely unsized, and there is no engine default behind
+    #: it: an unsized page reports `innerWidth`/`innerHeight` of **0**, so
+    #: nothing has a layout box. That is why the default here is a real size
+    #: rather than `None` - see `DEFAULT_VIEWPORT`.
+    viewport: tuple | None = DEFAULT_VIEWPORT
     #: Also bring back the DOM as the browser built it. This is what lets a
     #: client-rendered page be *read* rather than only audited: the copy and
     #: the links of an application shell exist only after hydration, and a
@@ -233,16 +265,76 @@ MEASUREMENT_SCRIPT = """
       return {name: String(r.name).slice(0, 160), ms: Math.round(r.duration),
               bytes: r.transferSize || r.encodedBodySize || 0};
     });
-  return JSON.stringify({
-    domContentLoaded: Math.round(nav.domContentLoadedEventEnd || 0),
-    loadComplete: Math.round(nav.loadEventEnd || 0),
-    firstPaint: paints['first-paint'] || 0,
-    firstContentfulPaint: paints['first-contentful-paint'] || 0,
-    transferBytes: totalBytes,
-    requestCount: resources.length,
-    byType: byType,
-    slowest: slowest,
-    domNodes: document.getElementsByTagName('*').length
+  // Buffered observers read entries that happened before this script was
+  // injected. Unlike a page-load timer, they retain the browser's actual
+  // LCP and layout-shift candidates rather than trying to infer them from
+  // markup. Not every embedded Chromium exposes every entry type, so an
+  // unavailable metric stays absent instead of becoming a fabricated zero.
+  var lcp = null, cls = 0, clsAvailable = false, longTaskMs = 0;
+  function observe(type, each) {
+    try {
+      var observer = new PerformanceObserver(function(list) {
+        list.getEntries().forEach(each);
+      });
+      observer.observe({type: type, buffered: true});
+      return observer;
+    } catch (e) { return null; }
+  }
+  var lcpObserver = observe('largest-contentful-paint', function(entry) {
+    lcp = Math.round(entry.startTime || 0);
+  });
+  var clsObserver = observe('layout-shift', function(entry) {
+    clsAvailable = true;
+    if (!entry.hadRecentInput) cls += entry.value || 0;
+  });
+  var longTaskObserver = observe('longtask', function(entry) {
+    longTaskMs += Math.round(entry.duration || 0);
+  });
+  return new Promise(function(resolve) {
+    setTimeout(function() {
+      [lcpObserver, clsObserver, longTaskObserver].forEach(function(observer) {
+        if (observer) observer.disconnect();
+      });
+      var result = {
+        domContentLoaded: Math.round(nav.domContentLoadedEventEnd || 0),
+        loadComplete: Math.round(nav.loadEventEnd || 0),
+        firstPaint: paints['first-paint'] || 0,
+        firstContentfulPaint: paints['first-contentful-paint'] || 0,
+        transferBytes: totalBytes,
+        requestCount: resources.length,
+        byType: byType,
+        slowest: slowest,
+        domNodes: document.getElementsByTagName('*').length
+      };
+      // Where the images actually are. The static rule guesses this from
+      // DOM order (`perf-image-loading`, "the first three are above the
+      // fold"), and the guess is wrong often enough to matter: measured
+      // 2026-08-31 over four pages and 188 images, one of the eight images
+      // it would have flagged sat 176px down a 900px viewport - being told
+      // to lazy-load it is being told to delay the largest paint, which is
+      // the opposite of the rule's purpose. Keyed by `src` because that is
+      // what the static finding recorded; an image with none cannot be
+      // matched and is left as the static pass had it.
+      result.imagesAboveFold = [];
+      var seenSrc = {};
+      var images = document.getElementsByTagName('img');
+      for (var i = 0; i < images.length; i++) {
+        var rect = images[i].getBoundingClientRect();
+        var src = images[i].getAttribute('src') || '';
+        if (!src || seenSrc[src]) continue;
+        if (rect.top + window.scrollY < window.innerHeight) {
+          seenSrc[src] = true;
+          result.imagesAboveFold.push(src.slice(0, 500));
+        }
+      }
+      if (lcp !== null) result.largestContentfulPaint = lcp;
+      if (clsAvailable) result.cumulativeLayoutShift = Math.round(cls * 1000) / 1000;
+      // A supported observer reporting no entries is a real zero. An engine
+      // that has no long-task observer exposes no metric at all, so it cannot
+      // be mistaken for an idle page.
+      if (longTaskObserver) result.longTaskMs = longTaskMs;
+      resolve(JSON.stringify(result));
+    }, 50);
   });
 })()
 """
@@ -384,11 +476,66 @@ def issues_from_measurements(payload: str, source: str, budgets=None) -> list:
 #: transfer, 50 requests, 1500 DOM nodes.
 DEFAULT_BUDGETS = {
     "firstContentfulPaint": (1800, SERIOUS, "perf-first-paint"),
+    "largestContentfulPaint": (2500, SERIOUS, "perf-largest-contentful-paint"),
+    "cumulativeLayoutShift": (0.1, MODERATE, "perf-layout-shift-browser"),
     "loadComplete": (5000, MODERATE, "perf-load-time"),
     "transferBytes": (1_600_000, MODERATE, "perf-page-weight"),
     "requestCount": (50, MINOR, "perf-request-count"),
     "domNodes": (1500, MODERATE, "perf-dom-size"),
+    "longTaskMs": (200, MODERATE, "perf-long-tasks"),
 }
+
+
+def merge_into_document(document, page_audit) -> None:
+    """Fold one page's browser findings into its static ones. One owner.
+
+    Both the CLI's browser pass (`cli_impl/auditpass._run_browser_pass`) and
+    the window (`ui/main_window._run_browser_pass`) did this with their own
+    copy of the two calls, and the copies drifted: only the CLI settled
+    `perf-image-loading`, so the same page audited from the window kept a
+    finding the browser had already disproved. Two surfaces, two answers, for
+    a reason nobody chose.
+
+    The order matters and is the reason this is a function: a static finding
+    the browser disproved must not reach `deduplicate`, or it would be
+    corroborated by a real finding and reported alongside it.
+
+    Geometry comes from the widest pass that produced numbers (see
+    `responsive.merge`): desktop is the DOM the reader is most likely to have
+    open, and it is the same choice made for the selector a merged row keeps.
+    """
+    settled = settle_image_loading(
+        list(document.issues), getattr(page_audit, "measurements", None) or {})
+    document.issues = deduplicate(
+        settled + list(page_audit.issues),
+        markup=getattr(page_audit, "html", "") or "")
+
+
+def settle_image_loading(issues: list, measurements: dict) -> list:
+    """Drop `perf-image-loading` findings the browser shows to be visible.
+
+    `perf-image-loading` is a static rule guessing at page geometry: it
+    assumes the first three `<img>` in DOM order are above the fold and every
+    later one is not. Measured 2026-08-31 at 1280x900 over four pages and 188
+    images: of the eight images the rule would have flagged, **one** sat 176px
+    down the page (an icon on `en.wikipedia.org/wiki/Rome`). Telling an author
+    to defer an image the visitor can already see delays the largest paint,
+    which is the opposite of what the rule is for - and the rule's own comment
+    says so.
+
+    So the rule now declares `NEEDS_BROWSER` and this settles it, which is
+    what that value means. Findings are matched by `details["src"]`, the one
+    thing both sides recorded; an `<img>` that loads from `srcset` or
+    `data-src` alone has no `src` to match and is left as the static pass had
+    it, reported rather than silently dropped.
+    """
+    above = measurements.get("imagesAboveFold")
+    if not isinstance(above, list) or not above:
+        return list(issues)
+    visible = {str(src) for src in above if src}
+    return [issue for issue in issues
+            if not (issue.rule_id == "perf-image-loading"
+                    and str((issue.details or {}).get("src", "")) in visible)]
 
 
 def deduplicate(issues: list, markup: str = "") -> list:

@@ -230,7 +230,7 @@ class PreviewSwitcher(unittest.TestCase):
     def test_the_buttons_are_labelled_with_the_width(self):
         labels = {button.text() for button, _width in
                   self.window.breakpoint_buttons.values()}
-        self.assertEqual(labels, {"1440", "834", "390"})
+        self.assertEqual(labels, {"1440", "834", "390", "320"})
 
     def test_only_one_width_is_ever_pressed(self):
         self.window.breakpoint_buttons["tablet"][0].click()

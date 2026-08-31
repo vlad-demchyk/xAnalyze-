@@ -297,7 +297,7 @@ def cmd_compare(args) -> int:
 
 
 def cmd_audit(args) -> int:
-    """Audit a URL or a folder across all four categories.
+    """Audit a URL or a folder across all six categories.
 
     Kept in the same CLI as the text scan because it answers a question about
     the same artefact and belongs in the same pre-commit hook or pipeline
@@ -368,7 +368,9 @@ def cmd_audit(args) -> int:
         elif spa_pages and rendered_pages:
             print(f"# SPA: {len(rendered_pages)} page(s) rendered via browser, {len(spa_pages)} failed.", file=sys.stderr)
         
-        result = audit.analyze_pages(pages, target, ai_review=reviewer)
+        result = audit.analyze_pages(
+            pages, target, ai_review=reviewer,
+            site_controls=getattr(args, "site_controls", False))
     else:
         from repo_scanner import scan_repo
 
@@ -819,7 +821,7 @@ def build_parser() -> argparse.ArgumentParser:
                          action="store_false", default=True)
     p_audit.add_argument("--category", nargs="*", default=None,
                          choices=list(CATEGORIES),
-                         help="report only these categories (default: all four)")
+                         help="report only these categories (default: all six)")
     p_audit.add_argument("--medium", default=None, choices=["web", "email"],
                          help="what these documents are for. Autodetected per "
                               "file from the markup (Outlook namespaces, merge "
@@ -868,13 +870,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_audit.add_argument("--breakpoints", nargs="?", const="all", default=None,
                          metavar="NAMES",
                          help="audit each page at several "
-                              "widths (desktop 1440, tablet 834, mobile 390) "
+                              "widths (desktop 1440, tablet 834, mobile 390, reflow 320) "
                               "instead of one. Bare, or a comma-separated "
                               "subset. A finding seen at several widths stays "
                               "one row and records where it was seen; one seen "
                               "at a single width says so - which is the point, "
                               "since a mobile menu is not in the DOM at all at "
                               "desktop width")
+    p_audit.add_argument("--site-controls", action="store_true",
+                         help="also fetch robots.txt and same-origin sitemaps "
+                              "declared in it. Opt-in: this makes requests "
+                              "beyond the bounded page crawl")
     p_audit.add_argument("--styled-report", default=None, metavar="PATH",
                          help="also write a branded, print-ready report for a "
                               "person to read: a .pdf or .html by suffix. "
@@ -1074,8 +1080,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_fullscan.add_argument("--breakpoints", nargs="?", const="all", default="desktop",
                             metavar="NAMES",
                             help="responsive breakpoints for browser audit: "
-                                 "desktop (default), all, tablet, mobile, "
+                                 "desktop (default), all, tablet, mobile, reflow, "
                                  "or comma-separated subset (e.g. desktop,mobile)")
+    p_fullscan.add_argument("--site-controls", action="store_true",
+                           help="also fetch robots.txt and same-origin sitemaps "
+                                "declared in it during a URL audit")
     p_fullscan.add_argument("--no-browser", action="store_true",
                             help="skip browser rendering and responsive audit "
                                  "(faster, but misses JS-rendered content)")

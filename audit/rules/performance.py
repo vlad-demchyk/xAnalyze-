@@ -136,10 +136,19 @@ class OversizedInlineBlocks(PerformanceRule):
 class ImagesWithoutLazyLoading(PerformanceRule):
     id = "perf-image-loading"
     severity = MINOR
+    #: DOM order is a guess at geometry, and the browser pass is what settles
+    #: it (`browser.settle_image_loading`). Measured 2026-08-31 at 1280x900
+    #: over four pages and 188 images: one of the eight images this rule would
+    #: have flagged sat 176px down the page. Recommending `loading="lazy"` for
+    #: an image the visitor can already see delays the largest paint, which is
+    #: the opposite of the point - so the finding is a candidate until a
+    #: browser has looked, not a fact.
+    confidence = NEEDS_BROWSER
 
     #: The first few images are usually above the fold, where lazy loading
     #: makes things *worse* — it delays the largest paint. Only images past
-    #: this position are worth deferring.
+    #: this position are worth deferring. A guess, and named as one: the fold
+    #: is a rendered position and this file only has markup.
     ABOVE_THE_FOLD = 3
 
     def check(self, document, context) -> list:

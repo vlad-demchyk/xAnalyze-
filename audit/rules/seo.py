@@ -13,7 +13,9 @@ own markup or does not.
 """
 from __future__ import annotations
 
+import json
 import re
+from urllib.parse import urlsplit
 
 from ..base import (
     MINOR, MODERATE, NEEDS_BROWSER, SEO, SERIOUS, Issue, Rule, RuleRegistry,
@@ -107,7 +109,40 @@ class CanonicalLink(SeoRule):
         canonicals = [t for t in document.find_all("link")
                       if "canonical" in (t.get("rel") or [])]
         if len(canonicals) == 1:
-            return []
+            tag = canonicals[0]
+            href = (tag.get("href") or "").strip()
+            parsed = urlsplit(href)
+            # A canonical fragment does not identify a document. Search
+            # engines ignore it, so accepting the tag merely because there is
+            # one lets a non-canonical page look clean. Relative canonicals
+            # remain allowed: they are valid HTML and deployment-aware sites
+            # deliberately use them.
+            if parsed.fragment:
+                selector, line = context.locate(tag)
+                return [Issue(
+                    rule_id=self.id, severity=SERIOUS, category=self.category,
+                    selector=selector, line=line, snippet=snippet_of(tag),
+                    source=context.source,
+                    details={"count": 1, "reason": "fragment", "href": href[:200]},
+                )]
+            # A canonical is an HTTP URL or a relative reference. A data,
+            # JavaScript or mail URL cannot name an indexable document.
+            if parsed.scheme and parsed.scheme.lower() not in ("http", "https"):
+                selector, line = context.locate(tag)
+                return [Issue(
+                    rule_id=self.id, severity=SERIOUS, category=self.category,
+                    selector=selector, line=line, snippet=snippet_of(tag),
+                    source=context.source,
+                    details={"count": 1, "reason": "unsupported-scheme", "href": href[:200]},
+                )]
+            if href:
+                return []
+            selector, line = context.locate(tag)
+            return [Issue(
+                rule_id=self.id, severity=self.severity, category=self.category,
+                selector=selector, line=line, snippet=snippet_of(tag),
+                source=context.source, details={"count": 1, "reason": "empty-href"},
+            )]
         if not canonicals:
             return [Issue(
                 rule_id=self.id, severity=self.severity, category=self.category,
@@ -185,12 +220,38 @@ class StructuredData(SeoRule):
     def check(self, document, context) -> list:
         if document.find("html") is None:
             return []
-        has_jsonld = any(
-            (t.get("type") or "").lower() == "application/ld+json"
-            for t in document.find_all("script")
-        )
+        jsonld = [t for t in document.find_all("script")
+                  if (t.get("type") or "").lower() == "application/ld+json"]
         has_microdata = document.find(attrs={"itemscope": True}) is not None
-        if has_jsonld or has_microdata:
+        if jsonld:
+            for tag in jsonld:
+                raw = tag.string or tag.get_text() or ""
+                try:
+                    data = json.loads(raw)
+                except (TypeError, ValueError) as exc:
+                    selector, line = context.locate(tag)
+                    return [Issue(
+                        rule_id=self.id, severity=MODERATE, category=self.category,
+                        selector=selector, line=line, snippet="<script type=\"application/ld+json\">…</script>",
+                        source=context.source,
+                        details={"reason": "invalid-json", "error": str(exc)[:160]},
+                    )]
+                nodes = data if isinstance(data, list) else [data]
+                typed = any(
+                    isinstance(node, dict) and (node.get("@type")
+                    or any(isinstance(child, dict) and child.get("@type")
+                           for child in node.get("@graph", []) if isinstance(node.get("@graph"), list)))
+                    for node in nodes
+                )
+                if not typed:
+                    selector, line = context.locate(tag)
+                    return [Issue(
+                        rule_id=self.id, severity=MINOR, category=self.category,
+                        selector=selector, line=line, snippet="<script type=\"application/ld+json\">…</script>",
+                        source=context.source, details={"reason": "missing-type"},
+                    )]
+            return []
+        if has_microdata:
             return []
         return [Issue(
             rule_id=self.id, severity=self.severity, category=self.category,

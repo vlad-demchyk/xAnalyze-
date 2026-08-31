@@ -34,6 +34,7 @@ STATE_RULES = {
     "hover-only-content": MODERATE,
     "no-skip-link": MODERATE,
     "focus-outside-viewport": MODERATE,
+    "modal-focus-not-contained": SERIOUS,
 }
 
 STATE_SCRIPT = """
@@ -74,6 +75,18 @@ STATE_SCRIPT = """
     if (style.display === 'none' || style.visibility === 'hidden') return false;
     var rect = el.getBoundingClientRect();
     return rect.width > 0 || rect.height > 0;
+  }
+
+  // --- 0. An already-open modal owns focus -------------------------------
+  // This observes an existing state only. It does not click an opener or
+  // dispatch Escape, because either can submit a form or change a real
+  // session. A visible aria-modal dialog with focus still behind it is a
+  // concrete failure of the state the visitor is currently in.
+  var openModal = Array.prototype.slice.call(
+    document.querySelectorAll('[role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]')
+  ).find(visible);
+  if (openModal && (!active || !openModal.contains(active))) {
+    record('modal-focus-not-contained', openModal, {});
   }
 
   var candidates = Array.prototype.slice.call(document.querySelectorAll(FOCUSABLE))

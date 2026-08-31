@@ -69,6 +69,7 @@ class WhatAnEmailIsNotAskedFor(unittest.TestCase):
     def test_the_browser_only_rules_are_marked(self):
         expected = {"seo-canonical", "seo-open-graph", "seo-structured-data",
                     "seo-meta-description", "seo-title-length", "seo-noindex",
+                    "geo-article-schema", "geo-article-provenance",
                     "skip-link", "landmark-regions", "hreflang-links",
                     "perf-preconnect", "perf-render-blocking",
                     "perf-font-display", "image-modern-format"}

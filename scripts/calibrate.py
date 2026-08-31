@@ -233,6 +233,28 @@ def strata(scored: list, threshold: float) -> None:
           "the detector.")
 
 
+def registers(scored: list, threshold: float) -> None:
+    """Read the same detector by corpus register, never calling it genre data.
+
+    The labelled corpus carries `register` rather than a guessed literary
+    genre. Keeping that field's name matters: product copy, documentation and
+    encyclopedic prose can be compared, but this cannot make a claim about a
+    genre the corpus did not label. Thin samples retain the same warning as
+    language and length reports.
+    """
+    groups: dict[str, list] = {}
+    for row in scored:
+        register = str(row.get("register") or "unlabelled register")
+        groups.setdefault(register, []).append(row)
+    print("by register")
+    for register, subset in sorted(groups.items()):
+        print(f"  {register}: {len(subset)} entries")
+        _show("all languages", _rates(subset, threshold))
+        for language in sorted({row.get("language", "?") for row in subset}):
+            _show(language, _rates([row for row in subset
+                                    if row.get("language") == language], threshold))
+
+
 def report(scored: list, threshold: float) -> None:
     print(f"at threshold {threshold}")
     _show("all languages", _rates(scored, threshold))
@@ -246,6 +268,9 @@ def report(scored: list, threshold: float) -> None:
 
     print()
     strata(scored, threshold)
+
+    print()
+    registers(scored, threshold)
 
     print()
     cut, precision, recall = length_only_baseline(scored)

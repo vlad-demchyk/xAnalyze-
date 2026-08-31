@@ -3388,6 +3388,186 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Se la pagina è pubblica, rimuovi il tag o metti content=\"index, follow\". Se deve davvero restare nascosta, lascialo, ma verifica che sia una scelta consapevole per questo indirizzo e non un template globale.",
         "en": "If the page is public, remove the tag or set content=\"index, follow\". If it genuinely should stay hidden, keep it, but check that this is a deliberate decision for this address and not a global template.",
     },
+    "a11y_seo_x_robots_noindex_title": {
+        "uk": "Сторінку закрито від індексації HTTP-заголовком",
+        "it": "La pagina è esclusa dall'indicizzazione dall'header HTTP",
+        "en": "An HTTP header blocks the page from indexing",
+    },
+    "a11y_seo_x_robots_noindex_found": {
+        "uk": "Заголовок {header} містить директиву: {content}.",
+        "it": "L'header {header} contiene la direttiva: {content}.",
+        "en": "The {header} header contains the directive: {content}.",
+    },
+    "a11y_seo_x_robots_noindex_why": {
+        "uk": "Пошукові системи читають цю директиву з HTTP-відповіді ще до аналізу розмітки. Якщо сторінка має бути публічною, вона не потрапить у пошук, навіть коли в HTML немає meta robots.",
+        "it": "I motori leggono questa direttiva nella risposta HTTP prima ancora del markup. Se la pagina deve essere pubblica, non apparirà nella ricerca anche senza un meta robots nell'HTML.",
+        "en": "Search engines read this directive from the HTTP response before they analyse the markup. A public page will stay out of search even when its HTML has no meta robots tag.",
+    },
+    "a11y_seo_x_robots_noindex_fix": {
+        "uk": "Для публічної сторінки приберіть noindex або none з конфігурації сервера, CDN чи застосунку. Лишайте директиву лише для адрес, які справді не повинні бути в пошуку.",
+        "it": "Per una pagina pubblica rimuovi noindex o none dalla configurazione del server, CDN o applicazione. Mantieni la direttiva solo per URL che non devono davvero apparire nella ricerca.",
+        "en": "For a public page, remove noindex or none from the server, CDN or application configuration. Keep it only for URLs that genuinely must stay out of search.",
+    },
+    "a11y_seo_crawl_http_error_title": {
+        "uk": "Під час обходу сторінка повернула HTTP-помилку",
+        "it": "Durante la scansione la pagina ha restituito un errore HTTP",
+        "en": "The page returned an HTTP error during the crawl",
+    },
+    "a11y_seo_crawl_http_error_found": {
+        "uk": "Сервер відповів статусом HTTP {status}.",
+        "it": "Il server ha risposto con stato HTTP {status}.",
+        "en": "The server responded with HTTP status {status}.",
+    },
+    "a11y_seo_crawl_http_error_why": {
+        "uk": "Сторінка з помилкою не може бути надійно прочитана чи проіндексована. Це виміряний результат конкретної відповіді, а не припущення про адресу поза межами обходу.",
+        "it": "Una pagina in errore non può essere letta o indicizzata in modo affidabile. È il risultato misurato di questa risposta, non un'ipotesi su un URL fuori dalla scansione.",
+        "en": "A page in error cannot be reliably read or indexed. This is the measured result for this response, not a guess about a URL outside the crawl.",
+    },
+    "a11y_seo_crawl_http_error_fix": {
+        "uk": "Відновіть сторінку або налаштуйте коректний редирект на актуальну адресу. Якщо ресурс навмисно прибрано, видаліть внутрішні посилання на нього та поверніть коректну відповідь для його стану.",
+        "it": "Ripristina la pagina oppure configura un reindirizzamento corretto verso l'URL attuale. Se la risorsa è stata rimossa intenzionalmente, elimina i link interni e restituisci la risposta adatta al suo stato.",
+        "en": "Restore the page or configure a correct redirect to its current URL. If the resource was intentionally removed, remove internal links to it and return the response appropriate to its state.",
+    },
+    "a11y_seo_robots_root_disallowed_title": {
+        "uk": "robots.txt забороняє обхід усього сайту",
+        "it": "robots.txt vieta la scansione dell'intero sito",
+        "en": "robots.txt disallows crawling the whole site",
+    },
+    "a11y_seo_robots_root_disallowed_found": {
+        "uk": "Група User-agent: * містить Disallow: {path}.",
+        "it": "Il gruppo User-agent: * contiene Disallow: {path}.",
+        "en": "The User-agent: * group contains Disallow: {path}.",
+    },
+    "a11y_seo_robots_root_disallowed_why": {
+        "uk": "Це явно забороняє звичайним пошуковим роботам обходити весь шлях сайту. Висновок стосується лише глобальної директиви, а не правил для окремого бота.",
+        "it": "Questo vieta esplicitamente ai crawler generici di esplorare l'intero percorso del sito. Il rilievo riguarda solo la direttiva globale, non le regole per un bot specifico.",
+        "en": "This explicitly prevents generic search crawlers from visiting the site's whole path. The finding concerns only the global directive, not rules for a specific bot.",
+    },
+    "a11y_seo_robots_root_disallowed_fix": {
+        "uk": "Якщо сайт має бути доступним для пошуку, приберіть Disallow: / з групи User-agent: *. Лишайте його лише для приватного або тимчасового середовища.",
+        "it": "Se il sito deve essere disponibile nella ricerca, rimuovi Disallow: / dal gruppo User-agent: *. Mantienilo solo per un ambiente privato o temporaneo.",
+        "en": "If the site should be available to search, remove Disallow: / from the User-agent: * group. Keep it only for a private or temporary environment.",
+    },
+    "a11y_seo_sitemap_http_error_title": {
+        "uk": "Оголошена sitemap повертає HTTP-помилку",
+        "it": "La sitemap dichiarata restituisce un errore HTTP",
+        "en": "A declared sitemap returns an HTTP error",
+    },
+    "a11y_seo_sitemap_http_error_found": {
+        "uk": "robots.txt оголошує цю sitemap, але сервер відповів HTTP {status}.",
+        "it": "robots.txt dichiara questa sitemap, ma il server ha risposto HTTP {status}.",
+        "en": "robots.txt declares this sitemap, but the server responded with HTTP {status}.",
+    },
+    "a11y_seo_sitemap_http_error_why": {
+        "uk": "Пошуковий робот, що прочитав цей запис у robots.txt, не може отримати оголошену карту URL. Це факт відповіді для адреси, яку сам сайт вказав.",
+        "it": "Un crawler che legge questa riga in robots.txt non può ottenere la mappa URL dichiarata. È un fatto della risposta per l'indirizzo indicato dal sito stesso.",
+        "en": "A crawler that reads this robots.txt entry cannot fetch the declared URL map. This is a response fact for an address the site itself named.",
+    },
+    "a11y_seo_sitemap_http_error_fix": {
+        "uk": "Відновіть sitemap або змініть її URL у robots.txt на актуальний. Перевірте відповідь без авторизації та після редиректів.",
+        "it": "Ripristina la sitemap oppure aggiorna il suo URL in robots.txt. Verifica la risposta senza autenticazione e dopo i reindirizzamenti.",
+        "en": "Restore the sitemap or update its URL in robots.txt. Verify the response without authentication and after redirects.",
+    },
+    "a11y_seo_sitemap_invalid_title": {
+        "uk": "Оголошена sitemap не є коректним XML",
+        "it": "La sitemap dichiarata non è XML valido",
+        "en": "A declared sitemap is not valid XML",
+    },
+    "a11y_seo_sitemap_invalid_found": {
+        "uk": "Адреса sitemap віддає текст, який XML-парсер не може прочитати.",
+        "it": "L'indirizzo della sitemap restituisce testo che il parser XML non riesce a leggere.",
+        "en": "The sitemap URL returns text the XML parser cannot read.",
+    },
+    "a11y_seo_sitemap_invalid_why": {
+        "uk": "HTTP 200 ще не означає, що карта URL придатна для обробки. Ця перевірка підтверджує синтаксис XML, але не підміняє перевірку всіх URL у карті.",
+        "it": "HTTP 200 non significa ancora che la mappa URL sia elaborabile. Questo controllo conferma la sintassi XML, ma non sostituisce la verifica di ogni URL nella mappa.",
+        "en": "HTTP 200 does not yet mean the URL map can be processed. This check confirms XML syntax, but does not substitute for validating every URL in the map.",
+    },
+    "a11y_seo_sitemap_invalid_fix": {
+        "uk": "Виправте XML, щоб він мав один кореневий елемент і коректно екранував спеціальні символи. Після виправлення знову перевірте саме оголошену адресу.",
+        "it": "Correggi l'XML affinché abbia un solo elemento radice ed esegua correttamente l'escape dei caratteri speciali. Dopo la correzione verifica di nuovo l'indirizzo dichiarato.",
+        "en": "Fix the XML so it has one root element and properly escapes special characters. Afterward, verify the declared address again.",
+    },
+    "a11y_seo_internal_link_failed_title": {
+        "uk": "Внутрішнє посилання веде на сторінку з HTTP-помилкою",
+        "it": "Un link interno porta a una pagina con errore HTTP",
+        "en": "An internal link points to a page with an HTTP error",
+    },
+    "a11y_seo_internal_link_failed_found": {
+        "uk": "Посилання {href} веде на {target}, де обходом отримано HTTP {status}.",
+        "it": "Il link {href} porta a {target}, dove la scansione ha ricevuto HTTP {status}.",
+        "en": "The link {href} points to {target}, where the crawl received HTTP {status}.",
+    },
+    "a11y_seo_internal_link_failed_why": {
+        "uk": "Відвідувач і пошуковий робот переходять за цим посиланням у відповідь з помилкою. Висновок зроблено лише тому, що ціль уже була фактично отримана цим самим обходом.",
+        "it": "Il visitatore e il crawler seguono questo link fino a una risposta in errore. La conclusione viene riportata solo perché la destinazione è stata già ricevuta dalla stessa scansione.",
+        "en": "Visitors and crawlers follow this link to an error response. It is reported only because the same crawl already fetched the destination.",
+    },
+    "a11y_seo_internal_link_failed_fix": {
+        "uk": "Замініть URL на актуальну сторінку, відновіть ціль або налаштуйте редирект. Не маскуйте проблему посиланням на головну сторінку, якщо вона не є змістовною заміною.",
+        "it": "Sostituisci l'URL con la pagina attuale, ripristina la destinazione o configura un reindirizzamento. Non mascherare il problema con un link alla home se non è una sostituzione pertinente.",
+        "en": "Replace the URL with the current page, restore the destination or configure a redirect. Do not mask the problem with a home-page link when it is not a relevant replacement.",
+    },
+    "a11y_seo_hreflang_not_reciprocal_title": {
+        "uk": "Crawled hreflang-версія не посилається у відповідь",
+        "it": "La versione hreflang scansionata non rimanda indietro",
+        "en": "The crawled hreflang version does not link back",
+    },
+    "a11y_seo_hreflang_not_reciprocal_found": {
+        "uk": "Для мови {language} оголошено {target}, але в отриманій цільовій сторінці немає посилання назад.",
+        "it": "Per la lingua {language} è dichiarato {target}, ma la pagina di destinazione ricevuta non ha un link di ritorno.",
+        "en": "The {language} alternate declares {target}, but the fetched target page has no link back.",
+    },
+    "a11y_seo_hreflang_not_reciprocal_why": {
+        "uk": "Це перевірка лише пари сторінок, які реально потрапили в цей обхід. Взаємні hreflang-посилання допомагають пошуковій системі підтвердити, що обидві адреси належать до одного мовного набору.",
+        "it": "È un controllo solo della coppia di pagine realmente inclusa in questa scansione. I link hreflang reciproci aiutano il motore a confermare che entrambi gli URL appartengono allo stesso insieme linguistico.",
+        "en": "This checks only the page pair actually reached by this crawl. Reciprocal hreflang links help a search engine confirm that both URLs belong to the same language set.",
+    },
+    "a11y_seo_hreflang_not_reciprocal_fix": {
+        "uk": "Додайте на цільову сторінку <link rel=\"alternate\" hreflang=\"…\" href=\"…\">, що повертає на цю адресу. Перевірте обидві сторінки після публікації, включно з нормалізацією URL.",
+        "it": "Aggiungi nella pagina di destinazione <link rel=\"alternate\" hreflang=\"…\" href=\"…\"> che riporti a questo URL. Verifica entrambe le pagine dopo la pubblicazione, inclusa la normalizzazione degli URL.",
+        "en": "Add a <link rel=\"alternate\" hreflang=\"…\" href=\"…\"> on the target page that returns to this URL. Verify both pages after publishing, including URL normalisation.",
+    },
+    "a11y_geo_article_schema_title": {
+        "uk": "Стаття не має машиночитаного типу",
+        "it": "L'articolo non ha un tipo leggibile dalla macchina",
+        "en": "The article has no machine-readable type",
+    },
+    "a11y_geo_article_schema_found": {
+        "uk": "На сторінці є <article>, але немає JSON-LD або microdata з типом Article, NewsArticle чи BlogPosting.",
+        "it": "La pagina contiene <article>, ma non JSON-LD o microdata con tipo Article, NewsArticle o BlogPosting.",
+        "en": "The page contains <article>, but has no JSON-LD or microdata of type Article, NewsArticle or BlogPosting.",
+    },
+    "a11y_geo_article_schema_why": {
+        "uk": "Це не прогноз цитування чи позицій. Це сигнал для редакційної перевірки: тип у розмітці прямо пояснює пошуку й асистентам, що сторінка є статтею, а не загальною вебсторінкою.",
+        "it": "Non è una previsione di citazioni o posizioni. È un segnale per la revisione editoriale: il tipo nel markup dice direttamente a motori e assistenti che la pagina è un articolo e non una pagina generica.",
+        "en": "This is not a citation or ranking prediction. It is an editorial-review signal: the markup type tells search engines and assistants directly that the page is an article rather than a generic web page.",
+    },
+    "a11y_geo_article_schema_fix": {
+        "uk": "Якщо це редакційний матеріал, додайте правдивий JSON-LD Article, NewsArticle або BlogPosting. Не додавайте тип лише заради перевірки: він має відповідати видимому вмісту сторінки.",
+        "it": "Se è contenuto editoriale, aggiungi JSON-LD veritiero Article, NewsArticle o BlogPosting. Non aggiungere il tipo solo per superare il controllo: deve corrispondere al contenuto visibile.",
+        "en": "If this is editorial content, add truthful Article, NewsArticle or BlogPosting JSON-LD. Do not add a type merely to pass the check: it must match the page's visible content.",
+    },
+    "a11y_geo_article_provenance_title": {
+        "uk": "У статті бракує машиночитаного авторства або дати",
+        "it": "All'articolo manca autore o data leggibili dalla macchina",
+        "en": "The article lacks machine-readable authorship or a date",
+    },
+    "a11y_geo_article_provenance_found": {
+        "uk": "Не знайдено: {missing}.",
+        "it": "Non trovato: {missing}.",
+        "en": "Not found: {missing}.",
+    },
+    "a11y_geo_article_provenance_why": {
+        "uk": "Це кандидат для редакційної перевірки, а не твердження, що даних немає у видимому тексті. Семантичні авторство й дата допомагають системам зіставити матеріал з джерелом та його актуальністю без здогадування з верстки.",
+        "it": "È un candidato per la revisione editoriale, non l'affermazione che i dati manchino dal testo visibile. Autore e data semantici aiutano i sistemi ad associare il contenuto alla fonte e alla sua attualità senza indovinare dal layout.",
+        "en": "This is an editorial-review candidate, not a claim that the data is absent from visible prose. Semantic author and date values help systems associate content with its source and freshness without guessing from layout.",
+    },
+    "a11y_geo_article_provenance_fix": {
+        "uk": "Додайте справжнього автора й дату публікації в JSON-LD Article або semantic HTML, наприклад <time datetime=\"2026-08-31\">. Не вигадуйте автора, дату чи дату оновлення.",
+        "it": "Aggiungi autore reale e data di pubblicazione in JSON-LD Article o HTML semantico, per esempio <time datetime=\"2026-08-31\">. Non inventare autore, data o data di aggiornamento.",
+        "en": "Add the real author and publication date in Article JSON-LD or semantic HTML, for example <time datetime=\"2026-08-31\">. Do not invent an author, date or update date.",
+    },
     "a11y_seo_open_graph_title": {
         "uk": "Немає розмітки для прев'ю посилання",
         "it": "Manca il markup per l'anteprima del link",
@@ -3608,6 +3788,66 @@ _STRINGS: dict[str, dict[str, str]] = {
         "uk": "Задайте width і height, або зарезервуйте місце через aspect-ratio у CSS чи контейнер фіксованої висоти. Для вбудованих плеєрів і банерів найнадійніше - обгортка з відомим співвідношенням сторін, бо самі вони своїх розмірів наперед не повідомляють.",
         "it": "Imposta width e height, oppure riserva lo spazio con aspect-ratio nel CSS o con un contenitore di altezza fissa. Per player incorporati e banner la soluzione più solida è un wrapper con rapporto d'aspetto noto, dato che da soli non dichiarano le proprie dimensioni.",
         "en": "Set width and height, or reserve the space with an aspect-ratio in CSS or a container of fixed height. For embedded players and banners the most reliable answer is a wrapper with a known aspect ratio, since they do not announce their own size in advance.",
+    },
+    "a11y_perf_largest_contentful_paint_title": {
+        "uk": "Найбільший видимий елемент з'являється повільно",
+        "it": "L'elemento visibile più grande appare lentamente",
+        "en": "The largest visible element appears slowly",
+    },
+    "a11y_perf_largest_contentful_paint_found": {
+        "uk": "Браузер виміряв LCP {value} мс при цілі не більше {budget} мс.",
+        "it": "Il browser ha misurato LCP {value} ms, con obiettivo non oltre {budget} ms.",
+        "en": "The browser measured LCP at {value} ms, against a target of at most {budget} ms.",
+    },
+    "a11y_perf_largest_contentful_paint_why": {
+        "uk": "LCP показує, коли для людини з'явився головний вміст першого екрана. Повільне значення означає, що сторінка може вже реагувати технічно, але ключовий текст або зображення ще не видно.",
+        "it": "LCP indica quando compare per la persona il contenuto principale della prima schermata. Un valore lento significa che la pagina può già reagire tecnicamente, ma il testo o l'immagine principali non sono ancora visibili.",
+        "en": "LCP shows when the main above-the-fold content became visible to a person. A slow value means the page may technically respond while its key text or image is still missing.",
+    },
+    "a11y_perf_largest_contentful_paint_fix": {
+        "uk": "Визначте елемент LCP у профілюванні браузера, оптимізуйте його ресурс і шлях до нього: відповідь сервера, зображення, шрифт, CSS або блокувальний JavaScript. Перевірте повторно на реальному маршруті.",
+        "it": "Individua l'elemento LCP nel profiling del browser e ottimizza la sua risorsa e il percorso: risposta del server, immagine, font, CSS o JavaScript bloccante. Verifica di nuovo sul percorso reale.",
+        "en": "Identify the LCP element in browser profiling and optimise its resource and path: server response, image, font, CSS or blocking JavaScript. Verify again on the real route.",
+    },
+    "a11y_perf_layout_shift_browser_title": {
+        "uk": "Браузер зафіксував нестабільність макета",
+        "it": "Il browser ha rilevato instabilità del layout",
+        "en": "The browser recorded layout instability",
+    },
+    "a11y_perf_layout_shift_browser_found": {
+        "uk": "Браузер виміряв CLS {value} при цілі не більше {budget}.",
+        "it": "Il browser ha misurato CLS {value}, con obiettivo non oltre {budget}.",
+        "en": "The browser measured CLS at {value}, against a target of at most {budget}.",
+    },
+    "a11y_perf_layout_shift_browser_why": {
+        "uk": "CLS фіксує зсуви, які сталися під час завантаження, тому це сильніший сигнал за перевірку окремого HTML-елемента. Зсув може змусити людину натиснути не на ту дію або втратити місце читання.",
+        "it": "CLS registra gli spostamenti avvenuti durante il caricamento, quindi è un segnale più forte dell'ispezione di un singolo elemento HTML. Uno spostamento può far premere l'azione sbagliata o far perdere il punto di lettura.",
+        "en": "CLS records shifts that happened while the page loaded, so it is stronger evidence than inspecting a single HTML element. A shift can make someone activate the wrong control or lose their reading position.",
+    },
+    "a11y_perf_layout_shift_browser_fix": {
+        "uk": "За профілем завантаження знайдіть ресурс або блок, що зміщується, і зарезервуйте для нього місце. Найчастіше це зображення, реклама, вбудований віджет або шрифт, що міняє розмір тексту після появи.",
+        "it": "Nel profilo di caricamento trova la risorsa o il blocco che si sposta e riservagli spazio. Di solito è un'immagine, pubblicità, un widget incorporato o un font che cambia la dimensione del testo quando arriva.",
+        "en": "Use the loading profile to find the resource or block that shifts and reserve its space. It is often an image, ad, embedded widget or font that changes text size after it arrives.",
+    },
+    "a11y_perf_long_tasks_title": {
+        "uk": "Головний потік надто довго зайнятий JavaScript",
+        "it": "Il thread principale resta occupato troppo a lungo dal JavaScript",
+        "en": "JavaScript keeps the main thread busy for too long",
+    },
+    "a11y_perf_long_tasks_found": {
+        "uk": "Браузер зафіксував {value} мс довгих задач при бюджеті {budget} мс.",
+        "it": "Il browser ha registrato {value} ms di task lunghi, con budget di {budget} ms.",
+        "en": "The browser recorded {value} ms of long tasks, against a {budget} ms budget.",
+    },
+    "a11y_perf_long_tasks_why": {
+        "uk": "Поки головний потік зайнятий, браузер не може вчасно малювати сторінку або відповідати на введення. Це вимірювання блокування під час цього запуску, не підмінник Interaction to Next Paint.",
+        "it": "Finché il thread principale è occupato, il browser non può disegnare la pagina o rispondere all'input in tempo. È una misura del blocco in questa esecuzione, non un sostituto di Interaction to Next Paint.",
+        "en": "While the main thread is busy, the browser cannot paint promptly or respond to input. This measures blocking in this run, not a substitute for Interaction to Next Paint.",
+    },
+    "a11y_perf_long_tasks_fix": {
+        "uk": "Відкрийте профіль продуктивності, знайдіть найдовші завдання і розбийте або відкладіть їх. Особливо перевірте великі бандли, сторонні віджети та синхронну обробку даних на старті.",
+        "it": "Apri il profilo prestazioni, trova i task più lunghi e suddividili o rimandali. Controlla soprattutto bundle grandi, widget esterni ed elaborazione sincrona dei dati all'avvio.",
+        "en": "Open a performance profile, find the longest tasks and split or defer them. Check large bundles, third-party widgets and synchronous data processing at startup first.",
     },
     # ------------------------------------------------------ Best practices
     "a11y_sec_password_in_get_form_title": {
@@ -3926,6 +4166,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     "breakpoint_desktop": {"uk": "десктоп", "it": "desktop", "en": "desktop"},
     "breakpoint_tablet": {"uk": "планшет", "it": "tablet", "en": "tablet"},
     "breakpoint_mobile": {"uk": "мобільний", "it": "mobile", "en": "mobile"},
+    "breakpoint_reflow": {"uk": "перекомпонування 320 px", "it": "reflow 320 px", "en": "320 px reflow"},
     "a11y_breakpoint_only": {
         "uk": "Знайдено лише на одній ширині: {breakpoints}.",
         "it": "Trovato a una sola larghezza: {breakpoints}.",
@@ -4425,6 +4666,26 @@ _STRINGS: dict[str, dict[str, str]] = {
               "modal), add an Escape exit and return focus to whatever opened "
               "it.",
     },
+    "a11y_state:modal_focus_not_contained_title": {
+        "uk": "Фокус лишився поза відкритим модальним вікном",
+        "it": "Il focus è rimasto fuori dalla finestra modale aperta",
+        "en": "Focus remains outside the open modal dialog",
+    },
+    "a11y_state:modal_focus_not_contained_found": {
+        "uk": "Видиме модальне вікно позначене aria-modal=\"true\", але активний фокус не належить йому.",
+        "it": "Una finestra modale visibile è contrassegnata aria-modal=\"true\", ma il focus attivo non le appartiene.",
+        "en": "A visible dialog is marked aria-modal=\"true\", but the active focus is not inside it.",
+    },
+    "a11y_state:modal_focus_not_contained_why": {
+        "uk": "Людина з клавіатурою або програмою читання може взаємодіяти з вмістом, який модальне вікно візуально перекрило. Це змішує два стани інтерфейсу і робить діалог непередбачуваним.",
+        "it": "Chi usa tastiera o screen reader può interagire con contenuto che la finestra modale ha coperto visivamente. Questo mescola due stati dell'interfaccia e rende il dialogo imprevedibile.",
+        "en": "A keyboard or screen-reader user can interact with content the modal visually covers. That mixes two interface states and makes the dialog unpredictable.",
+    },
+    "a11y_state:modal_focus_not_contained_fix": {
+        "uk": "Коли відкриваєте модальне вікно, переведіть фокус на його заголовок, перший елемент керування або сам діалог. Поки воно відкрите, не залишайте фокус на сторінці позаду.",
+        "it": "Quando apri la finestra modale, sposta il focus sul titolo, sul primo controllo o sul dialogo stesso. Finché resta aperta, non lasciare il focus sulla pagina sottostante.",
+        "en": "When opening the modal, move focus to its heading, first control or the dialog itself. While it remains open, do not leave focus on the page behind it.",
+    },
     "a11y_state:focus_not_visible_title": {
         "uk": "Фокус не видно", "it": "Il focus non si vede",
         "en": "The focus ring is invisible",
@@ -4808,6 +5069,11 @@ _STRINGS: dict[str, dict[str, str]] = {
         "uk": "Конвертуйте зображення у WebP або AVIF і додайте srcset з кількома розмірами. Сучасні інструменти збірки роблять це автоматично.",
         "it": "Converti le immagini in WebP o AVIF e aggiungi srcset con più dimensioni. Gli strumenti di build moderni lo fanno automaticamente.",
         "en": "Convert images to WebP or AVIF and add srcset with multiple sizes. Modern build tools do this automatically.",
+    },
+    "a11y_advisory": {
+        "uk": "Дорадча ознака: жоден інструмент не вирішить це за вас. Чи варто додавати цей сигнал, вирішує редактор.",
+        "it": "Segnale consultivo: nessuno strumento può deciderlo al posto tuo. Se valga la pena aggiungerlo lo decide la redazione.",
+        "en": "Advisory signal: no tool can settle this for you. Whether the signal is worth adding is an editorial call.",
     },
     "a11y_needs_browser": {
         "uk": "Часткова перевірка: без запуску браузера видно лише те, що є в самій розмітці. Решту треба звірити на живій сторінці.",

@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import unittest
 
-from audit.states import STATE_SCRIPT
+from audit.states import STATE_RULES, STATE_SCRIPT, issues_from_states
 
 
 class TheScriptChecksItCanMeasure(unittest.TestCase):
@@ -68,6 +68,21 @@ class OffCanvasIsNotBelowTheFold(unittest.TestCase):
 
     def test_a_negative_edge_still_counts(self):
         self.assertIn("rect.bottom < 0 || rect.right < 0", STATE_SCRIPT)
+
+
+class ModalState(unittest.TestCase):
+    def test_an_open_modal_is_checked_without_clicking_it(self):
+        self.assertIn("modal-focus-not-contained", STATE_RULES)
+        self.assertIn('aria-modal="true"', STATE_SCRIPT)
+        self.assertIn("openModal.contains(active)", STATE_SCRIPT)
+
+    def test_modal_focus_escape_is_a_serious_accessibility_finding(self):
+        found = issues_from_states({"findings": [{
+            "rule": "modal-focus-not-contained", "selector": "div#dialog",
+            "html": '<div role="dialog" aria-modal="true">',
+        }]}, "https://example.test/")
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0].severity, "serious")
 
 
 if __name__ == "__main__":

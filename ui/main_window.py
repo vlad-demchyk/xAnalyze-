@@ -2868,9 +2868,11 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
                     _browser_url(document.source), sizes, options, runner=runner)
                 if page_audit.error:
                     continue
-                document.issues = browser_mod.deduplicate(
-                    list(document.issues) + list(page_audit.issues),
-                    markup=getattr(page_audit, "html", "") or "")
+                # The same merge the CLI uses, not a second copy of it.
+                # The copy that used to be here did not settle
+                # `perf-image-loading`, so a page audited from the window
+                # kept a finding the browser had disproved.
+                browser_mod.merge_into_document(document, page_audit)
         finally:
             runner.close()
 

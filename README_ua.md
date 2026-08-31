@@ -117,7 +117,7 @@ xanalyze fullscan https://example.com --styled-report ./reports/site.pdf --repor
 | `--no-judgment-cache` | Не використовувати кеш оцінок |
 | `--scope NAME` | `content`, `technical`, `both` |
 | `--no-typography` | Ігнорувати em dash і curly quotes |
-| `--breakpoints NAMES` | `all`, `desktop`, `tablet`, `mobile` або список |
+| `--breakpoints NAMES` | `all`, `desktop`, `tablet`, `mobile`, `reflow` (320 px) або список. Без нього браузерний прохід іде на одній ширині, 1440x900 - тій самій, що `desktop` |
 | `--styled-report PATH` | PDF або HTML-звіт |
 | `--report PATH` | Markdown або JSON-брифінг |
 | `--check` | Завершити зі статусом 1 за серйозних проблем |
@@ -149,7 +149,9 @@ xanalyze audit ./src --fix
 xanalyze audit https://example.com --json --report briefing.md
 ```
 
-Опції охоплюють `--depth`, `--max-pages`, `--max-files`, `--render`, `--exclude`, `--category`, `--language`, `--no-ignore`, `--json`, `--check`, `--ai`, `--provider`, `--fix`, `--report`, `--browser`, `--breakpoints`, `--styled-report`.
+Опції охоплюють `--depth`, `--max-pages`, `--max-files`, `--render`, `--exclude`, `--category`, `--language`, `--no-ignore`, `--json`, `--check`, `--ai`, `--provider`, `--fix`, `--report`, `--browser`, `--breakpoints`, `--site-controls`, `--styled-report`. `--site-controls` окремо отримує robots.txt і оголошені в ньому sitemap того ж домену.
+
+Пʼять параметрів прогону є лише в CLI і не мають елемента керування у вікні: `--category` (разом із категорією `geo`), `--confidence`, `--scope`, `--site-controls` і `--no-typography`. Прогін із вікна йде зі значеннями за замовчуванням, і для кожного це означає різне: GEO-знахідки і всі ширини, включно з `reflow`, у вікні **зʼявляються**, бо воно запускає всі правила і всі ширини; `--site-controls` є opt-in і тому там не запускається, тож знахідки robots/sitemap доступні лише через `xanalyze`.
 
 ### `fix`, `undo`, `runs`, `resume`, `cache`, `compare`
 
@@ -228,9 +230,9 @@ xanalyze uninstall
 
 Офлайн-детектор поєднує статистичні сигнали, структуру, кліше й мовні правила. Embedding і модельні детектори додають незалежну оцінку. Кожна знахідка має місце, score, пояснення та рівень певності.
 
-Аудит охоплює `accessibility` (29), `best-practices` (8), `performance` (8), `security` (10), `seo` (8) - ці числа набір тестів звіряє з реєстром правил. Статичний режим читає файли; браузерний бачить DOM після рендерингу, клієнтський контент, responsive-стани й заголовки відповіді. `--repo` додає шлях до вихідного файлу для URL-аудиту.
+Аудит охоплює `accessibility` (29), `best-practices` (8), `geo` (2), `performance` (8), `security` (10), `seo` (8) - ці числа набір тестів звіряє з реєстром правил. GEO дає лише advisory-сигнали про тип статті, автора й дату, а не прогноз позицій у відповідях ШІ. Статичний режим читає файли; браузерний бачить DOM після рендерингу, клієнтський контент, responsive-стани й заголовки відповіді. `--repo` додає шлях до вихідного файлу для URL-аудиту.
 
-Знахідки мають рівень `exact` або `needs-browser`. `--confidence exact` залишає лише факти, встановлені розміткою.
+Знахідки мають рівень `exact`, `needs-browser` або `advisory`. `exact` означає, що розмітка відповідає на питання повністю, `needs-browser` - що на нього відповість запуск браузера, `advisory` - що не відповість ніщо: це редакційне рішення, і саме такими є GEO-ознаки. `--confidence exact` залишає лише факти, встановлені розміткою.
 
 Походження медіа читає IPTC/XMP і C2PA. Факти репозиторія охоплюють `.env`, AI-асистентські коміти, конфігурацію та blame. Це provenance, а не твердження, що використання асистента є дефектом.
 

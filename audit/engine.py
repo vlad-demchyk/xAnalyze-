@@ -327,7 +327,8 @@ def analyze_document(markup: str, source: str, rules=None,
 
 
 def analyze_pages(pages, root: str, rules=None, ai_review=None,
-                  media: bool = True, media_fetch=None) -> AccessibilityResult:
+                  media: bool = True, media_fetch=None,
+                  site_controls: bool = False) -> AccessibilityResult:
     """Web mode: run over what the crawler returned.
 
     Pages the crawler could not read are carried through with their error
@@ -362,9 +363,15 @@ def analyze_pages(pages, root: str, rules=None, ai_review=None,
     # until now everything but `Content-Type` was discarded. See
     # `audit.headers`.
     from audit import crosspage as crosspage_pass
+    from audit import crawlability as crawlability_pass
     from audit import headers as header_pass
 
     result.documents.extend(header_pass.as_documents(pages))
+    # The crawler already paid for these response codes and headers. Turn
+    # confirmed noindex directives and links to reached HTTP failures into
+    # SEO findings without treating unvisited, depth-limited URLs as broken.
+    result.documents.extend(crawlability_pass.as_documents(
+        pages, root_url=root, site_controls=site_controls))
     # What only a whole crawl can see: the same title, description or
     # canonical repeated across pages. Every rule above reads one document,
     # so this class of problem was invisible by construction.

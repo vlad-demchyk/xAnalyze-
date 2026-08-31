@@ -1,6 +1,6 @@
 """Audit rules: the interface, the finding, and the registry.
 
-This started as accessibility only and now covers four categories, because
+This started as accessibility only and now covers six categories, because
 they turned out to be the same job. A page that ships 2 MB of render-blocking
 JavaScript is unusable on a slow connection for the same practical reason a
 missing label is unusable with a screen reader: the person cannot do what
@@ -49,6 +49,7 @@ from dataclasses import dataclass, field
 ACCESSIBILITY = "accessibility"
 PERFORMANCE = "performance"
 SEO = "seo"
+GEO = "geo"
 BEST_PRACTICES = "best-practices"
 #: What the repository exposes rather than what a page does. A `.env` sitting
 #: where the next `git add .` will take it is not a best practice anyone
@@ -56,7 +57,7 @@ BEST_PRACTICES = "best-practices"
 #: under "best practices" would state it too quietly to act on.
 SECURITY = "security"
 
-CATEGORIES = (ACCESSIBILITY, PERFORMANCE, SEO, BEST_PRACTICES, SECURITY)
+CATEGORIES = (ACCESSIBILITY, PERFORMANCE, SEO, GEO, BEST_PRACTICES, SECURITY)
 
 # --------------------------------------------------------------- severity
 #
@@ -72,6 +73,7 @@ SEVERITY_ORDER = (CRITICAL, SERIOUS, MODERATE, MINOR)
 # ------------------------------------------------------------- confidence
 EXACT = "exact"                  # the markup answers the question completely
 NEEDS_BROWSER = "needs-browser"  # a static pass can only see part of this
+ADVISORY = "advisory"            # nothing will settle this; a person decides
 
 #: Weakest first, so a caller can say "nothing below this" in one comparison.
 #: The order is the whole point: `exact` means the markup settles the
@@ -82,7 +84,15 @@ NEEDS_BROWSER = "needs-browser"  # a static pass can only see part of this
 #: exposed it, so an engine's "I could not determine the background colour"
 #: sat in the same list as a missing `alt`. Measured on ten pages of
 #: `https://www.gov.uk/`: 60 of 61 contrast findings were the first kind.
-CONFIDENCE_ORDER = (NEEDS_BROWSER, EXACT)
+#:
+#: `advisory` is the third level and it is not a weaker `needs-browser`.
+#: `needs-browser` is a promise: run one and the answer arrives. The GEO
+#: rules had been given that value to keep them out of `--confidence exact`,
+#: which worked, but told the reader to go and launch a browser for a
+#: question no browser answers - whether a missing byline is worth adding is
+#: an editorial call and stays one. One field was carrying two meanings, so
+#: it now carries three names.
+CONFIDENCE_ORDER = (ADVISORY, NEEDS_BROWSER, EXACT)
 
 
 def meets_confidence(issue, floor: str) -> bool:

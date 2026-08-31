@@ -35,14 +35,17 @@ from dataclasses import replace
 
 from . import browser, driver
 
-#: The three widths, and why these three. Not a device list - a device list
-#: dates - but the three shapes a layout is written for: a desktop window, a
-#: tablet in portrait, a phone. Heights are realistic rather than important:
-#: media queries in the wild are written against width.
+#: The four widths, and why these four. Not a device list - a device list
+#: dates - but the shapes a layout is written for plus the 320 CSS-pixel
+#: reflow case. That last width is the condition behind WCAG 1.4.10: it finds
+#: horizontal overflow that a 390-pixel phone viewport can hide. Heights are
+#: realistic rather than important: media queries in the wild are written
+#: against width.
 BREAKPOINTS = (
-    ("desktop", 1440, 900),
+    ("desktop", *browser.DEFAULT_VIEWPORT),
     ("tablet", 834, 1112),
     ("mobile", 390, 844),
+    ("reflow", 320, 640),
 )
 
 #: Widest first. The first pass to report a finding is the one whose selector
