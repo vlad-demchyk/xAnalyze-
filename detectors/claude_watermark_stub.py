@@ -47,11 +47,24 @@ class ClaudeOfficialWatermarkDetector(Detector):
         super().__init__(**config)
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
         self.base_url = base_url or os.environ.get("ANTHROPIC_WATERMARK_API_BASE_URL")
+        # Raised here, not in `analyze_block`. It was raised there, and
+        # `Detector.analyze_blocks` turns an exception into an error span per
+        # block - so choosing this detector produced one identical
+        # "unavailable" finding for every passage on the site, at the end of a
+        # full crawl, instead of one sentence before the crawl started. The
+        # same reasoning as `ProviderLLMJudgeDetector._get_provider`: an
+        # unusable backend is reported once, up front.
+        self._unavailable()
 
     def analyze_block(self, block: TextBlock) -> list[TextSpan]:
         return self._call_official_api(block)
 
     def _call_official_api(self, block: TextBlock) -> list[TextSpan]:
+        self._unavailable()
+        return []  # unreachable; kept so the signature stays honest
+
+    @staticmethod
+    def _unavailable() -> None:
         raise DetectorUnavailable(
             "Anthropic watermarks Claude's text output, but has not published "
             "any way to read that mark: as of 18 August 2026 detection is "

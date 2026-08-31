@@ -206,11 +206,6 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Analisi del frammento…",
         "en": "Analyzing passage…",
     },
-    "detail_refactor_not_configured": {
-        "uk": "Інтеграція з бекендом ще не налаштована. Це запланована функція — див. backend_connector.py.",
-        "it": "L'integrazione con il backend non è ancora configurata. Funzione pianificata — vedi backend_connector.py.",
-        "en": "Backend integration isn't configured yet. This is a planned feature — see backend_connector.py.",
-    },
     "select_prompt": {
         "uk": "Виберіть фрагмент зі списку зліва",
         "it": "Seleziona un frammento dall'elenco",

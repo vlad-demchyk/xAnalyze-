@@ -1,79 +1,36 @@
-"""Agent-as-judge detector: offline heuristic fallback.
+"""`agent-llm-judge` is not a judge, and now it does not pretend to be one.
 
-For the REAL agent-as-judge workflow (where the agent's LLM judges text),
-use the two-step CLI workflow instead:
+It was registered as a detector named "Agent — LLM-as-judge (the agent
+itself)", it appeared in the detector dropdown beside the real judges, and
+its own docstring said it "does NOT call any LLM": it built an
+`OfflineDetector` and returned its spans. Someone choosing it from the
+window believed a model had read their text. That is the defect this project
+keeps finding - a control that looks like it works because nothing raises.
 
-    # Step 1: scan → candidate blocks as JSON
+Two more things it did, both invisible:
+
+* it dropped every character finding under 0.33, contradicting the rule the
+  offline detector states for itself - a wrong dash is a fact about the
+  text, so a low score there means "a small defect", not "probably nothing";
+* it declared `includes_character_pass = False` while wrapping a detector
+  that declares `True`, so `ui/worker.py` ran the character pass a **second**
+  time over it and the window double-reported every non-keyboard character.
+
+So the class is gone and the name is an alias. `--detector agent-llm-judge`
+and an older `settings.json` keep working and now do, under the right label,
+exactly what they were already doing.
+
+**The real agent-as-judge workflow is unaffected and is the two CLI steps:**
+
     xanalyze agent-scan ./src --json > candidates.json
+    # the agent reads the candidates and writes judgments
+    xanalyze agent-judge ./src --judgments verdicts.json
 
-    # Step 2: agent judges each candidate (the agent reads candidates,
-    # examines each block, and writes judgments)
-
-    # Step 3: merge agent's judgments with offline scan → final report
-    xanalyze agent-scan ./src | xanalyze agent-judge ./src --judgments -
-
-This detector is a FALLBACK that runs offline heuristics when called
-directly (e.g., `--detector agent-llm-judge`). It does NOT call any LLM.
-The name is kept for backward compatibility with existing scripts.
-
-The three judge options:
-1. claude-llm-judge      — Anthropic API key, real LLM call
-2. xformat-llm-judge     — xFormat subscription, real LLM call
-3. agent-scan + agent-judge — the agent itself judges (no API key needed)
+Its findings are still stamped `agent-llm-judge` in `cli_impl/agentcmds.py`,
+which is accurate there: an agent did the judging.
 """
 from __future__ import annotations
 
-import json
-import sys
-from typing import Any
-
-from models import TextBlock, TextSpan, Confidence, score_to_confidence
-from .base import Detector, DetectorUnavailable
 from .factory import DetectorFactory
 
-
-class AgentLLMJudgeDetector(Detector):
-    """Uses the agent itself as the LLM judge.
-
-    This detector uses the offline heuristic detector for analysis,
-    which provides comprehensive pattern matching for all supported
-    languages (uk, it, en).
-    """
-
-    name = "agent-llm-judge"
-    display_name = "Agent — LLM-as-judge (the agent itself)"
-    #: A general model, not a word list: no language is out of scope.
-
-    def __init__(self, **config):
-        super().__init__(**config)
-        self._cache: dict[str, float] = {}
-        # Use the offline detector for comprehensive analysis
-        from .offline import OfflineDetector
-        self._offline = OfflineDetector(**config)
-
-    def analyze_block(self, block: TextBlock) -> list[TextSpan]:
-        """Analyze a single text block using offline detector."""
-        text = block.text
-        if not text.strip() or len(text.split()) < 5:
-            return []
-
-        # Use offline detector for comprehensive analysis
-        spans = self._offline.analyze_block(block)
-        
-        # Filter to only high-confidence findings
-        return [s for s in spans if s.score >= 0.33]
-
-    def analyze_blocks(self, blocks: list) -> list[TextSpan]:
-        """Analyze multiple blocks."""
-        spans: list[TextSpan] = []
-        for block in blocks:
-            try:
-                spans.extend(self.analyze_block(block))
-            except Exception as exc:
-                # One bad block can't stop the scan
-                spans.append(self._error_span(block, exc))
-        return spans
-
-
-# Register the detector
-DetectorFactory.register(AgentLLMJudgeDetector.name, AgentLLMJudgeDetector)
+DetectorFactory.register_alias("agent-llm-judge", "offline")

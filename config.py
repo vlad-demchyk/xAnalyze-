@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 APP_NAME = "xanalyze"
-APP_VERSION = "0.43.0"
+APP_VERSION = "0.44.0"
 # Pre-rename config dir name. Only used to migrate an existing install's
 # settings into the new location the first time this runs after upgrading;
 # see `migrate_legacy_file`.
@@ -144,10 +144,6 @@ class Settings:
     # individual dismissed findings. See suppression.py; a scanned project
     # can add its own list in a committed `.xanalyze-ignore` file.
     ignore: dict = field(default_factory=dict)
-
-    # Legacy seam for a fuller backend integration (see backend_connector.py).
-    backend_url: str = ""
-    backend_enabled: bool = False
 
     # Off by default: a repo target's dev server may already be running
     # (someone's own `npm run dev` in another terminal), and starting a

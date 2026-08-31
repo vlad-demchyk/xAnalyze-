@@ -741,9 +741,10 @@ def build_parser() -> argparse.ArgumentParser:
                                 "account --provider names) | hybrid (offline "
                                 "first, then a model checks and extends it) | "
                                 "claude-llm-judge | xformat-llm-judge | "
-                                "claude-code-llm-judge | agent-llm-judge "
-                                "(offline fallback; for real LLM judgment use "
-                                "'agent-scan' + 'agent-judge' workflow) | none")
+                                "claude-code-llm-judge | none. "
+                                "'agent-llm-judge' is an old name for "
+                                "'offline'; for real agent judgment use the "
+                                "'agent-scan' + 'agent-judge' workflow)")
             p.add_argument("--provider", default=None,
                            choices=["anthropic", "xformat", "claude-code"],
                            help="which account pays for --detector llm-judge; "

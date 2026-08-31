@@ -81,3 +81,59 @@ class TheLanguageOfAPageIsReadFromWhatWasRead(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ADetectorNameSaysWhatItDoes(unittest.TestCase):
+    """`agent-llm-judge` was a detector called "LLM-as-judge (the agent
+    itself)" whose own docstring said it calls no LLM: it built an
+    `OfflineDetector` and returned its spans. It sat in the dropdown beside
+    the real judges."""
+
+    def test_the_old_name_still_works(self):
+        from detectors.factory import DetectorFactory
+
+        detector = DetectorFactory.create("agent-llm-judge")
+        self.assertEqual(detector.name, "offline")
+
+    def test_it_is_no_longer_offered_as_a_separate_backend(self):
+        from detectors.factory import DetectorFactory
+
+        self.assertNotIn("agent-llm-judge", DetectorFactory.available())
+
+    def test_the_character_pass_is_not_run_twice_over_it(self):
+        """It declared `includes_character_pass = False` while wrapping a
+        detector that declares True, so `ui/worker` ran the character pass a
+        second time and the window double-reported every non-keyboard
+        character."""
+        from detectors.factory import DetectorFactory
+
+        self.assertTrue(
+            DetectorFactory.lookup(
+                DetectorFactory.resolve("agent-llm-judge")).includes_character_pass)
+
+    def test_a_low_scoring_character_finding_survives(self):
+        """It filtered every span under 0.33, which drops character findings.
+        A wrong dash is a fact about the text: a low score there means "a
+        small defect", not "probably nothing"."""
+        from detectors.factory import DetectorFactory
+
+        block = TextBlock(block_id="b", page_url="u", dom_path="p",
+                          language_hint="en",
+                          text="A perfectly ordinary sentence with a – dash in it.")
+        spans = DetectorFactory.create("agent-llm-judge").analyze_block(block)
+        characters = [s for s in spans if (s.details or {}).get("source") == "characters"]
+        self.assertTrue(characters)
+
+
+class AnUnusableBackendSaysSoOnce(unittest.TestCase):
+    """`claude-official-watermark` raised `DetectorUnavailable` from
+    `analyze_block`, and `Detector.analyze_blocks` turns an exception into an
+    error span per block. Choosing it produced one identical "unavailable"
+    finding for every passage on a site, at the end of a full crawl."""
+
+    def test_it_refuses_at_construction(self):
+        from detectors.base import DetectorUnavailable
+        from detectors.factory import DetectorFactory
+
+        with self.assertRaises(DetectorUnavailable):
+            DetectorFactory.create("claude-official-watermark")
