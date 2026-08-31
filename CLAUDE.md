@@ -31,7 +31,7 @@ python main.py                    # десктоп (Qt)
 python cli.py fullscan <ціль>     # headless
 python cli.py                     # без підкоманди відкриває TUI (textual)
 
-python -m pytest tests/           # 79 тестових файлів, окремого конфігу немає
+python -m pytest tests/           # 104 тестових файли, окремого конфігу немає
 ```
 
 ## Збірка бандлів
