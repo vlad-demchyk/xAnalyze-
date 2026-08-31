@@ -5540,6 +5540,40 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Dai un id al messaggio e indicalo in aria-describedby (o aria-errormessage) del campo a cui si riferisce.",
         "en": "Give the message an id and name it in the aria-describedby (or aria-errormessage) of the field it is about.",
     },
+    "setup_report_unsettled": {
+        "uk": "Показувати й те, що не вдалося визначити",
+        "it": "Mostrare anche ciò che non si è potuto stabilire",
+        "en": "Also list what could not be decided",
+    },
+    "setup_report_unsettled_hint": {
+        "uk": "Рушій каже «елемент на фоновому зображенні, перевірте вручну». Типово це не показується: на одній сторінці таких було 312 із 348 знахідок про контраст.",
+        "it": "Il motore dice «elemento su un'immagine di sfondo, da verificare a mano». Di norma non si mostra: su una sola pagina erano 312 rilievi su 348 sul contrasto.",
+        "en": "An engine saying \"this element is on a background image, check by hand\". Out by default: on one page that was 312 of 348 contrast findings.",
+    },
+    "tui_unsettled": {
+        "uk": "Показувати й невизначене",
+        "it": "Mostrare anche l'indeciso",
+        "en": "Also list the undecided",
+    },
+    "audit_unsettled_hidden": {
+        "uk": "{count} перевірок не вдалося вирішити - вони не в списку",
+        "it": "{count} controlli non si sono potuti risolvere: non sono in elenco",
+        "en": "{count} checks could not be decided and are not listed",
+    },
+    "diagnosis_saturated_rule_title": {
+        "uk": "Правило спрацювало майже на всьому",
+        "it": "Una regola è scattata quasi su tutto",
+        "en": "A rule fired on nearly everything",
+    },
+    "diagnosis_saturated_rule_body": {
+        "uk": "{rule} дало {findings} знахідок на {elements} оглянутих елементах. Така частка означає, що правило міряє себе, а не сторінку: воно заповнює список і виштовхує з нього все інше. Решта знахідок від цього не стає менш правдивою, але цю купу варто читати останньою.",
+        "it": "{rule} ha prodotto {findings} rilievi su {elements} elementi esaminati. Una quota simile significa che la regola misura sé stessa e non la pagina: riempie l'elenco e spinge fuori tutto il resto. Gli altri rilievi non diventano meno veri, ma questo mucchio va letto per ultimo.",
+        "en": "{rule} produced {findings} findings on {elements} elements examined. At that share the rule is measuring itself rather than the page: it fills the list and pushes everything else off it. The other findings are no less true for it, but this pile is the one to read last.",
+    },
+    "audit_agreement": {
+        "uk": "{n} рушії згодні", "it": "{n} motori d'accordo",
+        "en": "{n} engines agree",
+    },
     "tui_label_certainty": {"uk": "певність", "it": "certezza", "en": "certainty"},
     "tui_all_categories": {"uk": "усі шість", "it": "tutte e sei", "en": "all six"},
     "tui_site_controls": {

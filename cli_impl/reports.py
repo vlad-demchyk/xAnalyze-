@@ -536,9 +536,11 @@ def _report_markdown(payload: dict, lang: str) -> str:
                 out.append(f"- `{text}` — {exp}")
             out.append("")
 
-    comparison = compare_runs(payload)
-    if comparison is not None:
-        out += ["## Since the last run", ""] + _comparison_lines(comparison) + [""]
+    # No comparison section. A report says what is wrong with the page in
+    # front of the reader; what changed since Tuesday is a different
+    # document and it already exists - `changes.md`, written beside this one
+    # in the run folder. Two genres in one file made the first page of a
+    # findings report be about the previous run.
 
     changed = payload.get("changed_this_run") or {}
     if changed.get("applied"):

@@ -309,7 +309,11 @@ Static analysis reads source files. Browser analysis can inspect rendered DOM, c
 
 ### Certainty and filters
 
-Findings are labelled `exact`, `needs-browser` or `advisory`. `exact` means the markup settles the question, `needs-browser` means running one will settle it, and `advisory` means nothing will: it is an editorial call, which is what the GEO signals are. Use `--confidence exact` when only facts settled by markup should remain. `--category`, `--scope`, `--breakpoints`, and `--no-typography` are views over the same scan, not changes to the underlying evidence.
+Findings are labelled `exact`, `needs-browser` or `advisory`. `exact` means the markup settles the question, `advisory` means nothing will settle it and a person decides — an editorial call, which is what the GEO signals are.
+
+**The undecided are not listed.** `needs-browser` is an engine saying it could not tell: "this element is placed on a background image", "absolutely positioned, the background colour cannot be determined". Measured on one page of python.org with a real browser, that was **312 of 348** contrast findings, and the whole run went from 497 findings to **182** once they left. A report two thirds made of "we do not know" is not a list anybody works through, so a run says how many it left out and `--unsettled` brings them back. `--confidence exact` is the stricter view still: it also drops the advisory ones.
+
+`--category`, `--scope`, `--breakpoints`, and `--no-typography` are views over the same scan, not changes to the underlying evidence.
 
 ### Media provenance and repository facts
 

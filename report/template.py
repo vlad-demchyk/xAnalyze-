@@ -63,6 +63,8 @@ _LABELS = {
         overview="Overview", what_found="What was found", kind="Kind",
         source_group="Where it comes from", detail="Detail",
         chart_severity="By severity", chart_category="By category",
+        where_work="Where the work is", top_problems="Most repeated problems",
+        top_places="Pages with the most findings",
         pages_more="and {count} more pages", page_col="Page or file",
         top_patterns="Highest-scoring passages",
         found_in="Found in {count} places", and_more="and {count} more",
@@ -91,6 +93,8 @@ _LABELS = {
         overview="Огляд", what_found="Що знайдено", kind="Вид",
         source_group="Звідки", detail="Деталь",
         chart_severity="За тяжкістю", chart_category="За категорією",
+        where_work="Де робота", top_problems="Що повторюється найчастіше",
+        top_places="Сторінки з найбільшою кількістю знахідок",
         pages_more="і ще {count} сторінок", page_col="Сторінка або файл",
         top_patterns="Уривки з найвищою оцінкою",
         found_in="Знайдено у {count} місцях", and_more="і ще {count}",
@@ -119,6 +123,8 @@ _LABELS = {
         overview="Panoramica", what_found="Che cosa è stato trovato", kind="Tipo",
         source_group="Da dove viene", detail="Dettaglio",
         chart_severity="Per gravità", chart_category="Per categoria",
+        where_work="Dove sta il lavoro", top_problems="I problemi più ripetuti",
+        top_places="Pagine con più rilievi",
         pages_more="e altre {count} pagine", page_col="Pagina o file",
         top_patterns="Passaggi con punteggio più alto",
         found_in="Trovato in {count} punti", and_more="e altri {count}",
@@ -418,6 +424,62 @@ def _charts(by_severity: dict, by_category: dict, labels: dict, palette,
     return f'<div class="charts">{"".join(blocks)}</div>'
 
 
+def _where_the_work_is(model: ReportModel, labels: dict, palette) -> str:
+    """The two questions a reader has after the totals: *what* repeats, and
+    *where*. Neither was answered anywhere in this document - severity and
+    category say how bad and what kind, and a person schedules work by
+    neither.
+    """
+    problems = model.counts_by_title()
+    places = model.counts_by_place()
+    if not problems and not places:
+        return ""
+
+    def rows(pairs) -> str:
+        widest = max((count for *_rest, count in pairs), default=0) or 1
+        out = []
+        for row in pairs:
+            label, count = (row[0], row[2]) if len(row) == 3 else row
+            width = max(2, round(100 * count / widest))
+            out.append(
+                f'<div class="rank-row">'
+                f'<span class="rank-label" title="{_esc(label)}">{_esc(label)}</span>'
+                f'<span class="rank-track">'
+                f'<span class="rank-fill" style="width:{width}%"></span></span>'
+                f'<span class="rank-num">{count}</span></div>')
+        return "".join(out)
+
+    blocks = []
+    if problems:
+        blocks.append(f'<div class="rank-block"><h3>{_esc(labels["top_problems"])}'
+                      f'</h3>{rows(problems)}</div>')
+    if places:
+        blocks.append(f'<div class="rank-block"><h3>{_esc(labels["top_places"])}'
+                      f'</h3>{rows(places)}</div>')
+    return (f'<section class="work"><h2>{_esc(labels["where_work"])}</h2>'
+            f'<div class="rank-grid">{"".join(blocks)}</div></section>')
+
+
+def _rank_css(palette) -> str:
+    """A ranked bar list. Same ink as the charts above it, tighter: this is
+    read as a list of jobs, not as a picture of proportions."""
+    return f"""
+.work {{ margin-top: 22px; }}
+.rank-grid {{ display: flex; gap: 26px; flex-wrap: wrap; }}
+.rank-block {{ flex: 1 1 300px; min-width: 260px; }}
+.rank-block h3 {{ font-size: 11.5pt; margin: 0 0 8px; color: {palette.text}; }}
+.rank-row {{ display: flex; align-items: center; gap: 9px; margin-bottom: 5px; }}
+.rank-label {{ flex: 0 0 42%; font-size: 9.5pt; color: {palette.text};
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+.rank-track {{ flex: 1; height: 7px; border-radius: 4px;
+  background: {_rgba(palette.accent, 0.12)}; overflow: hidden; }}
+.rank-fill {{ display: block; height: 100%; border-radius: 4px;
+  background: {palette.accent}; }}
+.rank-num {{ flex: 0 0 34px; text-align: right; font-size: 9.5pt;
+  color: {palette.text_muted}; font-variant-numeric: tabular-nums; }}
+"""
+
+
 def _pages_section(model: ReportModel, labels: dict) -> str:
     """What was examined, as a compact table rather than a numbered list.
 
@@ -543,6 +605,7 @@ def render_html(model: ReportModel, lang: str = "en") -> str:
     findings_html = ("".join(_finding_card(f, lang, palette) for f in findings)
                      if findings else f'<p class="empty">{_esc(labels["no_findings"])}</p>')
 
+    work_section = _where_the_work_is(model, labels, palette)
     pages_section = _pages_section(model, labels)
     ai_section = _top_patterns_section(model, labels)
     typo_section = ""
@@ -659,6 +722,7 @@ table.pages-table tr.more td {{ color: {palette.text_muted}; font-style: italic;
 }}
 .badge-outline {{ border: 1px solid {palette.border_strong}; color: {palette.text_muted}; }}
 {_severity_css(palette)}
+{_rank_css(palette)}
 /* Small blocks stay whole: these are short, so keeping them together costs
    a line or two of slack rather than a third of a page. */
 .field {{ margin: 2mm 0; break-inside: avoid; }}
@@ -707,6 +771,8 @@ footer {{
   <h3 class="table-title">{_esc(labels["what_found"])}</h3>
   {what_rows}
 </section>
+
+{work_section}
 
 {ai_section}
 {typo_section}

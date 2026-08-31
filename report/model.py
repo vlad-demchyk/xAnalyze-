@@ -144,6 +144,42 @@ class ReportModel:
             counts[finding.severity] = counts.get(finding.severity, 0) + 1
         return counts
 
+    def counts_by_title(self, limit: int = 8) -> list:
+        """The problems that repeat most, worst first.
+
+        This is the view a person schedules work from: "fifty missing `alt`
+        attributes" is one job, and a report that only shows severity and
+        category cannot say which job. Grouped rows, not raw findings, so a
+        header repeated on thirty pages counts once per place rather than
+        thirty times per page.
+        """
+        counts: dict = {}
+        for finding in self.grouped_findings():
+            key = (finding.title, finding.severity)
+            # A grouped row carries every place it was seen at, so the count
+            # is places rather than rows: one header repeated on thirty pages
+            # is thirty jobs' worth of nothing and one job's worth of work,
+            # and the number a reader schedules by is how many places a fix
+            # has to visit.
+            counts[key] = counts.get(key, 0) + max(1, len(finding.locations or []))
+        ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0][0]))
+        return [(title, severity, count)
+                for (title, severity), count in ranked[:limit]]
+
+    def counts_by_place(self, limit: int = 8) -> list:
+        """Where the findings are, worst page first.
+
+        The pages table lists every page examined; this answers a different
+        question - which of them to open first.
+        """
+        counts: dict = {}
+        for finding in self.findings:
+            place = finding.location or ""
+            if place:
+                counts[place] = counts.get(place, 0) + 1
+        ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+        return ranked[:limit]
+
     def counts_by_category(self) -> dict:
         counts: dict[str, int] = {}
         for finding in self.findings:
