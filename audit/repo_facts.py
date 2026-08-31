@@ -139,7 +139,7 @@ def _is_env_file(rel: str) -> bool:
 
 def read_facts(root, config=None) -> RepoFacts:
     """Everything this module can establish about `root`."""
-    from repo_scanner import ScanConfig, build_matcher, is_ignored
+    from repo_scanner import ScanConfig, build_matcher, iter_unignored_paths
 
     root = Path(root)
     config = config or ScanConfig()
@@ -183,9 +183,7 @@ def read_facts(root, config=None) -> RepoFacts:
         if path.exists():
             facts.tool_artifacts.append(artifact)
 
-    for path in sorted(root.rglob("*")):
-        if path.is_dir():
-            continue
+    for path in iter_unignored_paths(root, matcher):
         try:
             rel = path.relative_to(root).as_posix()
         except ValueError:
@@ -195,7 +193,7 @@ def read_facts(root, config=None) -> RepoFacts:
         # An ignored `.env` is the normal, correct arrangement and not a
         # finding. This is the whole check: the danger is the one nothing
         # covers.
-        if is_ignored(rel, matcher) or _git_ignores(root, rel, facts):
+        if _git_ignores(root, rel, facts):
             continue
         if tracked is not None and rel in tracked:
             facts.tracked_env.append(rel)

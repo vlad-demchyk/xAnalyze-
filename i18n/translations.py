@@ -1479,6 +1479,10 @@ _STRINGS: dict[str, dict[str, str]] = {
     "tui_reload": {"uk": "Перечитати", "it": "Ricarica", "en": "Reload"},
     "tui_next": {"uk": "Далі", "it": "Avanti", "en": "Next"},
     "tui_previous": {"uk": "Назад по колу", "it": "Precedente", "en": "Previous"},
+    "tui_errors_only": {"uk": "Лише помилки", "it": "Solo errori", "en": "Errors only"},
+    "tui_show_all": {"uk": "Показати все", "it": "Mostra tutto", "en": "Show all"},
+    "tui_copy": {"uk": "Копіювати", "it": "Copia", "en": "Copy"},
+    "tui_palette": {"uk": "Команди", "it": "Comandi", "en": "Commands"},
     "tui_run": {"uk": "Запустити", "it": "Esegui", "en": "Run"},
     "tui_stop": {"uk": "Зупинити", "it": "Ferma", "en": "Stop"},
     "tui_target_path": {

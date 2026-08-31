@@ -21,6 +21,7 @@ guaranteed-complete extraction.
 """
 from __future__ import annotations
 
+import os
 import re
 import uuid
 from dataclasses import dataclass, field
@@ -411,6 +412,44 @@ def is_ignored(rel_path: str, matcher) -> bool:
 def build_matcher(patterns: list[str]):
     """Public name for `_build_matcher`; see `is_ignored`."""
     return _build_matcher(patterns)
+
+
+def iter_unignored_paths(root: Path, matcher, on_ignored=None):
+    """Yield files without ever entering an ignored directory.
+
+    The content, media and repository-facts passes all walk the same tree.
+    Pruning directory names from ``os.walk`` keeps a large dependency or
+    build-output tree out of all three passes, instead of discovering every
+    file there and discarding it only after the work has already happened.
+    ``on_ignored`` receives a relative path and whether it is a directory,
+    so callers can retain their own diagnostics without reimplementing the
+    walk.
+    """
+    root = Path(root)
+    if not root.is_dir():
+        return
+
+    for directory, dirnames, filenames in os.walk(root, topdown=True):
+        current = Path(directory)
+        kept_dirs = []
+        for name in sorted(dirnames):
+            path = current / name
+            rel = path.relative_to(root).as_posix()
+            if matcher(rel, is_dir=True):
+                if on_ignored:
+                    on_ignored(rel, True)
+                continue
+            kept_dirs.append(name)
+        dirnames[:] = kept_dirs
+
+        for name in sorted(filenames):
+            path = current / name
+            rel = path.relative_to(root).as_posix()
+            if matcher(rel, is_dir=False):
+                if on_ignored:
+                    on_ignored(rel, False)
+                continue
+            yield path
 
 
 def _build_matcher(patterns: list[str]):
@@ -1202,23 +1241,20 @@ def scan_repo(root_dir: str, config: ScanConfig | None = None, progress_cb=None,
     diagnostics.limit = config.max_files
 
     results: list[FileResult] = []
-    for path in sorted(root.rglob("*")):
+    def count_ignored(_rel: str, _is_dir: bool) -> None:
+        diagnostics.skipped_ignored += 1
+
+    for path in iter_unignored_paths(root, matcher, count_ignored):
         if len(results) >= config.max_files:
             # Recorded, then stopped. A bare `break` here is what made a
             # partial answer look like a complete one.
             diagnostics.truncated = True
             break
-        if path.is_dir():
-            continue
         if path.suffix.lower() not in extensions and not is_locale_file(path):
             continue
         try:
             rel = path.relative_to(root).as_posix()
         except ValueError:
-            continue
-
-        if is_ignored(rel, matcher):
-            diagnostics.skipped_ignored += 1
             continue
 
         if progress_cb:

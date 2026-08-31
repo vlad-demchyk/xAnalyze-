@@ -490,7 +490,7 @@ def scan_media(root, config=None, progress_cb=None) -> MediaScan:
     Uses the repository scanner's own ignore decision, so the two walks
     cannot disagree about `node_modules/`.
     """
-    from repo_scanner import ScanConfig, build_matcher, is_ignored
+    from repo_scanner import ScanConfig, build_matcher, iter_unignored_paths
 
     config = config or ScanConfig()
     root = Path(root)
@@ -499,17 +499,17 @@ def scan_media(root, config=None, progress_cb=None) -> MediaScan:
     if not root.is_dir():
         return scan
 
-    for path in sorted(root.rglob("*")):
+    def count_ignored(_rel: str, _is_dir: bool) -> None:
+        scan.skipped_ignored += 1
+
+    for path in iter_unignored_paths(root, matcher, count_ignored):
         if scan.files_read >= config.max_files:
             break
-        if path.is_dir() or path.suffix.lower() not in MEDIA_SUFFIXES:
+        if path.suffix.lower() not in MEDIA_SUFFIXES:
             continue
         try:
             rel = path.relative_to(root).as_posix()
         except ValueError:
-            continue
-        if is_ignored(rel, matcher):
-            scan.skipped_ignored += 1
             continue
         if progress_cb:
             progress_cb(rel)

@@ -11,9 +11,11 @@ all produces. And one en dash in a Cherry Bank address was reported four
 times, once per copy of the file it lives in.
 """
 import json
+import os
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 import duplicates
 from models import ScanDiagnostics
@@ -49,6 +51,31 @@ class WhatTheWalkSaw(unittest.TestCase):
             walk = ScanDiagnostics()
             scan_repo(str(root), ScanConfig(scope="content"), diagnostics=walk)
 
+        self.assertEqual(walk.files_read, 1)
+        self.assertEqual(walk.skipped_ignored, 1)
+
+    def test_an_excluded_directory_is_not_entered(self):
+        """Ignored dependency trees must be pruned before their files exist
+        to the scanner, not filtered one file at a time afterwards."""
+        with TemporaryDirectory() as folder:
+            root = project(Path(folder), {
+                "a.html": PAGE,
+                "node_modules/pkg/deep/b.html": PAGE,
+            })
+            real_scandir = os.scandir
+            entered_ignored = []
+
+            def guarded_scandir(path):
+                if Path(path).name == "node_modules":
+                    entered_ignored.append(Path(path))
+                    raise AssertionError("walk entered an ignored directory")
+                return real_scandir(path)
+
+            with mock.patch("repo_scanner.os.scandir", side_effect=guarded_scandir):
+                walk = ScanDiagnostics()
+                scan_repo(str(root), ScanConfig(scope="content"), diagnostics=walk)
+
+        self.assertEqual(entered_ignored, [])
         self.assertEqual(walk.files_read, 1)
         self.assertEqual(walk.skipped_ignored, 1)
 

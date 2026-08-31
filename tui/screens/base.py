@@ -32,6 +32,10 @@ BINDING_LABELS = {
     "open_selected": "tui_open_report",
     "open_folder": "tui_open_folder",
     "open_first": "tui_open_report",
+    "only_errors": "tui_errors_only",
+    "show_all": "tui_show_all",
+    "copy_text": "tui_copy",
+    "command_palette": "tui_palette",
 }
 
 
@@ -71,7 +75,15 @@ class XScreen(Screen):
         for key, bindings in list(mapping.items()):
             rewritten = []
             for binding in bindings:
+                # Textual namespaces its own bindings - `app.focus_next`,
+                # `screen.copy_text` - and the prefix was not stripped before
+                # the lookup, so six footer labels stayed English on every
+                # screen while the screens' own bindings translated fine:
+                # "Focus Next", "Focus Previous", "Copy selected text" (twice)
+                # and "palette", plus `only_errors` and `show_all`, which were
+                # simply missing from the table.
                 action = (binding.action or "").split("(")[0]
+                action = action.rsplit(".", 1)[-1]
                 label_key = BINDING_LABELS.get(action)
                 if action == "go":
                     # The menu's number keys: each one names a screen, and

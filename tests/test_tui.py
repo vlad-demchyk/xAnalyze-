@@ -1054,3 +1054,69 @@ class NothingUntranslated(unittest.TestCase):
             with self.subTest(screen=path.name):
                 self.assertEqual(self._offences(path), [],
                                  f"{path}: untranslated text")
+
+
+class TheFooterIsInTheInterfaceLanguage(unittest.TestCase):
+    """Textual namespaces its own bindings (`app.focus_next`,
+    `screen.copy_text`), and the prefix was not stripped before the label
+    lookup - so six footer hints stayed English on every screen while the
+    screens' own bindings translated fine. `only_errors` and `show_all` were
+    simply missing from the table.
+    """
+
+    def test_no_footer_hint_is_left_in_english(self):
+        """Compared against the table, not against "does it look English".
+
+        An earlier version of this asserted the description was non-ASCII,
+        which passes in Ukrainian and fails the moment another test leaves
+        the interface language as English - where the correct translation is
+        ASCII English.
+        """
+        from i18n.translations import t
+        from tui.screens.base import BINDING_LABELS
+        from tui.screens.logs import LogsScreen
+
+        async def body():
+            # Through `set_language`, inside the app context, which is the
+            # production path: it re-translates the app's own bindings too.
+            # Setting `app.lang` directly does not, so this test read whatever
+            # language the app happened to be *constructed* in - and in a full
+            # suite run that was Italian, left over from a neighbouring test.
+            # A test that depends on the order it runs in is not a test.
+            app = XAnalyzeApp()
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                app.set_language("uk")
+                await pilot.pause()
+                app.push_screen(LogsScreen())
+                await pilot.pause()
+                found = []
+                for source in (app.screen._bindings, app._bindings):
+                    mapping = getattr(source, "key_to_bindings", {})
+                    for bindings in mapping.values():
+                        found.extend((b.action, b.description) for b in bindings)
+                return found, app.lang
+
+        rows, language = run(body())
+        wrong = []
+        for action, text in rows:
+            key = BINDING_LABELS.get((action or "").split("(")[0].rsplit(".", 1)[-1])
+            if key and text and text != t(key, language):
+                wrong.append((action, text, t(key, language)))
+        self.assertEqual(wrong, [])
+
+        # And every footer action this screen has is in the table at all -
+        # the six that stayed English were missing from it, or namespaced.
+        unmapped = [a for a, _ in rows
+                    if a and not a.endswith("help_quit")
+                    and (a.split("(")[0].rsplit(".", 1)[-1] not in BINDING_LABELS)
+                    and not a.startswith("go(")]
+        self.assertEqual(unmapped, [])
+
+    def test_a_namespaced_action_finds_its_label(self):
+        from tui.screens.base import BINDING_LABELS
+
+        for action in ("focus_next", "copy_text", "only_errors", "show_all",
+                       "command_palette"):
+            with self.subTest(action):
+                self.assertIn(action, BINDING_LABELS)
