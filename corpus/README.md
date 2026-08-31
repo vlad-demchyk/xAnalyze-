@@ -31,20 +31,22 @@ menu", and the wrong ones for "does it flag a person's prose".
 matters to this detector and a corpus holding one register calibrates for one
 register.
 
-`encyclopedic` — paragraphs taken verbatim from Italian Wikipedia at a named
-revision from 2018, years before language models were writing this kind of copy.
-The source field carries the article, the revision id and the revision date, so
-the claim "a person wrote this, and it is dated" is checkable rather than
-asserted. This text is CC BY-SA; it is quoted here with attribution, and it is
-measurement material, not product content.
+`encyclopedic` — paragraphs taken verbatim from Wikipedia in all three
+languages, each at a named revision from 2018 (a few from 2017), years before
+language models were writing this kind of copy. The source field carries the
+article, the revision id and the revision date, so the claim "a person wrote
+this, and it is dated" is checkable rather than asserted. This text is CC BY-SA;
+it is quoted here with attribution, and it is measurement material, not product
+content.
 
 ## What is missing, and why it is not filled in
 
-**Human prose in English and Ukrainian.** At 25+ words the human half now holds
-31 Italian entries and only 4 English and 15 Ukrainian. A false-alarm rate for
-those two languages at paragraph length is still a statement about a handful of
-entries. The Italian gap was closed the way this one has to be: a dated source
-with a named author, not text that reads human.
+**Negatives that argue rather than describe.** At 25+ words the human half now
+holds 40 English, 31 Italian and 45 Ukrainian entries, but the prose among them
+is encyclopedic: it explains a subject. Marketing copy written by a person
+persuades, which is the register the model half imitates, and the corpus has
+almost none of it with certain provenance. A false alarm is likelier there than
+anywhere else in this file, and it is the one place still unmeasured.
 
 **Positives that were not written for this file.** Every `model` entry was
 generated while building this corpus. The label is true by construction, but so

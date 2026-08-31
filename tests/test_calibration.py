@@ -20,7 +20,8 @@ from scripts.calibrate import (_in_stratum, length_only_baseline, load,
 MIN_HELD_OUT_RECALL = 0.4
 #: How many human entries a language needs at paragraph length before its
 #: false-alarm rate is a measurement rather than an accident of the corpus.
-#: English (4) and Ukrainian (15) are still under this; Italian was too, at 2.
+#: Italian sat at 2, English at 4, Ukrainian at 15 before dated encyclopedic
+#: prose was added; all three are above this now.
 MIN_PROSE_NEGATIVES = 20
 #: Nothing in the human pool may be flagged. Precision is what decides whether
 #: a tool stays switched on, so this one is not a ratchet but a rule.
@@ -105,21 +106,24 @@ class LengthIsNotTheSignal(unittest.TestCase):
         self.assertGreaterEqual(len(found) / len(band), 0.4,
                                 "Italian is back to scoring nothing below 25 words")
 
-    def test_italian_negatives_include_prose_not_only_interface_strings(self):
-        # Measured 2026-08-31: the Italian human half held 2 entries of 25+
-        # words, so "precision 100%, 0 false alarms" for Italian was a claim
-        # about button labels. It says nothing about whether the detector
-        # flags a person writing a paragraph, which is what it is pointed at.
-        # Closed with dated Italian prose (Wikipedia revisions from 2018), so
-        # this floor is a ratchet on the corpus, not on the detector.
-        prose = [r for r in self.scored
-                 if r["label"] == "human" and r["language"] == "it"
-                 and _in_stratum(r, 25, None)]
-        self.assertGreaterEqual(len(prose), MIN_PROSE_NEGATIVES,
-                                "the Italian false-alarm rate is back to "
-                                "resting on interface strings")
-        flagged = [r for r in prose if r["score"] >= THRESHOLD]
-        self.assertEqual(flagged, [], "Italian prose is being flagged as model-written")
+    def test_every_language_has_prose_negatives_not_only_interface_strings(self):
+        # Measured 2026-08-31: the human half held 2 Italian, 4 English and 15
+        # Ukrainian entries of 25+ words, so "precision 100%, 0 false alarms"
+        # per language was a claim about button labels. It said nothing about
+        # whether the detector flags a person writing a paragraph, which is
+        # what it is pointed at. Closed with dated encyclopedic prose
+        # (Wikipedia revisions from 2018), so this floor is a ratchet on the
+        # corpus, not on the detector.
+        for language in ("en", "it", "uk"):
+            prose = [r for r in self.scored
+                     if r["label"] == "human" and r["language"] == language
+                     and _in_stratum(r, 25, None)]
+            self.assertGreaterEqual(len(prose), MIN_PROSE_NEGATIVES,
+                                    f"{language} false alarms are back to "
+                                    "resting on interface strings")
+            flagged = [r for r in prose if r["score"] >= THRESHOLD]
+            self.assertEqual(flagged, [],
+                             f"{language} prose is being flagged as model-written")
 
 
 class Combination(unittest.TestCase):
