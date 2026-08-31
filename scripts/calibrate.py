@@ -29,6 +29,7 @@ if str(ROOT) not in sys.path:
 
 from corpus_split import split  # noqa: E402
 from detectors.factory import DetectorFactory  # noqa: E402
+from lang_detect import guess_language_safe  # noqa: E402
 from models import TextBlock, score_to_confidence  # noqa: E402
 
 CORPUS = ROOT / "corpus"
@@ -89,9 +90,25 @@ def score_rows(rows: list, detector_name: str = "offline",
     detector = DetectorFactory.create(detector_name, **detector_config)
     scored = []
     for index, row in enumerate(rows):
+        # The hint a **run** would carry, not the corpus's own `language`.
+        # The corpus knows the true language; a scan does not, it calls
+        # `guess_language_safe` in `crawler._make_block`, and handing the
+        # detector the truth measures a detector nobody has.
+        #
+        # It was not a rounding difference. Measured 2026-08-31: Italian
+        # recall read 61.1% with the true label and **50.0%** with the label a
+        # run produces, because two Italian positives contain none of the
+        # original Italian markers and were read as English, which switched
+        # off the Italian cliché list. Calibration overstated live Italian
+        # recall by 11 points and nothing said so. The gap is closed now (the
+        # marker list was extended), and this line is what keeps it closed:
+        # a future gap shows up as a number here instead of on a live page.
+        #
+        # `row["language"]` still decides which language a row is *reported*
+        # under - that is ground truth and stays ground truth.
         block = TextBlock(block_id=f"row-{index}", text=row["text"],
                           page_url="corpus://labelled", dom_path="",
-                          language_hint=row.get("language") or "")
+                          language_hint=guess_language_safe(row["text"]))
         spans = [s for s in detector.analyze_block(block)
                  if (s.details or {}).get("source") != "characters"]
         score = max((s.score for s in spans), default=0.0)

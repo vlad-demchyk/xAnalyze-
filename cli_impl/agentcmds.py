@@ -364,7 +364,10 @@ def cmd_agent_scan(args) -> int:
                 "file": block.file_path,
                 "line": block.line_number,
                 "text": block.text,
-                "language": block.language_hint or "en",
+                # `null` where the passage is too short to read. See
+                # `crawler._make_block`: naming a language there is a
+                # guess, and the agent would judge on it.
+                "language": block.language_hint,
                 "offline_score": round(span.score, 3),
                 "offline_explanation": span.explanation,
                 "offline_details": span.details,
@@ -393,7 +396,10 @@ def cmd_agent_scan(args) -> int:
                 "file": block.file_path,
                 "line": block.line_number,
                 "text": block.text,
-                "language": block.language_hint or "en",
+                # `null` where the passage is too short to read. See
+                # `crawler._make_block`: naming a language there is a
+                # guess, and the agent would judge on it.
+                "language": block.language_hint,
             })
         payload["blocks"] = all_blocks
         payload["instruction"] = (

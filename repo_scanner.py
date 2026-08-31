@@ -26,7 +26,7 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from lang_detect import guess_language
+from lang_detect import guess_language_safe
 from models import (
     KIND_INJECTED, KIND_MARKUP, KIND_TECHNICAL, CodeBlock, FileResult,
     ScanDiagnostics,
@@ -906,8 +906,18 @@ def _make_code_block(raw_text: str, file_path: str, start: int, end: int,
         text=text,
         line_number=raw_text.count("\n", 0, start) + 1,
         # Tagged here so a rewrite request can tell the model which language
-        # to answer in — without it, Ukrainian copy comes back in English.
-        language_hint=guess_language(text),
+        # to answer in. `guess_language_safe`, not `guess_language`: the
+        # difference is what happens to a string too short to read. The
+        # unsafe one answers "en", which is a fallback wearing the clothes of
+        # a reading, and it is what every consumer downstream then believes.
+        # Measured 2026-08-31 on a live Italian page: 29 of 71 blocks were
+        # tagged `en` while `guess_language_safe` said `None`, so short
+        # Italian strings were judged by the English cliché list and would
+        # have been handed to the rewrite provider as English. `None` is the
+        # honest answer and the one every consumer already knows how to
+        # handle - the detectors check every list, and `prompt_language`
+        # names no language rather than the wrong one.
+        language_hint=guess_language_safe(text),
         kind=kind,
     )
 

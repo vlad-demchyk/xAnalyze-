@@ -15,7 +15,8 @@ from statistics import median
 from unittest.mock import patch
 
 from corpus_split import split
-from detectors.heuristic import combine_score
+from models import TextBlock
+from detectors.heuristic import HeuristicDetector, combine_score
 from scripts.calibrate import (_in_stratum, _words_of, length_only_baseline,
                                load, needs_holdout, score_rows)
 
@@ -165,6 +166,40 @@ class LengthIsNotTheSignal(unittest.TestCase):
         self.assertLess(median(model), median(human),
                         "clause coordination stopped reversing under length "
                         "control - re-read it before crediting any signal")
+
+    def test_the_corpus_is_scored_with_the_hint_a_run_would_carry(self):
+        """Calibration must measure the detector that actually runs.
+
+        The corpus knows each entry's language; a scan does not - it calls
+        `guess_language_safe`. Handing the detector the truth measured a
+        detector nobody has. Measured 2026-08-31: Italian recall read 61.1%
+        with the true label and 50.0% with the label a run produces, because
+        two Italian positives carried none of the original Italian markers,
+        were read as English, and had the Italian cliché list switched off.
+        Eleven points of overstatement with nothing saying so.
+        """
+        from lang_detect import guess_language_safe
+
+        italian = [r for r in self.scored
+                   if r["language"] == "it" and r["label"] == "model"]
+        self.assertTrue(italian)
+
+        detector = HeuristicDetector()
+        recovered = 0
+        for index, row in enumerate(italian):
+            block = TextBlock(block_id=f"i{index}", page_url="u", dom_path="p",
+                              text=row["text"],
+                              language_hint=guess_language_safe(row["text"]))
+            spans = detector.analyze_block(block)
+            if max((s.score for s in spans), default=0.0) >= THRESHOLD:
+                recovered += 1
+
+        # The same count the report prints for `it`. If these ever diverge,
+        # the report is describing a detector the user does not have.
+        calibrated = sum(1 for r in self.scored
+                         if r["language"] == "it" and r["label"] == "model"
+                         and r["score"] >= THRESHOLD)
+        self.assertEqual(recovered, calibrated)
 
     def test_every_language_has_prose_negatives_not_only_interface_strings(self):
         # Measured 2026-08-31: the human half held 2 Italian, 4 English and 15

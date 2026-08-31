@@ -238,6 +238,8 @@ xanalyze agent-judge ./src --judgments verdicts.json
 
 `agent-scan` emits passage IDs, text, and offline signals. `agent-judge` applies the agent's verdicts while keeping XAnalyze's scoring, grouping, and reports.
 
+Each passage carries a `language` field, and it is `null` when the passage is too short to read. That is an answer, not a missing value: a two-word button is not English merely because nothing else was detectable, and an agent told otherwise judges it against the wrong expectations.
+
 ### `update` and `uninstall`
 
 ```bash

@@ -72,7 +72,10 @@ def _candidate(block, source_url: str, line: int, span) -> dict:
         "file": source_url,
         "line": line,
         "text": block.text,
-        "language": block.language_hint or "en",
+        # `null` when the passage is too short to read, and null rather
+        # than "en": an agent told a two-word Italian button is English
+        # judges it against English expectations. See `crawler._make_block`.
+        "language": block.language_hint,
         "offline_score": round(span.score, 3),
         "offline_explanation": span.explanation,
     }

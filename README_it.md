@@ -189,6 +189,8 @@ xanalyze agent-judge ./src --judgments verdicts.json
 
 Il primo comando produce ID e testo dei candidati, il secondo applica i giudizi dell'agente e genera il report.
 
+Ogni passaggio porta un campo `language`, ed è `null` quando il passaggio è troppo breve per essere letto. È una risposta, non un valore mancante: un pulsante di due parole non è inglese solo perché non si è rilevato altro, e un agente a cui si dice il contrario lo giudica con le aspettative sbagliate.
+
 ### `update` e `uninstall`
 
 ```bash

@@ -55,7 +55,7 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup, NavigableString
 
-from lang_detect import guess_language
+from lang_detect import guess_language_safe
 import applog
 from models import PageDiagnostics, PageResult, TextBlock
 
@@ -280,9 +280,19 @@ def _make_block(tag, text: str, page_url: str) -> TextBlock:
         page_url=page_url,
         dom_path=_dom_path(tag),
         text=text,
-        # Tagged here so a rewrite request can tell the model which
-        # language to answer in.
-        language_hint=guess_language(text),
+        # Tagged here so a rewrite request can tell the model which language
+        # to answer in. `guess_language_safe`, not `guess_language`: the
+        # difference is what happens to a string too short to read. The
+        # unsafe one answers "en", which is a fallback wearing the clothes of
+        # a reading, and it is what every consumer downstream then believes.
+        # Measured 2026-08-31 on a live Italian page: 29 of 71 blocks were
+        # tagged `en` while `guess_language_safe` said `None`, so short
+        # Italian strings were judged by the English cliché list and would
+        # have been handed to the rewrite provider as English. `None` is the
+        # honest answer and the one every consumer already knows how to
+        # handle - the detectors check every list, and `prompt_language`
+        # names no language rather than the wrong one.
+        language_hint=guess_language_safe(text),
     )
 
 

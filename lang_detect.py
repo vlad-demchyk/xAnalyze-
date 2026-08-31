@@ -18,9 +18,31 @@ _CYRILLIC_RE = re.compile(r"[А-Яа-яЇїІіЄєҐґ]")
 UNSUPPORTED = "other"
 
 # Function words that are common in Italian and rare/absent in English.
+#
+# Extended 2026-08-31. The first list was built from Italian *prose*, and
+# Italian marketing copy turned out not to contain it: "La nostra
+# infrastruttura robusta garantisce sicurezza di livello aziendale" carries
+# not one of the original fourteen and was read as English, so the Italian
+# cliché list never ran on it and two corpus positives went undetected. Same
+# gap, three ways: `P-04` sees it as recall, `P-06` as an Italian page the
+# offline pass returns nothing for.
+#
+# Measured over corpus entries of 5+ words, which is where a reading is
+# attempted at all: Italian read as Italian **68/98 -> 85/98**, with English
+# 124/124, Ukrainian 157/157 and foreign text 249/257 all unchanged. Every
+# word is absent from the English and Ukrainian halves of the corpus *and*
+# from `corpus/foreign.jsonl`, so it can neither pull another language in nor
+# push a foreign paragraph out.
+#
+# ` una ` was measured and left out. It buys one more Italian entry and costs
+# a Spanish paragraph, which starts reading as Italian - the same trade the
+# `_OTHER_LATIN_MARKERS` comment warns about from the other side.
 _ITALIAN_MARKERS = (
     " è ", " non ", " che ", " della ", " gli ", " sono ", " perché ",
     " degli ", " nella ", " questo ", " anche ", " più ", " con ", " per ",
+    " di ", " nel ", " nostra ", " nostro ", " tuo ", " tuoi ", " tra ",
+    " dei ", " ogni ", " senza ", " stesso ", " può ", " dal ", " dalla ",
+    " sulla ", " agli ",
 )
 
 #: Letters that exist in Ukrainian and not in Russian, and the reverse. A
