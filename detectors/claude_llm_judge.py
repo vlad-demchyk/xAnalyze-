@@ -140,7 +140,7 @@ _RESPONSE_SCHEMA = {
 class ClaudeLLMJudgeDetector(Detector):
     name = "claude-llm-judge"
     display_name = "Claude — LLM-as-judge (live API call)"
-    supported_languages = ("uk", "it", "en")
+    #: A general model, not a word list: no language is out of scope.
 
     def __init__(self, api_key: str | None = None, model: str = DEFAULT_MODEL,
                  batch_size: int = DEFAULT_BATCH_SIZE, effort: str = "low", **config):

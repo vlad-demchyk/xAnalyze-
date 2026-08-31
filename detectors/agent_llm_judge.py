@@ -42,7 +42,7 @@ class AgentLLMJudgeDetector(Detector):
 
     name = "agent-llm-judge"
     display_name = "Agent — LLM-as-judge (the agent itself)"
-    supported_languages = ("uk", "it", "en")
+    #: A general model, not a word list: no language is out of scope.
 
     def __init__(self, **config):
         super().__init__(**config)

@@ -87,6 +87,26 @@ Two consequences worth knowing before editing this file:
   (model 0.73-0.79 against human near 0.16) and every point of it is
   self-recognition.
 
+## `foreign.jsonl` - the other side of the language question
+
+257 paragraphs of human text in five languages this tool has **no** lists for
+(German, French, Spanish, Polish, Russian), from dated 2018 Wikipedia revisions
+with the revision id in `source`. Rebuild it with
+`python scripts/fetch_foreign_corpus.py corpus/foreign.jsonl`.
+
+No detector reads this file. It is a yardstick only, and it answers a question
+the three-language corpus cannot ask: what the tool does with a page it was
+never calibrated for. Two of the numbers it produced on 2026-08-31:
+
+* the wording pass returned a span for **all 257**, every score pinned at 0.32
+  by the statistical-only clamp - silent, but by three thousandths, not by
+  decision;
+* the embedding detector crossed its threshold on **five** of them, which was
+  not silent at all.
+
+Both now return nothing outside `supported_languages`, and
+`tests/test_foreign_corpus.py` holds the count.
+
 ## Running it
 
     python scripts/calibrate.py                 # metrics at the current bands

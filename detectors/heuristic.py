@@ -545,11 +545,27 @@ def _cliche_hits(text: str, language: str | None) -> list[str]:
 class HeuristicDetector(Detector):
     name = "heuristic"
     display_name = "Offline heuristic (style + structure + cliché phrases)"
+    #: This detector *is* its lists. `CLICHE_PHRASES` and the structural
+    #: patterns exist in exactly these three languages, and the score is
+    #: nothing but what they match, so a fourth language gets English lists
+    #: applied to text they were never swept against.
     supported_languages = ("uk", "it", "en")
 
     def analyze_block(self, block: TextBlock) -> list[TextSpan]:
         text = block.text
         language = block.language_hint or guess_language_safe(text)
+
+        # A language this detector has no lists for gets silence, and gets it
+        # by decision rather than by luck. Measured 2026-08-31 on 257 foreign
+        # Wikipedia paragraphs: without this, all 257 came back with a span
+        # each, no cliché matched, and every score sat at 0.32 - held there
+        # by the statistical-only clamp three thousandths under the reporting
+        # threshold. So the old answer was right and would have stopped being
+        # right the day someone added an English phrase that also occurs in
+        # French, with nothing in the code to notice.
+        if not self.supports_language(language):
+            return []
+
         sentences = _sentences(text, language)
         if not sentences:
             return []

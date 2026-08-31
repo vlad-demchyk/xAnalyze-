@@ -63,7 +63,8 @@ class HybridDetector(Detector):
 
     name = "hybrid"
     display_name = "Hybrid — offline pass, checked and extended by a model"
-    supported_languages = ("uk", "it", "en")
+    #: Not declared here for the same reason as `offline`: each half answers
+    #: for itself, and the model half is not calibrated by word list at all.
     #: The offline half already runs the character pass, so the caller must
     #: not run it a second time - see `ui/worker.run_unicode_pass`.
     includes_character_pass = True

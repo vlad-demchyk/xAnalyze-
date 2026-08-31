@@ -127,7 +127,16 @@ LANGUAGE_EXEMPT = {
     # asserting a convention it never read. Until Russian was told apart from
     # Ukrainian it was exempt here by accident; this makes it exempt on
     # purpose, and for the right reason.
-    UNSUPPORTED: {"«", "»", "'", "—", "–"},
+    #
+    # The curly quotes were the half of that union this set had missed. It was
+    # a copy of the Ukrainian row, which meant the comment above described an
+    # intention the code did not carry out: measured 2026-08-31 on the 249
+    # foreign paragraphs of `corpus/foreign.jsonl`, 92 of the 95 typography
+    # findings were `„ “ ” ‚ ‘ ’` - German and Polish opening quotes, and the
+    # French apostrophe in `l'`. Every one of them is that language's
+    # standard, in text written by a person in 2018.
+    UNSUPPORTED: {"«", "»", "'", "—", "–",
+                  "„", "“", "”", "‚", "‘", "’"},
 }
 
 # Confusable letters, per target script. Cyrillic letters that look exactly

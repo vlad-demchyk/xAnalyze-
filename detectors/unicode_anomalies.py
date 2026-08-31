@@ -22,7 +22,9 @@ from .factory import DetectorFactory
 class UnicodeAnomalyDetector(Detector):
     name = "unicode-anomalies"
     display_name = "Non-keyboard characters (offline, exact)"
-    supported_languages = ("uk", "it", "en")
+    #: Not language-calibrated: a zero-width joiner is a zero-width joiner
+    #: in any language, and `unicode_rules` already exempts the punctuation
+    #: of a language it has no table for.
 
     def __init__(self, categories: tuple[str, ...] = ALL_CATEGORIES, **config):
         super().__init__(**config)

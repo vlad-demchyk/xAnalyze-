@@ -44,7 +44,9 @@ SOURCE_CHARACTERS = "characters"
 class OfflineDetector(Detector):
     name = "offline"
     display_name = "Offline — wording + non-keyboard characters (free)"
-    supported_languages = ("uk", "it", "en")
+    #: Not declared here: the style half names its own languages and goes
+    #: quiet outside them, while the character half is language-independent.
+    #: Silencing the whole detector would throw away the exact, free pass.
     includes_character_pass = True
 
     def __init__(self, categories: tuple = ALL_CATEGORIES,

@@ -291,6 +291,7 @@ Si possono aggiungere le sezioni `[rules]`, `[selectors]`, `[fingerprints]`, olt
 
 - Il detector AI dipende dal corpus e non dimostra l'autore; i giudizi del modello non sono deterministici.
 - L'italiano è più debole sui passaggi brevi; per testi importanti usare hybrid o model-judged.
+- **Il rilevamento del testo copre solo ucraino, italiano e inglese.** Un passaggio in un'altra lingua viene dichiarato tale e il passaggio sulle formulazioni e quello embedding non riportano nulla, invece di misurarlo con liste e un insieme di riferimento che quella lingua non la conoscono. Misurato su 257 paragrafi in tedesco, francese, spagnolo, polacco e russo: 249 vengono letti come lingua non supportata. I controlli sui caratteri, sulla tipografia e sull'audit non dipendono dalla lingua e continuano a funzionare, e un detector giudicato da un modello non ha questo limite.
 - La scansione statica non vede contenuti creati durante il rendering. Usare URL o `--devserver`.
 - Un solo breakpoint non descrive il comportamento responsive. Usare `--breakpoints all`.
 - Il controllo tipografico può segnalare punteggiatura intenzionale e può essere disabilitato.

@@ -122,7 +122,7 @@ class LanguagesThisToolDoesNotHave(unittest.TestCase):
 
 
 class WhatTheLabelDecides(unittest.TestCase):
-    """The three places an unsupported language must not leak into."""
+    """The four places an unsupported language must not leak into."""
 
     def test_unknown_language_keeps_its_own_punctuation(self):
         from unicode_rules import find_anomalies
@@ -136,6 +136,64 @@ class WhatTheLabelDecides(unittest.TestCase):
         self.assertIsNone(prompt_language(UNSUPPORTED))
         self.assertEqual(prompt_language("uk"), "uk")
         self.assertIsNone(prompt_language(None))
+
+    def test_a_calibrated_detector_says_nothing(self):
+        # The fourth place, and the one that had nothing reading the label:
+        # `supported_languages` was declared on eleven classes and read by no
+        # line of code, so the wording pass scored German with English lists.
+        from models import TextBlock
+        from detectors.heuristic import HeuristicDetector
+
+        german = ("Webbrowser sind spezielle Computerprogramme zur Darstellung "
+                  "von Webseiten im World Wide Web oder allgemein von Dokumenten "
+                  "und Daten, und sie stellen die Benutzeroberfläche dar.")
+        block = TextBlock(block_id="b", page_url="u", dom_path="p", text=german)
+        self.assertEqual(HeuristicDetector().analyze_block(block), [])
+
+        # Silence for a language it has no lists for, not silence in general.
+        english = TextBlock(block_id="b", page_url="u", dom_path="p",
+                            text=("Upload a document and the report will tell "
+                                  "you which of the lines were flagged here."))
+        self.assertTrue(HeuristicDetector().analyze_block(english))
+
+
+class SupportedLanguagesIsRead(unittest.TestCase):
+    """The field means one thing, and every detector answers for itself.
+
+    It used to be a copied `("uk", "it", "en")` on all eleven classes with no
+    reader, which is a declaration that cannot be wrong and cannot be useful.
+    """
+
+    def _detector_classes(self):
+        import detectors  # noqa: F401 - registers every backend
+        from detectors.base import Detector
+
+        def walk(cls):
+            for sub in cls.__subclasses__():
+                yield sub
+                yield from walk(sub)
+
+        return list(walk(Detector))
+
+    def test_every_declared_language_is_one_the_corpus_has(self):
+        for cls in self._detector_classes():
+            if cls.supported_languages is None:
+                continue
+            with self.subTest(cls.name):
+                self.assertTrue(set(cls.supported_languages) <= {"uk", "it", "en"})
+
+    def test_an_undeclared_detector_answers_for_every_language(self):
+        from detectors.base import Detector
+        self.assertTrue(Detector.supports_language(UNSUPPORTED))
+        self.assertTrue(Detector.supports_language("pl"))
+
+    def test_too_short_to_tell_is_not_a_refusal(self):
+        # None means "check every list", which is the opposite of UNSUPPORTED
+        # and must not be collapsed into it by the gate.
+        from detectors.heuristic import HeuristicDetector
+        self.assertTrue(HeuristicDetector.supports_language(None))
+        self.assertFalse(HeuristicDetector.supports_language(UNSUPPORTED))
+        self.assertTrue(HeuristicDetector.supports_language("it"))
 
 
 if __name__ == "__main__":

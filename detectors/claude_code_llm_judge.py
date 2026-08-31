@@ -19,7 +19,7 @@ from .provider_llm_judge import ProviderLLMJudgeDetector
 class ClaudeCodeLLMJudgeDetector(ProviderLLMJudgeDetector):
     name = "claude-code-llm-judge"
     display_name = "Claude Code session — LLM-as-judge (this machine's login)"
-    supported_languages = ("uk", "it", "en")
+    #: A general model, not a word list: no language is out of scope.
     provider_name = "claude-code"
     account_name = "Claude Code"
     unavailable_hint = ("Sign in with `claude login`, or pick a different "

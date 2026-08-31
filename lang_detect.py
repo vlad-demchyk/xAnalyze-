@@ -40,15 +40,30 @@ _RUSSIAN_ONLY = set("ыэъёЫЭЪЁ")
 #: Function words of languages this tool has no lists for. Only words that
 #: are *not* also ordinary Italian: `del`, `una`, `se`, `su` and `le` were in
 #: here first and pulled 13 Italian entries out of the corpus with them.
+#:
+#: Extended 2026-08-31 against 257 paragraphs from dated Wikipedia revisions
+#: in de/fr/es/pl/ru. The first list read 234 of them as foreign; the eight
+#: French, eight Spanish and eight Polish words added below took that to 249
+#: (91.1% -> 96.9%) and cost nothing on the supported side - all 731 corpus
+#: entries in `uk`, `it` and `en` still read as their own language. Every
+#: added word was picked the same way: frequent in that language's half of
+#: the foreign set and **absent from the whole corpus**, so a word that is
+#: also ordinary English or Italian could not get in by eye.
 _OTHER_LATIN_MARKERS = {
     "es": (" el ", " los ", " las ", " que ", " para ", " pero ", " está ",
-           " esta ", " sus ", " por ", " con el ", " de la "),
+           " esta ", " sus ", " por ", " con el ", " de la ",
+           " como ", " más ", " también ", " ser ", " puede ", " este ",
+           " sin ", " sobre "),
     "fr": (" les ", " des ", " est ", " une ", " dans ", " pour ", " qui ",
-           " sur ", " du ", " aux ", " cette "),
+           " sur ", " du ", " aux ", " cette ",
+           " par ", " au ", " ou ", " comme ", " ce ", " avec ", " ainsi ",
+           " sont "),
     "de": (" der ", " die ", " das ", " und ", " von ", " mit ", " ist ",
            " den ", " ein ", " auf ", " eine "),
     "pl": (" nie ", " jest ", " się ", " oraz ", " przez ", " które ",
-           " lub ", " jako ", " są ", " do ", " na "),
+           " lub ", " jako ", " są ", " do ", " na ",
+           " że ", " często ", " także ", " ponieważ ", " których ",
+           " jego ", " od ", " za "),
 }
 
 #: Markers per 100 words before a foreign language is called. Swept against
@@ -56,6 +71,13 @@ _OTHER_LATIN_MARKERS = {
 #: in English, Italian or Ukrainian is misread (0/439) and 89% of the foreign
 #: text is caught. Lower cut-offs catch a little more and start costing
 #: English entries, and a wrong language is worse than a missing one here.
+#:
+#: Re-swept 2026-08-31 on the larger sets (731 supported entries, 257 foreign
+#: paragraphs) and left where it is. Below 5.5 the supported side starts to
+#: pay: 5.0 misreads one English entry and 4.0 misreads two, for 96.1% ->
+#: 97.3% on the foreign side. The 5.8-point gain that was actually available
+#: came from the marker lists above, which cost nothing on either side, so
+#: the cut-off did not have to move to get it.
 _OTHER_PER_100_WORDS = 6.0
 
 

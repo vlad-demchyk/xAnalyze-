@@ -38,7 +38,7 @@ from .provider_llm_judge import JSON_INSTRUCTION as _JSON_INSTRUCTION  # noqa: F
 class XFormatLLMJudgeDetector(ProviderLLMJudgeDetector):
     name = "xformat-llm-judge"
     display_name = "xFormat subscription — LLM-as-judge (billed to your plan)"
-    supported_languages = ("uk", "it", "en")
+    #: A general model, not a word list: no language is out of scope.
     provider_name = "xformat"
     account_name = "xFormat"
     unavailable_hint = ("Sign in under Settings → Rewriting, or pick a "

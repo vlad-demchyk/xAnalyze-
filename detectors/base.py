@@ -22,8 +22,32 @@ class Detector(ABC):
     #: human-readable label for the UI
     display_name: str = "Base detector"
 
-    #: languages this backend claims to support well
-    supported_languages: tuple[str, ...] = ("uk", "it", "en")
+    #: The languages this backend is *calibrated on*, or None when the
+    #: question does not apply to it.
+    #:
+    #: This used to be a copied-out `("uk", "it", "en")` on all eleven
+    #: detector classes and was read by no line of code - which is why the
+    #: question it was supposed to answer stayed open. A backend whose answer
+    #: comes out of a per-language word list or a per-language reference set
+    #: names those languages here and is silenced outside them by
+    #: `supports_language`. A backend that reads characters, or hands the text
+    #: to a general model, says None: it is not more right on Italian than on
+    #: Polish, and pretending otherwise would suppress a finding that is
+    #: perfectly good.
+    supported_languages: tuple[str, ...] | None = None
+
+    @classmethod
+    def supports_language(cls, language: str | None) -> bool:
+        """Whether this backend has anything calibrated to say about `language`.
+
+        `None` is a yes: it means the passage was too short to read, and the
+        callers that see it check every list rather than guess one.
+        `lang_detect.UNSUPPORTED` is a no - it is a reading, not a fallback,
+        and it is the whole reason this method exists.
+        """
+        if cls.supported_languages is None or language is None:
+            return True
+        return language in cls.supported_languages
 
     #: Whether this backend already reports non-keyboard characters itself.
     #: Declared here rather than checked by name at the call site: callers

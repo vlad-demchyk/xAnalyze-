@@ -22,6 +22,7 @@ from pathlib import Path
 
 import numpy as np
 
+from lang_detect import guess_language_safe
 from models import TextBlock, TextSpan, Confidence, score_to_confidence
 from corpus_split import is_reference
 from .base import Detector
@@ -82,6 +83,10 @@ class EmbeddingDetector(Detector):
 
     name = "embedding"
     display_name = "Embedding — semantic similarity to known AI texts"
+    #: The reference set is `corpus/labelled.jsonl`, which holds Ukrainian,
+    #: Italian and English and nothing else. A paragraph in a fourth language
+    #: is scored by how much closer it sits to the model entries than to the
+    #: human ones - in a set where *neither* side speaks its language.
     supported_languages = ("uk", "it", "en")
     uses_corpus_as_reference = True
 
@@ -158,6 +163,17 @@ class EmbeddingDetector(Detector):
 
         text = block.text
         if not text.strip():
+            return []
+
+        # Outside the reference languages the margin is not a weak signal, it
+        # is a comparison between two sets that are both foreign to the text.
+        # Measured 2026-08-31 on 257 paragraphs from dated 2018 Wikipedia
+        # revisions in de/fr/es/pl/ru - human by date, written before any of
+        # this existed: five of them crossed 0.55 (German 0.564, Spanish
+        # 0.558 three times, Russian 0.553). Unlike the wording pass, this one
+        # was not silent by luck; it was reporting.
+        language = block.language_hint or guess_language_safe(text)
+        if not self.supports_language(language):
             return []
 
         # Skip short texts - embeddings are unreliable for single words

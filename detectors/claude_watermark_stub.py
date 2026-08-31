@@ -41,7 +41,7 @@ from .factory import DetectorFactory
 class ClaudeOfficialWatermarkDetector(Detector):
     name = "claude-official-watermark"
     display_name = "Claude — official watermark API (not yet published by Anthropic)"
-    supported_languages = ("uk", "it", "en")
+    #: A vendor signature, if it is ever published, will not be per-language.
 
     def __init__(self, api_key: str | None = None, base_url: str | None = None, **config):
         super().__init__(**config)

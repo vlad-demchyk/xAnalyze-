@@ -408,6 +408,7 @@ Comments and blank lines are preserved when the application updates this file.
 
 - AI-text detection is corpus-dependent. It is not proof of authorship, and model judgments are not deterministic.
 - The corpus is small and language balance differs. Italian is currently weaker on short passages than English and Ukrainian; use the hybrid or model-judged method when Italian matters.
+- **Text detection covers Ukrainian, Italian and English only.** A passage in any other language is named as such and the wording and embedding passes report nothing for it, rather than scoring it against lists and a reference set that do not speak it. Measured on 257 paragraphs in German, French, Spanish, Polish and Russian: 249 are read as unsupported. The character, typography and audit checks are language-independent and keep running, and a model-judged detector is not restricted this way.
 - A repository scan cannot see content created only at render time. Use a URL or `--devserver` for page behavior.
 - A single breakpoint cannot describe responsive behavior. Use `--breakpoints all` when mobile or tablet matters.
 - Typography checks can flag intentional punctuation. Disable them with `--no-typography` or Settings.
