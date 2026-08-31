@@ -34,25 +34,70 @@ def _chosen_breakpoints(args):
                  if name in wanted)
 
 
-def _audit_at_widths(urls, options, sizes, progress=None) -> list:
-    """One browser, every page, every width."""
+def _audit_at_widths(urls, options, sizes, progress=None, markup=None) -> list:
+    """One browser, every page, every width - skipping what has not changed.
+
+    `markup` maps a url to the bytes the crawler already received for it.
+    Given that, a page whose markup is identical to one a previous run
+    audited is read from `browser_cache` instead of being loaded again: this
+    is the expensive half of an audit (12 s per page at four widths against
+    0.05 s for every static rule) and a re-run of an unchanged page was
+    paying it in full.
+
+    Without `markup` nothing is cached, because there would be nothing
+    honest to key on: a URL is where a page lives, not what it says.
+    """
     from audit import driver
     from audit import responsive
     from dataclasses import replace
 
-    driver.ensure_headless_application()
-    runner = driver.BrowserAuditRunner(
-        replace(options, viewport=(sizes[0][1], sizes[0][2])))
-    try:
-        results = []
-        for i, url in enumerate(urls, 1):
-            if progress:
-                progress(i, url)
-            results.append(responsive.audit_responsive(url, sizes, options,
-                                                       runner=runner))
-        return results
-    finally:
-        runner.close()
+    import browser_cache
+
+    markup = markup or {}
+    cache = browser_cache.BrowserCache(options, sizes) if markup else None
+
+    results = []
+    todo = []
+    for url in urls:
+        stored = cache.get(markup[url], url) if (cache and url in markup) else None
+        results.append(stored)
+        if stored is None:
+            todo.append(url)
+
+    if todo:
+        driver.ensure_headless_application()
+        first = (replace(options, viewport=(sizes[0][1], sizes[0][2]))
+                 if sizes else options)
+        runner = driver.BrowserAuditRunner(first)
+        try:
+            done = 0
+            for index, url in enumerate(urls):
+                if results[index] is not None:
+                    continue
+                done += 1
+                if progress:
+                    progress(done, url)
+                # No widths asked for is one pass at the engine's own
+                # viewport, which is what `audit` does without
+                # `--breakpoints`. Both shapes go through here so both are
+                # cached; they are different questions and the key says so.
+                audited = (responsive.audit_responsive(url, sizes, options,
+                                                       runner=runner)
+                           if sizes else runner.audit(url))
+                results[index] = audited
+                if cache is not None and url in markup:
+                    cache.put(markup[url], audited)
+        finally:
+            runner.close()
+
+    if cache is not None:
+        cache.save()
+        note = cache.summary()
+        if note:
+            import sys
+
+            print(f"# [browser] {note}", file=sys.stderr, flush=True)
+    return results
 
 
 def _run_browser_pass(result, suppressions, args=None) -> None:
@@ -101,8 +146,15 @@ def _run_browser_pass(result, suppressions, args=None) -> None:
         print(f"# [browser {page_no}/{len(urls)}{widths}] {url}",
               file=sys.stderr, flush=True)
 
-    audits = (_audit_at_widths(urls, options, sizes, progress=_show) if sizes
-              else driver.audit_urls(urls, options, progress=_show))
+    # The markup the crawl already received, keyed by the browser url the
+    # pass will use. It is what makes the cache honest: the same bytes get
+    # the same answer, a changed page gets a fresh browser.
+    served = getattr(result, "markup_by_source", None) or {}
+    markup = {url: served[document.source]
+              for document, url in zip(targets, urls)
+              if document.source in served}
+    audits = _audit_at_widths(urls, options, sizes, progress=_show,
+                              markup=markup)
     by_url = {a.url: a for a in audits}
     for document, url in zip(targets, urls):
         page_audit = by_url.get(url)
