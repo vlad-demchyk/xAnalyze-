@@ -107,16 +107,20 @@ def _write_report(result, args, lang: str, fix_outcome=None, ai_findings=None) -
     ai_stats = {}
     typo_stats = {}
     if ai_findings:
-        # Split into style (AI) and typography findings
+        # One owner for "is this about a character or about the wording",
+        # and it is `fullscan.is_character_finding`. This was a third copy
+        # of that decision and it disagreed with the other two: reading only
+        # the explanation, `[invisible] U+00AD SOFT HYPHEN` has neither the
+        # word "typography" nor a source to check, so nine invisible
+        # characters were reported as AI-written passages at high
+        # confidence.
+        from cli_impl.fullscan import is_character_finding
+
         style_findings = []
         typo_findings = []
         for f in ai_findings:
-            exp = f.get("explanation", "").lower()
-            src = f.get("source", "").lower()
-            if "typography" in exp or "characters" in src:
-                typo_findings.append(f)
-            else:
-                style_findings.append(f)
+            (typo_findings if is_character_finding(f)
+             else style_findings).append(f)
 
         if style_findings:
             ai_stats = {

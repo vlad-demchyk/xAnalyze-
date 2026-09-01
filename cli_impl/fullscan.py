@@ -939,6 +939,14 @@ def _markdown_briefing_input(agent_mode: bool, agent_candidates: list,
                "text": f.get("text", "")[:200],
                "score": f.get("score", 0),
                "confidence": f.get("confidence", ""),
+               # Carried, not dropped: the briefing has to sort these into
+               # wording and characters, and `explanation` alone cannot say.
+               # Without it an `[invisible] U+00AD SOFT HYPHEN` finding -
+               # which is a character, and says so in `source` - was counted
+               # as an AI-written passage at high confidence. Measured on a
+               # 250-page run: nine of the twenty-nine rows under
+               # "AI-generated text patterns" were invisible characters.
+               "source": f.get("source", ""),
                "explanation": f.get("explanation", "")}
         # `file`/`line` stay the page - the agent briefing's other rows all
         # mean "here" that way. `source_file`/`source_line` are additive:
