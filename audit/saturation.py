@@ -149,6 +149,17 @@ def _saturated_within_documents(documents) -> list:
         elements = getattr(document, "elements_checked", 0) or 0
         if elements <= 0:
             continue
+        # A count smaller than the number of findings is not a population.
+        # Several passes report `elements_checked=1` meaning "one thing was
+        # examined" - a response's headers, a site's link graph, a file's
+        # provenance - and dividing by that produced "20 findings on 1
+        # element (2000% of what was examined)", a sentence that is both
+        # nonsense and, worse, a warning about a rule that had done nothing
+        # wrong. Skipped rather than clamped: an impossible share means the
+        # denominator is the wrong number, and a clamped wrong number is
+        # still a wrong number wearing a plausible face.
+        if len(document.issues) > elements:
+            continue
         per_rule: dict = {}
         for issue in document.issues:
             per_rule[issue.rule_id] = per_rule.get(issue.rule_id, 0) + 1

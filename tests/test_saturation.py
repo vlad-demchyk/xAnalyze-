@@ -68,6 +68,37 @@ class OrdinaryFindingsAreLeftAlone(unittest.TestCase):
         """One file with twelve missing `alt` attributes is a normal Tuesday."""
         self.assertEqual(saturated_rules(_result({"image-alt": 30}, documents=2)), [])
 
+    def test_a_count_smaller_than_the_findings_is_not_a_population(self):
+        """Measured on a real run of python.org, where it printed "20
+        findings on 1 elements (2000% of what was examined)".
+
+        Several passes report `elements_checked=1` meaning "one thing was
+        examined" - a response's headers, a site's link graph, a file's
+        provenance. Dividing by it makes a percentage out of a number that
+        was never a population, and the resulting warning accused a rule
+        that had done nothing wrong."""
+        result = AccessibilityResult(root="https://site", mode="web")
+        report = DocumentReport(source="https://site/", elements_checked=1)
+        for index in range(20):
+            report.issues.append(Issue(
+                rule_id="axe:listitem", severity="serious",
+                source=report.source, snippet=f"<li>{index}</li>", details={}))
+        result.documents.append(report)
+        self.assertEqual(saturated_rules(result), [])
+
+    def test_a_real_single_page_share_is_still_caught(self):
+        """The fix must not close the eye it opened: a page with a real
+        element count and a rule taking half of it is still saturated."""
+        result = AccessibilityResult(root="https://site", mode="web")
+        report = DocumentReport(source="https://site/", elements_checked=120)
+        for index in range(59):
+            report.issues.append(Issue(
+                rule_id="state:focus-not-visible", severity="serious",
+                source=report.source, snippet=f"<a>{index}</a>", details={}))
+        result.documents.append(report)
+        self.assertEqual([s.rule for s in saturated_rules(result)],
+                         ["state:focus-not-visible"])
+
     def test_a_clean_run_says_nothing(self):
         self.assertEqual(saturated_rules(_result({}, documents=10)), [])
 
