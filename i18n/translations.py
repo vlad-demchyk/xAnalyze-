@@ -5760,6 +5760,37 @@ _STRINGS: dict[str, dict[str, str]] = {
     "tui_account_welcome": {
         "uk": "Готово.", "it": "Fatto.", "en": "Done.",
     },
+    "tui_within_placeholder": {
+        "uk": ".my-webpart", "it": ".my-webpart", "en": ".my-webpart",
+    },
+    "tui_no_session": {
+        "uk": "Читати як сторонній (не використовувати збережений вхід)",
+        "it": "Leggi come un estraneo (non usare l'accesso salvato)",
+        "en": "Read as a stranger (do not use the stored sign-in)",
+    },
+    "tui_incremental_full": {
+        "uk": "Інкрементно - перечитати лише змінені файли",
+        "it": "Incrementale: rileggi solo i file modificati",
+        "en": "Incremental - re-read only the files that changed",
+    },
+    "tui_label_medium": {"uk": "документи", "it": "documenti", "en": "documents"},
+    "tui_medium_auto": {
+        "uk": "визначити з файлу", "it": "rileva dal file", "en": "detect from the file",
+    },
+    "tui_account_use_xformat": {
+        "uk": "Платити через xFormat", "it": "Paga tramite xFormat",
+        "en": "Pay through xFormat",
+    },
+    "tui_account_now_xformat": {
+        "uk": "Тепер за виклики моделі платить підписка xFormat.",
+        "it": "Ora le chiamate al modello le paga l'abbonamento xFormat.",
+        "en": "Model calls are now paid for by the xFormat subscription.",
+    },
+    "tui_account_welcome_switch": {
+        "uk": "Вхід виконано. Зараз за виклики моделі платить інший провайдер - натисніть «Платити через xFormat», щоб перемкнути.",
+        "it": "Accesso effettuato. Al momento le chiamate al modello le paga un altro provider: premi «Paga tramite xFormat» per cambiare.",
+        "en": "Signed in. Model calls are currently paid for by another provider - press \"Pay through xFormat\" to switch.",
+    },
     "tui_account_privacy": {
         "uk": "Пароль не зберігається: він обмінюється на токен, який лежить "
               "у keychain системи.",
@@ -5803,6 +5834,98 @@ _STRINGS: dict[str, dict[str, str]] = {
         "uk": "Пропускається {count} шляхів як не ваш код: {patterns}",
         "it": "Saltati {count} percorsi perché non sono codice vostro: {patterns}",
         "en": "Skipping {count} path(s) as not your code: {patterns}",
+    },
+    # Why a run parameter switched itself on. One sentence each, printed
+    # beside the control on both surfaces and on the CLI's own stderr: a
+    # default that changes what the run does has to say who asked for it.
+    # See `run_profile.RECIPES`.
+    "why_web_parts": {
+        "uk": "сторінка належить чужому сайту, а ваш - лише веб-парт: аудит "
+              "звужується до того, що малюють ці частини",
+        "it": "la pagina appartiene a un altro sito e vostra è solo la web "
+              "part: l'audit si restringe a ciò che quelle parti disegnano",
+        "en": "the page belongs to somebody else's site and only the web "
+              "part is yours: the audit narrows to what those parts draw",
+    },
+    "why_devserver": {
+        "uk": "без сервера з диска читаються шаблони, які збірка ще не "
+              "виконала: `<App />` не є заголовком",
+        "it": "senza server dal disco si leggono template che il bundler non "
+              "ha ancora eseguito: `<App />` non è un'intestazione",
+        "en": "read off disk this is templates the bundler has not run yet: "
+              "`<App />` is not a heading",
+    },
+    "why_breakpoints_file": {
+        "uk": "один документ нікуди не веде, тож лишається єдина вісь - "
+              "ширина; переповнення 1.4.10 видно не на типовій",
+        "it": "un solo documento non porta altrove: resta un unico asse, la "
+              "larghezza, e l'overflow 1.4.10 non si vede su quella di default",
+        "en": "one document leads nowhere else, so width is the only axis "
+              "left - and 1.4.10 overflow is not visible at the default one",
+    },
+    "why_spfx_site_url": {
+        "uk": "рішення SPFx знає, що віддає веб-парти, і не знає, куди: "
+              "вкажіть сайт, на якому вони живуть",
+        "it": "una soluzione SPFx sa di consegnare web part ma non dove: "
+              "indicate il sito su cui vivono",
+        "en": "an SPFx solution knows it ships web parts and cannot know "
+              "where: name the site they live on",
+    },
+    # The sentence that wraps one of the above. `{evidence}` is the marker
+    # file `project_profile` proved the stack with, so a wrong guess is
+    # arguable rather than mysterious.
+    "why_enabled": {
+        "uk": "Увімкнено, бо {why}",
+        "it": "Attivato perché {why}",
+        "en": "Enabled, because {why}",
+    },
+    "setup_web_parts": {
+        "uk": "Лише веб-парти, які віддає цей репозиторій",
+        "it": "Solo le web part che questo repository consegna",
+        "en": "Only the web parts this repository ships",
+    },
+    "setup_projects_several": {
+        "uk": "У теці {count} окремих проєкти ({names}). Зараз вони "
+              "аудитуються як один - вкажіть один, щоб перевірити його окремо.",
+        "it": "La cartella contiene {count} progetti distinti ({names}). Ora "
+              "vengono analizzati come uno solo: indicatene uno per "
+              "verificarlo da solo.",
+        "en": "{count} separate projects in this folder ({names}). They are "
+              "audited as one - name one of them to audit it on its own.",
+    },
+    "tui_site_url": {
+        "uk": "Адреса сайту, куди це ставиться (необовʼязково)",
+        "it": "Indirizzo del sito su cui viene pubblicato (facoltativo)",
+        "en": "Address of the site this ships to (optional)",
+    },
+    "tui_site_url_placeholder": {
+        "uk": "https://contoso.sharepoint.com/sites/intranet",
+        "it": "https://contoso.sharepoint.com/sites/intranet",
+        "en": "https://contoso.sharepoint.com/sites/intranet",
+    },
+    "tui_projects_several": {
+        "uk": "У теці {count} окремих проєкти ({names}). Зараз вони "
+              "аудитуються як один - вкажіть один, щоб перевірити його окремо.",
+        "it": "La cartella contiene {count} progetti distinti ({names}). "
+              "Ora vengono analizzati come uno solo: indicatene uno per "
+              "verificarlo da solo.",
+        "en": "{count} separate projects in this folder ({names}). They are "
+              "audited as one - name one of them to audit it on its own.",
+    },
+    "why_consider": {
+        "uk": "Варто ввімкнути: {why}",
+        "it": "Conviene attivare: {why}",
+        "en": "Worth switching on: {why}",
+    },
+    "why_consider_stack": {
+        "uk": "Варто ввімкнути: {why} ({stack}, доказ: {evidence})",
+        "it": "Conviene attivare: {why} ({stack}, prova: {evidence})",
+        "en": "Worth switching on: {why} ({stack}, evidence: {evidence})",
+    },
+    "why_enabled_stack": {
+        "uk": "Увімкнено, бо {why} ({stack}, доказ: {evidence})",
+        "it": "Attivato perché {why} ({stack}, prova: {evidence})",
+        "en": "Enabled, because {why} ({stack}, evidence: {evidence})",
     },
     "setup_project_lift": {
         "uk": "Сканувати і їх теж",

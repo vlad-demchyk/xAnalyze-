@@ -89,6 +89,21 @@ class AppState(QObject):
         #: `wp-includes/` while another does not.
         self._project = None
         self._project_excludes_lifted: bool = False
+        #: `run_profile.Plan` for the current target: what kind of thing it
+        #: is, what its stack asks the run to switch on, and whether the
+        #: folder holds more than one project. Rebuilt by the window when
+        #: the target, the source or the paired checkout changes - never
+        #: derived here, because building it touches the filesystem and this
+        #: object is read on every repaint.
+        self._run_plan = None
+        #: Options the person set by hand, so a profile suggestion never
+        #: overwrites one. See `run_profile.Plan.apply`.
+        self._profile_touched: set = set()
+        #: `--web-parts`: confine the audit to the SPFx parts the paired
+        #: checkout ships. Off unless the profile asks and nobody says
+        #: otherwise; meaningless without a paired repository, which is why
+        #: `run_profile` only ever suggests it for a site that has one.
+        self._web_parts: bool = False
         #: `--medium`: what the documents in a folder are *for*. Empty means
         #: "read it off each file", which is the right answer nearly always -
         #: an Outlook namespace or a merge tag settles it. It is here for the
@@ -160,6 +175,50 @@ class AppState(QObject):
         self._project = value
         self.project_changed.emit()
         self.any_changed.emit()
+
+    # -- what the target asks for ------------------------------------------
+    @property
+    def run_plan(self):
+        return self._run_plan
+
+    def set_run_plan(self, value) -> None:
+        """Store the plan. Deliberately silent.
+
+        `any_changed` is wired to `MainWindow._sync_source_from_state`, which
+        writes the state's source back over the window's own - so emitting
+        here would make *reading the target* rewrite which source is
+        selected. The surfaces that show the plan are refreshed by the same
+        call that rebuilt it; there is nothing here for a signal to wake.
+        """
+        self._run_plan = value
+
+    @property
+    def profile_touched(self) -> set:
+        return set(self._profile_touched)
+
+    def touch_option(self, option: str) -> None:
+        """Record that the person set this option themselves."""
+        if option:
+            self._profile_touched.add(option)
+
+    @property
+    def web_parts(self) -> bool:
+        return self._web_parts
+
+    def set_web_parts(self, value: bool, by_person: bool = True) -> None:
+        """Confine the audit to the parts the paired checkout ships.
+
+        `by_person` is False when the profile is the one asking, so that a
+        suggestion does not register as a deliberate choice and then block
+        the next one.
+        """
+        value = bool(value)
+        if by_person:
+            self.touch_option("web_parts")
+        if value == self._web_parts:
+            return
+        self._web_parts = value
+        self.project_changed.emit()
 
     @property
     def project_excludes_lifted(self) -> bool:

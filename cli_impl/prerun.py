@@ -131,3 +131,57 @@ def announce(command: str, target: str, args, *, is_url: bool, out) -> list:
     for line in lines:
         print(line, file=out, flush=True)
     return lines
+
+
+#: Prefix for a line about what the target's own stack asks for. Separate
+#: from `PREFIX` because the two say different things: a hint is depth this
+#: run is not reaching, a profile line is a parameter this target implies.
+PROFILE_PREFIX = "# [profile]"
+
+
+def profile(command: str, target: str, args, *, is_url: bool, out) -> list:
+    """What this target's stack asks for - said, and applied only if asked.
+
+    The window and the terminal form pre-tick these controls, because there
+    a person sees the tick and the sentence under it before pressing Run.
+    The CLI does not: a command line is a contract, and a run that started a
+    dev server because a `vite.config.ts` was found would be a different run
+    from the one the script author wrote. So here it is a line, and
+    `--profile-defaults` is how a caller asks for the same behaviour the
+    forms have.
+
+    Returns the applied suggestions - empty unless `--profile-defaults`.
+    """
+    import run_profile
+
+    if getattr(args, "no_hints", False):
+        return []
+    kind = run_profile.KIND_SITE if is_url else None
+    plan = run_profile.build(target, forced_url=bool(is_url),
+                             repo=getattr(args, "repo", None) or "")
+    if kind and plan.kind != kind:  # pragma: no cover - build agrees
+        return []
+    lang = getattr(args, "language", None) or "en"
+    applied = []
+    if getattr(args, "profile_defaults", False):
+        applied = plan.apply(args, touched=getattr(args, "_explicit", ()))
+        # Kept on `args` so the report can name what was switched on. See
+        # `cli_impl.runheader.describe`.
+        args._profile_applied = tuple(applied)
+    for item in plan.suggestions:
+        flag = "--" + item.option.replace("_", "-")
+        on = item in applied
+        verb = "on" if on else "consider"
+        print(f"{PROFILE_PREFIX} {verb} {flag}={item.value}: "
+              f"{run_profile.explain(item, lang, enabled=on)}",
+              file=out, flush=True)
+    for prompt in plan.prompts:
+        print(f"{PROFILE_PREFIX} ask {prompt.field}: "
+              f"{run_profile.explain(prompt, lang)}", file=out, flush=True)
+    if plan.ambiguous():
+        names = ", ".join(Path(p.root).name for p in plan.projects[:6])
+        more = "…" if len(plan.projects) > 6 else ""
+        print(f"{PROFILE_PREFIX} {len(plan.projects)} projects under this "
+              f"folder ({names}{more}); auditing all of them as one. Name "
+              f"one to audit it on its own.", file=out, flush=True)
+    return applied

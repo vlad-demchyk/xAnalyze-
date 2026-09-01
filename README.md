@@ -1,276 +1,264 @@
 # XAnalyze
 
-Desktop and headless analyzer for AI-written text patterns, non-keyboard characters, and website or repository quality.
+Finds AI-written copy, invisible characters, and accessibility, SEO, performance
+and security defects in a website, an HTML file or a repository - and reports the
+exact line, not a score.
 
 [Українська](README_ua.md) | [Italiano](README_it.md)
 
-## Contents
+## What it is for
 
-- [What it does](#what-it-does)
-- [Quick start](#quick-start)
-- [Usage](#usage)
-- [CLI commands](#cli-commands)
-- [Templates it understands](#templates-it-understands)
-- [Stacks it recognises](#stacks-it-recognises)
-- [Analysis](#analysis)
-- [Reports and runs](#reports-and-runs)
-- [Interfaces](#interfaces)
-- [Configuration](#configuration)
-- [Limits](#limits)
-- [Requirements](#requirements)
-- [License](#license)
+You are handed a page, a theme, a web part or a repository and have to answer
+three questions: is this copy machine-written, does the markup carry characters
+no keyboard produces, and is the thing accessible and correct. XAnalyze answers
+all three in one run and names the file and line behind every answer.
 
-## What it does
+It is one binary with three surfaces - a desktop window, a terminal interface
+and a command line - over one core, so the three cannot disagree about what a
+run measured.
 
-XAnalyze scans a website, HTML file, repository, or source directory and reports exact locations rather than only aggregate scores.
+## Install
 
-### Scan types
-
-- **AI pattern detection**: heuristic, embedding, hybrid, or model-judged signals in user-facing copy.
-- **Character checks**: zero-width characters, homoglyphs, unusual spaces, styled letters, and typography characters.
-- **Website audit**: accessibility, SEO, performance, security, and best-practice rules.
-- **Browser audit**: Chromium rendering for client-side applications and responsive checks at 1440, 834, and 390 px.
-- **Repository facts**: tracked or unignored `.env` files, assistant-related commits or configuration, and blame for findings.
-- **Media provenance**: IPTC/XMP metadata and optional C2PA manifests. This is file evidence, not a verdict about pixels.
-- **Run history**: pause, resume, compare, and inspect the documents produced by each run.
-- **A report from every command**: `scan`, `audit` and `fullscan` each write a briefing and a styled report into a dated run folder, and every document opens by naming the command and the parameters that changed what it measured.
-- **One binary, three surfaces**: the packaged app offers on first launch to put the `xanalyze` command on your `PATH`, so the CLI and the TUI need no second download.
-
-### Combined scan
-
-`fullscan` combines text, character, and website checks. A URL is analyzed as rendered content when browser rendering is enabled. A local repository is scanned statically unless `--devserver` is supplied.
-
-### Detected stacks and templates
-
-The scanner identifies a stack from marker files or served markup and excludes generated or vendored code when ownership is clear. The two lists are checked against the code by the suite, so they live in [Templates it understands](#templates-it-understands) and [Stacks it recognises](#stacks-it-recognises) rather than being repeated here.
-
-## Quick start
-
-### macOS GUI
+**macOS app**
 
 ```bash
 curl -L -o XAnalyze.app.zip https://github.com/vlad-demchyk/xAnalyze-/releases/latest/download/XAnalyze.app.zip
-unzip XAnalyze.app.zip
-mv XAnalyze.app /Applications/
+unzip XAnalyze.app.zip && mv XAnalyze.app /Applications/
 ```
 
-The app and the command line are one binary. On its first launch the app
-offers, once, to link it as `xanalyze` in `~/.local/bin` so the CLI and the
-TUI work in a terminal; declining is remembered, and the same install lives
-in Settings -> Command line.
+On first launch the app offers once to link itself as `xanalyze` in
+`~/.local/bin`, so the CLI and the TUI need no second download. The bundle is
+not signed yet: the first launch needs Control-click -> Open.
 
-### macOS/Linux CLI
+**CLI only**
 
 ```bash
 curl -L -o xanalyze-cli.tar.gz https://github.com/vlad-demchyk/xAnalyze-/releases/latest/download/xanalyze-cli-macos-arm64.tar.gz
-tar -xzf xanalyze-cli.tar.gz
-echo 'export PATH="$PWD/xanalyze:$PATH"' >> ~/.zshrc
-source ~/.zshrc
+tar -xzf xanalyze-cli.tar.gz && export PATH="$PWD/xanalyze:$PATH"
 ```
 
-### From source
+**From source**
 
 ```bash
-git clone https://github.com/vlad-demchyk/xAnalyze-.git
-cd xAnalyze-
-python3 -m venv venv
-source venv/bin/activate
+git clone https://github.com/vlad-demchyk/xAnalyze-.git && cd xAnalyze-
+python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-
-python main.py                         # GUI
-python cli.py fullscan https://example.com
+python main.py                                  # window
+python cli.py fullscan https://example.com      # command line
+python cli.py                                   # terminal interface
 ```
 
-## Usage
+## Use it
 
 ```bash
-xanalyze                                      # launch the TUI
-xanalyze fullscan https://example.com         # combined website scan
-xanalyze scan ./src                           # AI patterns and characters
-xanalyze audit https://example.com --browser  # website audit
-xanalyze fix ./src                            # apply character fixes
-xanalyze runs                                 # list and resume runs
-xanalyze update                               # check for an update
-xanalyze --version
+xanalyze                                      # terminal interface
+xanalyze fullscan https://example.com         # everything, in one run
+xanalyze fullscan ./my-project                # the same, over a checkout
+xanalyze scan ./src                           # AI patterns and characters only
+xanalyze audit ./page.html                    # website rules only
+xanalyze fix ./src                            # apply character fixes (.bak kept)
+xanalyze runs                                 # list, resume, compare
 ```
 
-The application checks for updates once per day. Use `--no-update-check` to disable it.
+`fullscan` is the answer to "check this". A URL is crawled and rendered; a
+folder is read as source unless `--devserver` starts the project's own server;
+a single HTML file is read as the finished page it is.
 
-## CLI commands
+### Commands
 
-### `fullscan`
+| Command | What it does |
+|---|---|
+| `fullscan TARGET` | AI patterns, characters and every website rule, plus reports |
+| `scan PATHS` | AI patterns and non-keyboard characters, changing nothing |
+| `audit TARGET` | website rules only, over a URL, an HTML file or a folder |
+| `fix` / `undo` | apply exact character corrections; restore the `.bak` copies |
+| `runs` / `resume` / `compare` | a run is an object: list it, continue it, diff it against the last |
+| `login URL` | sign in to a site by hand, in a real browser, so a run can read behind it |
+| `logs` | what a run actually did, as JSON Lines |
+| `ai` | the account behind the model passes: `status`, `login`, `rewrite` |
+| `agent-scan` / `agent-judge` | hand candidate passages to an agent and take its verdicts back |
+| `clean` | filter text from stdin to stdout |
+| `update` / `uninstall` | self-update from the latest release; remove everything |
 
-Runs AI pattern, character, accessibility, SEO, performance, and best-practice checks.
-
-```bash
-xanalyze fullscan https://xformat.net
-xanalyze fullscan ./my-project
-xanalyze fullscan https://example.com --depth 2 --max-pages 50
-xanalyze fullscan https://example.com --breakpoints desktop,mobile
-xanalyze fullscan https://example.com --detector hybrid --language uk
-xanalyze fullscan https://example.com --styled-report ./reports/site.pdf --report ./reports/agent.md
-```
-
-For URLs and HTML files, browser rendering is automatic unless `--no-browser` is used. For a local application, `--devserver` detects and starts a Node, Django, or Rails server before scanning it.
+`xanalyze COMMAND --help` prints every option. The ones worth knowing:
 
 | Option | Purpose |
 |---|---|
-| `target` | URL, directory, or HTML file |
-| `--url` | Treat the target as a URL |
-| `--depth N` | URL crawl depth, default `0` |
-| `--max-pages N` | Maximum URL pages, default `30` |
-| `--max-files N` | Maximum local files, default `5000` |
-| `--ext ...` | File extensions to scan |
-| `--exclude PATTERN` | Additional gitignore-style exclusion |
-| `--no-default-excludes` | Include default excluded directories |
-| `--repo PATH` | Match rendered findings to source files |
-| `--devserver` | Start the repository's development server |
-| `--start-command CMD` | Override the detected server command |
-| `--dev-server-port N` | Port for Django or Rails servers |
-| `--yes` | Install missing server dependencies without prompting |
-| `--detector NAME` | `offline`, `embedding`, `hybrid`, or `llm-judge` |
-| `--model NAME` | Model used by the AI pass |
-| `--effort LEVEL` | AI effort: `low`, `medium`, or `high` |
-| `--no-judgment-cache` | Do not reuse cached model judgments |
-| `--scope NAME` | `content`, `technical`, or `both` |
-| `--no-typography` | Ignore em dashes and curly quotes |
-| `--breakpoints NAMES` | `all`, `desktop`, `tablet`, `mobile`, `reflow` (320 px), or a list. Without it the browser pass runs at one width, 1440x900 — the same size as `desktop` |
-| `--site-controls` | Fetch robots.txt and same-origin declared sitemaps as an opt-in external audit |
-| `--styled-report PATH` | PDF or HTML report |
-| `--report PATH` | Markdown or JSON agent briefing |
-| `--check` | Exit with status 1 when serious findings exist |
-| `--language LANG` | `uk`, `it`, or `en` |
-| `--agent` | Produce offline candidates for agent judging |
-| `--no-browser` | Disable browser rendering |
+| `--depth N`, `--max-pages N` | how far a crawl goes, and how many pages |
+| `--repo PATH` | the checkout behind a site, so a finding names the file and not only the page |
+| `--devserver` | start the project's own dev server and audit the rendered site |
+| `--breakpoints all` | audit every width; without it, one width (1440x900) |
+| `--no-browser` | the static reading only, and much faster |
+| `--detector NAME` | `offline` (default, free), `embedding`, `hybrid`, `ai` |
+| `--category`, `--confidence` | narrow what is reported; both are views over one pass |
+| `--within SELECTOR` | audit only this part of the page - a delivered widget or web part |
+| `--report PATH`, `--styled-report PATH` | agent briefing (`.md`/`.json`) and human report (`.pdf`/`.html`) |
+| `--json`, `--check` | machine-readable output; exit 1 on serious findings |
+| `--language uk\|it\|en` | report language; detected from the pages otherwise |
+| `--profile-defaults` | switch on what the detected stack asks for (see below) |
 
-### `scan`
+## What it checks
 
-Scans files without modifying them.
+**AI-written copy.** The offline pass reads sentence rhythm, repeated
+structure and cliche phrases, and names the phrase it matched so a finding can
+be argued with. An embedding pass and a model-judged pass are available for a
+second opinion. None of it is proof of authorship.
 
-```bash
-xanalyze scan ./src
-xanalyze scan ./src --detector offline --scope content
-xanalyze scan ./src --json --check
-xanalyze scan ./src --incremental
-xanalyze scan ./src --styled-report report.pdf --language uk
+**Non-keyboard characters.** Zero-width characters, homoglyphs, unusual
+spaces, styled letters and typography characters - each one exact, and each one
+fixable in place.
+
+**Website rules**, by category, with the count the test suite enforces:
+
+`accessibility` (36), `best-practices` (13), `geo` (2), `performance` (8), `security` (10), `seo` (8)
+
+A rule runs where it means something and nowhere else, decided on evidence:
+the file's syntax (JSX rules only in `.jsx`/`.tsx`), what the document is for
+(email rules only on an email), and which stack the project proved on disk
+(the WordPress escaping rule only in WordPress).
+
+**In a browser**, when one is available: axe-core and HTML_CodeSniffer, the
+page in the state a person puts it in - focus indicator, keyboard traps, focus
+order, hover-only content, an open modal, the form journey - and the same page
+at several widths. It reads and never acts: nothing is typed, clicked or
+submitted.
+
+**Provenance, not verdicts.** IPTC/XMP fields and C2PA manifests in every
+image a page refers to (only the first 512 KB of each is fetched), and
+repository facts: tracked `.env` files, assistant-named commits, committed
+assistant configuration. Reported as facts about origin, never as defects.
+
+**Certainty.** Every finding is `exact`, `needs-browser` or `advisory`. The
+undecided are not listed by default - on one real page that was 312 of 348
+contrast findings - and the run says how many it left out. `--unsettled`
+brings them back; `--confidence exact` drops the advisory ones too.
+
+## The target decides what to ask
+
+A project announces what it is, and that decides more than which folders to
+skip. An SPFx checkout knows it ships web parts and cannot know which site
+they land on. A Vite or Next app read off disk is templates the bundler has
+not run, where `<App />` is not a heading. One self-contained HTML file has no
+second page to crawl to, so width is the only axis left.
+
+Each of those becomes a parameter, and each arrives with the stack that asked
+for it and the marker file that proved that stack: "enabled, because ..." is a
+sentence you can disagree with, not a silent default. **Anything you set
+yourself is never overwritten.**
+
+The window and the terminal form apply it - the control is ticked, the reason
+is under it, one click undoes it. The command line does not: a command line is
+a contract, and a run that started a dev server because it found a
+`vite.config.ts` would not be the run the script author wrote. There the same
+suggestions are printed as `# [profile]` lines on stderr, and
+`--profile-defaults` asks for them to be applied.
+
+The same reading decides which fields exist at all: `--depth` needs an
+address, `--incremental` needs files on disk, and a control that reaches
+nothing for this target is not shown - nor read, so a `--devserver` ticked for
+a repository does not follow you to a single file.
+
+A folder holding several projects is asked about rather than merged: twenty
+SPFx solutions in one directory are twenty deliverables. A repository that
+proves something of its own is still one project - Bedrock's `web/` is that
+project's docroot, not a second project.
+
+## Work delivered as a fragment of somebody else's site
+
+A **WordPress theme or plugin** is recognised the way WordPress recognises it
+- the `Theme Name:` header in `style.css`, the `Plugin Name:` header in the
+main PHP file - and its templates are read as fragments, so nothing asks
+`header.php` for a canonical link or an `<h1>`.
+
+A **SharePoint web part** is one subtree of a page the tenant owns.
+`--within SELECTOR` confines the audit to it and switches off, with the reason
+printed, everything that reads the whole document by construction. A generated
+class suffix (`root-137`) need not be typed: the selector is retried against
+the stem. `--repo PATH --web-parts` works the other way - it reads the
+solution's manifests and finds this repository's parts wherever they appear on
+the site.
+
+Markup inside a **template literal** is audited too. `.ts` and `.js` are
+skipped as files - a `<` in them is an operator - but a backtick string is not
+code, and a classic SPFx part builds its whole interface in one. Measured on a
+real solution: 72 of its 168 `.ts` files, and 131 findings nobody had read.
+
+## Sites behind a login
+
+`xanalyze login https://example.com/admin` opens a real browser on the site's
+own form. 2FA, SSO and captchas all work, because it is a browser. XAnalyze
+never sees a username or a password: what is kept is what the site handed that
+browser, per host, readable only by you. `--no-session` reads the site the way
+a stranger does; `login --list` and `login --forget HOST` manage what is
+stored. Nothing about a session ever reaches a report, a log or the terminal.
+
+A crawl also records when an address answered with a door rather than a page,
+and says so plainly - a clean summary over nothing but sign-in forms is the
+most misleading output this tool can produce.
+
+## Reports
+
+Every command writes a dated run folder, `~/Desktop/XAnalyze/` by default
+(`XANALYZE_REPORT_ROOT` moves it):
+
+```text
+XAnalyze/example.com/2026-09-02-0930/
+  report.md     grouped briefing for an agent
+  report.pdf    report for a person
+  timings.md    stage timings
+  changes.md    what changed since the last run
+  state.json    resumable state
 ```
 
-Useful options include `--ext`, `--exclude`, `--max-files`, `--detector`, `--provider`, `--no-unicode`, `--scope`, `--categories`, `--no-typography`, `--no-ignore`, `--json`, `--check`, `--incremental`, `--styled-report`, and `--language`.
+Every document opens by naming the command and the parameters that changed
+what was measured. A repeated problem is listed once with its locations nested
+under it. `--json` keeps every finding, for CI.
 
-`--categories` accepts `invisible`, `space`, `homoglyph`, `styled`, and `typography`.
+## Interfaces
 
-### `audit`
+**Window** (`python main.py`, or the app). A setup screen for the target and
+the run, then the finding list beside a source or rendered preview, with
+fixes, replacement review and report export. Two widths can be put on screen
+at once, to settle "this only breaks on mobile".
 
-Audits a URL, HTML file, or repository.
+**Terminal** (`xanalyze` with no arguments). Scan, Audit, Full Scan, Reports,
+Settings, Account, Update, Logs. Arrow keys, number shortcuts, `Tab`, `Esc`,
+and `Ctrl+R` to run.
 
-```bash
-xanalyze audit https://example.com
-xanalyze audit https://example.com --browser --breakpoints all
-xanalyze audit ./page.html --browser
-xanalyze audit ./src --category accessibility
-xanalyze audit https://example.com --category seo performance
-xanalyze audit ./src --fix
-xanalyze audit https://example.com --json --report briefing.md
+Mechanical corrections are selected by default; model drafts always require
+review; judgement calls such as photographic alt text are never presented as
+automatic fixes.
+
+## Configuration
+
+Settings live in `~/.config/xanalyze/settings.json` - language, provider,
+`max_pages`, character categories.
+
+`.xanalyze-ignore` in a project root uses gitignore syntax, and can also
+suppress by rule, selector or fingerprint:
+
+```text
+vendor/
+*.min.js
+
+[rules]
+meta-viewport
+
+[fingerprints]
+083bea550659aadb
 ```
-
-Important options: `--depth`, `--max-pages`, `--max-files`, `--render`, `--exclude`, `--category`, `--language`, `--no-ignore`, `--json`, `--check`, `--ai`, `--provider`, `--fix`, `--report`, `--browser`, `--breakpoints`, and `--styled-report`.
-
-### `fix` and `undo`
-
-`fix` applies exact non-keyboard-character corrections and keeps `.bak` copies. `undo` restores those copies.
-
-```bash
-xanalyze fix ./src
-xanalyze fix ./src/index.html ./src/about.html
-xanalyze undo ./src
-xanalyze undo ./src/index.html
-```
-
-### `runs`, `resume`, `cache`, and `compare`
-
-```bash
-xanalyze runs
-xanalyze resume 2026-08-24-1331
-xanalyze cache stats
-xanalyze cache clear
-xanalyze cache path
-xanalyze compare ./src
-```
-
-Runs store their state and documents so an interrupted scan can continue.
-
-### `logs`
-
-```bash
-xanalyze logs
-xanalyze logs --level warning
-xanalyze logs --contains crawl
-xanalyze logs --run RUN_ID
-xanalyze logs --json
-xanalyze logs path
-xanalyze logs clean
-xanalyze logs clear
-```
-
-Logs are JSON Lines under `$XDG_STATE_HOME/xanalyze/logs` or `~/.local/state/xanalyze/logs`. Set `XANALYZE_LOG_DIR` to move them and `XANALYZE_LOG_LEVEL=debug` for per-page records. Files older than 14 days are removed and the remaining logs are limited to 20 MB.
-
-### `ai`
-
-```bash
-xanalyze ai status
-xanalyze ai login
-xanalyze ai logout
-xanalyze ai apps
-xanalyze ai grant APP_ID
-xanalyze ai revoke APP_ID
-xanalyze ai rewrite "Text to rewrite"
-```
-
-AI passes can use an xFormat subscription, an Anthropic key, or a Claude Code session, depending on local settings.
-
-### `clean`
-
-```bash
-echo "text" | xanalyze clean
-echo "text" | xanalyze clean --language uk
-```
-
-### `agent-scan` and `agent-judge`
-
-These commands let an agent judge candidate passages without an API key in XAnalyze.
-
-```bash
-xanalyze agent-scan ./src --json > passages.json
-xanalyze agent-judge ./src --judgments verdicts.json
-```
-
-`agent-scan` emits passage IDs, text, and offline signals. `agent-judge` applies the agent's verdicts while keeping XAnalyze's scoring, grouping, and reports.
-
-Each passage carries a `language` field, and it is `null` when the passage is too short to read. That is an answer, not a missing value: a two-word button is not English merely because nothing else was detectable, and an agent told otherwise judges it against the wrong expectations.
-
-### `update` and `uninstall`
-
-```bash
-xanalyze update
-xanalyze uninstall
-```
-
-The interactive uninstall lists the files it will remove. Use the non-interactive option only when the removal is intentional.
 
 ## Templates it understands
 
 Fourteen template languages have a **pair** of fixtures in
 `tests/fixtures/frameworks`: the same component written the way its framework
-says to write it, and written wrong. The correct half must produce no findings
-and the broken half must produce the right ones, so this list is a measured
-claim rather than an intention:
+says to, and written wrong. The correct half must produce no findings and the
+broken half must produce the right ones, so this is a measured claim:
 
 `alpine`, `angular`, `blade`, `django`, `erb`, `handlebars`, `liquid`, `php`, `razor`, `react`, `svelte`, `thymeleaf`, `twig`, `vue`
 
-That is what the scan is *checked* against. Markup in anything not on this list
-is still read - the parser does not refuse it - but nothing has proved that a
-correct file in it comes back clean, and a false finding there would not be
-caught by the suite.
+Markup in anything not on this list is still read - the parser does not refuse
+it - but nothing has proved that a correct file in it comes back clean.
 
 ## Stacks it recognises
 
@@ -279,279 +267,44 @@ decides what is treated as vendored rather than written here:
 
 `angular`, `astro`, `bedrock`, `beehiiv`, `carrd`, `craft`, `django`, `docusaurus`, `dotnet`, `drupal`, `eleventy`, `ember`, `flutter`, `gatsby`, `ghost`, `hugo`, `jekyll`, `joomla`, `laravel`, `magento`, `nextjs`, `nuxt`, `qwik`, `rails`, `remix`, `shopify`, `silverstripe`, `spfx`, `spring`, `squarespace`, `statamic`, `storybook`, `sveltekit`, `symfony`, `typo3`, `vite`, `wagtail`, `webflow`, `wix`, `wordpress`, `wordpress-plugin`, `wordpress-theme`
 
-Signatures are scored, not counted: each carries a confidence and a platform is
-named only when the matches add up to 100, so a string that could be there for
-another reason has to be corroborated.
-
-## Analysis
-
-### AI pattern detection
-
-The offline detector combines statistical signals, repeated structure, cliché phrases, and language-aware rules. Embedding and model-backed detectors add a second judgment. Results include the passage, location, score, explanation, and confidence.
-
-The agent-judge workflow is useful when the agent should make the final language judgment while XAnalyze handles extraction and reporting.
-
-### Non-keyboard characters
-
-The character pass reports exact code points and locations, including zero-width spaces, soft hyphens, homoglyphs, unusual spaces, styled Unicode letters, em dashes, and curly quotes. `fix` removes or replaces only the selected spans. It does not reformat files.
-
-Use `--scope content` for user-facing copy, `--scope technical` for comments and docstrings, or `--scope both` for both.
-
-### Website audit
-
-How many rules each category actually has, which is a claim the suite checks:
-
-`accessibility` (36), `best-practices` (13), `geo` (2), `performance` (8), `security` (10), `seo` (8)
-
-- **Accessibility**: names, labels, headings, language, keyboard access, media alternatives, and related rules.
-- **SEO**: titles, descriptions, canonicals, headings, links, robots directives, and structured page metadata.
-- **GEO readiness**: machine-readable article type, author, and publication date. These are advisory signals, not an AI-answer ranking prediction.
-- **Performance**: image dimensions and formats, resource hints, compression, caching, and render-related issues.
-- **Security**: insecure forms, unsafe frames, missing script integrity, exposed keys, and password handling.
-- **Best practices**: browser and repository hygiene, including assistant provenance facts.
-
-
-**Rules that only apply to one kind of file.** A check runs where it means
-something and nowhere else, which is decided on evidence rather than by a
-flag: the file's syntax, what `audit.medium` says the document is for, and
-which stack the project proved on disk.
-
-- **React (`.jsx`, `.tsx`)**: `htmlFor` on a label, a click handler with no
-  keyboard equivalent, a static element made interactive, `tabIndex` on
-  something that does nothing, `autoFocus`, an `<a>` with a handler and no
-  destination, and `dangerouslySetInnerHTML`. A component is never treated as
-  a DOM element - `<Button>` is not `<button>`, and what it renders is that
-  component's business.
-- **Email**: a font stack with no generic family behind it, a link with no
-  colour of its own, and a missing preheader. These run only where the
-  document was detected as an email, and the browser-only rules stay off it.
-- **WordPress**: a template variable printed into the markup with no
-  `esc_html()`, `esc_attr()` or `esc_url()` - reported as a best practice
-  with an advisory label, because a static read cannot see whether the value
-  was sanitised earlier. Bedrock layouts are recognised, so WordPress core in
-  `web/wp/` and the translation tables in `web/app/languages/` are not
-  audited as if the project had written them.
-- **Single-page sites**: a link to `#section` where no element has that id.
-  On a site that is one file, that is the whole navigation, and the browser
-  reports nothing when it breaks.
-
-Static analysis reads source files. Browser analysis can inspect rendered DOM, client-side content, responsive states, and response headers. Use `--repo` when a rendered URL also has a local checkout and findings should point to source files.
-
-**The state pass** runs in the browser and checks the page in the state a person puts it in: the focus indicator, keyboard traps, focus order, hover-only content, an open modal that lets focus stay behind it, and the form journey - a field with no accessible name after scripts have run, a field named only by its placeholder, a value the browser itself rejects with nothing announcing it, and error text on screen that no field refers to. It reads and never acts: nothing is typed, clicked or submitted, because on a real site each of those fires the page's own handlers. Filling a field to see what the form does with a wrong value is therefore out of scope, and so is INP, which needs real input to measure.
-
-**Two widths side by side.** The preview column has a width switcher, and a switcher answers one width at a time - so checking "this only breaks on mobile" meant flipping back and forth and holding the desktop layout in your head. The comparison button puts the widest and the narrowest audited width on screen at once, both showing the same page; the switcher still drives the left-hand pane, so any width can be put against the 320 px reflow check. The second view is built only when the button is first pressed, because a browser view is a renderer process.
-
-**Start here.** A run over a folder answers "820 findings", and the top of that
-list is the same page-level rules repeated across every document. The report
-opens instead with the three heaviest things per **kind** of document - pages,
-components, emails - ranked by consequence rather than by count, so a folder of
-newsletters and landing pages reads as two short lists rather than one long one.
-
-### Sites behind a login
-
-Half of what is worth checking stands behind a sign-in: an admin area, an account page, an intranet, a staging site under basic auth. Two separate things, in this order.
-
-**The tool says when it is looking at a door.** A crawl records whether an address answered with a login rather than a page - a 401 and the scheme it names, a 403 with no scheme, a redirect to a sign-in address, a password field in the markup - and reports it as a fact about the *run*, not as a finding about the site. One wall answering on forty addresses is one row, and when everything a run read was a wall it says that plainly: a clean summary over nothing but sign-in forms is the most misleading output this tool can produce. The report carries the same paragraph, because the report is the artefact somebody hands to somebody else.
-
-**You sign in yourself.** `xanalyze login https://example.com/admin` opens a real browser window on the site's own form; 2FA, SSO and a captcha all work, because it is a browser. This tool never sees a username or a password - what is kept is what the site handed that browser, in a profile named after the host, under the app's own directory, readable only by you. Runs against that host then use it, in both clients: the fetch and the rendering pass are given the same session, or the browser would see the account while the crawl saw the login form. `--no-session` reads the site the way a stranger does. `xanalyze login --list` shows what this machine holds, `xanalyze login --forget HOST` removes one, and Settings has the same list with a button. A run that was signed in and still met a wall says the session has expired rather than reporting the site as walled. The window has the same thing as **Sign in to the site**.
-
-Nothing about a session ever reaches a report, a log, a run folder or the terminal: the fact and the host, never a value.
-
-### Certainty and filters
-
-Findings are labelled `exact`, `needs-browser` or `advisory`. `exact` means the markup settles the question, `advisory` means nothing will settle it and a person decides — an editorial call, which is what the GEO signals are.
-
-**The undecided are not listed.** `needs-browser` is an engine saying it could not tell: "this element is placed on a background image", "absolutely positioned, the background colour cannot be determined". Measured on one page of python.org with a real browser, that was **312 of 348** contrast findings, and the whole run went from 497 findings to **182** once they left. A report two thirds made of "we do not know" is not a list anybody works through, so a run says how many it left out and `--unsettled` brings them back. `--confidence exact` is the stricter view still: it also drops the advisory ones.
-
-`--category`, `--scope`, `--breakpoints`, and `--no-typography` are views over the same scan, not changes to the underlying evidence.
-
-### Work delivered as a fragment of somebody else's site
-
-A **WordPress theme or plugin** is recognised the way WordPress recognises it: by the `Theme Name:` header in `style.css` and the `Plugin Name:` header in the plugin's main PHP file, not by the markers of the installation around it — a delivered theme has none of those. Its templates are read as fragments, so nothing asks `header.php` for a canonical link or an `<h1>`: the document opens there and closes in `footer.php`.
-
-A **SharePoint web part** is one subtree of a page the tenant owns. `--within SELECTOR` confines the whole audit to it: the static rules read only that subtree, axe is given it as its `include` context, and HTML_CodeSniffer, the state pass and the measurements are switched off with the reason printed, because each reads the whole document by construction. The subtree is a fragment whatever the file was, so page-level rules stop applying. A generated suffix on the class or id — `CanvasZone_9f8e7d`, `root-137` — does not have to be typed: the selector is retried against the stem, and which reading matched is printed. A selector that matches nothing is an error, never a clean page.
-
-### Markup inside a template literal
-
-`.ts`, `.js` and `.mjs` are skipped as files: in them a `<` is an operator, and `if (a < b)` handed to an HTML parser is an open tag that swallows the rest. A backtick string is not code, though, and a classic SPFx web part builds its whole interface in one. Measured on a real SharePoint solution: 72 of its 168 `.ts` files do exactly that, none of it had ever been read, and reading it finds 131 things — 60 controls with no accessible name, 21 images with no alt, 24 links opening a new tab without `rel`. The literal is audited as the fragment it is, `${...}` becomes a placeholder value so an attribute reads as present, and each finding points at the line the literal starts on.
-
-### Many web parts in one repository
-
-A SharePoint solution is not one deliverable — the repositories this was measured against ship 30 and 19 web parts. Three different questions, three answers: one part **as code** (the folder is the scope, repo mode already reads it that way), one part **on the site** (`--within SELECTOR`), and **this repository's parts across the whole site** (`--repo PATH --web-parts`). With a repository given and no scoping flag, the answer stays the whole site and the repository is used to name the file behind a finding.
-
-`--web-parts` reads the solution's manifests — JSONC, comments and trailing commas included, which is what the SPFx generator writes — and finds each part in the page by the GUID SharePoint puts in the DOM, falling back to the stems of the part's own CSS-module classes. Every finding then names the part that owns it and how it was matched. A page carrying none of them produces nothing: which parts a tenant put on a page is not the repository's business.
-
-### What a run says it is leaving undone
-
-Before the work starts, a run names the depth it is not reaching and the flag that would reach it: a site audited without `--repo` reports the page a finding is on and not the file behind it; a repository read without `--devserver` never renders, so contrast, focus order, reflow and every measurement do not run; `--no-browser` and the default single width say the same thing about themselves. Lines are prefixed `# [hint]` on stderr, so an agent driving the CLI can match on them and answer with the flag rather than accepting the shallow result. It is a notice, never a prompt - a scan that blocks on a question cannot go in a pipeline - and `--no-hints` silences it. The TUI shows the same lines in its run log.
-
-### The report's language
-
-Named, detected, or English, in that order. `--language uk|it|en` wins. Without it the pages decide, but only when what they are written in is one of those three: `lang_detect` answers `other` for a language this tool has no lists for, and a report has no labels, no translations and no advice in `other`. Anything else is English, and the run says which it chose and on how many readable passages.
-
-### Media provenance and repository facts
-
-Media provenance reads IPTC/XMP fields, generator prompt blocks, and C2PA manifests when the optional reader is installed. A manifest may be declared, invalid, or signed by an untrusted credential; these outcomes are kept separate.
-
-On a crawled site **every image the pages refer to is read**, not a sample. Only the header is fetched — an HTTP range request for the first 512 KB, which is where those fields and the pixel dimensions live and where the C2PA marker search stops — so a 6 MB photograph costs 512 KB and nothing is kept in memory after it is read. Images whose bytes are identical to one already read are recognised by hash, analysed once, and reported once with every place they appear. The report states how many addresses were found, how many were read, how many were repeats, and what could not be fetched: an image nobody read has not come back clean, it has not come back.
-
-Repository facts include tracked `.env` files, unignored `.env` files, assistant-named commits, committed assistant configuration, and findings last touched by assistant-authored commits. These are reported as provenance, not as defects in using an assistant.
-
-## Reports and runs
-
-### Output files
-
-Each target gets a folder under `~/Desktop/XAnalyze/` by default. Set `XANALYZE_REPORT_ROOT` to change the location.
-
-```text
-XAnalyze/example.com/2026-08-24-0930/
-  report.md       grouped agent briefing
-  report.pdf      human-readable report
-  timings.md      stage timings
-  changes.md      comparison with the previous run
-  state.md        resumable state
-  state.json      machine-readable state
-```
-
-### Styled report
-
-```bash
-xanalyze fullscan https://example.com --styled-report report.pdf
-```
-
-The PDF or HTML report contains severity and category counts, grouped problems, locations, snippets, fixes, and responsive indicators.
-
-It is painted in XAnalyze's own palette, so one severity is one colour here, in the window and in the TUI. Two colour systems carry meaning in it, and nothing else does:
-
-* **Elements are coloured by role.** Quoted markup is inked tag by tag - landmark, interactive control, grouping wrapper, media, running text, document metadata - with a legend printed once, listing only the roles the report actually contains. Six roles rather than one colour per tag name: a hue that means "this is a control" is learnable, a hash of a tag name is not.
-* **Red and green are the direction of a diff, and nothing else.** The markup as found and the markup as it should be are marked `−` and `+` and inked accordingly, and the "how to fix" prose carries the same green, because it is the same claim in words.
-
-Each finding also states its technical identity on one line - rule id, engine, element, how many engines agreed, how many places it was found in - so a row can be looked up, suppressed or compared against a previous run from the printed page alone. Nothing in the document is abbreviated with an ellipsis: an engine's sentence is printed whole, and so is a ranked rule name.
-
-A finding that is not settled says so, in both documents. `advisory` and `needs-browser` carry a badge in the styled report and a `certainty` field in the agent briefing, and each carries the sentence saying what it is *not* - "nothing will check this for you", "open it in a browser". `exact` deliberately gets neither: a document where most rows carry a certainty note teaches the reader to skip the note. Both facts reached the window and the terminal from the beginning and neither reached the two artefacts a person hands to somebody else.
-
-### Agent briefing and JSON
-
-```bash
-xanalyze fullscan https://example.com --report briefing.md
-xanalyze fullscan https://example.com --json > run.json
-```
-
-The briefing groups identical problems and keeps the per-document map. JSON keeps every finding and is suitable for CI/CD. `--language uk|it|en` controls report language.
-
-### Grouping and comparison
-
-The report lists a repeated problem once and nests all locations under it. Findings are grouped by rule, severity, and normalized offending markup. Dynamic framework identifiers are normalized only in identifier attributes, so genuinely different elements remain separate.
-
-Subsequent runs of the same target are compared using `changes.md`. A lower finding count can also mean that fewer pages were crawled, so use the corrected-place and per-rule counts when measuring progress.
-
-## Interfaces
-
-### GUI
-
-The desktop application provides setup controls for target, analysis type, detector, scope, crawl depth, breakpoints, language, and account. Results show the finding list, source or rendered preview, details, fixes, replacement review, and report export.
-
-The setup screen's fifth card, **What to show**, carries the run parameters that used to be CLI-only: the six audit categories (including `geo`), the certainty floor (`--confidence`), and `--site-controls`. The scope selector sits with the repository controls, and typography is a character category in Settings.
-
-Category and certainty are a **view over one finished pass**, exactly as `--category` and `--confidence` are: the rules are cheap and share one parse, so narrowing repaints the list and the summary without re-auditing anything, and widening brings every finding straight back. The exported report is written through the same view, so what is on screen and what is in the file cannot disagree. When a filter hides everything, the empty screen says so and gives the unfiltered count rather than reporting the page as clean. `--site-controls` is different in kind - it fetches robots.txt and the sitemaps declared in it - so it is a run choice, off by default and shown only for a site.
-
-The first card, **What we are looking at**, states what a chosen folder turned out to be. A project is identified from its own marker files, and what it is decides what is treated as vendored: the window now applies those exclusions as `xanalyze audit` always has - the same WordPress folder used to produce hundreds of findings in vendored core from the window and none from the CLI. It is never applied silently. The card names the stack, counts the paths it will skip, carries the marker file that proved each one, and offers **Scan those as well** in one click, because a profile is evidence about ownership rather than a certainty.
-
-The same card carries **These documents are** - the window's `--medium`. It is read off the markup by default, which is right nearly always; set it by hand for an email deliverable that carries neither an Outlook namespace nor a merge tag. On `email` the browser-only checks (canonical, Open Graph, structured data, skip link, landmarks, WebP) are skipped, and the accessibility ones are not: `image-alt`, `control-name`, `table-headers`, contrast and language are as real in a mail client as in a browser.
-
-**What the window can ask that only the command line could ask.** Three of them, in the advanced row:
-
-- **The code behind this site.** A finding on a page names the page, which is where to look and never where to edit. Given the checkout, every passage that also exists in it carries the file and the line - the same `--repo` pairing the CLI does, through the same module. The run then says how many of the passages the checkout explained: three of forty means the wrong folder, or copy that arrives from a CMS, and a window that showed only the three matches would never say so.
-- **Only this part of the page** (`--within`). A CSS selector for a delivered web part or an embedded widget: the rest of the document belongs to somebody else. What is inside the selector is a fragment by construction, so the page-level rules stop applying, and a selector that matches nothing is reported rather than returned as a clean result.
-- **Most files in a folder** (`--max-files`), in Settings. The window had no ceiling of its own and read whatever the default was, without ever naming the number that cut a monorepo short.
-
-**Before a run, the window now says what it is not going to reach** - the same notices `cli_impl/prerun.py` prints for the CLI, from the same data: no checkout paired, a project that could serve itself, a browser that was switched off. Each carries the move that answers it where the window has one.
-
-The window has no incremental scan. `scan --incremental` reuses cached *findings*, which are rows in a JSON file with no `TextSpan` behind them, and the window's list is built from spans - it offers a rewrite, a replacement and a write to disk for each one. Reusing the cache there would produce rows nothing can act on, so the flag stays a CLI and TUI one until the cache holds spans.
-
-The TUI's Audit screen carries the same three, plus every breakpoint the audit knows on both the Audit and Full Scan screens.
-
-Mechanical corrections are selected by default. Model drafts require review. Decisions such as photographic alternative text are never presented as automatic fixes.
-
-### TUI
-
-Run `xanalyze` without arguments to open the terminal interface. It provides Scan, Audit, Full Scan, Reports, Settings, Account, Update, Uninstall, and Logs. Runs execute in a worker thread, and the interface supports arrow keys, number shortcuts, `Tab`, `Esc`, and `q`.
-
-**Account** signs in to the xFormat subscription without leaving the terminal. Settings has always offered `xformat` as the provider and the TUI had nowhere to sign in to it, so the setting could only be acted on from the window or from `xanalyze ai login`. The password is never stored: it is exchanged for a token that goes to the OS keychain, and the field is cleared before the call is made. The other two providers own their credentials elsewhere and the screen says so rather than offering a form that cannot work.
-
-Table cells wrap rather than being cut. The log detail and the run target used to be sliced by the screen itself, which removed the `key=value` that explained the line and the **domain** that identified the run.
-
-## Configuration
-
-### Settings file
-
-Location: `~/.config/xanalyze/settings.json`
-
-```json
-{
-  "ui_language": "uk",
-  "llm_provider": "xformat",
-  "max_pages": 30,
-  "unicode_categories": ["invisible", "space", "homoglyph"],
-  "unicode_check_enabled": true
-}
-```
-
-### Ignore file
-
-Create `.xanalyze-ignore` in the project root using gitignore syntax:
-
-```text
-vendor/
-third_party/
-*.min.js
-*.min.css
-```
-
-Suppressions can also be grouped by rule, selector, fingerprint, phrase, or path:
-
-```text
-[rules]
-meta-viewport
-
-[selectors]
-.ads
-
-[fingerprints]
-083bea550659aadb
-```
-
-Comments and blank lines are preserved when the application updates this file.
+Detection is evidence: a profile names the file that proved it, the exclusions
+it implies are stated rather than applied silently, and one click scans them
+anyway.
 
 ## Limits
 
-- AI-text detection is corpus-dependent. It is not proof of authorship, and model judgments are not deterministic.
-- **The offline wording pass is weak in Italian, and the tool now says so during a run.** On the held-out corpus it finds 36% of known AI passages in Italian against 55% in English and 71% in Ukrainian, while the embedding detector finds 100%, 85% and 86%. A scan whose page reads as Italian prints a warning naming the better detector, and repeats it in the JSON as `scan.detector_note`. The wording pass is still the default because it is instant, needs no `torch`, names the phrase it matched, and can replace it offline - and it catches four held-out passages the embedding detector misses.
-- **Text detection covers Ukrainian, Italian and English only.** A passage in any other language is named as such and the wording and embedding passes report nothing for it, rather than scoring it against lists and a reference set that do not speak it. Measured on 257 paragraphs in German, French, Spanish, Polish and Russian: 249 are read as unsupported. The character, typography and audit checks are language-independent and keep running, and a model-judged detector is not restricted this way.
-- A repository scan cannot see content created only at render time. Use a URL or `--devserver` for page behavior.
-- A single breakpoint cannot describe responsive behavior. Use `--breakpoints all` when mobile or tablet matters.
-- Typography checks can flag intentional punctuation. Disable them with `--no-typography` or Settings.
-- `--scope technical` measures character and technical content signals, not marketing style.
-- C2PA details require the optional `c2pa-python` and `cryptography` packages.
-- On 16-color terminals, some severity colors collapse, but severity labels remain textual.
+- AI-text detection is corpus-dependent. It is not proof of authorship, and
+  model judgments are not deterministic.
+- **Text detection covers Ukrainian, Italian and English only.** A passage in
+  another language is named as such and left unscored rather than measured
+  against lists that do not speak it. Character and website checks are
+  language-independent.
+- **The offline wording pass is weak in Italian**: on the held-out corpus it
+  finds 36% of known AI passages there, against 55% in English and 71% in
+  Ukrainian, while the embedding pass finds 100%, 85% and 86%. A run over
+  Italian pages says so and names the better detector.
+- A folder scan cannot see content that exists only after rendering. Use a URL
+  or `--devserver`.
+- One width cannot describe responsive behaviour. Use `--breakpoints all`.
+- Typography checks can flag intentional punctuation (`--no-typography`).
+- C2PA reading needs the optional `c2pa-python` and `cryptography` packages.
 
-### Building a release
+## Building a release
 
 ```bash
 make version        # what config.py says
 make rebuild-all    # both bundles, at that version
-make package        # the two archives a release needs
+make package        # the two archives `xanalyze update` looks for
 ```
 
-`make package` refuses to run over a stale bundle and writes `xanalyze-cli-macos-<arch>.tar.gz` and `XAnalyze.app.zip` - the exact names `xanalyze update` looks for on the latest GitHub release. Anything else and the updater cannot find them. Neither archive is signed or notarised: until it is, a first launch of the app needs Control-click > Open.
+`make package` refuses to run over a stale bundle. Neither archive is signed
+or notarised yet.
 
 ## Requirements
 
-- Python 3.14+
-- PySide6 for the GUI
-- sentence-transformers for embedding detection
-- QtWebEngine for browser rendering
-- `c2pa-python` and `cryptography` for optional C2PA reading
+Python 3.14+, PySide6 for the window, QtWebEngine for browser rendering,
+sentence-transformers for the embedding detector, and `c2pa-python` with
+`cryptography` for optional C2PA reading.
 
 ## License
 

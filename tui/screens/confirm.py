@@ -25,6 +25,22 @@ class ConfirmModal(ModalScreen[bool]):
     dialog specifically.
     """
 
+    # A modal with no keys is a modal a keyboard cannot answer. Escape is
+    # "no" because that is what Escape means everywhere, and `y`/`n` because
+    # this is a terminal.
+    BINDINGS = [
+        ("escape", "answer_no", "No"),
+        ("n", "answer_no", "No"),
+        ("y", "answer_yes", "Yes"),
+        ("enter", "answer_yes", "Yes"),
+    ]
+
+    def action_answer_yes(self) -> None:
+        self.dismiss(True)
+
+    def action_answer_no(self) -> None:
+        self.dismiss(False)
+
     def __init__(self, question: str, *, yes_label: str = "Yes",
                 no_label: str = "No") -> None:
         super().__init__()

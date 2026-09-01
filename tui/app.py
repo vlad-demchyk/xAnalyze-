@@ -43,8 +43,16 @@ class XAnalyzeApp(App):
     Screen {
         align: center middle;
     }
+    /* Fixed widths with a ceiling, not fixed widths. A terminal is 80
+       columns until somebody widens it, and `width: 62` on an 60-column
+       screen does not shrink - it draws off the edge and takes the border
+       with it. Measured before this: on 60x20 the Full Scan form put 26
+       widgets outside the screen and Settings 80. `max-width: 100%` is the
+       whole fix for the horizontal half; the vertical half is the scroll
+       container below. */
     #main-menu {
         width: 62;
+        max-width: 100%;
         height: auto;
         max-height: 90%;
         border: tall $accent;
@@ -68,18 +76,67 @@ class XAnalyzeApp(App):
         margin: 1 0 0 0;
     }
     #scan-form, #audit-form, #fullscan-form, #settings-view, #reports-view,
-    #update-view, #uninstall-view {
+    #update-view, #uninstall-view, #account-view {
         width: 74;
+        max-width: 100%;
         height: auto;
         max-height: 90%;
+        overflow-y: auto;
         border: tall $accent;
         padding: 1 2;
     }
     #results-view, #report-detail {
         width: 96;
+        max-width: 100%;
         height: 90%;
         border: tall $accent;
         padding: 1 2;
+    }
+    /* A row of inline selectors is the one thing that cannot be made
+       narrower by wrapping alone: `Select` has a minimum of its own. On a
+       narrow terminal the sentence becomes a column, which is longer to read
+       and readable, rather than a line with its right half off-screen. */
+    .sentence {
+        max-width: 100%;
+    }
+    /* A narrow terminal, told to the stylesheet by `XScreen.on_resize`.
+       Below ~72 columns three selectors and their labels cannot share a
+       line, so the sentence becomes a column: taller, and on screen. */
+    .narrow .sentence {
+        layout: vertical;
+        height: auto;
+    }
+    .narrow .sentence .inline-label,
+    .narrow .sentence .inline-select,
+    .narrow .sentence Select.inline-select {
+        width: 100%;
+    }
+    .narrow .sentence .inline-sep {
+        display: none;
+    }
+    /* And the same answer for a row of buttons. Three buttons side by side
+       need about fifty columns; below that the last one is drawn off the
+       edge, which on the Account screen was the one that signs you in. */
+    .narrow Horizontal {
+        layout: vertical;
+        height: auto;
+    }
+    .narrow Horizontal Button {
+        width: 100%;
+        margin: 0 0 1 0;
+    }
+    /* A long sentence has to wrap, and in Textual it only wraps when it is
+       not allowed to be wider than its parent. Measured on an 80-column
+       terminal before this: a 161-character line in Settings, 154 in
+       Uninstall, 110 on the Account screen - each one drawn straight past
+       the right edge, where a terminal has no horizontal scroll to get it
+       back. The inline sentences opt out below, because a word in a
+       sentence sizes to itself. */
+    Label, Static {
+        max-width: 100%;
+    }
+    Checkbox, Button, Input, Select {
+        max-width: 100%;
     }
     Input {
         margin: 0 0 1 0;

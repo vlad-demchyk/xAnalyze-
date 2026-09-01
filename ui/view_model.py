@@ -454,6 +454,7 @@ class MainViewModel(QObject):
             site_controls=self.state.site_controls,
             medium=self.state.medium,
             within=self.state.within,
+            web_parts=self._web_parts_for_run(),
         )
         if worker is None:
             self.error.emit(self._missing_target_message() if refusal == "no_target"
@@ -466,6 +467,24 @@ class MainViewModel(QObject):
                           on_finished=self._on_audit_finished)
         self._worker.start()
         self.busy_changed.emit(True)
+
+    def _web_parts_for_run(self) -> tuple:
+        """The SPFx parts to confine this audit to, or `()`.
+
+        Read here rather than in the worker so a solution that ships nothing
+        is an empty tuple - which audits the whole page, exactly as before -
+        instead of a thread that starts and finds it has nothing to do. The
+        CLI answers the same question in `cli._web_parts_for`, and refuses
+        the same way: without a checkout there is nothing to read parts from.
+        """
+        if not self.state.web_parts or not self.state.paired_repo:
+            return ()
+        from audit import spfx
+
+        try:
+            return tuple(spfx.web_parts(self.state.paired_repo))
+        except OSError:
+            return ()
 
     def cancel(self):
         if self._worker is not None:

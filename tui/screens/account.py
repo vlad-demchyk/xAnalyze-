@@ -42,6 +42,9 @@ class AccountScreen(XScreen):
     BINDINGS = [
         ("escape", "back", "Back"),
         ("ctrl+r", "refresh", "Refresh"),
+        # Enter signs in from either field, which is what every sign-in form
+        # anywhere does. Without it the only way in was a mouse.
+        ("enter", "sign_in", "Sign in"),
     ]
 
     def __init__(self) -> None:
@@ -65,6 +68,10 @@ class AccountScreen(XScreen):
                 yield Button(self.tr("settings_sign_in"), id="sign-in",
                              variant="primary")
                 yield Button(self.tr("tui_account_sign_out"), id="sign-out")
+                # Shown only while another provider is the one that pays.
+                # Offered *after* a sign-in rather than demanded before one.
+                yield Button(self.tr("tui_account_use_xformat"),
+                             id="use-xformat")
                 yield Button(self.tr("tui_back"), id="back")
             yield Static("")
             yield Label("", id="account-status")
@@ -87,22 +94,31 @@ class AccountScreen(XScreen):
         ), settings
 
     def action_refresh(self) -> None:
-        """Say who is signed in, and say it about the chosen provider.
+        """Say who is signed in, and never stand in the way of signing in.
 
-        A screen that reported the xFormat session while the run was
-        configured to use Claude Code would be answering a question nobody
-        asked, so the other two providers are told where their sign-in
-        actually lives instead.
+        This used to disable both fields and the button whenever the chosen
+        provider was not xFormat - which is the default - so a fresh install
+        could not sign in from here at all. The reasoning was that a screen
+        reporting the xFormat session while the run pays through Claude Code
+        answers a question nobody asked; the effect was a circular
+        dependency, because choosing xFormat in Settings before having an
+        account is exactly backwards.
+
+        So the state line still says which provider pays, and the form stays
+        usable. Signing in while another provider is selected offers to
+        switch - after the sign-in worked, when there is something to switch
+        to.
         """
         settings = config.Settings.load()
         state = self.query_one("#account-state", Label)
-        if settings.llm_provider != SIGNS_IN:
+        elsewhere = settings.llm_provider != SIGNS_IN
+        self.query_one("#use-xformat", Button).display = elsewhere
+        self._enable(True)
+        if elsewhere:
             state.update(self.tr(f"tui_account_elsewhere_{settings.llm_provider}")
                          if settings.llm_provider in ("anthropic", "claude-code")
                          else self.tr("tui_account_not_xformat"))
-            self._enable(False)
             return
-        self._enable(True)
         try:
             provider, _settings = self._provider()
             status = provider.auth_status()
@@ -132,6 +148,12 @@ class AccountScreen(XScreen):
             self._sign_in()
         elif event.button.id == "sign-out":
             self._sign_out()
+        elif event.button.id == "use-xformat":
+            self._use_xformat()
+
+    def action_sign_in(self) -> None:
+        """Enter, from anywhere on the screen."""
+        self._sign_in()
 
     def _sign_in(self) -> None:
         if self._busy:
@@ -159,6 +181,20 @@ class AccountScreen(XScreen):
 
         threading.Thread(target=work, daemon=True).start()
 
+    def _use_xformat(self) -> None:
+        """Make xFormat the provider that pays for AI calls.
+
+        A separate press, and only offered when another provider is selected:
+        signing in and changing who pays are two decisions, and doing the
+        second silently as part of the first is how a person ends up billed
+        somewhere they did not choose.
+        """
+        settings = config.Settings.load()
+        settings.llm_provider = SIGNS_IN
+        settings.save()
+        self._status(self.tr("tui_account_now_xformat"))
+        self.action_refresh()
+
     def _sign_out(self) -> None:
         try:
             provider, _settings = self._provider()
@@ -177,5 +213,8 @@ class AccountScreen(XScreen):
             self._status(self.tr("settings_not_signed_in",
                                  detail=status.detail))
         else:
-            self._status(self.tr("tui_account_welcome"))
+            settings = config.Settings.load()
+            self._status(self.tr("tui_account_welcome")
+                         if settings.llm_provider == SIGNS_IN
+                         else self.tr("tui_account_welcome_switch"))
         self.action_refresh()

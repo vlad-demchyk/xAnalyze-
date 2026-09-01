@@ -67,9 +67,22 @@ def describe(command: str, target: str, args, *, language: str = "",
                         ("unsettled", "unsettled shown"),
                         ("incremental", "incremental"),
                         ("no_typography", "typography off"),
-                        ("devserver", "dev server")):
+                        ("devserver", "dev server"),
+                        # A run confined to the parts a checkout ships is a
+                        # different run from one that read the whole page,
+                        # and a report that does not say so invites the two
+                        # to be compared as if they were the same reading.
+                        ("web_parts", "web parts only")):
         if getattr(args, flag, False):
             rows.append((label, "yes"))
+    # What the detected stack switched on, when it switched anything on.
+    # Set by `cli_impl.prerun.profile`; a parameter that changed what was
+    # measured has to be in the document that reports the measurement.
+    applied = getattr(args, "_profile_applied", ())
+    if applied:
+        rows.append(("stack defaults",
+                     ", ".join(f"--{item.option.replace('_', '-')}"
+                               for item in applied)))
     if language:
         rows.append(("report language", language))
     for label, value in (extra or {}).items():

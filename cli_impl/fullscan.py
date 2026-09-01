@@ -1197,7 +1197,9 @@ def cmd_fullscan(args) -> int:
       xanalyze fullscan ./repo --agent                # agent judges AI patterns
     """
     lang = args.language  # None if not specified, will auto-detect after crawl
-    target = args.target
+    from cli_impl.auditpass import unquote_target
+
+    target = unquote_target(args.target)
     is_url = looks_like_url(target) or args.url
     if is_url:
         # Normalised here rather than inside the crawl, so the report file
@@ -1220,6 +1222,9 @@ def cmd_fullscan(args) -> int:
     from cli_impl import prerun
 
     prerun.announce("fullscan", target, args, is_url=is_url, out=sys.stderr)
+    # What this target's own stack asks for. A line, unless
+    # `--profile-defaults` was passed - see `cli_impl.prerun.profile`.
+    prerun.profile("fullscan", target, args, is_url=is_url, out=sys.stderr)
 
     repo_arg = getattr(args, "repo", None)
     if repo_arg and not Path(repo_arg).is_dir():

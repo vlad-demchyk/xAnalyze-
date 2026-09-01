@@ -324,7 +324,7 @@ class AuditWorker(QThread):
                  ignore_patterns=None, max_files: int = 5000,
                  settings=None, pages: list | None = None,
                  site_controls: bool = False, medium: str = "",
-                 within: str = "", parent=None):
+                 within: str = "", web_parts=(), parent=None):
         super().__init__(parent)
         #: `--within`: confine the reading to one subtree. The document is
         #: then a *fragment* by construction, so the page-level rules stop
@@ -344,6 +344,11 @@ class AuditWorker(QThread):
         #: an address the user did not type - and meaningless off the web,
         #: which is why only the crawl branch below reads it.
         self.site_controls = site_controls
+        #: `--web-parts`: the SPFx parts read out of the paired checkout, so
+        #: the audit is confined to what this repository actually ships into
+        #: somebody else's page. Empty is the ordinary case, and an empty
+        #: tuple audits the whole document exactly as before.
+        self.web_parts = tuple(web_parts or ())
         #: Pages already fetched - by an earlier run, or by the browser on the
         #: main thread. Given them, this worker does not crawl: a run that asks
         #: both questions about one site must fetch it once.
@@ -369,7 +374,9 @@ class AuditWorker(QThread):
                 # One file, read as a whole page. No crawl and no scan: the
                 # user pointed at the document itself.
                 self.auditing.emit(self.target)
-                result = audit.analyze_page_file(self.target, within=self.within)
+                result = audit.analyze_page_file(self.target,
+                                                 within=self.within,
+                                                 web_parts=self.web_parts)
                 ignore_root = None
             elif self.is_repo:
                 files = scan_repo(self.target,
@@ -398,7 +405,8 @@ class AuditWorker(QThread):
                 self.auditing.emit(self.target)
                 result = audit.analyze_pages(pages, self.target,
                                              site_controls=self.site_controls,
-                                             within=self.within)
+                                             within=self.within,
+                                             web_parts=self.web_parts)
                 ignore_root = None
 
             # The same list that governs the text scan: a user who said "not
@@ -418,7 +426,8 @@ class AuditWorker(QThread):
 def audit_worker_for(source: str, *, target: str, depth: int, max_pages: int,
                      pages=None, ignore_patterns=None, max_files: int = 5000,
                      settings=None, site_controls: bool = False,
-                     medium: str = "", within: str = "", parent=None):
+                     medium: str = "", within: str = "", web_parts=(),
+                     parent=None):
     """The right `AuditWorker` for the source, or `(None, message)` on refusal.
 
     One place, because there were two: the window and the view model each
@@ -449,7 +458,8 @@ def audit_worker_for(source: str, *, target: str, depth: int, max_pages: int,
     if source == SOURCE_FILE:
         return AuditWorker(target=target, depth=0, max_pages=max_pages,
                            is_page_file=True, settings=settings,
-                           within=within, parent=parent), ""
+                           within=within, web_parts=web_parts,
+                           parent=parent), ""
 
     # A site. `example.com` is accepted here exactly as the CLI accepts it,
     # rather than only `https://example.com`.
@@ -459,7 +469,7 @@ def audit_worker_for(source: str, *, target: str, depth: int, max_pages: int,
     return AuditWorker(pages=pages, target=address, depth=depth,
                        max_pages=max_pages, settings=settings,
                        site_controls=site_controls, within=within,
-                       parent=parent), ""
+                       web_parts=web_parts, parent=parent), ""
 
 
 class RewriteAllWorker(QThread):

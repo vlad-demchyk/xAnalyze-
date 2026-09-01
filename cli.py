@@ -59,7 +59,7 @@ from cli_impl.auditpass import (  # noqa: F401 - re-exported for `import cli`
     PAGE_FILE_SUFFIXES, _audit_at_widths, _browser_url,
     _chosen_breakpoints, _crawl_maybe_rendering, _is_page_file,
     _render_mode, _run_browser_pass, _wrap, apply_session, looks_like_url,
-    with_scheme,
+    unquote_target, with_scheme,
 )
 from cli_impl.aicmds import (  # noqa: F401 - re-exported for `import cli`
     _provider_for, _xformat_provider,
@@ -366,7 +366,9 @@ def cmd_audit(args) -> int:
         print(f"# AI pass via {name}", file=sys.stderr)
         reviewer = AIAccessibilityReview(provider=provider)
 
-    target = args.target
+    # As a terminal or a file manager hands it over: quoted, escaped, or
+    # as a `file://` URL. See `cli_impl.auditpass.unquote_target`.
+    target = unquote_target(args.target)
     # `example.com` is what people type; treating it as a path and answering
     # "path not found" is the wrong answer to a question that had one obvious
     # reading. An existing path still wins - see `looks_like_url`.
@@ -388,6 +390,14 @@ def cmd_audit(args) -> int:
     from cli_impl import prerun
 
     prerun.announce("audit", target, args, is_url=is_url, out=sys.stderr)
+    # What this target's own stack asks for. A line, unless
+    # `--profile-defaults` was passed - see `cli_impl.prerun.profile`.
+    prerun.profile("audit", target, args, is_url=is_url, out=sys.stderr)
+
+    #: Which host's stored sign-in this run used, if any. Set by the crawl
+    #: branch below and read when the walls are announced: an expired-session
+    #: notice only makes sense for a run that actually used one.
+    session_host = ""
 
     if _is_page_file(target) and not args.url:
         # A page built into one file is a finished document, so it is audited
@@ -479,7 +489,7 @@ def cmd_audit(args) -> int:
     if hidden:
         print(f"# {hidden} check(s) could not be decided and are not listed; "
               f"add --unsettled to see them", file=sys.stderr)
-    _announce_auth_walls(result)
+    _announce_auth_walls(result, session_host=session_host)
 
     from i18n.translations import report_language
 
@@ -743,7 +753,7 @@ def _reaudit(args, target: str, previous):
     return audit.analyze_files(files, target)
 
 
-def _announce_auth_walls(result) -> None:
+def _announce_auth_walls(result, session_host: str = "") -> None:
     """Say if what was audited was the door rather than the site.
 
     Printed before anything else about the findings, because it changes what
@@ -769,13 +779,15 @@ def _announce_auth_walls(result) -> None:
     # met a door. That is an expired session, and reporting it as "the site
     # has a login" would send somebody to sign in again without saying why
     # the last sign-in stopped counting.
-    import site_session
-
-    host = site_session.host_of(getattr(result, "root", "") or "")
-    if host and site_session.has_session(host):
-        print(f"# [session] the stored session for {host} did not get past "
-              f"the login - it has most likely expired. Sign in again with: "
-              f"xanalyze login {host}", file=sys.stderr)
+    #
+    # Only when the session was actually *used*. A run given `--no-session`
+    # is a stranger by request, and telling that run its session expired is
+    # advice about a thing it deliberately did not do - which is how a
+    # correct message becomes a wrong one.
+    if session_host:
+        print(f"# [session] the stored session for {session_host} did not get "
+              f"past the login - it has most likely expired. Sign in again "
+              f"with: xanalyze login {session_host}", file=sys.stderr)
 
 
 def _apply_fixes(result, args, lang: str):
@@ -1090,6 +1102,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_audit.add_argument("--no-session", action="store_true",
                         help="ignore any stored sign-in for this host and "
                              "read the site the way a stranger sees it")
+    p_audit.add_argument("--profile-defaults", action="store_true",
+                         help="switch on what the detected stack asks for "
+                              "(printed either way as `# [profile]` lines); "
+                              "anything named on the command line wins")
     p_audit.add_argument("--no-hints", action="store_true",
                         help="do not print what this run leaves "
                              "undone (see cli_impl/prerun.py)")
@@ -1315,6 +1331,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_fullscan.add_argument("--no-session", action="store_true",
                         help="ignore any stored sign-in for this host and "
                              "read the site the way a stranger sees it")
+    p_fullscan.add_argument("--profile-defaults", action="store_true",
+                        help="switch on what the detected stack asks for "
+                             "(printed either way as `# [profile]` lines); "
+                             "anything named on the command line wins")
     p_fullscan.add_argument("--no-hints", action="store_true",
                         help="do not print what this run leaves "
                              "undone (see cli_impl/prerun.py)")
@@ -1440,8 +1460,37 @@ def _accept_global_flags_everywhere(subparsers, seen: set | None = None) -> None
                 _accept_global_flags_everywhere(action, seen)
 
 
+#: Options whose flag spelling is not their destination. Only the ones a
+#: `run_profile` recipe can touch need to be here: `_explicit` exists to stop
+#: a suggestion overwriting a deliberate choice, and a flag no recipe names
+#: cannot be overwritten by one.
+_FLAG_DESTS = {"no_default_excludes": "use_default_excludes"}
+
+
+def _explicit_options(argv) -> set:
+    """Every option the person actually typed, as argparse destinations.
+
+    Not "differs from the default": `--breakpoints desktop` on a single file
+    is a deliberate choice that happens to equal the default, and a profile
+    that overrode it would be overriding exactly the case this set exists to
+    protect.
+    """
+    named = set()
+    for token in argv or ():
+        if not isinstance(token, str) or not token.startswith("--"):
+            continue
+        name = token[2:].split("=", 1)[0].replace("-", "_")
+        named.add(_FLAG_DESTS.get(name, name))
+        named.add(name)
+    return named
+
+
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
+    # Recorded before anything reads it, because argparse cannot be asked
+    # afterwards which values came from the command line and which are its
+    # own defaults.
+    args._explicit = _explicit_options(sys.argv[1:] if argv is None else argv)
 
     # No subcommand → launch interactive TUI
     if args.command is None:

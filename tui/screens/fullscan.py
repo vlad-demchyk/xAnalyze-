@@ -17,6 +17,22 @@ class FullscanScreen(RunScreen):
     """Form to configure and run a full scan."""
 
     status_id = "fullscan-status"
+    profile_note_id = "fullscan-profile"
+
+    #: Which control sets which run option. See `RunScreen.FIELD_OPTIONS`.
+    FIELD_OPTIONS = {
+        "depth": "depth",
+        "breakpoints": "breakpoints",
+        "confidence": "confidence",
+        "within": "within",
+        "no-session": "no_session",
+        "incremental": "incremental",
+        "unsettled": "unsettled",
+        "site-controls": "site_controls",
+        "agent": "agent",
+        "no-browser": "no_browser",
+        "devserver": "devserver",
+    }
 
     def compose(self) -> ComposeResult:
         yield from self.compose_chrome()
@@ -27,6 +43,15 @@ class FullscanScreen(RunScreen):
             yield Label(self.tr("tui_target_any"))
             # `example.com` is enough - the scheme is added for you.
             yield Input(placeholder=self.tr("tui_placeholder_repo"), id="target")
+
+            # The address an SPFx checkout ships into; see AuditScreen for
+            # why a folder alone cannot answer it.
+            yield Label(self.tr("tui_site_url"), classes="field-site-url")
+            yield Input(placeholder=self.tr("tui_site_url_placeholder"),
+                        id="site-url", classes="field-site-url")
+
+            # What the target's own stack asked for, and why.
+            yield Label("", id="fullscan-profile", classes="hint")
 
             # The design's toolbar (artboard 3a) reads "analyze Site ·
             # depth 2" - one sentence with the choices inline rather than a
@@ -50,8 +75,9 @@ class FullscanScreen(RunScreen):
                     compact=True,
                     classes="inline-select",
                 )
-                yield Static("·", classes="inline-sep")
-                yield Static(self.tr("tui_label_depth"), classes="inline-label")
+                yield Static("·", classes="inline-sep field-depth")
+                yield Static(self.tr("tui_label_depth"),
+                             classes="inline-label field-depth")
                 yield Select(
                     [
                         ("1", "1"),
@@ -98,6 +124,17 @@ class FullscanScreen(RunScreen):
                 )
 
             yield Static("")
+            # Four of the nine flags this screen was missing. `--repo` is
+            # not among them on purpose: a full scan of a URL takes a
+            # checkout, and that is a path field the window has room for and
+            # a terminal form does not - `xanalyze fullscan --repo` remains
+            # the way to ask for it. `--web-parts` follows it out for the
+            # same reason: it reads part manifests from that checkout.
+            yield Label(self.tr("within_placeholder"))
+            yield Input(placeholder=self.tr("tui_within_placeholder"), id="within")
+            yield Static("")
+            yield Checkbox(self.tr("tui_no_session"), id="no-session")
+            yield Checkbox(self.tr("tui_incremental_full"), id="incremental")
             yield Checkbox(self.tr("tui_unsettled"), id="unsettled")
             yield Checkbox(self.tr("tui_site_controls"), id="site-controls")
             yield Checkbox(self.tr("tui_agent_mode"), id="agent")
@@ -128,21 +165,40 @@ class FullscanScreen(RunScreen):
             self._run_fullscan()
 
     def _run_fullscan(self) -> None:
-        target = self.query_one("#target", Input).value.strip()
+        from cli_impl.auditpass import unquote_target
+
+        target = unquote_target(self.query_one("#target", Input).value)
         if not target:
             self.status(self.tr("tui_need_target"))
             return
 
+        # An SPFx checkout plus the site it ships into is one run - see
+        # `AuditScreen._run_audit`, which does the same pivot.
+        site_url = unquote_target(self.query_one("#site-url", Input).value)
+        repo = None
+        web_parts = False
+        if site_url and self._plan is not None and self._plan.asks_for("site_url"):
+            repo, target, web_parts = target, site_url, True
+            # The plan was built for the folder; the run is now about the
+            # site, and `settle` below reads the plan to decide which
+            # options are in play. Left as it was, it would blank the very
+            # `--repo` this branch just set.
+            import run_profile
+            self._plan = run_profile.build(target, repo=repo)
+
         args = argparse.Namespace(
             target=target,
             url=False,
+            web_parts=web_parts,
+            profile_defaults=False,
+            _explicit=set(self._touched),
             depth=int(self.query_one("#depth", Select).value or 0),
             max_pages=30,
             max_files=5000,
             ext=None,
             exclude=None,
             no_default_excludes=False,
-            repo=None,
+            repo=repo,
             devserver=self.query_one("#devserver", Checkbox).value,
             start_command=None,
             dev_server_port=None,
@@ -163,8 +219,14 @@ class FullscanScreen(RunScreen):
             agent=self.query_one("#agent", Checkbox).value,
             no_browser=self.query_one("#no-browser", Checkbox).value,
             json=True,
+            within=self.query_one("#within", Input).value.strip(),
+            no_session=self.query_one("#no-session", Checkbox).value,
+            incremental=self.query_one("#incremental", Checkbox).value,
+            medium=None,
+            no_hints=True,
         )
 
+        args = self.settle(args)
         title = self.tr("tui_fullscan_of", target=target)
         if args.devserver:
             stack = self._devserver_stack_needing_confirm(target)

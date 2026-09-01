@@ -299,6 +299,39 @@ def _bare_host_pattern():
     return _BARE_HOST
 
 
+def unquote_target(target: str) -> str:
+    """A path exactly as a terminal or a file manager hands it over.
+
+    Dragging a folder onto a terminal window pastes it quoted - macOS uses
+    `'/Users/me/My Project'`, some shells escape the spaces instead - and
+    dragging it onto a form pastes a `file://` URL. All three were rejected
+    with `path not found`, quotes and all, which is the tool blaming the
+    person for the paste its own prompt invited.
+
+    Only *matched* wrapping quotes are removed: a directory really can be
+    called `it's`, and stripping one apostrophe off that name would break a
+    path that worked.
+    """
+    from urllib.parse import unquote, urlparse
+
+    text = (target or "").strip()
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'":
+        text = text[1:-1]
+    if text.startswith("file://"):
+        parsed = urlparse(text)
+        text = unquote(parsed.path or "")
+    # `\ ` is how a shell escapes a space in a dragged path. Unescaped only
+    # for a path that exists that way, so a Windows-style `C:\dir` and a
+    # regex-looking argument are left alone.
+    if "\\" in text:
+        from pathlib import Path
+
+        candidate = text.replace("\\ ", " ").replace("\\", "")
+        if Path(candidate).exists():
+            text = candidate
+    return text.strip()
+
+
 def looks_like_url(target: str) -> bool:
     """Is this target meant as a website rather than a path on disk?
 

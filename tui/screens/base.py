@@ -11,7 +11,7 @@ import argparse
 
 from textual.app import ComposeResult
 from textual.screen import Screen
-from textual.widgets import Footer, Header, Label
+from textual.widgets import Button, Footer, Header, Label
 
 from i18n.translations import t
 
@@ -37,6 +37,10 @@ BINDING_LABELS = {
     "copy_text": "tui_copy",
     "command_palette": "tui_palette",
 }
+
+
+#: "no value recorded", distinct from a control whose value really is None.
+_UNSET = object()
 
 
 class XScreen(Screen):
@@ -95,6 +99,23 @@ class XScreen(Screen):
                 rewritten.append(binding)
             mapping[key] = rewritten
 
+    #: Below this many columns an inline sentence cannot stay one line: a
+    #: `Select` has a minimum width of its own, and three of them plus their
+    #: labels need about seventy. Measured at 60x20, where the Full Scan
+    #: form put five widgets past the right edge - and a terminal has no
+    #: horizontal scroll to get them back.
+    NARROW_COLUMNS = 72
+
+    def on_resize(self, event) -> None:
+        """Let the stylesheet know the terminal is narrow.
+
+        Textual has no media queries, so the screen carries the answer as a
+        class and `.narrow .sentence` turns each sentence into a column. The
+        row is longer to read that way and it is *readable*, which the
+        half-off-screen version was not.
+        """
+        self.set_class(event.size.width < self.NARROW_COLUMNS, "narrow")
+
     def compose_chrome(self) -> ComposeResult:
         yield Header()
         yield Footer()
@@ -117,6 +138,17 @@ class RunScreen(XScreen):
     a second press used to start a second, interleaved scan.
     """
 
+    # Every run screen answers the same three keys, declared once here
+    # rather than three times below. Before this, `scan`, `audit` and
+    # `fullscan` - the three screens where work is actually started - had no
+    # BINDINGS at all: `Escape` worked only because the app caught it, and
+    # there was no way to start a run without a mouse.
+    BINDINGS = [
+        ("escape", "back", "Back"),
+        ("ctrl+r", "run_now", "Run"),
+        ("f5", "run_now", "Run"),
+    ]
+
     #: Set by the subclass: the id of the status label and of the run button.
     status_id = "status"
     run_button_id = "run"
@@ -125,12 +157,6 @@ class RunScreen(XScreen):
     #: does not need sub-frame latency, and polling is what keeps the capture
     #: from re-entering the app - see `tui.runner`.
     poll_interval = 0.15
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._run = None
-        self._timer = None
-        self._title = ""
 
     # -- status ------------------------------------------------------------
 
@@ -143,12 +169,214 @@ class RunScreen(XScreen):
     def busy(self) -> bool:
         return self._run is not None
 
+    def action_run_now(self) -> None:
+        """Start the run from the keyboard.
+
+        Deliberately not Enter: these forms have text fields, and Enter in a
+        field means "I finished typing this", not "start a scan over the
+        whole site". Ctrl+R and F5 are the keys a person already presses to
+        run something.
+        """
+        if self.busy:
+            return
+        try:
+            button = self.query_one(f"#{self.run_button_id}", Button)
+        except Exception:  # noqa: BLE001 - a screen may have no run button
+            return
+        if not button.disabled:
+            button.press()
+
     def _set_busy(self, busy: bool) -> None:
         try:
             button = self.query_one(f"#{self.run_button_id}")
         except Exception:  # noqa: BLE001 - a screen may have no run button
             return
         button.disabled = busy
+
+    # -- the form the target asks for --------------------------------------
+
+    #: `widget id -> the run option it sets`. A subclass fills this in and
+    #: gets two things from it: fields that reach nothing for the current
+    #: target are hidden, and a parameter the target's stack asks for is
+    #: pre-ticked with the sentence that says who asked.
+    #:
+    #: Hiding is not tidying. `--depth` on a folder, `--incremental` on a
+    #: URL and `--site-controls` on a single file are controls that were
+    #: always there and always did nothing, and a control that does nothing
+    #: teaches a person that this tool's controls do nothing.
+    FIELD_OPTIONS: dict = {}
+
+    #: The id of the label that carries the "enabled, because …" sentences.
+    profile_note_id = ""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._run = None
+        self._timer = None
+        self._title = ""
+        #: Options the person set by hand. A suggestion never overwrites one
+        #: - see `run_profile.Plan.apply`.
+        self._touched: set = set()
+        self._plan = None
+        #: False until the form has finished drawing. `Select` posts
+        #: `Changed` as it mounts, so every dropdown on the screen counted
+        #: as a deliberate choice before anybody had touched one - and a
+        #: deliberate choice is exactly what the profile refuses to
+        #: overwrite. The whole feature was silently off because of it.
+        self._ready = False
+        #: `option -> value` this screen wrote from the profile. A widget
+        #: posts its `Changed` message after the write returns, so a flag
+        #: held across the write is already down by the time the message
+        #: arrives - and the profile's own tick came back as the person's.
+        #: Matching on the value is what survives the delay.
+        self._auto: dict = {}
+
+    def on_mount(self) -> None:
+        # After the first refresh, not during mount: the mount-time
+        # `Changed` messages are already in flight by then.
+        self.call_after_refresh(self._form_ready)
+
+    def _form_ready(self) -> None:
+        self._ready = True
+
+    def current_target(self) -> str:
+        """The target field, unquoted the way the CLI unquotes it."""
+        from textual.widgets import Input
+
+        from cli_impl.auditpass import unquote_target
+
+        try:
+            return unquote_target(self.query_one("#target", Input).value)
+        except Exception:  # noqa: BLE001 - a screen may have no target field
+            return ""
+
+    def on_input_blurred(self, event) -> None:
+        """Re-read the target once the person has finished typing it.
+
+        On blur rather than on every keystroke, deliberately: a form whose
+        fields appear and disappear mid-word is a form that moves the thing
+        you were about to click. `p`, `pa`, `pat` are three different target
+        kinds and none of them is the answer.
+        """
+        if getattr(event.input, "id", "") == "target":
+            self.reshape_for_target()
+
+    def on_checkbox_changed(self, event) -> None:
+        """Remember that this switch is now the person's, not the profile's."""
+        self._note_change(getattr(event.checkbox, "id", ""), event.value)
+
+    def on_select_changed(self, event) -> None:
+        self._note_change(getattr(event.select, "id", ""), event.value)
+
+    #: What each option means when it is not in play. A control this target
+    #: cannot use is hidden, and a hidden control must not still be read: a
+    #: `--devserver` ticked for a repository and left ticked while a single
+    #: file was audited would have started a dev server for a file.
+    INERT = {
+        "depth": 0,
+        "site_controls": False,
+        "no_session": False,
+        "incremental": False,
+        "devserver": False,
+        "web_parts": False,
+        "repo": None,
+        "medium": None,
+        "max_files": 5000,
+    }
+
+    def settle(self, args):
+        """Blank every option this target cannot use, and hand `args` back."""
+        if self._plan is None:
+            return args
+        for option, inert in self.INERT.items():
+            if not self._plan.applies(option) and hasattr(args, option):
+                setattr(args, option, inert)
+        return args
+
+    def _note_change(self, widget_id: str, value) -> None:
+        """Record a control the person changed - and only the person."""
+        if not self._ready:
+            return
+        option = self.FIELD_OPTIONS.get(widget_id)
+        if not option:
+            return
+        if self._auto.get(option, _UNSET) == value:
+            self._auto.pop(option, None)
+            return
+        self._touched.add(option)
+
+    def reshape_for_target(self) -> None:
+        """Show what this target can use, and pre-tick what it asks for."""
+        import run_profile
+        from textual.widgets import Checkbox, Label, Select
+
+        target = self.current_target()
+        if not target:
+            return
+        try:
+            plan = run_profile.build(target)
+        except Exception:  # noqa: BLE001 - a form must never fail to draw
+            return
+        self._plan = plan
+        for widget_id, option in self.FIELD_OPTIONS.items():
+            shown = plan.applies(option)
+            for widget in self.query(f".field-{widget_id}"):
+                widget.display = shown
+            try:
+                self.query_one(f"#{widget_id}").display = shown
+            except Exception:  # noqa: BLE001 - an id a screen does not have
+                pass
+        # The URL field an SPFx checkout asks for, and nothing else does.
+        for prompt in ("site-url",):
+            wanted = plan.asks_for(prompt.replace("-", "_"))
+            for widget in self.query(f".field-{prompt}"):
+                widget.display = wanted
+            try:
+                self.query_one(f"#{prompt}").display = wanted
+            except Exception:  # noqa: BLE001 - an id a screen does not have
+                pass
+
+        by_option = {option: widget_id
+                     for widget_id, option in self.FIELD_OPTIONS.items()}
+        lines = []
+        for item in plan.suggestions:
+            if item.option in self._touched or not plan.applies(item.option):
+                continue
+            widget_id = by_option.get(item.option)
+            if widget_id is None:
+                continue
+            try:
+                widget = self.query_one(f"#{widget_id}")
+            except Exception:  # noqa: BLE001 - a screen without that control
+                continue
+            if isinstance(widget, Checkbox) and widget.value != item.value:
+                self._auto[item.option] = bool(item.value)
+                widget.value = bool(item.value)
+            elif isinstance(widget, Select) and widget.value != item.value:
+                try:
+                    self._auto[item.option] = item.value
+                    widget.value = item.value
+                except Exception:  # noqa: BLE001 - a value not in the list
+                    self._auto.pop(item.option, None)
+                    continue
+            else:
+                continue
+            lines.append(run_profile.explain(item, self.lang))
+        for prompt in plan.prompts:
+            lines.append(run_profile.explain(prompt, self.lang, enabled=False))
+        if plan.ambiguous():
+            lines.append(self.tr("tui_projects_several",
+                                 count=len(plan.projects),
+                                 names=", ".join(
+                                     _folder_name(p.root)
+                                     for p in plan.projects[:4])))
+        if self.profile_note_id:
+            try:
+                note = self.query_one(f"#{self.profile_note_id}", Label)
+            except Exception:  # noqa: BLE001 - a screen without the note
+                return
+            note.update("\n".join(lines))
+            note.display = bool(lines)
 
     # -- running -----------------------------------------------------------
 
@@ -203,3 +431,10 @@ class RunScreen(XScreen):
             return
         self.status(self.tr("tui_run_done"), ok=True)
         self.app.push_screen(ResultsScreen(title, result))
+
+
+def _folder_name(path: str) -> str:
+    """The last component of a path, for naming one project among several."""
+    from pathlib import Path
+
+    return Path(path).name or path

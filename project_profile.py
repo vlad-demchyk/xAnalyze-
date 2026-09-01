@@ -648,11 +648,16 @@ _MARKER_BLIND = {"node_modules", "vendor", "dist", "build", "out", ".git",
                  ".venv", "fixtures", "__fixtures__", "testdata"}
 
 
-def _search_roots(root: Path) -> list:
-    """`root` and the directories under it worth looking in, nearest first."""
+def _search_roots(root: Path, depth: int = None) -> list:
+    """`root` and the directories under it worth looking in, nearest first.
+
+    `depth` of 0 is `root` alone, which is what `projects` needs: a
+    directory has to be asked what *it* is, without the answer of a
+    project two levels below it being attributed to it.
+    """
     roots = [root]
     frontier = [root]
-    for _level in range(_MARKER_DEPTH):
+    for _level in range(_MARKER_DEPTH if depth is None else depth):
         nxt = []
         for parent in frontier:
             try:
@@ -765,7 +770,7 @@ def _dependency_names(root: Path) -> set:
     return names
 
 
-def detect(root: str | Path) -> Profile:
+def detect(root: str | Path, depth: int = None) -> Profile:
     """What this directory is, on the evidence in it.
 
     Marker files first, then `package.json` dependencies for the JavaScript
@@ -781,7 +786,7 @@ def detect(root: str | Path) -> Profile:
     if not path.is_dir():
         return profile
 
-    roots = _search_roots(path)
+    roots = _search_roots(path, depth)
     for stack in STACKS:
         proof = ""
         for where in roots:
@@ -826,3 +831,63 @@ def detect(root: str | Path) -> Profile:
             profile.stacks.append(stack)
             profile.evidence[stack.name] = proof
     return profile
+
+
+def projects(root: str | Path) -> list:
+    """Every self-contained project under `root`, nearest first.
+
+    `detect` answers "what is this directory", and answers it for a monorepo
+    by merging everything two levels down into one profile - which is right
+    when the question is what to exclude, and wrong when the question is
+    *what to audit*. A folder holding four SPFx solutions is not one project
+    with four times the files; it is four deliverables, and a run that
+    silently takes the root audits them as one.
+
+    So this asks each directory what **it** is, with no descent, and returns
+    the ones that proved something. The root is included when it proved
+    something of its own: a repository is usually its own project, and a
+    monorepo root usually is not.
+
+    Never raises, for the same reason `detect` never does: an unreadable
+    directory is one that contributes no project, and the run goes on.
+    """
+    path = Path(root)
+    found: list = []
+    if not path.is_dir():
+        return found
+    # What the root itself decided is not this project's code. Without this
+    # a Bedrock checkout answers with three projects - itself, `web/` and
+    # `web/wp/` - and the last two are the WordPress core its own exclusions
+    # already skip. A directory the run will not read is not a project the
+    # run can be pointed at.
+    try:
+        from repo_scanner import build_matcher, is_ignored
+        matcher = build_matcher(detect(path).excludes())
+    except Exception:  # pragma: no cover - a matcher is an optimisation here
+        matcher = None
+    # A root that proves something of its own **is** the project, and what
+    # is below it is its parts. Bedrock is the case that settles this: its
+    # `web/` carries the `wp-config.php` that proves WordPress, and offering
+    # "audit web/ instead" would be offering to audit the docroot of the
+    # very project already named. The question this function exists for -
+    # which of these do you mean? - is only a real question for a *container*
+    # folder that is nothing on its own: a directory of twenty SPFx
+    # solutions, a monorepo's `apps/`, a folder of themes.
+    root_profile = detect(path, depth=0)
+    if root_profile.stacks:
+        return [root_profile]
+    for where in _search_roots(path):
+        if matcher is not None and where != path:
+            try:
+                rel = str(where.relative_to(path))
+            except ValueError:  # pragma: no cover - `where` is under `path`
+                rel = ""
+            if rel and is_ignored(rel + "/", matcher):
+                continue
+        try:
+            profile = detect(where, depth=0)
+        except OSError:
+            continue
+        if profile.stacks:
+            found.append(profile)
+    return found

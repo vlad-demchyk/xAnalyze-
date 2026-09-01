@@ -276,6 +276,7 @@ class SetupScreen(QWidget):
         calls this when the value has actually settled.
         """
         self._refresh_project()
+        self._refresh_profile()
         self._refresh_drop_zone()
         self._refresh_summary()
 
@@ -329,6 +330,7 @@ class SetupScreen(QWidget):
         self.depth_layout.addWidget(self.depth_note)
         card.column.addWidget(self.depth_holder)
         card.column.addWidget(self._build_project_block())
+        card.column.addWidget(self._build_profile_block())
         card.column.addStretch(1)
         self.source_card = card
         return card
@@ -388,6 +390,74 @@ class SetupScreen(QWidget):
         self.project_block = holder
         self._fill_media()
         return holder
+
+    def _build_profile_block(self) -> QWidget:
+        """What the target asked the run to switch on, and why.
+
+        The profile used to be a caption: it named the stack and changed
+        nothing, so a person who chose an SPFx checkout still had to know
+        that `--web-parts` existed and that it needed the site's address.
+        Now it decides - and every decision it makes is on screen with the
+        marker file that justified it, because a default that changes the
+        run without saying so is the failure this block exists to avoid.
+
+        Shown for any source, unlike the project block above: the case that
+        needs it most is a *site* paired with a checkout.
+        """
+        holder = QWidget()
+        column = QVBoxLayout(holder)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(4)
+
+        self.web_parts_box = QCheckBox(t("setup_web_parts", self.lang))
+        self.web_parts_box.toggled.connect(self.app_state.set_web_parts)
+        column.addWidget(self.web_parts_box)
+
+        self.profile_note = QLabel()
+        self.profile_note.setProperty("class", theme.CLASS_MUTED)
+        self.profile_note.setWordWrap(True)
+        column.addWidget(self.profile_note)
+
+        self.projects_note = QLabel()
+        self.projects_note.setProperty("class", theme.CLASS_MUTED)
+        self.projects_note.setWordWrap(True)
+        column.addWidget(self.projects_note)
+
+        self.profile_block = holder
+        return holder
+
+    def _refresh_profile(self) -> None:
+        """The suggestions, their reasons, and the several-projects question."""
+        import run_profile
+
+        plan = self.app_state.run_plan
+        if plan is None:
+            self.profile_block.setVisible(False)
+            return
+        wants_parts = plan.suggestion("web_parts") is not None
+        self.web_parts_box.setVisible(wants_parts)
+        if wants_parts:
+            self.web_parts_box.blockSignals(True)
+            self.web_parts_box.setChecked(self.app_state.web_parts)
+            self.web_parts_box.blockSignals(False)
+
+        lines = [run_profile.explain(item, self.lang)
+                 for item in plan.suggestions if plan.applies(item.option)]
+        lines += [run_profile.explain(prompt, self.lang, enabled=False)
+                  for prompt in plan.prompts]
+        self.profile_note.setText("  ".join(lines))
+        self.profile_note.setVisible(bool(lines))
+
+        several = plan.ambiguous()
+        if several:
+            from pathlib import Path
+
+            names = ", ".join(Path(p.root).name for p in plan.projects[:4])
+            self.projects_note.setText(t("setup_projects_several", self.lang)
+                                       .format(count=len(plan.projects),
+                                               names=names))
+        self.projects_note.setVisible(several)
+        self.profile_block.setVisible(bool(lines) or wants_parts or several)
 
     def _fill_media(self) -> None:
         current = (self.medium_combo.currentData()
@@ -652,6 +722,7 @@ class SetupScreen(QWidget):
         for value, box in self.category_boxes.items():
             box.setText(t(f"audit_category_{value}", lang))
         self.project_title.setText(t("setup_project_title", lang))
+        self.web_parts_box.setText(t("setup_web_parts", lang))
         self.project_lift_box.setText(t("setup_project_lift", lang))
         self.project_lift_hint.setText(t("setup_project_lift_hint", lang))
         self.medium_label.setText(t("setup_project_medium", lang))
@@ -670,6 +741,7 @@ class SetupScreen(QWidget):
             button.setChecked(state.source == value)
             button.blockSignals(False)
 
+        self._refresh_profile()
         site = state.source == SOURCE_SITE
         self.depth_holder.setVisible(site)
         self.depth_note.setText(t("setup_depth_zero", self.lang))

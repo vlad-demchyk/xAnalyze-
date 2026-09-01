@@ -81,7 +81,9 @@ class ScanScreen(RunScreen):
             self._run_scan()
 
     def _run_scan(self) -> None:
-        target = self.query_one("#target", Input).value.strip()
+        from cli_impl.auditpass import unquote_target
+
+        target = unquote_target(self.query_one("#target", Input).value)
         if not target:
             self.status(self.tr("tui_need_target"))
             return

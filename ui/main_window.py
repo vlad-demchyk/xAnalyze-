@@ -308,13 +308,31 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self._update_audit_buttons_enabled()
 
     def _setup_shortcuts(self) -> None:
-        """Keyboard shortcuts for power users."""
+        """Keyboard shortcuts, and the keyboard itself.
+
+        The shortcuts were here for power users. The rest of this - a tab
+        order in reading order, a focus policy that includes buttons, a name
+        on every unlabelled control - is not a convenience: without it the
+        window cannot be operated without a mouse, and this tool reports
+        exactly that as a critical finding on other people's pages.
+        """
         # Esc = Cancel running analysis
         esc = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
         esc.activated.connect(self._on_cancel_clicked)
         # Ctrl+K / Cmd+K = Focus URL/path field
         focus_url = QShortcut(QKeySequence("Ctrl+K"), self)
         focus_url.activated.connect(self._focus_target_field)
+        # Ctrl+Return = start the run from anywhere, including from inside a
+        # text field, where plain Return means "I finished typing".
+        run = QShortcut(QKeySequence("Ctrl+Return"), self)
+        run.activated.connect(self._on_analyze_clicked)
+        run_enter = QShortcut(QKeySequence("Ctrl+Enter"), self)
+        run_enter.activated.connect(self._on_analyze_clicked)
+        # Ctrl+, is the settings shortcut on every desktop that has one.
+        settings = QShortcut(QKeySequence("Ctrl+,"), self)
+        settings.activated.connect(self._on_settings_clicked)
+        self._apply_keyboard_order()
+        self._apply_accessible_names()
 
     def _focus_target_field(self) -> None:
         """Focus the input field for the current source."""
@@ -354,6 +372,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
     def _sync_target_to_state(self, _text: str = "") -> None:
         self.app_state.set_target(self._current_target())
         self._detect_project()
+        self._refresh_run_plan()
         # `set_target` carries no signal, so the setup screen would not learn
         # that a file was chosen or dropped - and its drop zone is the one
         # place that shows the file's own name and size.
@@ -388,6 +407,68 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             # reason for the setup screen to fail to draw.
             self.app_state.set_project(None)
 
+    def _refresh_run_plan(self) -> None:
+        """What the current target asks the run to do, once per target.
+
+        Filesystem work, like `_detect_project` above and for the same
+        reason: it walks a directory looking for markers, so it runs when
+        something it reads has changed rather than on every repaint. The key
+        is the whole question - source, target and paired checkout - because
+        the same folder means one thing as a target and another as the
+        repository behind a site.
+        """
+        from analysis_modes import SOURCE_SITE
+
+        key = (self.app_state.source, self.app_state.target,
+               self.app_state.paired_repo)
+        if key == getattr(self, "_planned_key", None):
+            return
+        self._planned_key = key
+        import run_profile
+
+        try:
+            plan = run_profile.build(
+                self.app_state.target,
+                forced_url=self.app_state.source == SOURCE_SITE,
+                profile=self.app_state.project,
+                repo=self.app_state.paired_repo)
+        except OSError:
+            # An unreadable folder is the scan's problem to report, not a
+            # reason for the setup screen to fail to draw.
+            plan = None
+        self.app_state.set_run_plan(plan)
+        self._apply_run_plan(plan)
+        # `set_run_plan` is silent on purpose (see `AppState`), so the one
+        # surface that draws the plan is refreshed here, by the call that
+        # rebuilt it.
+        if getattr(self, "setup_screen", None) is not None:
+            self.setup_screen.refresh()
+
+    def _apply_run_plan(self, plan) -> None:
+        """Switch on what the target asks for - and only what nobody touched.
+
+        The window is where this is allowed to happen, because the window
+        shows the tick and the sentence under it before anything runs. The
+        CLI deliberately does not; see `cli_impl.prerun.profile`.
+        """
+        if plan is None:
+            return
+        touched = self.app_state.profile_touched
+        for item in plan.suggestions:
+            if item.option in touched or not plan.applies(item.option):
+                continue
+            if item.option == "web_parts":
+                self.app_state.set_web_parts(bool(item.value), by_person=False)
+            elif item.option == "devserver":
+                # The window's own spelling of `--devserver`: start the
+                # repository's server before the run. Only ticked, never
+                # started here - starting is still a button.
+                if not self.auto_devserver_check.isChecked():
+                    self.auto_devserver_check.blockSignals(True)
+                    self.auto_devserver_check.setChecked(True)
+                    self.auto_devserver_check.blockSignals(False)
+                    self.settings.auto_start_devserver = True
+
     def _sync_scope_to_state(self, _idx: int = 0) -> None:
         self.app_state.set_scope(self._repo_scope())
 
@@ -412,6 +493,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         # Switching *to* a folder with a path already typed is the other way
         # a folder becomes current, and the path itself did not change.
         self._detect_project()
+        self._refresh_run_plan()
 
     def _on_busy_changed(self, busy: bool) -> None:
         self.analyze_btn.setEnabled(not busy)
@@ -1577,6 +1659,79 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             self._account_cache = _UNASKED
             self._retranslate_choices()
 
+    #: The order a keyboard walks the window in, by attribute name.
+    #:
+    #: Qt's default is creation order, and the columns here are *built*
+    #: preview-first (the preview owns the width switcher and the stack the
+    #: other panels are pushed onto) while they are *read* findings-first -
+    #: which is stated in this file already and was true of the tab order
+    #: too, so Tab from the address field landed in the preview pane rather
+    #: than on Analyze. This is the reading order instead: say what to look
+    #: at, say what to look for, start, then walk the results.
+    KEYBOARD_ORDER = (
+        "mode_combo", "url_edit", "depth_spin", "repo_path_edit", "browse_btn",
+        "exclusions_btn", "scope_combo", "file_path_edit", "file_browse_btn",
+        "checks_combo", "advanced_toggle", "method_combo", "provider_combo",
+        "paired_repo_edit", "paired_repo_btn", "within_edit",
+        "sign_in_site_btn", "auto_devserver_check", "start_server_btn",
+        "analyze_btn", "cancel_btn", "settings_btn",
+        "flagged_list",
+    )
+
+    def _apply_keyboard_order(self) -> None:
+        """Chain the controls in reading order, and let every one take focus.
+
+        `QLineEdit` and `QComboBox` are focusable by default; a `QPushButton`
+        on macOS is **not** - Qt follows the platform, where Tab visits text
+        fields and lists only. That default is right for a Mac app whose
+        buttons are all one click away and wrong for a window whose main
+        action is a button, so the policy is set explicitly here.
+        """
+        previous = None
+        for name in self.KEYBOARD_ORDER:
+            widget = getattr(self, name, None)
+            if widget is None:
+                continue
+            widget.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            if previous is not None:
+                self.setTabOrder(previous, widget)
+            previous = widget
+
+    #: What a control is called for someone who cannot see it: attribute name
+    #: -> translation key. Anything with a visible label of its own is absent
+    #: on purpose - a screen reader would then say the name twice.
+    ACCESSIBLE_NAMES = {
+        "url_edit": "url_label_full",
+        "depth_spin": "depth_label_full",
+        "repo_path_edit": "repo_path_placeholder",
+        "file_path_edit": "tui_target_path",
+        "paired_repo_edit": "paired_repo_full",
+        "within_edit": "within_full",
+        "sign_in_site_btn": "sign_in_site_full",
+        "flagged_list": "flagged_list_header",
+        "mode_combo": "mode_label_full",
+        "checks_combo": "checks_label_full",
+        "method_combo": "method_label_full",
+        "provider_combo": "provider_label_full",
+        "scope_combo": "scope_label_full",
+    }
+
+    def _apply_accessible_names(self) -> None:
+        """Give every unlabelled control a name a screen reader can read.
+
+        This tool reports `control-name` as a critical finding on other
+        people's pages. Its own window had none: measured before this, zero
+        calls to `setAccessibleName` in the whole of `ui/`.
+        """
+        for name, key in self.ACCESSIBLE_NAMES.items():
+            widget = getattr(self, name, None)
+            if widget is None:
+                continue
+            text = t(key, self.lang)
+            if text and text != key:
+                widget.setAccessibleName(text)
+                widget.setAccessibleDescription(text)
+
     def _retranslate_ui(self) -> None:
         lang = self.lang
         self.setWindowTitle(t("app_title", lang))
@@ -1707,6 +1862,11 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self._apply_action_icons()
         self.status_bar.showMessage(t("status_idle", lang))
         self._reset_detail_panel()
+
+        # The names a screen reader announces are strings like any other,
+        # so they follow the interface language instead of being fixed at
+        # construction in whatever language that happened to be.
+        self._apply_accessible_names()
 
     def _on_breakpoint_clicked(self, chosen: str) -> None:
         """Show the preview at one width, or back at full width.
@@ -2151,11 +2311,21 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         return self.view_model.current_request()
 
     def _current_target(self) -> str:
+        """The target, as a person actually supplied it.
+
+        Dragging a folder in pastes it quoted or as a `file://` URL,
+        depending on where it was dragged from, and both used to arrive here
+        verbatim and fail as "path not found" with the quotes still in the
+        message. Normalised in one place, shared with the CLI - see
+        `cli_impl.auditpass.unquote_target`.
+        """
+        from cli_impl.auditpass import unquote_target
+
         if self.source == SOURCE_REPO:
-            return self.repo_path_edit.text().strip()
+            return unquote_target(self.repo_path_edit.text())
         if self.source == SOURCE_FILE:
-            return self.file_path_edit.text().strip()
-        return self.url_edit.text().strip()
+            return unquote_target(self.file_path_edit.text())
+        return unquote_target(self.url_edit.text())
 
     # ------------------------------------------- run state, owned elsewhere
     #
@@ -3297,6 +3467,9 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         """
         value = (text or "").strip()
         self.app_state.set_paired_repo(value)
+        # A checkout is half of what decides the run: an SPFx solution paired
+        # with a site is the one case where `--web-parts` means anything.
+        self._refresh_run_plan()
         if self.settings.last_paired_repo != value:
             self.settings.last_paired_repo = value
             self.settings.save()
