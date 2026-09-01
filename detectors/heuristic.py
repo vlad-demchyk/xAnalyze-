@@ -590,7 +590,57 @@ def _cliche_hits(text: str, language: str | None) -> list[str]:
         candidates = list(_COMPILED_CLICHES["en"])
         if language != "en":
             candidates = list(_COMPILED_CLICHES.get(language, [])) + candidates
-    return [phrase for phrase, pattern in candidates if pattern.search(text)]
+    spans = []
+    for phrase, pattern in candidates:
+        match = pattern.search(text)
+        if match:
+            spans.append((phrase, match.start(), match.end()))
+    return _longest_only(spans)
+
+
+def _longest_only(spans: list) -> list[str]:
+    """Drop a hit that is contained in another hit on the same text.
+
+    The lists hold both `seamless` and `seamless experience`, both
+    `a testament to` and `testament`, both `delve` and `delves` - fourteen
+    such pairs in English alone. One phrase in the copy then matched two
+    entries, and `combine_score` charged for both: a strong hit at 0.30 and
+    a weak one at 0.10 for the same three words, which is evidence counted
+    twice. It also read as two clichés in the report where the reader can
+    see one.
+
+    Measured 2026-09-01 on a live tourism site: five passages matched
+    `a testament to` **and** `testament`, scoring 0.57 where the one phrase
+    they contain is worth 0.46.
+
+    Compared by *span*, not by text: `ландшафт` inside
+    `інформаційний ландшафт` at the same place is one construction counted
+    twice, while the same word elsewhere in the passage is a second
+    occurrence and is kept.
+
+    **What this costs, measured rather than assumed.** Held-out recall goes
+    62.5% -> 60.0% (Ukrainian 60.0% -> 53.3%, English and Italian
+    unchanged), with false alarms still 0/359. Four Ukrainian positives were
+    crossing the reporting line on one phrase charged twice - 0.30 for
+    `розкрийте повний потенціал` plus 0.10 for the `повний потенціал`
+    inside it - and that is not detection, it is an accounting error that
+    happened to help. Recovering them by lowering the threshold is not
+    available either: the sweep goes from 0 false alarms at 0.35 to 6 at
+    0.30, and a wrong label is worse than a missing one here.
+
+    Longest wins rather than "first in the list": the longer entry is the
+    one that was written about this construction, and the shorter is the
+    fragment it happens to contain.
+    """
+    kept = []
+    for phrase, start, end in spans:
+        covered = any(
+            other != phrase and other_start <= start and end <= other_end
+            for other, other_start, other_end in spans)
+        if covered:
+            continue
+        kept.append(phrase)
+    return kept
 
 
 class HeuristicDetector(Detector):
