@@ -525,6 +525,22 @@ class ReportReadability(unittest.TestCase):
         html = render_html(self._model(pages=200), lang="en")
         self.assertIn("Pages examined (200)", html)
 
+    def test_one_address_is_one_row_in_the_styled_report(self):
+        """`report.model.page_index` is the owner; this is the other reader
+        of it. A page is several documents, and the index is a list of
+        pages."""
+        from report.model import page_index
+
+        model = self._model(pages=0)
+        model.pages = page_index([
+            {"source": "https://example.com/a", "findings_count": 2, "error": ""},
+            {"source": "https://example.com/a", "findings_count": 1, "error": ""},
+            {"source": "https://example.com/b", "findings_count": 1, "error": ""},
+        ])
+        html = render_html(model, lang="en")
+        self.assertIn("Pages examined (2)", html)
+        self.assertEqual(html.count("https://example.com/a"), 1)
+
     def test_no_page_index_when_nothing_was_crawled(self):
         self.assertNotIn('class="pages"', render_html(self._model(), lang="en"))
 

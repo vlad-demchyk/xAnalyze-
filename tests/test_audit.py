@@ -431,6 +431,18 @@ class ImageModernFormat(unittest.TestCase):
         self.assertEqual(issues('<img src="data:image/png;base64,abc" alt="Icon">',
                                 "image-modern-format", category=audit.PERFORMANCE), [])
 
+    def test_the_reported_address_keeps_its_case(self):
+        """Matching is case-insensitive; the address is not.
+
+        Measured on a live WordPress theme: `logo-Barra-FVG.png` was reported
+        as `logo-barra-fvg.png`, which is a 404 on any case-sensitive server -
+        the reader is sent to a file that does not exist.
+        """
+        found = issues('<img src="/assets/logo-Barra-FVG.PNG" alt="Logo">',
+                       "image-modern-format", category=audit.PERFORMANCE)
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0].details["src"], "/assets/logo-Barra-FVG.PNG")
+
 
 if __name__ == "__main__":
     unittest.main()

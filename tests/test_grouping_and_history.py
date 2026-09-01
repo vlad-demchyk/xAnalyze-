@@ -307,6 +307,26 @@ class BriefingPageIndex(unittest.TestCase):
     def test_the_full_count_survives_the_truncation(self):
         self.assertIn("Pages examined (200)", self._render(200))
 
+    def test_one_address_is_one_row(self):
+        """A page is several documents - its own rules, its headers, an
+        image's provenance. Measured on a live site: a four-page crawl was
+        listed as nine pages, the home page three times with three counts."""
+        from cli_impl.reports import _report_markdown
+
+        payload = self._payload(1)
+        payload["files"] = [
+            {"source": "https://example.com/page-0", "findings": [{}, {}],
+             "error": ""},
+            {"source": "https://example.com/page-0", "findings": [{}],
+             "error": ""},
+            {"source": "https://example.com/other", "findings": [{}],
+             "error": ""},
+        ]
+        text = _report_markdown(payload, "en")
+        self.assertIn("Pages examined (2)", text)
+        self.assertEqual(text.count("| https://example.com/page-0 |"), 1)
+        self.assertIn("| https://example.com/page-0 | 3 |", text)
+
     def test_a_page_that_failed_is_listed_before_the_rest(self):
         from cli_impl.reports import _report_markdown
 

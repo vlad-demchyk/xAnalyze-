@@ -444,7 +444,21 @@ def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
     session = requests.Session()
     session.headers.update({"User-Agent": USER_AGENT})
 
-    while queue and (config.max_pages == 0 or len(results) < config.max_pages):
+    #: Pages actually read as HTML. The budget counts these rather than
+    #: `len(results)`, because a result is also recorded for an address that
+    #: turned out to be a file: a link to a `.jpg` or a `.pdf` is fetched,
+    #: found not to be HTML, and kept as a diagnostic. Measured on a live
+    #: WordPress site: 25 of a 250-page budget went to uploads, so the
+    #: person who asked for 250 pages got 225 and no way to see why.
+    pages_read = 0
+    #: What stops a media-heavy site from spending the whole walk on files
+    #: nobody asked for. Three fetches per page of budget: the same site had
+    #: one file per ten pages, so this is far above real sites and still a
+    #: ceiling. 0 (unlimited pages) keeps no ceiling either.
+    fetch_ceiling = config.max_pages * 3 if config.max_pages else 0
+
+    while queue and (config.max_pages == 0 or pages_read < config.max_pages) \
+            and (fetch_ceiling == 0 or len(results) < fetch_ceiling):
         url, depth = queue.popleft()
         if url in visited:
             continue
@@ -542,6 +556,7 @@ def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
             PageResult(url=url, depth=depth, blocks=blocks, raw_html=html,
                        diagnostics=diagnostics, links=links)
         )
+        pages_read += 1
 
         if depth < config.max_depth:
             for link in links:
@@ -552,7 +567,7 @@ def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
                 queue.append((link.url, depth + 1))
 
     if walk is not None:
-        walk.pages_read = len(results)
+        walk.pages_read = pages_read
         walk.limit = config.max_pages
         # What is still queued, minus anything already visited: the queue
         # holds links as they were found, and a page linked from three

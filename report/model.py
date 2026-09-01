@@ -39,6 +39,28 @@ SEVERITY_RANK = {
 }
 
 
+def page_index(rows) -> list:
+    """One row per address, for the page index both reports print.
+
+    A page produces several documents - its own rules, its response headers,
+    the provenance of an image on it - and the index is a reader's list of
+    *pages*. Printed straight from the documents it showed the same URL two
+    or three times with different counts, which reads as three pages that
+    disagree rather than one page counted in parts.
+
+    Rows are `{"source", "findings_count", "error"}`; counts add up and the
+    first error on an address is the one kept.
+    """
+    merged = {}
+    for row in rows:
+        source = row.get("source", "")
+        into = merged.setdefault(source, {"source": source,
+                                          "findings_count": 0, "error": ""})
+        into["findings_count"] += int(row.get("findings_count") or 0)
+        into["error"] = into["error"] or (row.get("error") or "")
+    return list(merged.values())
+
+
 @dataclass
 class ReportFinding:
     """One row in the report, whichever pass produced it."""

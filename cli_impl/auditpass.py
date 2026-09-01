@@ -58,11 +58,36 @@ def _audit_at_widths(urls, options, sizes, progress=None, markup=None) -> list:
 
     results = []
     todo = []
-    for url in urls:
+    #: Addresses already answered from the cache, so a repeat is filled from
+    #: here rather than looked up (and counted) a second time.
+    seen_hits = {}
+    #: Which index already asked for this url. The audit returns more than
+    #: one document per page - the page's own rules, the response headers,
+    #: an image's provenance - and this pass is driven by documents, so a
+    #: 250-page crawl arrived here as 474 loads. Measured on a live
+    #: WordPress site: every one of the 250 addresses appeared at least
+    #: twice, which is half the browser pass, and the browser pass is the
+    #: expensive half of an audit (12 s per page at four widths).
+    #:
+    #: The cache below cannot save it: every lookup happens before the first
+    #: render, so the second copy of a url is already in `todo` by the time
+    #: the first one is answered. So the duplicate is resolved here, and the
+    #: answer is *shared*, not recomputed.
+    first_index = {}
+    for index, url in enumerate(urls):
+        if url in first_index or url in seen_hits:
+            # A repeat asks the cache nothing: the lookup is keyed on the
+            # markup, so the answer would be the same one, and counting it
+            # again made the cache report "9/9 pages" for a four-page site.
+            results.append(None)
+            continue
         stored = cache.get(markup[url], url) if (cache and url in markup) else None
         results.append(stored)
-        if stored is None:
-            todo.append(url)
+        if stored is not None:
+            seen_hits[url] = stored
+            continue
+        first_index[url] = index
+        todo.append(url)
 
     if todo:
         driver.ensure_headless_application()
@@ -72,7 +97,7 @@ def _audit_at_widths(urls, options, sizes, progress=None, markup=None) -> list:
         try:
             done = 0
             for index, url in enumerate(urls):
-                if results[index] is not None:
+                if results[index] is not None or first_index.get(url) != index:
                     continue
                 done += 1
                 if progress:
@@ -89,6 +114,17 @@ def _audit_at_widths(urls, options, sizes, progress=None, markup=None) -> list:
                     cache.put(markup[url], audited)
         finally:
             runner.close()
+
+    # Every other document naming the same address gets the answer that was
+    # already paid for. After the loop rather than inside it, so a url that
+    # only repeats later is covered too.
+    for index, url in enumerate(urls):
+        if results[index] is not None:
+            continue
+        if url in seen_hits:
+            results[index] = seen_hits[url]
+        elif first_index.get(url) is not None:
+            results[index] = results[first_index[url]]
 
     if cache is not None:
         cache.save()
@@ -124,7 +160,8 @@ def _run_browser_pass(result, suppressions, args=None) -> None:
         print(f"# browser pass skipped: {reason}", file=sys.stderr)
         return
 
-    targets = [d for d in result.documents if not d.error]
+    targets = [d for d in result.documents
+               if not d.error and _is_renderable(d.source)]
     if not targets:
         return
 
@@ -135,15 +172,20 @@ def _run_browser_pass(result, suppressions, args=None) -> None:
     )
     sizes = _chosen_breakpoints(args) if args is not None else ()
     where = (f" at {len(sizes)} widths" if sizes else "")
-    print(f"# browser pass over {len(targets)} page(s){where}", file=sys.stderr)
     # The document is still keyed by its own source (a path, in file mode), so
     # the findings land back on the row the user recognises rather than on a
     # `file://` URL they never typed.
     urls = [_browser_url(d.source) for d in targets]
+    # Addresses, not documents. Several documents describe one page - the
+    # page's rules, its response headers - and counting documents told the
+    # reader a four-page site was nine loads and then stopped at "4/9",
+    # which reads as a crawl that gave up.
+    total = len(dict.fromkeys(urls))
+    print(f"# browser pass over {total} page(s){where}", file=sys.stderr)
 
     def _show(page_no: int, url: str) -> None:
         widths = f" at {len(sizes)} width(s)" if sizes else ""
-        print(f"# [browser {page_no}/{len(urls)}{widths}] {url}",
+        print(f"# [browser {page_no}/{total}{widths}] {url}",
               file=sys.stderr, flush=True)
 
     # The markup the crawl already received, keyed by the browser url the
@@ -156,9 +198,17 @@ def _run_browser_pass(result, suppressions, args=None) -> None:
     audits = _audit_at_widths(urls, options, sizes, progress=_show,
                               markup=markup)
     by_url = {a.url: a for a in audits}
+    #: Addresses whose browser findings have already been folded in. One
+    #: page is several documents, and merging the same audit into each of
+    #: them counted every browser finding two or three times: measured on a
+    #: live site, `perf-page-weight` for the home page appeared three times
+    #: in one report, and the run's total was inflated by the same factor.
+    #: The first document for an address is the page's own, which is where a
+    #: reader expects the browser's answer to land.
+    merged_urls = set()
     for document, url in zip(targets, urls):
         page_audit = by_url.get(url)
-        if page_audit is None:
+        if page_audit is None or url in merged_urls:
             continue
         if page_audit.error:
             print(f"# {document.source}: {page_audit.error}", file=sys.stderr)
@@ -172,6 +222,7 @@ def _run_browser_pass(result, suppressions, args=None) -> None:
         # such row, and a static finding the browser disproved must not reach
         # the merge at all. See `browser.merge_into_document`.
         browser_mod.merge_into_document(document, page_audit)
+        merged_urls.add(url)
     # Again, because the findings the browser brought arrived after the crawl
     # attributed the ones it had. A second engine's finding is owned by
     # whoever emitted the element, exactly as the first engine's is.
@@ -318,6 +369,27 @@ def _crawl_maybe_rendering(target: str, config, progress_cb=None):
         return crawl(target, config, progress_cb=progress_cb)
     with driver.html_renderer() as render:
         return crawl(target, config, render=render, progress_cb=progress_cb)
+
+
+#: Suffixes a document can carry that are not a page. The media pass reports
+#: an image's provenance as a document of its own (`audit/media.py`), and the
+#: source of that document is the image address - so on a photo-heavy site
+#: the browser pass was opening `.jpg` and `.pdf` in a page engine and running
+#: axe against whatever the browser wrapped them in. Measured on a live
+#: WordPress site: 50 of 502 documents, each at four widths.
+_NOT_A_PAGE = (".jpg", ".jpeg", ".png", ".webp", ".avif", ".gif", ".bmp",
+               ".svg", ".pdf", ".mp4", ".webm", ".mp3", ".zip")
+
+
+def _is_renderable(source: str) -> bool:
+    """Is this document something a browser should open as a page?
+
+    Asked of the address, because that is all a document carries here. A
+    query string means the address does not end in its own suffix, and such
+    a url is left in: it is far likelier a page than a bare `.jpg`.
+    """
+    address = str(source or "").split("?", 1)[0].split("#", 1)[0].lower()
+    return not address.endswith(_NOT_A_PAGE)
 
 
 def _browser_url(source: str) -> str:

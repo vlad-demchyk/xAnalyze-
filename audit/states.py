@@ -46,7 +46,11 @@ STATE_RULES = {
     "form-error-not-associated": SERIOUS,
 }
 
-STATE_SCRIPT = """
+# A raw string: everything below is JavaScript, and its backslashes belong to
+# the browser's regexes (`/\s+/`) and to its own escaping (`\\"`). Read as
+# Python escapes they are a `SyntaxWarning` on 3.12+ and an error later, and
+# `\s` in a Python string is not `\s` in the regex the browser receives.
+STATE_SCRIPT = r"""
 (function() {
   var FOCUSABLE = 'a[href],button,input,select,textarea,summary,[tabindex]';
   var findings = [];

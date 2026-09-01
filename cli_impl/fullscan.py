@@ -837,11 +837,13 @@ def _styled_report_model(audit_result, content_findings: list, lang: str,
         return None
 
     if audit_result:
-        model.pages = [
+        from report.model import page_index
+
+        model.pages = page_index(
             {"source": doc.source, "findings_count": len(doc.issues),
              "error": doc.error or ""}
             for doc in audit_result.documents
-        ]
+        )
 
     style_findings, typo_findings = _split_style_typography(content_findings)
     if style_findings:
@@ -1454,9 +1456,14 @@ def _run_phases_body(args, state, folder, timings, target, lang, is_url, is_page
         if state is not None:
             state.start("documents")
         try:
+            # Addresses, not documents: a page is audited as several
+            # documents (its own rules, its response headers, an image's
+            # provenance), and "9 pages or files examined" for a four-page
+            # crawl is the same miscount the page index used to print.
             _write_run_documents(
                 folder, target, timings, written.get("payload"), combined,
-                len(audit_result.documents) if audit_result else 0)
+                len({d.source for d in audit_result.documents})
+                if audit_result else 0)
             if state is not None:
                 state.done("documents", artifacts=[
                     p for p in (folder.timings, folder.changes) if p.exists()])

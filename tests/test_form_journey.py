@@ -93,6 +93,21 @@ class TheScriptStillTouchesNothing(unittest.TestCase):
             with self.subTest(call=forbidden):
                 self.assertNotIn(forbidden, STATE_SCRIPT)
 
+    def test_the_javascript_reaches_the_browser_as_written(self):
+        """The script is a Python string full of JavaScript escapes.
+
+        Held here because the two languages disagree silently. A plain
+        triple-quoted string turned the selector escape into a bare quote,
+        so the browser was told to replace a quote with a quote - a no-op
+        where a CSS attribute selector needs the backslash - and the regex
+        `\\s` in the same string is a SyntaxWarning on 3.12+ and an error
+        later. Both are fixed by the string being raw, and both are checked
+        here on the text the browser actually receives.
+        """
+        selector_escape = "id.replace(/\"/g, '" + chr(92) + chr(92) + "\"')"
+        self.assertIn(selector_escape, STATE_SCRIPT)
+        self.assertIn("/" + chr(92) + "s+/", STATE_SCRIPT)
+
     def test_validity_is_read_and_not_asked_for(self):
         """`checkValidity()` fires an `invalid` event the page can act on.
         The property is the same answer with no event behind it."""

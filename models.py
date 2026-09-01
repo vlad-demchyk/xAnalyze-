@@ -143,7 +143,10 @@ class CrawlDiagnostics:
     found and never fetched are gone, and "30 pages, no findings" reads as a
     verdict on the site rather than on the thirty.
     """
-    #: Pages actually fetched.
+    #: Pages actually read as HTML. Not every fetch: an address that turns
+    #: out to be a `.jpg` or a `.pdf` is recorded as a result too, and
+    #: counting those here made a crawl of 225 pages plus 25 uploads report
+    #: itself as 250 pages read.
     pages_read: int = 0
     #: The ceiling this crawl ran under; 0 means there was none.
     limit: int = 0

@@ -461,20 +461,27 @@ def _report_markdown(payload: dict, lang: str) -> str:
     # informing. The full count stays in the heading, because truncating the
     # list must not truncate the fact.
     if files:
+        # One row per address, by the same owner the styled report uses:
+        # `payload["files"]` is one entry per *document*, which is right for
+        # a JSON consumer and wrong for a reader's index. See
+        # `report.model.page_index`.
+        from report.model import page_index
+
         ranked = sorted(
-            files,
-            key=lambda f: (bool(f.get("error")), -len(f.get("findings", []))))
+            page_index({"source": f.get("source", "") or f.get("url", ""),
+                        "findings_count": len(f.get("findings", [])),
+                        "error": f.get("error", "")} for f in files),
+            key=lambda f: (bool(f.get("error")), -f["findings_count"]))
         out += [
-            f"## Pages examined ({len(files)})",
+            f"## Pages examined ({len(ranked)})",
             "",
             "| page or file | findings |",
             "|---|---|",
         ]
         for f in ranked[:_PAGES_LISTED]:
-            url = f.get("source", "") or f.get("url", "")
             error = f.get("error", "")
-            count = f"*error: {error}*" if error else len(f.get("findings", []))
-            out.append(f"| {url} | {count} |")
+            count = f"*error: {error}*" if error else f["findings_count"]
+            out.append(f"| {f['source']} | {count} |")
         rest = len(ranked) - _PAGES_LISTED
         if rest > 0:
             out.append(f"| *and {rest} more* | |")

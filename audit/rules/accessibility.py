@@ -1206,7 +1206,12 @@ class ImageModernFormat(AccessibilityRule):
     def check(self, document, context) -> list:
         issues = []
         for tag in document.find_all("img"):
-            src = (tag.get("src") or "").lower()
+            raw_src = tag.get("src") or ""
+            # Lower-cased for matching only. The address itself is reported
+            # as written: a path is case-sensitive on most servers, and a
+            # report that hands back `logo-barra-fvg.png` for
+            # `logo-Barra-FVG.png` sends the reader to a 404.
+            src = raw_src.lower()
             if not src:
                 continue
             # Skip data URIs and SVGs
@@ -1225,7 +1230,7 @@ class ImageModernFormat(AccessibilityRule):
                     rule_id=self.id, severity=self.severity,
                     category=self.category, selector=selector, line=line,
                     snippet=snippet_of(tag), source=context.source,
-                    details={"src": src[:120]},
+                    details={"src": raw_src[:120]},
                 ))
         return issues
 
