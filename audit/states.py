@@ -354,9 +354,40 @@ STATE_SCRIPT = r"""
   var navLinks = document.querySelectorAll('nav a, header a').length;
   if (navLinks > 8) {
     var first = candidates[0];
+    // Three ways to recognise a skip link, and the word list is the last of
+    // them. It used to be the only one, in five languages, matched against
+    // the link's text: measured on a live trilingual site, the German page
+    // was reported as having no skip link while its own skip link -
+    // `<a id="palmanova-skip-to-content" class="…skiplink-link"
+    // href="#main-container">Zum Inhalt springen</a>` - was quoted in the
+    // finding. A page is not missing a skip link because the tool speaks
+    // fewer languages than the page does.
+    //
+    // So the structural signals come first and hold in any language: the
+    // element says `skip` in its own id or class, or it points at the
+    // document's main landmark. The words stay as a fallback for a link
+    // that has neither.
     var hasSkip = Array.prototype.slice.call(document.querySelectorAll('a[href^="#"]'))
       .slice(0, 5)
-      .some(function(a) { return /skip|jump|перейти|content|main|vai/i.test(a.textContent || ''); });
+      .some(function(a) {
+        var name = (a.getAttribute('id') || '') + ' ' + (a.className || '');
+        if (/skip/i.test(name)) return true;
+        var href = a.getAttribute('href') || '';
+        if (href.length > 1) {
+          var target = null;
+          try { target = document.querySelector(href); } catch (e) { target = null; }
+          if (target && (target.tagName === 'MAIN'
+                         || target.getAttribute('role') === 'main'
+                         || target.querySelector('main, [role="main"]'))) {
+            return true;
+          }
+          if (/^#(main|content|inhalt|contenu|contenido|contenuto|conteudo)/i.test(href)) {
+            return true;
+          }
+        }
+        var label = (a.textContent || '') + ' ' + (a.getAttribute('aria-label') || '');
+        return /skip|jump|перейти|content|main|vai|inhalt|springen|contenu|contenido|contenuto|saltar|aller/i.test(label);
+      });
     if (!hasSkip) record('no-skip-link', first, {navLinks: navLinks});
   }
 

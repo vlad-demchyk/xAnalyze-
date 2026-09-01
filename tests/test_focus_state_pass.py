@@ -28,6 +28,39 @@ import unittest
 from audit.states import STATE_RULES, STATE_SCRIPT, issues_from_states
 
 
+class TheSkipLinkCheckIsNotWordMatching(unittest.TestCase):
+    """A page is not missing a skip link because the tool speaks fewer
+    languages than the page does.
+
+    The check took the first five in-page anchors and matched their text
+    against `skip|jump|перейти|content|main|vai`. Measured 2026-09-01 on a
+    live trilingual site: the German page was reported as having no skip
+    link, and the finding quoted that page's own skip link -
+    `<a id="palmanova-skip-to-content" class="…skiplink-link"
+    href="#main-container">Zum Inhalt springen</a>` - as the element it was
+    about. Whether it fires at all depends on what the other four anchors
+    happen to say, which is a flaky answer as well as a wrong one.
+
+    Two structural signals now come first, and they hold in any language:
+    the element says `skip` in its own id or class, or its `href` points at
+    the document's main landmark.
+    """
+
+    def test_the_element_s_own_name_is_read(self):
+        self.assertIn("if (/skip/i.test(name)) return true;", STATE_SCRIPT)
+        self.assertIn("a.getAttribute('id')", STATE_SCRIPT)
+
+    def test_the_target_being_the_main_landmark_is_enough(self):
+        self.assertIn("target.tagName === 'MAIN'", STATE_SCRIPT)
+        self.assertIn("target.getAttribute('role') === 'main'", STATE_SCRIPT)
+
+    def test_the_word_list_is_a_fallback_and_reads_the_accessible_name(self):
+        self.assertIn("a.getAttribute('aria-label')", STATE_SCRIPT)
+        for word in ("inhalt", "springen", "contenu", "contenido", "saltar"):
+            with self.subTest(word):
+                self.assertIn(word, STATE_SCRIPT)
+
+
 class TheScriptChecksItCanMeasure(unittest.TestCase):
     def test_it_asks_whether_the_document_has_focus(self):
         self.assertIn("document.hasFocus()", STATE_SCRIPT)
