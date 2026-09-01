@@ -134,7 +134,7 @@ def _from_engine(issue, details: dict, lang: str) -> IssueExplanation:
     description = (details.get("description") or "").strip()
 
     explanation = IssueExplanation(
-        title=_one_line(title),
+        title=_flatten(title),
         found=t("a11y_engine_found", lang, engine=engine,
                 rule=details.get("rule") or details.get("code") or issue.rule_id),
         why=description or "",
@@ -149,9 +149,30 @@ def _from_engine(issue, details: dict, lang: str) -> IssueExplanation:
     return explanation
 
 
-def _one_line(text: str, limit: int = 120) -> str:
-    """One line for a list row: engine text is sometimes a paragraph."""
-    flat = " ".join(str(text).split())
+def _flatten(text: str) -> str:
+    """One line, whole. Engine text is sometimes a paragraph; a paragraph
+    with its newlines removed is still the whole sentence."""
+    return " ".join(str(text).split())
+
+
+#: What a *list row* can show. A row is one line of a fixed width, so it
+#: has to end somewhere.
+ROW_LIMIT = 120
+
+
+def one_line(text: str, limit: int = ROW_LIMIT) -> str:
+    """Clip for a surface that has one line to draw in.
+
+    Lives here, and is called by the surfaces that need it, because clipping
+    is a property of the *view* and not of the explanation. It used to happen
+    inside `render`, which meant the styled report - a document with a whole
+    page width and no reason to abbreviate anything - printed engine
+    sentences ending in an ellipsis, and the reader could not find out what
+    the rest of the sentence said from any surface at all. The window's list
+    delegate elides at draw time (`ui/widgets.py`), so it needs nothing; the
+    CLI prints a terminal line, so it calls this.
+    """
+    flat = _flatten(text)
     return flat if len(flat) <= limit else flat[:limit - 1] + "…"
 
 

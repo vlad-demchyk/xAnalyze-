@@ -306,7 +306,7 @@ def cmd_audit(args) -> int:
     step, not because the two analyses share code — they do not.
     """
     import audit
-    from audit.explanations import render, summary_line
+    from audit.explanations import one_line, render, summary_line
     from i18n.translations import t
 
     # Built before the crawl so a missing sign-in fails immediately, rather
@@ -474,7 +474,7 @@ def cmd_audit(args) -> int:
                 location = f"line {issue.line}" if issue.line else issue.selector[-60:]
                 owned = (f"  <- {t('a11y_owned_marker', lang, platform=issue.owner)}"
                          if issue.owner else "")
-                print(f"  [{issue.severity}] {explanation.title}  ({location}){owned}")
+                print(f"  [{issue.severity}] {one_line(explanation.title)}  ({location}){owned}")
                 print(f"      {explanation.found}")
                 print(f"      {_wrap(explanation.why)}")
                 print(f"      fix: {_wrap(explanation.fix)}")

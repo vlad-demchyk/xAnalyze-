@@ -30,6 +30,14 @@ COLLECT_NAME = "xanalyze-cli"
 
 datas = [
     (str(ROOT / "corpus" / "labelled.jsonl"), "corpus"),
+    # Both halves of the palette. Shipping only the shared token file left
+    # every bundle - the CLI's styled report included - painting in the
+    # xFormat *web* colours while the source tree painted in XAnalyze's:
+    # #e5484d against #c0564f for the same severity, in the same product.
+    # `ui.tokens.overlay_file` degrades to the shared file when the overlay
+    # is missing, so this failed silently and looked deliberate.
+    (str(ROOT / "ui" / "design" / "xformat-tokens.css"), "ui/design"),
+    (str(ROOT / "ui" / "design" / "xanalyze-desktop.css"), "ui/design"),
     (str(ROOT / "audit" / "vendor" / "axe.min.js"), "audit/vendor"),
     (str(ROOT / "audit" / "vendor" / "HTMLCS.js"), "audit/vendor"),
     (str(ROOT / "audit" / "vendor" / "axe-LICENSE.txt"), "audit/vendor"),

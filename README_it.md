@@ -268,9 +268,20 @@ xanalyze fullscan https://example.com --json > run.json
 
 Il report raggruppa lo stesso problema e mantiene tutte le posizioni. Gli identificatori dinamici dei framework vengono normalizzati solo negli attributi identificativi. `changes.md` confronta le esecuzioni; un numero minore di risultati può dipendere da un crawl più breve.
 
+Il report è disegnato con la palette di XAnalyze, quindi una gravità ha un solo colore qui, nella finestra e nella TUI. Solo due sistemi di colore portano significato, e nessun altro:
+
+* **Gli elementi sono colorati per ruolo.** Il markup citato è evidenziato tag per tag - landmark, controllo interattivo, contenitore di raggruppamento, media, contenuto testuale, metadati del documento - con una legenda stampata una volta sola e limitata ai ruoli effettivamente presenti. Sei ruoli invece di un colore per ogni nome di tag: una tinta che significa «questo è un controllo» si impara, l'hash di un nome no.
+* **Rosso e verde sono la direzione del diff, e nient'altro.** Il markup trovato e il markup come dovrebbe essere sono segnati `−` e `+` e colorati di conseguenza; la prosa «come correggere» porta lo stesso verde, perché è la stessa affermazione a parole.
+
+Ogni rilievo dichiara inoltre la propria identità tecnica su una riga - id della regola, motore, elemento, quanti motori concordano, in quanti punti è stato trovato - così una riga si può cercare, silenziare o confrontare con l'esecuzione precedente partendo dalla pagina stampata. Nulla nel documento è troncato con i puntini: la frase di un motore è stampata per intero, e così il nome di una regola in classifica.
+
 ## Interfacce
 
 La GUI offre controlli per target, tipo di analisi, detector, scope, profondità, breakpoint, lingua e account. I risultati includono elenco, anteprima, dettagli, correzioni ed esportazione. Le correzioni meccaniche sono selezionate in automatico, le bozze del modello richiedono revisione.
+
+La prima scheda, **Che cosa guardiamo**, dice che cosa è risultata la cartella scelta. Un progetto viene identificato dai propri file marcatori, e ciò che è decide che cosa considerare codice di terzi: ora la finestra applica quelle esclusioni come `xanalyze audit` ha sempre fatto - la stessa cartella WordPress produceva centinaia di rilievi nel core di terze parti dalla finestra e nessuno dalla CLI. Non accade in silenzio. La scheda nomina lo stack, conta i percorsi che salterà, conserva il file marcatore che ha provato ciascuno e offre **Analizzare anche quelli** con un clic, perché un profilo è una prova di proprietà, non una certezza.
+
+La stessa scheda porta **Questi documenti sono**, cioè `--medium` nella finestra. Di default si legge dal markup, il che è quasi sempre corretto; indicalo a mano per un'email che non ha né namespace Outlook né merge tag. Con `email` i controlli solo-browser (canonical, Open Graph, dati strutturati, skip link, landmark, WebP) vengono saltati, quelli di accessibilità no: `image-alt`, `control-name`, `table-headers`, contrasto e lingua sono reali in un client di posta quanto in un browser.
 
 Eseguire `xanalyze` senza argomenti apre la TUI con Scan, Audit, Full Scan, Reports, Settings, Update e Uninstall. Navigazione: frecce, tasti numerici, `Tab`, `Esc`, `q`.
 

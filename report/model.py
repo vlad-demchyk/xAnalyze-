@@ -76,6 +76,17 @@ class ReportFinding:
     #: and a second engine corroborated; the number the JSON already carried
     #: and the printed report did not.
     agreement: int = 1
+    #: The engine's own identifier for the check, e.g. `axe:button-name`.
+    #: Printed as-is beside the engine name: it is what a reader searches
+    #: for, what a suppression list names, and what two runs are compared
+    #: on. It was in the JSON and nowhere in the document a person reads.
+    rule_id: str = ""
+    #: The HTML element this finding is about, lowercased, or `""` when the
+    #: finding is not about one (a passage of prose, a response header, a
+    #: page-level rule). Read off the markup the engine quoted rather than
+    #: guessed from the selector - see `report.markup.element_of` - and used
+    #: to ink the finding by role.
+    element: str = ""
 
     @property
     def severity_rank(self) -> int:
@@ -110,11 +121,17 @@ class ReportFinding:
         and the human-facing half was the one inflating. The audit-facing
         half had been protected against exactly this since the function was
         written.
+
+        The rule id joins it now that the document *prints* the rule id.
+        Two checks can produce the same sentence - `axe` and HTML_CodeSniffer
+        both say a contrast is too low - and a group that merged them would
+        show one id above occurrences the other found, which is a printed
+        fact that is wrong for half its rows.
         """
         from duplicates import mask_generated_ids
 
-        return (self.category, self.severity, self.title, self.found,
-                self.why, self.fix,
+        return (self.category, self.severity, self.rule_id, self.title,
+                self.found, self.why, self.fix,
                 mask_generated_ids(" ".join((self.snippet or "").split())),
                 self.replacement, self.engine, self.wcag)
 
@@ -290,6 +307,7 @@ def from_accessibility(result, lang: str = "uk") -> ReportModel:
     reads in the styled report matches every other surface exactly.
     """
     from audit.explanations import render
+    from report.markup import element_of
 
     findings: list[ReportFinding] = []
     for document in result.documents:
@@ -314,6 +332,8 @@ def from_accessibility(result, lang: str = "uk") -> ReportModel:
                 wcag=explanation.wcag,
                 owner=getattr(issue, "owner", ""),
                 agreement=(issue.details or {}).get("agreement", 1),
+                element=element_of(issue.snippet, issue.selector),
+                rule_id=issue.rule_id,
             ))
     return ReportModel(meta=ReportMeta(target=result.root, mode=f"audit-{result.mode}"),
                        findings=findings)

@@ -52,39 +52,50 @@ class ShadowTokens(unittest.TestCase):
         self.assertEqual(palette.shadow_blur, 0)
 
 
-class TheReportIsNotTheWindow(unittest.TestCase):
-    """A report is a document, not the app that made it.
+class TheReportIsPaintedInTheProductsOwnPalette(unittest.TestCase):
+    """One product, one set of colours - the design bundle's.
 
-    The desktop overlay tints the paper off-white and mutes every status hue.
-    Both are right in a window that also has a dark sheet, and wrong on a
-    page that gets printed or sent to someone - the design bundle says so in
-    its own words, "the paper stays white" (artboard 3h).
+    This class used to say the opposite, and pinned the report to the plain
+    xFormat web palette on the argument that a report is paper while the
+    desktop overlay is a screen decision. The argument does not survive
+    looking at the bundle: the overlay *is* XAnalyze's palette, the bundle
+    draws the report itself in it (artboard 3h, down to the severity dots),
+    and its sheet is a paper tone rather than a screen one. What the old
+    arrangement actually produced was one severity in two different reds - the
+    window's #c0564f and the web's #e5484d - depending on which surface a
+    person happened to be looking at.
 
-    This was a real regression, not a hypothetical: the overlay went in and
-    silently repainted every HTML and PDF report with it, because
-    `report/template.py` reads the same `palettes()` the window does.
+    What was right in the old class and is kept: this is checked at the call
+    site, because the two palettes are one keyword apart and the wrong one
+    still renders a perfectly plausible document.
     """
 
-    def test_the_paper_stays_white(self):
-        self.assertEqual(tokens.palettes(overlay=False)["light"].bg, "#ffffff")
-
-    def test_the_window_and_the_report_do_not_share_a_palette(self):
-        window = tokens.palettes()["light"]
-        report = tokens.palettes(overlay=False)["light"]
-        for field in ("bg", "page_bg", "error", "amber"):
-            with self.subTest(token=field):
-                self.assertNotEqual(getattr(window, field),
-                                    getattr(report, field))
-
-    def test_the_report_generator_asks_for_the_plain_palette(self):
-        """Checked at the call site, because the two palettes are only one
-        keyword apart and the wrong one still renders."""
+    def test_the_report_generator_asks_for_the_design_bundle_palette(self):
         import inspect
 
         from report import template
 
         source = inspect.getsource(template.render_html)
-        self.assertIn("palettes(overlay=False)", source)
+        self.assertIn("palettes(overlay=True)", source)
+
+    def test_the_sheet_it_prints_on_is_still_paper(self):
+        """The one property the old reasoning was protecting. The overlay's
+        surface is a warm near-white, not a screen grey: light enough to be
+        paper, which is what a printed page has to be."""
+        sheet = tokens.palettes(overlay=True)["light"].bg
+        red, green, blue = (int(sheet[i:i + 2], 16) for i in (1, 3, 5))
+        self.assertGreater(min(red, green, blue), 0xF5)
+
+    def test_one_severity_is_one_colour_across_every_surface(self):
+        """The window's severity bar, the TUI's table and the report all read
+        the same four tokens, so a person comparing two surfaces is comparing
+        the same thing."""
+        window = tokens.palettes()["light"]
+        from report.template import _severity_inks
+
+        self.assertEqual(list(_severity_inks(window).values()),
+                         [window.sev_critical, window.sev_high,
+                          window.sev_medium, window.sev_none])
 
 
 @unittest.skipIf(QApplication is None, "PySide6 not available")
@@ -243,3 +254,41 @@ class DarkSheet(RenderedWindow, unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _spec_text(spec: str) -> str:
+    from pathlib import Path
+
+    return (Path(__file__).resolve().parent.parent / spec).read_text(
+        encoding="utf-8")
+
+
+class EveryBundleCarriesBothHalvesOfThePalette(unittest.TestCase):
+    """A frozen app has no source tree to fall back to.
+
+    Neither spec shipped `xanalyze-desktop.css`, and `overlay_file()`
+    degrades to the shared token file when the overlay is missing - so every
+    bundle ever built painted in the xFormat *web* colours while the source
+    tree painted in XAnalyze's, and it looked deliberate. Caught by reading
+    a styled report out of the built CLI and finding #e5484d in it.
+    """
+
+    SPECS = ("packaging/XAnalyze.spec", "packaging/XAnalyze-cli.spec")
+
+    def test_both_css_files_are_named_in_both_specs(self):
+        for spec in self.SPECS:
+            text = _spec_text(spec)
+            for name in ("xformat-tokens.css", "xanalyze-desktop.css"):
+                with self.subTest(spec=spec, css=name):
+                    self.assertIn(name, text)
+
+    def test_the_files_the_specs_name_are_the_files_tokens_reads(self):
+        """Named in the spec but renamed on disk is the same failure with an
+        extra step, so the spec is checked against `ui.tokens`, not against
+        two string literals."""
+        for path in (tokens.token_file(), tokens.OVERLAY_PATH):
+            with self.subTest(path=getattr(path, "name", path)):
+                self.assertIsNotNone(path)
+                self.assertTrue(path.is_file())
+                for spec in self.SPECS:
+                    self.assertIn(path.name, _spec_text(spec))

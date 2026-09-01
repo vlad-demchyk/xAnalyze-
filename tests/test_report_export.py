@@ -20,6 +20,7 @@ Three layers, tested at the level each one actually promises:
 from __future__ import annotations
 
 import os
+import re
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -260,19 +261,34 @@ class HtmlTemplateContract(unittest.TestCase):
         html = render_html(self._model(), lang="en")
         self.assertIn("table.category-table tr { break-inside: avoid;", html)
 
+    @staticmethod
+    def _quoted(html: str) -> str:
+        """Every `<pre>` block, with the highlighter's own spans removed.
+
+        Quoted markup is inked tag by tag now (`report.markup.highlight`), so
+        the escaped text of a snippet is no longer one contiguous run in the
+        document - `&lt;` and `img` sit in two different spans. Stripping the
+        spans and comparing the whole remainder is the stronger check anyway:
+        it says the entire snippet survived escaping, where a substring test
+        only ever said its first few characters did.
+        """
+        blocks = re.findall(r"<pre[^>]*>(.*?)</pre>", html, re.S)
+        return "\n".join(re.sub(r"</?span[^>]*>", "", block) for block in blocks)
+
     def test_html_in_a_snippet_is_escaped_not_rendered(self):
         model = self._model(snippet='<img src=x onerror=alert(1)>',
                             found="<script>evil()</script>")
         html = render_html(model, lang="en")
         self.assertNotIn("<img src=x onerror=alert(1)>", html)
         self.assertNotIn("<script>evil()</script>", html)
-        self.assertIn("&lt;img src=x onerror=alert(1)&gt;", html)
+        self.assertIn("&lt;img src=x onerror=alert(1)&gt;", self._quoted(html))
 
     def test_a_replacement_is_also_escaped(self):
         model = self._model(replacement='<b onclick="x()">bold</b>')
         html = render_html(model, lang="en")
         self.assertNotIn('<b onclick="x()">bold</b>', html)
-        self.assertIn("&lt;b", html)
+        self.assertIn("&lt;b onclick=&quot;x()&quot;&gt;bold&lt;/b&gt;",
+                      self._quoted(html))
 
     def test_no_findings_still_renders_a_clean_document(self):
         empty = ReportModel(meta=ReportMeta(target="clean-repo", mode="text-repo"), findings=[])

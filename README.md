@@ -345,6 +345,13 @@ xanalyze fullscan https://example.com --styled-report report.pdf
 
 The PDF or HTML report contains severity and category counts, grouped problems, locations, snippets, fixes, and responsive indicators.
 
+It is painted in XAnalyze's own palette, so one severity is one colour here, in the window and in the TUI. Two colour systems carry meaning in it, and nothing else does:
+
+* **Elements are coloured by role.** Quoted markup is inked tag by tag - landmark, interactive control, grouping wrapper, media, running text, document metadata - with a legend printed once, listing only the roles the report actually contains. Six roles rather than one colour per tag name: a hue that means "this is a control" is learnable, a hash of a tag name is not.
+* **Red and green are the direction of a diff, and nothing else.** The markup as found and the markup as it should be are marked `−` and `+` and inked accordingly, and the "how to fix" prose carries the same green, because it is the same claim in words.
+
+Each finding also states its technical identity on one line - rule id, engine, element, how many engines agreed, how many places it was found in - so a row can be looked up, suppressed or compared against a previous run from the printed page alone. Nothing in the document is abbreviated with an ellipsis: an engine's sentence is printed whole, and so is a ranked rule name.
+
 ### Agent briefing and JSON
 
 ```bash
@@ -369,6 +376,10 @@ The desktop application provides setup controls for target, analysis type, detec
 The setup screen's fifth card, **What to show**, carries the run parameters that used to be CLI-only: the six audit categories (including `geo`), the certainty floor (`--confidence`), and `--site-controls`. The scope selector sits with the repository controls, and typography is a character category in Settings.
 
 Category and certainty are a **view over one finished pass**, exactly as `--category` and `--confidence` are: the rules are cheap and share one parse, so narrowing repaints the list and the summary without re-auditing anything, and widening brings every finding straight back. The exported report is written through the same view, so what is on screen and what is in the file cannot disagree. When a filter hides everything, the empty screen says so and gives the unfiltered count rather than reporting the page as clean. `--site-controls` is different in kind - it fetches robots.txt and the sitemaps declared in it - so it is a run choice, off by default and shown only for a site.
+
+The first card, **What we are looking at**, states what a chosen folder turned out to be. A project is identified from its own marker files, and what it is decides what is treated as vendored: the window now applies those exclusions as `xanalyze audit` always has - the same WordPress folder used to produce hundreds of findings in vendored core from the window and none from the CLI. It is never applied silently. The card names the stack, counts the paths it will skip, carries the marker file that proved each one, and offers **Scan those as well** in one click, because a profile is evidence about ownership rather than a certainty.
+
+The same card carries **These documents are** - the window's `--medium`. It is read off the markup by default, which is right nearly always; set it by hand for an email deliverable that carries neither an Outlook namespace nor a merge tag. On `email` the browser-only checks (canonical, Open Graph, structured data, skip link, landmarks, WebP) are skipped, and the accessibility ones are not: `image-alt`, `control-name`, `table-headers`, contrast and language are as real in a mail client as in a browser.
 
 The TUI's Audit screen carries the same three, plus every breakpoint the audit knows on both the Audit and Full Scan screens.
 

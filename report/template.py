@@ -33,6 +33,9 @@ import base64
 import html
 from pathlib import Path
 
+from report.markup import (
+    ROLE_LABELS, ROLES, highlight, role_css, role_of, roles_used,
+)
 from report.model import CATEGORY_AI_TEXT, ReportModel
 from ui.tokens import Palette, palettes
 
@@ -61,6 +64,8 @@ _LABELS = {
         confidence="Confidence", text="Text", explanation="Explanation",
         character="Character", score="Score",
         overview="Overview", what_found="What was found", kind="Kind",
+        legend="Element colours", elem_col="Element", no_element="page-level",
+        found_markup="Markup as found", fix_markup="Markup as it should be",
         source_group="Where it comes from", detail="Detail",
         chart_severity="By severity", chart_category="By category",
         where_work="Where the work is", top_problems="Most repeated problems",
@@ -91,6 +96,8 @@ _LABELS = {
         confidence="Впевненість", text="Текст", explanation="Пояснення",
         character="Символ", score="Оцінка",
         overview="Огляд", what_found="Що знайдено", kind="Вид",
+        legend="Кольори елементів", elem_col="Елемент", no_element="рівень сторінки",
+        found_markup="Розмітка як є", fix_markup="Розмітка як має бути",
         source_group="Звідки", detail="Деталь",
         chart_severity="За тяжкістю", chart_category="За категорією",
         where_work="Де робота", top_problems="Що повторюється найчастіше",
@@ -121,6 +128,8 @@ _LABELS = {
         confidence="Confidenza", text="Testo", explanation="Spiegazione",
         character="Carattere", score="Punteggio",
         overview="Panoramica", what_found="Che cosa è stato trovato", kind="Tipo",
+        legend="Colori degli elementi", elem_col="Elemento", no_element="livello pagina",
+        found_markup="Markup come trovato", fix_markup="Markup come dovrebbe essere",
         source_group="Da dove viene", detail="Dettaglio",
         chart_severity="Per gravità", chart_category="Per categoria",
         where_work="Dove sta il lavoro", top_problems="I problemi più ripetuti",
@@ -165,20 +174,6 @@ def _logo_data_uri() -> str:
     return f"data:image/svg+xml;base64,{encoded}"
 
 
-def _rgba(hex_color: str, alpha: float) -> str:
-    """`#rrggbb` -> `rgba(r, g, b, alpha)`, for a tinted badge background."""
-    text = hex_color.lstrip("#")
-    if len(text) == 3:
-        text = "".join(ch * 2 for ch in text)
-    if len(text) != 6:
-        return hex_color
-    try:
-        r, g, b = (int(text[i:i + 2], 16) for i in (0, 2, 4))
-    except ValueError:
-        return hex_color
-    return f"rgba({r}, {g}, {b}, {alpha})"
-
-
 def _esc(value) -> str:
     """Escape anything interpolated into the document. Applied even to
     fields that are normally plain prose (a rule's `why`/`fix` text can
@@ -189,26 +184,46 @@ def _esc(value) -> str:
     return html.escape(str(value or ""), quote=True)
 
 
+#: The four-step ramp, as fills. The same four tokens the window's severity
+#: bar and the TUI's summary table paint with, so one severity is one colour
+#: across every surface this product has.
+def _severity_inks(palette: Palette) -> dict:
+    return {0: palette.sev_critical, 1: palette.sev_high,
+            2: palette.sev_medium, 3: palette.sev_none}
+
+
 def _severity_css(palette: Palette) -> str:
-    tiers = {
-        0: (palette.error, _rgba(palette.error, 0.10)),
-        1: (palette.amber, _rgba(palette.amber, 0.14)),
-        2: (palette.amber, _rgba(palette.amber, 0.08)),
-        3: (palette.text_muted, palette.bg_muted),
-    }
+    """The severity *badge* only.
+
+    It used to also paint the article, because the badge and the card carried
+    the same class - so every finding sat on a tinted panel and a page of
+    forty findings was a wash of red and amber with the actual content
+    floating in it. The panel is neutral now (see `.finding`); this inks one
+    small rectangle and the words on it.
+    """
     rules = []
-    for rank, (fg, bg) in tiers.items():
-        rules.append(
-            f".sev-{rank} {{ color: {fg}; background: {bg}; }}\n"
-            f".finding.sev-{rank} {{ border-left: 1.2mm solid {fg}; }}"
-        )
+    for rank, fill in _severity_inks(palette).items():
+        ink = palette.on_amber if rank in (2, 3) else palette.on_error
+        rules.append(f".badge.sev-{rank} {{ color: {ink}; background: {fill}; }}")
     return "\n".join(rules)
 
 
+def _rule_css(palette: Palette) -> str:
+    """The rank as a rule down the left edge of the panel - the one place a
+    finding's severity is allowed to colour anything larger than a badge."""
+    return "\n".join(
+        f".finding.rule-{rank} {{ border-left: 1.2mm solid {fill}; }}"
+        for rank, fill in _severity_inks(palette).items())
+
+
 def _stat_card(count: int, label: str, palette: Palette, accent: str | None = None) -> str:
-    color = f"color: {accent};" if accent else ""
+    """One severity total. The rank's ink is the rule across its top as well
+    as the numeral, so the four cards read as a ramp at a glance rather than
+    as four identical boxes with differently coloured digits."""
+    tint = accent or palette.border_strong
     return (
-        f'<div class="stat-card"><div class="num" style="{color}">{count}</div>'
+        f'<div class="stat-card" style="border-top-color:{tint}">'
+        f'<div class="num" style="color: {tint}">{count}</div>'
         f'<div class="label">{_esc(label)}</div></div>'
     )
 
@@ -236,50 +251,80 @@ def _locations_block(finding, labels: dict) -> str:
     )
 
 
+def _meta_line(finding, labels: dict) -> str:
+    """The technical identity of a finding, on one monospace line.
+
+    `button-name · axe-core · <button> · 148` - which is the line the design
+    bundle draws under a finding title (artboard 3a) and the line this
+    document did not have. Every part of it was already known to the run and
+    reached the JSON only: a reader with the printed report in hand could not
+    say which check produced a row, so they could not look it up, suppress
+    it, or compare it against the previous run.
+    """
+    bits = []
+    if finding.rule_id:
+        bits.append(f'<span class="rule">{_esc(finding.rule_id)}</span>')
+    if finding.engine:
+        bits.append(f'<span class="engine">{_esc(finding.engine)}</span>')
+    if finding.element:
+        bits.append(f'<span class="elem t-{role_of(finding.element)}">'
+                    f'&lt;{_esc(finding.element)}&gt;</span>')
+    if finding.agreement > 1:
+        bits.append('<span class="agree">'
+                    f'{_esc(labels["agreement"].format(count=finding.agreement))}</span>')
+    if finding.occurrences > 1:
+        bits.append(f'<span class="occ">{_esc(labels["occurrences"])} '
+                    f'{finding.occurrences}</span>')
+    if not bits:
+        return ""
+    return '<p class="finding-meta">' + '<span class="dot">·</span>'.join(bits) + '</p>'
+
+
 def _finding_card(finding, lang: str, palette: Palette) -> str:
     labels = _labels(lang)
     rank = min(max(finding.severity_rank, 0), 3)
     severity_label = _SEVERITY_LABEL[rank].get(lang, _SEVERITY_LABEL[rank]["en"])
     category_label = labels["cat"].get(finding.category, finding.category)
+    # `sev-N` inks the badge and the left rule. It is deliberately *not* on
+    # the article any more: it used to be, and because the same class also
+    # carries a background, every finding sat on a tinted panel and the whole
+    # page read as a wash of red and amber. Severity is one fact about a
+    # finding, not the surface it is printed on - so the panel is the
+    # palette's neutral inset tone for all four ranks, and the rank shows in
+    # the rule down its left edge and in one badge.
     parts = [
-        f'<article class="finding sev-{rank}">',
+        f'<article class="finding rule-{rank}">',
         '<div class="finding-badges">',
         f'<span class="badge sev-{rank}">{_esc(severity_label)}</span>',
         f'<span class="badge badge-outline">{_esc(category_label)}</span>',
     ]
-    if finding.engine:
-        parts.append(f'<span class="badge badge-outline">{_esc(finding.engine)}</span>')
-    # Two badges the reader triages on before anything else: how many
-    # independent engines saw it, and whether it is theirs to fix at all.
-    # Both were already known to the run and reached the JSON only.
-    if finding.agreement > 1:
-        parts.append('<span class="badge badge-outline">'
-                     f'{_esc(labels["agreement"].format(count=finding.agreement))}</span>')
     if finding.owner:
         parts.append('<span class="badge badge-owner">'
                      f'{_esc(labels["owner"].format(platform=finding.owner))}</span>')
     parts.append('</div>')
     parts.append(f'<h3>{_esc(finding.title)}</h3>')
+    parts.append(_meta_line(finding, labels))
     parts.append(_locations_block(finding, labels))
 
     if finding.category == CATEGORY_AI_TEXT:
         if finding.why:
             parts.append(_field(labels["why"], finding.why, escape=True))
         if finding.snippet:
-            parts.append(_field_pre(labels["found"], finding.snippet))
+            parts.append(_field_pre(labels["found"], finding.snippet, "found"))
         if finding.replacement:
-            parts.append(_field_pre(labels["replacement"], finding.replacement))
+            parts.append(_field_pre(labels["replacement"], finding.replacement, "fix"))
     else:
         if finding.found:
             parts.append(_field(labels["found"], finding.found, escape=True))
         if finding.why:
             parts.append(_field(labels["why"], finding.why, escape=True))
         if finding.fix:
-            parts.append(_field(labels["fix"], finding.fix, escape=True))
+            parts.append(_field(labels["fix"], finding.fix, escape=True,
+                                kind="solution"))
         if finding.snippet:
-            parts.append(_field_pre(labels["found"] + " —", finding.snippet))
+            parts.append(_field_pre(labels["found_markup"], finding.snippet, "found"))
         if finding.replacement:
-            parts.append(_field_pre(labels["replacement"], finding.replacement))
+            parts.append(_field_pre(labels["fix_markup"], finding.replacement, "fix"))
         if finding.wcag:
             parts.append(
                 f'<p class="wcag">{_esc(labels["wcag"])}: '
@@ -289,15 +334,54 @@ def _finding_card(finding, lang: str, palette: Palette) -> str:
     return "\n".join(parts)
 
 
-def _field(label: str, value: str, escape: bool) -> str:
+def _field(label: str, value: str, escape: bool, kind: str = "") -> str:
+    """A prose field. `kind="solution"` marks the one that says what to do -
+    the only prose in a finding a reader acts on rather than reads, so it is
+    the only prose that is inked."""
     body = _esc(value) if escape else value
-    return (f'<div class="field"><div class="label">{_esc(label)}</div>'
+    css = f"field field-{kind}" if kind else "field"
+    return (f'<div class="{css}"><div class="label">{_esc(label)}</div>'
             f'<div class="value">{body}</div></div>')
 
 
-def _field_pre(label: str, value: str) -> str:
+#: The gutter mark on each half of the diff. Two characters, from the design
+#: bundle's own finding panel (artboard 3a) and from every diff a developer
+#: has ever read: what is there now, and what should be.
+_DIFF_MARK = {"found": "\u2212", "fix": "+"}
+
+
+def _field_pre(label: str, value: str, kind: str = "") -> str:
+    """Quoted markup, syntax-inked, on the side of the diff it belongs to.
+
+    Two blocks under one finding used to be typographically identical, so
+    "this is what you have" and "this is what to write" could only be told
+    apart by reading both. Now the ink says which is which before either is
+    read, and inside them the element names are coloured by role - see
+    `report.markup`, which owns both schemes and keeps them from colliding.
+    """
+    mark = _DIFF_MARK.get(kind, "")
+    gutter = f'<span class="mark">{_esc(mark)}</span>' if mark else ""
+    css = f"snippet snip-{kind}" if kind else "snippet"
     return (f'<div class="field"><div class="label">{_esc(label)}</div>'
-            f'<pre class="snippet">{_esc(value)}</pre></div>')
+            f'<pre class="{css}">{gutter}{highlight(value)}</pre></div>')
+
+
+def _legend(findings, labels: dict, lang: str) -> str:
+    """What the element colours mean, for the roles this report actually uses.
+
+    Printed once, in the overview, rather than repeated per finding: a legend
+    is read at most twice and then remembered.
+    """
+    roles = roles_used(findings)
+    if len(roles) < 2:
+        return ""
+    names = ROLE_LABELS.get(lang, ROLE_LABELS["en"])
+    items = "".join(
+        f'<span class="legend-item"><span class="swatch t-{role}">&#9632;</span>'
+        f'{_esc(names.get(role, role))}</span>'
+        for role in roles)
+    return (f'<div class="legend"><span class="legend-title">'
+            f'{_esc(labels["legend"])}</span>{items}</div>')
 
 
 #: Rows of the pages table before it is cut short. A crawl of a large site
@@ -403,9 +487,7 @@ def _charts(by_severity: dict, by_category: dict, labels: dict, palette,
         # three - the defect the ramp exists to prevent, in the one artifact
         # whose whole job is to show where the weight is. Same four tokens
         # the window's `SeverityBar` and the TUI's summary table paint with.
-        severity_colours[key] = {0: palette.sev_critical, 1: palette.sev_high,
-                                 2: palette.sev_medium,
-                                 3: palette.sev_none}[rank]
+        severity_colours[key] = _severity_inks(palette)[rank]
         severity_pairs.append((key, count))
 
     severity_bars = _bar_chart(severity_pairs, severity_labels, palette,
@@ -441,12 +523,19 @@ def _where_the_work_is(model: ReportModel, labels: dict, palette) -> str:
         for row in pairs:
             label, count = (row[0], row[2]) if len(row) == 3 else row
             width = max(2, round(100 * count / widest))
+            # The label is a whole line of its own above its bar, not a
+            # 42%-wide column with an ellipsis on it. Rule names run long -
+            # "This element has insufficient contrast at this conformance
+            # level. Expected a contrast ratio of at least 4.5:1, but text..."
+            # was what the column printed - and a ranked list of jobs whose
+            # rows all end in "..." names none of them.
             out.append(
                 f'<div class="rank-row">'
-                f'<span class="rank-label" title="{_esc(label)}">{_esc(label)}</span>'
+                f'<span class="rank-label">{_esc(label)}</span>'
+                f'<span class="rank-bar">'
                 f'<span class="rank-track">'
                 f'<span class="rank-fill" style="width:{width}%"></span></span>'
-                f'<span class="rank-num">{count}</span></div>')
+                f'<span class="rank-num">{count}</span></span></div>')
         return "".join(out)
 
     blocks = []
@@ -464,18 +553,21 @@ def _rank_css(palette) -> str:
     """A ranked bar list. Same ink as the charts above it, tighter: this is
     read as a list of jobs, not as a picture of proportions."""
     return f"""
-.work {{ margin-top: 22px; }}
-.rank-grid {{ display: flex; gap: 26px; flex-wrap: wrap; }}
-.rank-block {{ flex: 1 1 300px; min-width: 260px; }}
-.rank-block h3 {{ font-size: 11.5pt; margin: 0 0 8px; color: {palette.text}; }}
-.rank-row {{ display: flex; align-items: center; gap: 9px; margin-bottom: 5px; }}
-.rank-label {{ flex: 0 0 42%; font-size: 9.5pt; color: {palette.text};
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
-.rank-track {{ flex: 1; height: 7px; border-radius: 4px;
-  background: {_rgba(palette.accent, 0.12)}; overflow: hidden; }}
-.rank-fill {{ display: block; height: 100%; border-radius: 4px;
-  background: {palette.accent}; }}
-.rank-num {{ flex: 0 0 34px; text-align: right; font-size: 9.5pt;
+.work {{ margin-top: 8mm; }}
+.rank-grid {{ display: flex; gap: 8mm; flex-wrap: wrap; }}
+.rank-block {{ flex: 1 1 70mm; min-width: 62mm; }}
+.rank-block h3 {{ font-size: 9pt; margin: 0 0 2.5mm; color: {palette.text_muted};
+  text-transform: uppercase; letter-spacing: .05em; }}
+.rank-row {{ margin-bottom: 2.4mm; break-inside: avoid; }}
+/* The label gets a whole line. It used to be a 42% column with an ellipsis,
+   which on real rule names printed a ranked list of jobs where every row
+   ended in "..." and named none of them. */
+.rank-label {{ display: block; font-size: 9pt; color: {palette.text};
+  overflow-wrap: anywhere; margin-bottom: .6mm; }}
+.rank-bar {{ display: flex; align-items: center; gap: 2mm; }}
+.rank-track {{ flex: 1; height: 2mm; background: {palette.bg_muted}; }}
+.rank-fill {{ display: block; height: 100%; background: {palette.accent}; }}
+.rank-num {{ flex: 0 0 9mm; text-align: right; font-size: 9pt;
   color: {palette.text_muted}; font-variant-numeric: tabular-nums; }}
 """
 
@@ -521,7 +613,7 @@ def _top_patterns_section(model: ReportModel, labels: dict) -> str:
         return ""
     rows = []
     for p in top:
-        explanation = _esc(p.get("explanation", "")[:80])
+        explanation = _esc(p.get("explanation", ""))
         # A repo path is not a fifth column - most reports have none to show,
         # and a column empty in every row but a few reads as a layout defect
         # rather than as "this one is different". It rides inside the
@@ -533,7 +625,7 @@ def _top_patterns_section(model: ReportModel, labels: dict) -> str:
         rows.append(
             f'<tr><td class="num">{p.get("score", 0):.2f}</td>'
             f'<td>{_esc(p.get("confidence", ""))}</td>'
-            f'<td>{_esc(p.get("text", "")[:80])}</td>'
+            f'<td class="passage">{_esc(p.get("text", ""))}</td>'
             f'<td>{explanation}</td></tr>')
     coverage = ""
     if ai.get("repo_total"):
@@ -559,12 +651,16 @@ def render_html(model: ReportModel, lang: str = "en") -> str:
     if lang not in _LABELS:
         lang = "en"
     labels = _labels(lang)
-    # Without the desktop overlay: a report is a document, not the window.
-    # The overlay tints the paper off-white and mutes every status hue, which
-    # is right in a dark-capable app window and wrong on a page that gets
-    # printed or sent on. The design bundle says the same thing in its own
-    # words - "the paper stays white" (artboard 3h).
-    palette = palettes(overlay=False)["light"]
+    # *With* the desktop overlay: the XAnalyze design bundle read as tokens.
+    # This document used to take the plain xFormat web palette instead, on
+    # the argument that a report is paper and the overlay's muted hues are a
+    # screen decision. That argument was wrong twice over. The overlay is not
+    # a screen tint - it is this product's palette, the one the bundle's own
+    # report artboard (3h) is drawn in, down to the severity dots; and the
+    # web palette's #e5484d beside the window's #c0564f meant one run showed
+    # a person two different reds for one severity depending on which
+    # surface they were looking at.
+    palette = palettes(overlay=True)["light"]
 
     # Grouped, not raw: one card per distinct problem, carrying every place
     # it was found. A thirty-page crawl of a site with a shared header used
@@ -589,8 +685,10 @@ def render_html(model: ReportModel, lang: str = "en") -> str:
         if count == 0 and rank not in (0,):
             continue
         label = _SEVERITY_LABEL[rank].get(lang, _SEVERITY_LABEL[rank]["en"])
-        accent = {0: palette.error, 1: palette.amber, 2: palette.amber,
-                 3: palette.text_muted}[rank]
+        # The same four-step ramp as the chart three lines below it. These
+        # were two different maps, so "serious" was orange in the bar and
+        # amber in the card that counts it.
+        accent = _severity_inks(palette)[rank]
         stat_cards.append(_stat_card(count, label, palette, accent))
 
     # One table, not four. The category counts, the AI-pattern confidence
@@ -601,6 +699,7 @@ def render_html(model: ReportModel, lang: str = "en") -> str:
     what_rows = _what_was_found(model, by_category, labels)
 
     charts = _charts(by_severity, by_category, labels, palette, lang)
+    legend = _legend(findings, labels, lang)
 
     findings_html = ("".join(_finding_card(f, lang, palette) for f in findings)
                      if findings else f'<p class="empty">{_esc(labels["no_findings"])}</p>')
@@ -613,9 +712,23 @@ def render_html(model: ReportModel, lang: str = "en") -> str:
     doc_title = f'{labels["title"]} — {model.meta.target}' if model.meta.target else labels["title"]
 
     style = f"""
-@page {{ size: A4; margin: 16mm 14mm; }}
+@page {{ size: A4; margin: 20mm 18mm; }}
 * {{ box-sizing: border-box; }}
 html, body {{ margin: 0; padding: 0; }}
+/* On paper the gutter is `@page`'s and adding padding here would double it.
+   On a screen there is no `@page` at all, so the same document opened in a
+   browser ran flush to both edges of the window - which is where a reader
+   actually reads it before ever printing anything. The two media get the
+   gutter separately, and neither gets it twice. */
+@media screen {{
+  body {{ padding: 16mm 18mm 20mm; max-width: 260mm; margin: 0 auto; }}
+}}
+@media print {{ body {{ padding: 0; max-width: none; }} }}
+/* Not one rounded corner anywhere in this document. A radius says "card",
+   "app", "surface"; this is a technical report, and its blocks are meant to
+   read as regions of a printed page rather than as widgets lifted off one.
+   Everything that used to be a pill or a rounded panel is a rectangle with a
+   hairline or a rule down one edge. */
 body {{
   font-family: '{palette.font}', Arial, sans-serif;
   font-size: 10.5pt; line-height: 1.5;
@@ -630,11 +743,11 @@ h1, h2, h3 {{ font-family: '{palette.font}', Arial, sans-serif; color: {palette.
 .report-header img {{ width: 22mm; height: auto; flex: 0 0 auto; }}
 .report-header h1 {{ font-size: 17pt; margin: 0 0 1.5mm; overflow-wrap: anywhere; }}
 .report-header .meta {{ margin: 0; font-size: 9pt; color: {palette.text_muted}; }}
-/* Not `break-inside: avoid` any more. The overview now carries charts and a
-   table and is taller than it was; forbidding a break inside it meant that
-   whenever it did not fit in what was left of page one, the whole block
-   jumped to page two and left most of page one blank. It may break; its
-   headings may not be stranded, which is what the rules below say. */
+/* Not `break-inside: avoid`. The overview carries charts and a table and is
+   taller than it was; forbidding a break inside it meant that whenever it did
+   not fit in what was left of page one, the whole block jumped to page two and
+   left most of page one blank. It may break; its headings may not be stranded,
+   which is what the rules below say. */
 .summary {{ margin-bottom: 9mm; }}
 .summary h2 {{ font-size: 12pt; margin: 0 0 3mm; }}
 h2, h3 {{ break-after: avoid; page-break-after: avoid; }}
@@ -651,26 +764,40 @@ h2, h3 {{ break-after: avoid; page-break-after: avoid; }}
   font-size: 8.3pt; break-inside: avoid; }}
 .bar-label {{ flex: 0 0 26mm; color: {palette.text_muted};
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
-.bar-track {{ flex: 1 1 auto; height: 3mm; background: {palette.bg_muted};
-  border-radius: 999px; overflow: hidden; }}
-.bar-fill {{ display: block; height: 100%; border-radius: 999px; }}
+.bar-track {{ flex: 1 1 auto; height: 3mm; background: {palette.bg_muted}; }}
+.bar-fill {{ display: block; height: 100%; }}
 .bar-num {{ flex: 0 0 auto; font-variant-numeric: tabular-nums;
   font-weight: 600; min-width: 9mm; text-align: right; }}
 .stat-grid {{ display: flex; flex-wrap: wrap; gap: 4mm; margin-bottom: 5mm; }}
 .stat-card {{
-  flex: 1 1 26mm; border: 1px solid {palette.border}; border-radius: {palette.radius_md}px;
-  padding: 3mm 4mm; text-align: center; background: {palette.bg_card};
+  flex: 1 1 26mm; border: 1px solid {palette.border};
+  border-top: 1mm solid {palette.border_strong};
+  padding: 3mm 4mm; text-align: center; background: {palette.bg};
 }}
 .stat-card .num {{ font-size: 17pt; font-weight: 700; }}
 .stat-card .label {{
   font-size: 7.5pt; color: {palette.text_muted}; text-transform: uppercase; letter-spacing: .04em;
 }}
+
+/* The element-colour legend. Printed once, and only for the roles this
+   report actually contains - see `_legend`. */
+.legend {{
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 1.5mm 4mm;
+  margin: 3mm 0 0; padding: 2mm 3mm; background: {palette.bg_muted};
+  border-left: 1mm solid {palette.border_strong};
+  font-size: 8pt; color: {palette.text_muted}; break-inside: avoid;
+}}
+.legend-title {{ text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }}
+.legend-item {{ white-space: nowrap; }}
+.legend .swatch {{ margin-right: 1mm; font-size: 7pt; }}
+
 table.category-table {{ width: 100%; border-collapse: collapse; font-size: 9pt; }}
 table.category-table th, table.category-table td {{
   text-align: left; padding: 1.6mm 2mm; border-bottom: 1px solid {palette.border};
   vertical-align: top;
 }}
-table.category-table th {{ color: {palette.text_muted}; font-weight: 600; }}
+table.category-table th {{ color: {palette.text_muted}; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .04em; font-size: 8pt; }}
 /* A row may not be split across pages; the table may. The header repeats on
    each page it continues onto, so a table that spans a break stays readable. */
 table.category-table tr {{ break-inside: avoid; page-break-inside: avoid; }}
@@ -679,6 +806,10 @@ table.category-table td.num, table.category-table th.num {{
   text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;
 }}
 table.find-table td.detail {{ color: {palette.text_muted}; }}
+/* The quoted passage in the AI-text table: it used to be cut at 80
+   characters, which on a page this wide was clipping prose that had room to
+   wrap. A cell wraps. */
+table.category-table td.passage {{ overflow-wrap: anywhere; }}
 /* The repo path rides inside the explanation cell rather than its own
    column - see `_top_patterns_section` - so it needs to read as an aside,
    not as more of the explanation. */
@@ -693,6 +824,7 @@ table.pages-table {{ font-size: 8pt; }}
 table.pages-table td {{ padding: 1mm 2mm; overflow-wrap: anywhere; }}
 table.pages-table tr.more td {{ color: {palette.text_muted}; font-style: italic; }}
 .findings h2 {{ font-size: 12pt; margin: 0 0 4mm; }}
+
 /* Cards may break across pages. Forbidding it is what left large blank areas:
    a tall card that did not fit in the remainder of a page moved to the next
    one whole, and the space it vacated stayed empty. What actually has to hold
@@ -701,28 +833,39 @@ table.pages-table tr.more td {{ color: {palette.text_muted}; font-style: italic;
    say, without wasting a third of every page to say it. */
 .finding {{
   break-inside: auto; orphans: 3; widows: 3;
-  border: 1px solid {palette.border}; border-radius: {palette.radius_md}px;
-  padding: 4.5mm 5.5mm; margin-bottom: 4.5mm; background: {palette.bg_card};
+  border: 1px solid {palette.border};
+  padding: 5mm 6mm; margin-bottom: 5mm;
+  background: {palette.bg_muted};
 }}
-.finding h3 {{ font-size: 10.8pt; margin: 0 0 1.5mm; overflow-wrap: anywhere;
+/* Severity is a rule down the edge, not a wash over the panel. */
+{_rule_css(palette)}
+.finding h3 {{ font-size: 10.8pt; margin: 0 0 1.2mm; overflow-wrap: anywhere;
   break-after: avoid; page-break-after: avoid; }}
+.finding-meta {{
+  font-family: '{palette.font_mono}', ui-monospace, Menlo, monospace;
+  font-size: 8pt; color: {palette.text_muted}; margin: 0 0 1.5mm;
+  overflow-wrap: anywhere;
+}}
+.finding-meta .dot {{ margin: 0 1.6mm; color: {palette.text_subtle}; }}
+.finding-meta .rule {{ color: {palette.text}; font-weight: 600; }}
 .finding .location {{
   font-size: 8.3pt; color: {palette.text_muted}; margin: 0 0 3mm; overflow-wrap: anywhere;
 }}
 .finding ul.locations {{
   margin: -1.5mm 0 3mm; padding-left: 5mm; font-size: 8.3pt;
-  color: {palette.text_muted}; list-style: disc;
+  color: {palette.text_muted}; list-style: square;
 }}
 .finding ul.locations li {{ overflow-wrap: anywhere; margin: 0.3mm 0; }}
 .finding ul.locations li.more {{ list-style: none; margin-left: -3mm; font-style: italic; }}
-.finding-badges {{ margin-bottom: 2.5mm; }}
+.finding-badges {{ margin-bottom: 2mm; }}
 .badge {{
-  display: inline-block; padding: .6mm 2.4mm; border-radius: 999px; font-size: 7.3pt;
+  display: inline-block; padding: .5mm 2mm; font-size: 7.3pt;
   font-weight: 600; text-transform: uppercase; letter-spacing: .03em; margin-right: 1.5mm;
 }}
 .badge-outline {{ border: 1px solid {palette.border_strong}; color: {palette.text_muted}; }}
 {_severity_css(palette)}
 {_rank_css(palette)}
+{role_css(palette)}
 /* Small blocks stay whole: these are short, so keeping them together costs
    a line or two of slack rather than a third of a page. */
 .field {{ margin: 2mm 0; break-inside: avoid; }}
@@ -731,14 +874,30 @@ table.pages-table tr.more td {{ color: {palette.text_muted}; font-style: italic;
   text-transform: uppercase; letter-spacing: .03em; margin-bottom: .8mm;
 }}
 .field .value {{ font-size: 9.6pt; overflow-wrap: anywhere; }}
+/* The one prose field a reader acts on rather than reads. Inked in the same
+   green as the `+` half of the diff below it, because it is the same claim
+   in words: this is what to do. */
+.field-solution {{ border-left: .7mm solid {palette.success_text}; padding-left: 2.5mm; }}
+.field-solution .label {{ color: {palette.success_text}; }}
 pre.snippet {{
-  font-family: '{palette.font_mono}', 'Courier New', monospace; font-size: 8.4pt;
+  font-family: '{palette.font_mono}', ui-monospace, 'Courier New', monospace;
+  font-size: 8.4pt; line-height: 1.45;
   white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word;
-  background: {palette.bg_muted}; border: 1px solid {palette.border};
-  border-radius: {palette.radius_sm}px; padding: 2mm 3mm; margin: 0;
+  background: {palette.bg}; border: 1px solid {palette.border};
+  border-left: .7mm solid {palette.border_strong};
+  padding: 2mm 3mm; margin: 0;
 }}
+/* Which half of the diff. Red is what is there, green is what should be -
+   the only two things in this document those colours mean. */
+pre.snip-found {{ border-left-color: {palette.error_text}; }}
+pre.snip-fix {{ border-left-color: {palette.success_text}; }}
+pre.snippet .mark {{
+  display: inline-block; width: 3mm; margin-left: -1mm; font-weight: 700;
+}}
+pre.snip-found .mark {{ color: {palette.error_text}; }}
+pre.snip-fix .mark {{ color: {palette.success_text}; }}
 .wcag {{ font-size: 8pt; color: {palette.text_muted}; margin: 1.5mm 0 0; }}
-.badge-owner {{ border-style: dashed; color: {palette.text_muted}; }}
+.badge-owner {{ border: 1px dashed {palette.border_strong}; color: {palette.text_muted}; }}
 .empty {{ color: {palette.text_muted}; }}
 footer {{
   margin-top: 8mm; padding-top: 3mm; border-top: 1px solid {palette.border};
@@ -770,6 +929,7 @@ footer {{
   {charts}
   <h3 class="table-title">{_esc(labels["what_found"])}</h3>
   {what_rows}
+  {legend}
 </section>
 
 {work_section}
