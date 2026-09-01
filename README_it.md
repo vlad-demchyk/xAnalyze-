@@ -275,6 +275,8 @@ Il report è disegnato con la palette di XAnalyze, quindi una gravità ha un sol
 
 Ogni rilievo dichiara inoltre la propria identità tecnica su una riga - id della regola, motore, elemento, quanti motori concordano, in quanti punti è stato trovato - così una riga si può cercare, silenziare o confrontare con l'esecuzione precedente partendo dalla pagina stampata. Nulla nel documento è troncato con i puntini: la frase di un motore è stampata per intero, e così il nome di una regola in classifica.
 
+Un rilievo non accertato lo dichiara, in entrambi i documenti. `advisory` e `needs-browser` portano un badge nel report grafico e un campo `certainty` nel briefing per agenti, e ciascuno porta la frase che dice che cosa **non** è: «questo nessuno lo verificherà al posto tuo», «aprilo in un browser». `exact` non ha volutamente né l'uno né l'altro: un documento in cui quasi tutte le righe portano una nota di certezza insegna a saltarla. Entrambi i fatti arrivavano fin dall'inizio alla finestra e al terminale, e a nessuno dei due artefatti che una persona consegna a qualcun altro.
+
 ## Interfacce
 
 La GUI offre controlli per target, tipo di analisi, detector, scope, profondità, breakpoint, lingua e account. I risultati includono elenco, anteprima, dettagli, correzioni ed esportazione. Le correzioni meccaniche sono selezionate in automatico, le bozze del modello richiedono revisione.
@@ -283,7 +285,11 @@ La prima scheda, **Che cosa guardiamo**, dice che cosa è risultata la cartella 
 
 La stessa scheda porta **Questi documenti sono**, cioè `--medium` nella finestra. Di default si legge dal markup, il che è quasi sempre corretto; indicalo a mano per un'email che non ha né namespace Outlook né merge tag. Con `email` i controlli solo-browser (canonical, Open Graph, dati strutturati, skip link, landmark, WebP) vengono saltati, quelli di accessibilità no: `image-alt`, `control-name`, `table-headers`, contrasto e lingua sono reali in un client di posta quanto in un browser.
 
-Eseguire `xanalyze` senza argomenti apre la TUI con Scan, Audit, Full Scan, Reports, Settings, Update e Uninstall. Navigazione: frecce, tasti numerici, `Tab`, `Esc`, `q`.
+Eseguire `xanalyze` senza argomenti apre la TUI con Scan, Audit, Full Scan, Reports, Settings, Account, Update, Uninstall e Logs. Navigazione: frecce, tasti numerici, `Tab`, `Esc`, `q`.
+
+**Account** accede all'abbonamento xFormat senza lasciare il terminale. Le impostazioni hanno sempre offerto `xformat` come provider e nella TUI non c'era dove accedere, quindi quella scelta si poteva concretizzare solo dalla finestra o con `xanalyze ai login`. La password non viene salvata: viene scambiata con un token che finisce nel keychain di sistema, e il campo viene svuotato prima della chiamata. Gli altri due provider hanno un accesso proprio e la schermata dice dove, invece di offrire un modulo che non può funzionare.
+
+Le celle delle tabelle vanno a capo invece di essere tagliate. Il dettaglio del log e il target dell'esecuzione venivano tagliati dalla schermata stessa, il che rimuoveva il `key=value` che spiegava la riga e il **dominio** che identificava l'esecuzione.
 
 ## Configurazione
 

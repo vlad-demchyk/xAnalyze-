@@ -352,6 +352,8 @@ It is painted in XAnalyze's own palette, so one severity is one colour here, in 
 
 Each finding also states its technical identity on one line - rule id, engine, element, how many engines agreed, how many places it was found in - so a row can be looked up, suppressed or compared against a previous run from the printed page alone. Nothing in the document is abbreviated with an ellipsis: an engine's sentence is printed whole, and so is a ranked rule name.
 
+A finding that is not settled says so, in both documents. `advisory` and `needs-browser` carry a badge in the styled report and a `certainty` field in the agent briefing, and each carries the sentence saying what it is *not* - "nothing will check this for you", "open it in a browser". `exact` deliberately gets neither: a document where most rows carry a certainty note teaches the reader to skip the note. Both facts reached the window and the terminal from the beginning and neither reached the two artefacts a person hands to somebody else.
+
 ### Agent briefing and JSON
 
 ```bash
@@ -387,7 +389,11 @@ Mechanical corrections are selected by default. Model drafts require review. Dec
 
 ### TUI
 
-Run `xanalyze` without arguments to open the terminal interface. It provides Scan, Audit, Full Scan, Reports, Settings, Update, and Uninstall. Runs execute in a worker thread, and the interface supports arrow keys, number shortcuts, `Tab`, `Esc`, and `q`.
+Run `xanalyze` without arguments to open the terminal interface. It provides Scan, Audit, Full Scan, Reports, Settings, Account, Update, Uninstall, and Logs. Runs execute in a worker thread, and the interface supports arrow keys, number shortcuts, `Tab`, `Esc`, and `q`.
+
+**Account** signs in to the xFormat subscription without leaving the terminal. Settings has always offered `xformat` as the provider and the TUI had nowhere to sign in to it, so the setting could only be acted on from the window or from `xanalyze ai login`. The password is never stored: it is exchanged for a token that goes to the OS keychain, and the field is cleared before the call is made. The other two providers own their credentials elsewhere and the screen says so rather than offering a form that cannot work.
+
+Table cells wrap rather than being cut. The log detail and the run target used to be sliced by the screen itself, which removed the `key=value` that explained the line and the **domain** that identified the run.
 
 ## Configuration
 
