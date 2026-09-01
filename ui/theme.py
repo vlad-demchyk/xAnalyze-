@@ -39,6 +39,8 @@ instead of two disagreeing ones.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import re
 
 from textual.theme import Theme
@@ -202,6 +204,19 @@ def qss_color(value: str) -> str:
     digits = match.group(1)
     r, g, b, a = (int(digits[i:i + 2], 16) for i in (0, 2, 4, 6))
     return f"rgba({r}, {g}, {b}, {a / 255:.3f})"
+
+
+#: Where the two tick marks live. A file rather than a data URI because Qt
+#: style sheets accept `url()` only as a path, and two files rather than one
+#: because QSS cannot tint an image: the tick sits on `--primary`, which is
+#: near-black on the light sheet and near-white on the dark one, so the ink
+#: has to be baked in. Both are `--on-primary`, exactly.
+_ICONS = Path(__file__).resolve().parent / "design" / "assets" / "icons"
+
+
+def _check_mark(p: Palette) -> str:
+    name = "check-on-light.svg" if p.name == "dark" else "check-on-dark.svg"
+    return (_ICONS / name).as_posix()
 
 
 def build_qss(p: Palette) -> str:
@@ -698,10 +713,22 @@ QSplitter::handle {{
     width: {p.space_md}px;
 }}
 
+/* The strip along the foot of every screen. The design draws it as a band
+   *inside* the surface - `#f6f4f0` on `#fbfaf8`, small muted type, no rule
+   above it (artboards 3b, 3g, 3h) - and it was taking the canvas colour with
+   a hairline, which on the light sheet read as a native window chrome
+   sitting under the app rather than as part of it. */
 QStatusBar {{
-    background-color: {c(p.page_bg)};
+    background-color: {c(p.bg_hover)};
     color: {c(p.text_muted)};
-    border-top: 1px solid {c(p.border)};
+    border: none;
+    font-size: {p.font_size_sm}px;
+    padding: 2px {p.space_lg}px;
+}}
+
+QStatusBar QLabel {{
+    color: {c(p.text_muted)};
+    font-size: {p.font_size_sm}px;
 }}
 
 QStatusBar::item {{
@@ -771,6 +798,40 @@ QProgressBar::chunk {{
 
 QCheckBox {{
     spacing: {p.space_sm}px;
+}}
+
+/* The same reasoning as the radio below, and the same defect: left to the
+   platform style the indicator is drawn from the *system* palette, so on the
+   dark sheet a ticked box and an empty one were nearly the same grey square
+   and there was no way to see which categories were on. The design draws a
+   filled near-black square with a light tick (artboards 3b, 3j, 3l); the
+   fill is `--primary`, which inverts with the sheet, and the tick is
+   `--on-primary` baked into the two SVGs above. */
+QCheckBox::indicator {{
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+    border: 1px solid {c(p.border_strong)};
+    background-color: {c(p.bg)};
+}}
+
+QCheckBox::indicator:hover {{
+    border-color: {c(p.text_subtle)};
+}}
+
+QCheckBox::indicator:checked {{
+    border-color: {c(p.primary)};
+    background-color: {c(p.primary)};
+    image: url({_check_mark(p)});
+}}
+
+QCheckBox::indicator:disabled {{
+    border-color: {c(p.border)};
+    background-color: {c(p.bg_muted)};
+}}
+
+QCheckBox:disabled {{
+    color: {c(p.text_subtle)};
 }}
 
 /* The radio in a provider row (3d) says which account a run uses, so

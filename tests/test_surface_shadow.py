@@ -13,6 +13,7 @@ Headless: Qt runs on the offscreen platform, like the other widget tests.
 """
 import os
 import unittest
+from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -263,32 +264,102 @@ def _spec_text(spec: str) -> str:
         encoding="utf-8")
 
 
-class EveryBundleCarriesBothHalvesOfThePalette(unittest.TestCase):
+class EveryBundleCarriesWhatTheCodeReads(unittest.TestCase):
     """A frozen app has no source tree to fall back to.
 
-    Neither spec shipped `xanalyze-desktop.css`, and `overlay_file()`
-    degrades to the shared token file when the overlay is missing - so every
-    bundle ever built painted in the xFormat *web* colours while the source
-    tree painted in XAnalyze's, and it looked deliberate. Caught by reading
-    a styled report out of the built CLI and finding #e5484d in it.
+    Two assets went missing this way, and both failed silently, which is what
+    makes the class worth a test rather than two fixes:
+
+    * `xanalyze-desktop.css` - `overlay_file()` degrades to the shared token
+      file, so every bundle ever built painted in xFormat's web colours while
+      the source tree painted in XAnalyze's, and it looked deliberate.
+    * `ui/design/assets` in the CLI spec - `report/template._logo_data_uri`
+      returns `""` when it cannot read the mark, so the built CLI produced
+      perfectly valid, unbranded reports and said nothing.
+
+    So the check is not a list of filenames. It reads the directories the
+    *code* points at and asserts each spec names them, which is the property
+    that was violated both times.
     """
 
     SPECS = ("packaging/XAnalyze.spec", "packaging/XAnalyze-cli.spec")
 
-    def test_both_css_files_are_named_in_both_specs(self):
-        for spec in self.SPECS:
-            text = _spec_text(spec)
-            for name in ("xformat-tokens.css", "xanalyze-desktop.css"):
-                with self.subTest(spec=spec, css=name):
-                    self.assertIn(name, text)
+    #: Every runtime resource under `ui/design`, as the module that reads it
+    #: names it. A new one added to the tree and to no spec fails here.
+    def _design_resources(self):
+        from pathlib import Path
 
-    def test_the_files_the_specs_name_are_the_files_tokens_reads(self):
+        root = Path(__file__).resolve().parent.parent / "ui" / "design"
+        for entry in sorted(root.iterdir()):
+            if entry.name.startswith("."):
+                continue
+            yield entry
+
+    def test_every_design_resource_is_named_in_every_spec(self):
+        for entry in self._design_resources():
+            for spec in self.SPECS:
+                with self.subTest(resource=entry.name, spec=spec):
+                    self.assertIn(entry.name, _spec_text(spec))
+
+    def test_the_files_the_specs_name_are_the_files_the_code_reads(self):
         """Named in the spec but renamed on disk is the same failure with an
-        extra step, so the spec is checked against `ui.tokens`, not against
-        two string literals."""
-        for path in (tokens.token_file(), tokens.OVERLAY_PATH):
+        extra step, so the spec is checked against the modules, not against
+        string literals."""
+        from report.template import _LOGO_PATH
+        from ui import theme
+
+        for path in (tokens.token_file(), tokens.OVERLAY_PATH, _LOGO_PATH,
+                     theme._ICONS):
             with self.subTest(path=getattr(path, "name", path)):
                 self.assertIsNotNone(path)
-                self.assertTrue(path.is_file())
-                for spec in self.SPECS:
-                    self.assertIn(path.name, _spec_text(spec))
+                self.assertTrue(path.exists())
+
+    def test_both_ticks_the_window_draws_are_on_disk(self):
+        """QSS `url()` is a path, and a missing one draws nothing at all -
+        an empty checkbox that is in fact ticked."""
+        from ui import theme
+
+        for name in ("check-on-light.svg", "check-on-dark.svg"):
+            with self.subTest(icon=name):
+                self.assertTrue((theme._ICONS / name).is_file())
+        for sheet in ("light", "dark"):
+            palette = tokens.palettes()[sheet]
+            with self.subTest(theme=sheet):
+                self.assertTrue(Path(theme._check_mark(palette)).is_file())
+
+
+class TheWindowDrawsItsOwnControls(unittest.TestCase):
+    """Left to the platform style, an indicator is drawn from the *system*
+    palette rather than from this design's - which on the dark sheet gave a
+    ticked checkbox and an empty one as nearly the same grey square. The
+    radio button was fixed for this reason; the checkbox had the same defect
+    and was not."""
+
+    def test_a_ticked_box_and_an_empty_one_are_not_the_same_square(self):
+        for sheet in ("light", "dark"):
+            palette = tokens.palettes()[sheet]
+            qss = theme.build_qss(palette)
+            with self.subTest(theme=sheet):
+                self.assertIn("QCheckBox::indicator:checked", qss)
+                block = qss.split("QCheckBox::indicator:checked {")[1].split("}")[0]
+                self.assertIn(theme.qss_color(palette.primary), block)
+                self.assertIn("image: url(", block)
+
+    def test_the_tick_inverts_with_the_sheet(self):
+        """It is baked into the SVG, because QSS cannot tint an image - so
+        the wrong file is an invisible tick, not a differently coloured one."""
+        light = theme._check_mark(tokens.palettes()["light"])
+        dark = theme._check_mark(tokens.palettes()["dark"])
+        self.assertNotEqual(light, dark)
+        self.assertIn(tokens.palettes()["light"].on_primary.lower(),
+                      Path(light).read_text(encoding="utf-8").lower())
+
+    def test_the_foot_of_the_window_belongs_to_the_window(self):
+        """The design draws it as a band inside the surface, not as the
+        canvas with a hairline - which read as native chrome under the app."""
+        for sheet in ("light", "dark"):
+            palette = tokens.palettes()[sheet]
+            block = theme.build_qss(palette).split("QStatusBar {")[1].split("}")[0]
+            with self.subTest(theme=sheet):
+                self.assertIn(theme.qss_color(palette.bg_hover), block)
+                self.assertIn("border: none", block)

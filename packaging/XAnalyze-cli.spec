@@ -38,6 +38,12 @@ datas = [
     # is missing, so this failed silently and looked deliberate.
     (str(ROOT / "ui" / "design" / "xformat-tokens.css"), "ui/design"),
     (str(ROOT / "ui" / "design" / "xanalyze-desktop.css"), "ui/design"),
+    # The brand mark. `report/template.py` inlines it into every styled
+    # report as a data URI and returns "" when it cannot be read - so the
+    # built CLI produced perfectly valid, unbranded reports and said nothing.
+    # The icons come with it: they are one vendored set, and splitting an
+    # asset directory across specs is how the next one goes missing.
+    (str(ROOT / "ui" / "design" / "assets"), "ui/design/assets"),
     (str(ROOT / "audit" / "vendor" / "axe.min.js"), "audit/vendor"),
     (str(ROOT / "audit" / "vendor" / "HTMLCS.js"), "audit/vendor"),
     (str(ROOT / "audit" / "vendor" / "axe-LICENSE.txt"), "audit/vendor"),
