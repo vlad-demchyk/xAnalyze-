@@ -352,6 +352,16 @@ La prima scheda, **Che cosa guardiamo**, dice che cosa è risultata la cartella 
 
 La stessa scheda porta **Questi documenti sono**, cioè `--medium` nella finestra. Di default si legge dal markup, il che è quasi sempre corretto; indicalo a mano per un'email che non ha né namespace Outlook né merge tag. Con `email` i controlli solo-browser (canonical, Open Graph, dati strutturati, skip link, landmark, WebP) vengono saltati, quelli di accessibilità no: `image-alt`, `control-name`, `table-headers`, contrasto e lingua sono reali in un client di posta quanto in un browser.
 
+**Ciò che la finestra ora può chiedere e prima poteva chiedere solo la riga di comando.** Tre cose, nella riga avanzata:
+
+- **Il codice dietro questo sito.** Un rilievo su una pagina indica la pagina, e la pagina è dove guardare, mai dove correggere. Indicata la cartella, ogni passaggio presente anche lì riceve il file e la riga: lo stesso abbinamento di `--repo` della CLI, tramite lo stesso modulo. La scansione dice quanti passaggi la cartella ha spiegato: tre su quaranta significa cartella sbagliata, o testo che arriva da un CMS, e una finestra che mostrasse solo i tre abbinati non lo direbbe mai.
+- **Solo questa parte della pagina** (`--within`). Un selettore CSS per una web part consegnata o un widget incorporato: il resto del documento è di qualcun altro. Ciò che sta dentro il selettore è per costruzione un frammento, quindi le regole di pagina non si applicano, e un selettore che non trova nulla viene segnalato invece di restituire un risultato pulito.
+- **Numero massimo di file nella cartella** (`--max-files`), nelle Impostazioni. La finestra non aveva un limite proprio e leggeva quello predefinito, senza mai dire quale numero avesse troncato un monorepo.
+
+**Prima di una scansione la finestra ora dice che cosa non raggiungerà**: gli stessi avvisi che `cli_impl/prerun.py` stampa per la CLI, dagli stessi dati - nessuna cartella abbinata, un progetto che potrebbe servirsi da solo, un browser disattivato. Ognuno porta con sé l'azione che lo risolve, dove la finestra ne ha una.
+
+La finestra non ha una scansione incrementale. `scan --incremental` riusa i **rilievi** in cache, righe di un file JSON senza alcun `TextSpan` dietro, mentre l'elenco della finestra è costruito sugli span: per ognuno offre una riscrittura, una sostituzione e una scrittura su disco. Riusare la cache lì produrrebbe righe su cui non si può agire, quindi il flag resta di CLI e TUI finché la cache non conterrà gli span.
+
 Eseguire `xanalyze` senza argomenti apre la TUI con Scan, Audit, Full Scan, Reports, Settings, Account, Update, Uninstall e Logs. Navigazione: frecce, tasti numerici, `Tab`, `Esc`, `q`.
 
 **Account** accede all'abbonamento xFormat senza lasciare il terminale. Le impostazioni hanno sempre offerto `xformat` come provider e nella TUI non c'era dove accedere, quindi quella scelta si poteva concretizzare solo dalla finestra o con `xanalyze ai login`. La password non viene salvata: viene scambiata con un token che finisce nel keychain di sistema, e il campo viene svuotato prima della chiamata. Gli altri due provider hanno un accesso proprio e la schermata dice dove, invece di offrire un modulo che non può funzionare.

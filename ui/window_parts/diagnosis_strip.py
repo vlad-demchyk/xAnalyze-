@@ -178,6 +178,18 @@ class DiagnosisStripMixin:
             self.settings.max_pages = max(int(item.fields.get("at_least", 0)),
                                           self.settings.max_pages)
             self.settings.save()
+        if name == dx.PAIR_REPO:
+            # Not a file dialog opened from here: the field is the thing that
+            # remembers the choice and the thing a person edits afterwards.
+            # Showing the advanced row first, because that is where it lives
+            # and a focused invisible field is a dead end.
+            if not self.advanced_toggle.isChecked():
+                self.advanced_toggle.setChecked(True)
+                self._on_advanced_toggle(True)
+            self.paired_repo_edit.setFocus()
+            self._on_browse_paired_repo()
+            self.dismiss(item)
+            return
         if name in (dx.RETRY, dx.RAISE_LIMIT):
             self.clear_diagnoses()
             self._on_analyze_clicked()

@@ -25,6 +25,13 @@ class TextBlock:
     dom_path: str
     text: str
     language_hint: str | None = None  # 'uk' | 'it' | 'en' | None if unknown
+    #: Where this passage is *written*, when a checkout was paired with the
+    #: site (`repo_pairing`). A page tells a reader where to look and never
+    #: where to edit; these two fields are that second answer. Empty when no
+    #: repository was given, and empty for a passage the given one does not
+    #: contain - which is a real answer about that checkout, not a failure.
+    source_file: str = ""
+    source_line: int | None = None
 
 
 @dataclass

@@ -288,15 +288,11 @@ def _repo_content_index(repo_path: str, args) -> dict:
         max_files=getattr(args, "max_files", 5000) if args is not None else 5000,
         scope="content",
     )
-    files = _collect_files(scan_args.paths, scan_args)
-    index: dict = {}
-    for file in files:
-        for block in file.blocks:
-            # First occurrence wins: a passage repeated inside the repo
-            # itself (a shared partial or include) still resolves to one
-            # place, matching how `distinct_blocks` treats the crawled side.
-            index.setdefault(duplicates.block_identity(block), block)
-    return index
+    import repo_pairing
+
+    # One implementation, shared with the window: two ways of building this
+    # index is two answers to "which file wrote this sentence".
+    return repo_pairing.content_index(_collect_files(scan_args.paths, scan_args))
 
 
 def _note_weak_detector(args, blocks, stats_out) -> None:

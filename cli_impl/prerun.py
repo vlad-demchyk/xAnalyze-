@@ -60,28 +60,55 @@ def _breakpoints_hint() -> str:
             f"check, which is where responsive failures live.")
 
 
-def hints(command: str, target: str, args, *, is_url: bool) -> list:
-    """The lines to print before this run starts. Empty is a normal answer."""
+#: The codes, which are also the translation-key stems for a surface that
+#: does not print English. One per kind of depth a run is not reaching.
+REPO = "repo"
+DEVSERVER = "devserver"
+BROWSER = "browser"
+BREAKPOINTS = "breakpoints"
+
+
+def missed(command: str, target: str, args, *, is_url: bool) -> list:
+    """`[(code, fields)]` - the depth this run is not reaching, as data.
+
+    Split out of `hints` when the window needed the same answers: the CLI
+    prints an English line with a flag in it, and a window has neither a
+    flag to name nor English to print. Two implementations of "what is this
+    run leaving undone" is how two surfaces start disagreeing about it.
+    """
     if getattr(args, "no_hints", False):
         return []
-    lines = []
+    found = []
     if is_url:
         if not getattr(args, "repo", None):
-            lines.append(_repo_hint(target))
+            found.append((REPO, {"target": target}))
     else:
         root = Path(target)
         if root.is_dir() and not getattr(args, "devserver", False) \
                 and not getattr(args, "url", False):
             stack = _stack_of(root)
             if stack is not None:
-                lines.append(_devserver_hint(root, stack.name,
-                                             stack.deps_satisfied(root)))
+                found.append((DEVSERVER, {"stack": stack.name,
+                                          "deps": stack.deps_satisfied(root)}))
     if command in ("audit", "fullscan"):
         if getattr(args, "no_browser", False):
-            lines.append(_browser_hint())
+            found.append((BROWSER, {}))
         elif is_url and not getattr(args, "breakpoints", None):
-            lines.append(_breakpoints_hint())
-    return lines
+            found.append((BREAKPOINTS, {}))
+    return found
+
+
+def hints(command: str, target: str, args, *, is_url: bool) -> list:
+    """The lines to print before this run starts. Empty is a normal answer."""
+    writers = {
+        REPO: lambda fields: _repo_hint(fields["target"]),
+        DEVSERVER: lambda fields: _devserver_hint(Path(target), fields["stack"],
+                                                  fields["deps"]),
+        BROWSER: lambda _fields: _browser_hint(),
+        BREAKPOINTS: lambda _fields: _breakpoints_hint(),
+    }
+    return [writers[code](fields)
+            for code, fields in missed(command, target, args, is_url=is_url)]
 
 
 def _stack_of(root: Path):

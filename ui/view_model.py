@@ -387,6 +387,11 @@ class MainViewModel(QObject):
             max_pages=self.settings.max_pages,
             unicode_categories=self._active_unicode_categories(),
             settings=self.settings,
+            # The checkout behind this site, when one was named. Findings
+            # then carry the file and the line that wrote the passage; see
+            # `repo_pairing`.
+            paired_repo=self.state.paired_repo,
+            paired_ignore=self.effective_ignore_patterns,
         )
         self._wire_worker(self._worker,
                           on_finished=self._on_web_finished)
@@ -444,9 +449,11 @@ class MainViewModel(QObject):
             pages=(self._reusable_pages()
                    if self.state.source == SOURCE_SITE else None),
             ignore_patterns=self.effective_ignore_patterns,
+            max_files=self.settings.max_files,
             settings=self.settings,
             site_controls=self.state.site_controls,
             medium=self.state.medium,
+            within=self.state.within,
         )
         if worker is None:
             self.error.emit(self._missing_target_message() if refusal == "no_target"
@@ -488,6 +495,7 @@ class MainViewModel(QObject):
         self.error.emit(message)
 
     def _on_web_finished(self, result: AnalysisResult):
+        self._report_pairing()
         if isinstance(self.result, RepoAnalysisResult) and self.state.source == SOURCE_FILE:
             # Merge browser findings into the code analysis result
             self.result.spans.extend(result.spans)
@@ -497,6 +505,27 @@ class MainViewModel(QObject):
             self._remember_extraction(self._last_request,
                                       pages=result.pages)
             self.web_result_ready.emit(result)
+
+    def _report_pairing(self) -> None:
+        """Say how much of the site the paired checkout actually explained.
+
+        The number is the honest half of pairing. Three matches out of forty
+        means the wrong folder - or copy that arrives from a CMS - and a
+        window that showed only the three files it did find would let a
+        person believe the other thirty-seven passages are not in the code.
+        """
+        from i18n.translations import t
+
+        worker = self._worker
+        if not getattr(worker, "paired_repo", ""):
+            return
+        total = getattr(worker, "paired_total", 0)
+        matched = getattr(worker, "paired_matched", 0)
+        if not total:
+            return
+        key = "paired_repo_matched" if matched else "paired_repo_none"
+        self.status_message.emit(t(key, self.settings.ui_language,
+                                   matched=matched, total=total))
 
     def _on_repo_finished(self, result: RepoAnalysisResult):
         self.result = result

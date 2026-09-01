@@ -43,11 +43,25 @@ MEDIA_UNCHECKED = "media_unchecked"
 SATURATED_RULE = "saturated_rule"
 UNKNOWN_FAILURE = "unknown_failure"
 
+#: Said *before* a run rather than after it, and about depth rather than
+#: failure: what this run is not going to reach, and which switch reaches it.
+#: The CLI has printed these since `cli_impl/prerun.py`; the window said
+#: nothing at all, so a person there could not know the same tool would have
+#: answered more if asked differently.
+MISSED_REPO = "missed_repo"
+MISSED_DEVSERVER = "missed_devserver"
+MISSED_BROWSER = "missed_browser"
+MISSED_BREAKPOINTS = "missed_breakpoints"
+
 #: What a diagnosis offers. Names rather than callables: this module knows
 #: which moves make sense, and the window knows how to perform them.
 RETRY = "retry"
 RAISE_LIMIT = "raise_limit"
 DISMISS = "dismiss"
+#: The moves a missed-depth notice offers: point at the checkout behind the
+#: site, and audit every width rather than the desktop one.
+PAIR_REPO = "pair_repo"
+ALL_BREAKPOINTS = "all_breakpoints"
 
 #: Statuses that mean "the server refused", not "the page is empty". Kept in
 #: step with `crawler._BLOCKED_STATUSES`, which decides the same thing one
@@ -206,6 +220,36 @@ def diagnose_saturation(result) -> list:
         evidence=item.message(),
         actions=())
         for item in saturated_rules(result)]
+
+
+#: Which notice each `cli_impl.prerun` code becomes, and what it offers.
+#: `devserver` and `browser` carry no move: starting a dev server is already
+#: a button of its own on a folder run, and "you asked for no browser" is
+#: answered by not asking for that.
+_MISSED = {
+    "repo": (MISSED_REPO, (PAIR_REPO,)),
+    "devserver": (MISSED_DEVSERVER, ()),
+    "browser": (MISSED_BROWSER, ()),
+    "breakpoints": (MISSED_BREAKPOINTS, (ALL_BREAKPOINTS,)),
+}
+
+
+def diagnose_missed_depth(items) -> list:
+    """`[(code, fields)]` from `cli_impl.prerun.missed` as notices.
+
+    The translation happens here rather than in `prerun` because `prerun`
+    writes English lines with flag names in them - the right output for a
+    terminal and the wrong one for a window, where there is no flag to type
+    and the interface may not be in English.
+    """
+    out = []
+    for code, fields in items or ():
+        entry = _MISSED.get(code)
+        if entry is None:
+            continue
+        kind, actions = entry
+        out.append(Diagnosis(kind, fields=dict(fields), actions=actions))
+    return out
 
 
 def diagnose_failure(message: str) -> Diagnosis:

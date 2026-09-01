@@ -481,6 +481,19 @@ class FindingsPanelMixin:
         source_label.setWordWrap(True)
         layout.addWidget(source_label)
 
+        # And, when a checkout was paired with the site, where the passage is
+        # *written*. A page address tells a reader where to look; this is the
+        # other answer, the one a fix needs. Absent for a passage the given
+        # checkout does not contain - which is a real answer about that
+        # checkout rather than a gap. See `repo_pairing`.
+        written_in = getattr(block, "source_file", "")
+        if written_in:
+            written_label = QLabel(t("finding_written_in", lang,
+                                     path=written_in,
+                                     line=getattr(block, "source_line", "") or "?"))
+            written_label.setWordWrap(True)
+            layout.addWidget(written_label)
+
         original_caption = muted(t("detail_original_label", lang))
         layout.addWidget(original_caption)
         original_view = QLabel(original)

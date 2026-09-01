@@ -278,6 +278,15 @@ class SettingsDialog(QDialog):
         self.max_pages_spin.setValue(self.settings.max_pages)
         self.max_pages_spin.setFixedWidth(90)
 
+        # `--max-files`. A monorepo hits this and the run says so through
+        # `ScanDiagnostics.truncated`; before this the number itself was not
+        # reachable from the window at all.
+        self.max_files_spin = QSpinBox()
+        self.max_files_spin.setRange(100, 200000)
+        self.max_files_spin.setSingleStep(500)
+        self.max_files_spin.setValue(self.settings.max_files)
+        self.max_files_spin.setFixedWidth(110)
+
         self.unicode_enabled_box = self._switch(self.settings.unicode_check_enabled)
         self.devserver_switch = self._switch(self.settings.auto_start_devserver)
 
@@ -287,6 +296,8 @@ class SettingsDialog(QDialog):
             # uses it as a field label; a row is a statement, not a field.
             self._row(t("theme_label", self.lang).rstrip(":"), self.theme_seg),
             self._row(t("settings_max_pages", self.lang), self.max_pages_spin),
+            self._row(t("settings_max_files", self.lang), self.max_files_spin,
+                      t("settings_max_files_note", self.lang)),
             self._row(t("settings_unicode_enabled", self.lang),
                       self.unicode_enabled_box),
             self._row(t("settings_devserver_row", self.lang),
@@ -987,6 +998,7 @@ class SettingsDialog(QDialog):
         self.settings.ui_language = self.lang_combo.currentData()
         self.settings.theme = self.theme_seg.current_data() or "auto"
         self.settings.max_pages = self.max_pages_spin.value()
+        self.settings.max_files = self.max_files_spin.value()
         self.settings.unicode_check_enabled = self.unicode_enabled_box.isChecked()
         self.settings.auto_start_devserver = self.devserver_switch.isChecked()
         self.settings.unicode_categories = [

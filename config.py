@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 APP_NAME = "xanalyze"
-APP_VERSION = "0.57.0"
+APP_VERSION = "0.58.0"
 # Pre-rename config dir name. Only used to migrate an existing install's
 # settings into the new location the first time this runs after upgrading;
 # see `migrate_legacy_file`.
@@ -87,6 +87,12 @@ class Settings:
     default_method: str = "local"
     crawl_depth: int = 1
     max_pages: int = 30
+    # The folder walk's ceiling, the window's copy of `--max-files`. It had
+    # none, so a monorepo was silently cut at `ScanConfig`'s default and the
+    # window never said which number did the cutting. Same default as the
+    # CLI: two surfaces reading different amounts of one repository is the
+    # kind of disagreement nobody notices until the reports differ.
+    max_files: int = 5000
     # Anthropic's current default model. Older ids stay valid — this is only
     # what a fresh install starts on; see `_MIGRATIONS` for how a stored
     # value from a previous version is handled.
@@ -98,6 +104,11 @@ class Settings:
     # copy that ships to a user; 'technical' is comments and docstrings;
     # 'both' is either. See repo_scanner's SCOPE_* constants.
     repo_scope: str = "content"
+    # The checkout last paired with a site, remembered so the second audit of
+    # the same project does not ask again. A path, or empty. Only the window
+    # writes it: the CLI is told with `--repo` on every run, which is the
+    # right contract for something a pipeline drives.
+    last_paired_repo: str = ""
 
     # The non-keyboard-character pass runs alongside whichever detector is
     # selected: it's offline, exact, and its fix costs nothing, so there's

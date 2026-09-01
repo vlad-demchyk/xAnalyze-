@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QThread, Signal
 
+import applog
 import suppression
 from crawler import CrawlConfig, crawl
 from detectors.base import DetectorUnavailable
@@ -54,7 +55,33 @@ def run_unicode_pass(blocks, categories, selected_detector: str = "") -> list:
     return detector.analyze_blocks(blocks)
 
 
-class AnalysisWorker(QThread):
+class _PairingMixin:
+    """Shared by the workers that can be handed a checkout to pair against."""
+
+    def _pair_with_repo(self, blocks) -> None:
+        """Name the file behind each passage, and count what was explained.
+
+        Failure here is deliberately not failure of the run: the scan already
+        found what it found, and a checkout that cannot be walked - a path
+        that moved, a permission - must not throw that away. The counts stay
+        at zero, which is what the window reports.
+        """
+        import repo_pairing
+
+        from duplicates import distinct_blocks
+
+        try:
+            index = repo_pairing.index_for_path(
+                self.paired_repo, self.paired_ignore,
+                max_files=getattr(self.settings, "max_files", 5000) or 5000)
+        except Exception as exc:  # noqa: BLE001 - the findings still stand
+            applog.error("pairing.failed", repo=self.paired_repo, error=str(exc))
+            return
+        self.paired_total = len(distinct_blocks(blocks))
+        self.paired_matched = repo_pairing.pair_blocks(blocks, index)
+
+
+class AnalysisWorker(_PairingMixin, QThread):
     crawling = Signal(str, int)          # url, depth
     detecting = Signal(str)              # detector display name
     finished_ok = Signal(object)         # AnalysisResult
@@ -63,9 +90,22 @@ class AnalysisWorker(QThread):
     def __init__(self, root_url: str, depth: int, detector_name: str,
                  detector_config: dict, max_pages: int = 30,
                  unicode_categories: tuple | None = None, settings=None,
-                 pages: list | None = None, parent=None):
+                 pages: list | None = None, paired_repo: str = "",
+                 paired_ignore=None, parent=None):
         super().__init__(parent)
         self.settings = settings
+        #: `--repo`: the checkout that serves this site. Given one, every
+        #: passage that also exists in it gets a file and a line, so a
+        #: finding stops being "somewhere on the pricing page". Empty is the
+        #: normal case and changes nothing. See `repo_pairing`.
+        self.paired_repo = (paired_repo or "").strip()
+        self.paired_ignore = list(paired_ignore or [])
+        #: How many distinct passages the checkout explained, and how many
+        #: there were. Read by the window: three matches out of forty means
+        #: the wrong checkout, and a surface that showed only the three
+        #: would never say so.
+        self.paired_matched = 0
+        self.paired_total = 0
         self.ignore_root = None  # a URL has no folder to hold an ignore file
         #: Pages already fetched by an earlier run over the same target. Given
         #: them, this worker never touches the network: the expensive half of a
@@ -119,6 +159,9 @@ class AnalysisWorker(QThread):
                 run_unicode_pass(all_blocks, self.unicode_categories, self.detector_name)
             )
             result.spans = _apply_suppressions(result, self.settings, self.ignore_root)
+
+            if self.paired_repo:
+                self._pair_with_repo(all_blocks)
 
             if self._cancelled:
                 return
@@ -204,7 +247,12 @@ class RepoAnalysisWorker(QThread):
                 files = [scan_file(self.root_dir, self.scope)]
             else:
                 config = ScanConfig(ignore_patterns=self.ignore_patterns,
-                                    scope=self.scope)
+                                    scope=self.scope,
+                                    # The window's own ceiling, which it now
+                                    # has: `Settings.max_files`, the same
+                                    # number `--max-files` sets.
+                                    max_files=getattr(self.settings,
+                                                      "max_files", 5000) or 5000)
                 # The walk's own account of itself. Without it the window
                 # could not tell "read 1732 files, nothing crossed the
                 # threshold" from "stopped at the cap after 500" - and it
@@ -265,8 +313,16 @@ class AuditWorker(QThread):
                  is_repo: bool = False, is_page_file: bool = False,
                  ignore_patterns=None, max_files: int = 5000,
                  settings=None, pages: list | None = None,
-                 site_controls: bool = False, medium: str = "", parent=None):
+                 site_controls: bool = False, medium: str = "",
+                 within: str = "", parent=None):
         super().__init__(parent)
+        #: `--within`: confine the reading to one subtree. The document is
+        #: then a *fragment* by construction, so the page-level rules stop
+        #: applying - it has no `<head>` to carry a canonical link and no
+        #: business owning the page's only `<h1>`. A selector that matches
+        #: nothing comes back as an error on that document rather than as a
+        #: clean result.
+        self.within = (within or "").strip()
         #: `--medium`: "web", "email", or empty for "read it off each file".
         #: Only the folder branch reads it - a crawled site is a site, and a
         #: single page file is autodetected the same way the CLI does it.
@@ -301,7 +357,7 @@ class AuditWorker(QThread):
                 # One file, read as a whole page. No crawl and no scan: the
                 # user pointed at the document itself.
                 self.auditing.emit(self.target)
-                result = audit.analyze_page_file(self.target)
+                result = audit.analyze_page_file(self.target, within=self.within)
                 ignore_root = None
             elif self.is_repo:
                 files = scan_repo(self.target,
@@ -328,7 +384,8 @@ class AuditWorker(QThread):
                     return
                 self.auditing.emit(self.target)
                 result = audit.analyze_pages(pages, self.target,
-                                             site_controls=self.site_controls)
+                                             site_controls=self.site_controls,
+                                             within=self.within)
                 ignore_root = None
 
             # The same list that governs the text scan: a user who said "not
@@ -348,7 +405,7 @@ class AuditWorker(QThread):
 def audit_worker_for(source: str, *, target: str, depth: int, max_pages: int,
                      pages=None, ignore_patterns=None, max_files: int = 5000,
                      settings=None, site_controls: bool = False,
-                     medium: str = "", parent=None):
+                     medium: str = "", within: str = "", parent=None):
     """The right `AuditWorker` for the source, or `(None, message)` on refusal.
 
     One place, because there were two: the window and the view model each
@@ -379,7 +436,7 @@ def audit_worker_for(source: str, *, target: str, depth: int, max_pages: int,
     if source == SOURCE_FILE:
         return AuditWorker(target=target, depth=0, max_pages=max_pages,
                            is_page_file=True, settings=settings,
-                           parent=parent), ""
+                           within=within, parent=parent), ""
 
     # A site. `example.com` is accepted here exactly as the CLI accepts it,
     # rather than only `https://example.com`.
@@ -388,7 +445,8 @@ def audit_worker_for(source: str, *, target: str, depth: int, max_pages: int,
         return None, "not_a_url"
     return AuditWorker(pages=pages, target=address, depth=depth,
                        max_pages=max_pages, settings=settings,
-                       site_controls=site_controls, parent=parent), ""
+                       site_controls=site_controls, within=within,
+                       parent=parent), ""
 
 
 class RewriteAllWorker(QThread):

@@ -447,6 +447,16 @@ The first card, **What we are looking at**, states what a chosen folder turned o
 
 The same card carries **These documents are** - the window's `--medium`. It is read off the markup by default, which is right nearly always; set it by hand for an email deliverable that carries neither an Outlook namespace nor a merge tag. On `email` the browser-only checks (canonical, Open Graph, structured data, skip link, landmarks, WebP) are skipped, and the accessibility ones are not: `image-alt`, `control-name`, `table-headers`, contrast and language are as real in a mail client as in a browser.
 
+**What the window can ask that only the command line could ask.** Three of them, in the advanced row:
+
+- **The code behind this site.** A finding on a page names the page, which is where to look and never where to edit. Given the checkout, every passage that also exists in it carries the file and the line - the same `--repo` pairing the CLI does, through the same module. The run then says how many of the passages the checkout explained: three of forty means the wrong folder, or copy that arrives from a CMS, and a window that showed only the three matches would never say so.
+- **Only this part of the page** (`--within`). A CSS selector for a delivered web part or an embedded widget: the rest of the document belongs to somebody else. What is inside the selector is a fragment by construction, so the page-level rules stop applying, and a selector that matches nothing is reported rather than returned as a clean result.
+- **Most files in a folder** (`--max-files`), in Settings. The window had no ceiling of its own and read whatever the default was, without ever naming the number that cut a monorepo short.
+
+**Before a run, the window now says what it is not going to reach** - the same notices `cli_impl/prerun.py` prints for the CLI, from the same data: no checkout paired, a project that could serve itself, a browser that was switched off. Each carries the move that answers it where the window has one.
+
+The window has no incremental scan. `scan --incremental` reuses cached *findings*, which are rows in a JSON file with no `TextSpan` behind them, and the window's list is built from spans - it offers a rewrite, a replacement and a write to disk for each one. Reusing the cache there would produce rows nothing can act on, so the flag stays a CLI and TUI one until the cache holds spans.
+
 The TUI's Audit screen carries the same three, plus every breakpoint the audit knows on both the Audit and Full Scan screens.
 
 Mechanical corrections are selected by default. Model drafts require review. Decisions such as photographic alternative text are never presented as automatic fixes.

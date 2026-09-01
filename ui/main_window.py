@@ -1028,6 +1028,30 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         # even in site mode, `repo_controls` hidden or not). The advanced row
         # is a widget of its own, invisible by default, so it cannot
         # contaminate a measurement of the row it is not part of.
+        # --- the two run parameters the CLI had and the window did not ---
+        #
+        # `--repo`: the checkout that serves this site. A finding on a page
+        # names the page, which is where to look and never where to edit; with
+        # a checkout paired, every passage that also exists in it carries the
+        # file and the line. See `repo_pairing`.
+        #
+        # `--within`: read only this part of the page. A delivered SharePoint
+        # web part or an embedded widget sits inside somebody else's document,
+        # and auditing the whole page reports their markup as the deliverer's
+        # problem. A selector that matches nothing is refused rather than
+        # returning zero findings - see `audit.within`.
+        #
+        # Both live in the advanced row rather than the target strip: that row
+        # is measured by `tests/test_window_shell.py` and two more widgets in
+        # it put a floor under the whole window (see `auto_devserver_check`).
+        self.paired_repo_edit = QLineEdit()
+        self.paired_repo_edit.setText(self.settings.last_paired_repo or "")
+        self.paired_repo_edit.textChanged.connect(self._on_paired_repo_changed)
+        self.paired_repo_btn = QPushButton()
+        self.paired_repo_btn.clicked.connect(self._on_browse_paired_repo)
+        self.within_edit = QLineEdit()
+        self.within_edit.textChanged.connect(self._on_within_changed)
+
         self.auto_devserver_check = QCheckBox()
         self.auto_devserver_check.setChecked(self.settings.auto_start_devserver)
         self.auto_devserver_check.toggled.connect(self._on_auto_devserver_toggled)
@@ -1165,6 +1189,8 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         adv_layout.setSpacing(self.palette_tokens.space_sm)
         for w in (self.method_label, self.method_combo,
                   self.provider_label, self.provider_combo,
+                  self.paired_repo_edit, self.paired_repo_btn,
+                  self.within_edit,
                   self.auto_devserver_check, self.start_server_btn):
             adv_layout.addWidget(w)
         self.advanced_row.setVisible(False)
@@ -1561,6 +1587,12 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self.exclusions_btn.setText(t("exclusions_button", lang))
         self.exclusions_btn.setToolTip(t("exclusions_button_full", lang))
         self.auto_devserver_check.setText(t("auto_devserver_check", lang))
+        self.paired_repo_edit.setPlaceholderText(t("paired_repo_placeholder", lang))
+        self.paired_repo_edit.setToolTip(t("paired_repo_full", lang))
+        self.paired_repo_btn.setText(t("browse_button", lang))
+        self.paired_repo_btn.setToolTip(t("paired_repo_full", lang))
+        self.within_edit.setPlaceholderText(t("within_placeholder", lang))
+        self.within_edit.setToolTip(t("within_full", lang))
         self.auto_devserver_check.setToolTip(t("auto_devserver_check_full", lang))
         self.start_server_btn.setText(t("start_server_button", lang))
         self.start_server_btn.setToolTip(t("start_server_button_full", lang))
@@ -2216,6 +2248,16 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         # own to start.
         self.auto_devserver_check.setVisible(is_repo)
         self.start_server_btn.setVisible(is_repo)
+        # Pairing a checkout is a question about a *site*: a folder run is
+        # already reading the files, and it only means anything while the copy
+        # pass is running, because that is the pass whose findings are
+        # passages a file can be found for.
+        pairing_useful = not is_repo and not is_file and wants_copy
+        self.paired_repo_edit.setVisible(pairing_useful)
+        self.paired_repo_btn.setVisible(pairing_useful)
+        # `--within` narrows a document, so it belongs wherever there is one
+        # to narrow: a page on a site, or a page in a file.
+        self.within_edit.setVisible(not is_repo and wants_audit)
         # The row is shared, but the two halves never appear together: three
         # buttons rewrite prose, three act on an audit, and offering both at
         # once would mean six buttons of which half do nothing.
@@ -2308,9 +2350,45 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             self.status_bar.showMessage(
                 t("devserver_available", self.lang, stack=stack.name))
 
+        self._show_missed_depth()
+
         error = self.view_model.analyze()
         if error and error != "browser_failed":
             QMessageBox.warning(self, "", error)
+
+    def _show_missed_depth(self) -> None:
+        """Say what this run is not going to reach, before it starts.
+
+        The CLI has printed these since `cli_impl/prerun.py` and the window
+        said nothing, so a person here could not know that the same tool,
+        asked differently, would have answered more. Same source of truth -
+        `prerun.missed` - rendered as notices rather than as English lines
+        with flag names in them.
+
+        `breakpoints` is deliberately not offered here: the window has no
+        multi-width audit to switch on, and a notice whose move does not
+        exist is worse than no notice. The width buttons in the preview
+        column are a different thing - they resize what is on screen.
+        """
+        import argparse
+
+        import diagnosis as dx
+        from cli_impl import prerun
+
+        request = self.view_model.current_request()
+        args = argparse.Namespace(
+            repo=self.app_state.paired_repo,
+            devserver=self.settings.auto_start_devserver,
+            url=False,
+            no_browser=not request.wants_browser,
+            breakpoints=True,   # see the docstring
+            no_hints=False,
+        )
+        command = ("audit" if CHECK_ACCESSIBILITY in self._chosen_checks()
+                   else "scan")
+        found = prerun.missed(command, self.app_state.target, args,
+                              is_url=self.source == SOURCE_SITE)
+        self.show_diagnoses(dx.diagnose_missed_depth(found))
 
     def _on_start_server_clicked(self) -> None:
         """The explicit, one-time equivalent of the auto-start toggle."""
@@ -3039,6 +3117,27 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             if path.suffix.lower() in self.DROPPABLE_PAGES:
                 return SOURCE_FILE, str(path)
         return None
+
+    def _on_browse_paired_repo(self) -> None:
+        path = QFileDialog.getExistingDirectory(self, self.paired_repo_btn.text())
+        if path:
+            self.paired_repo_edit.setText(path)
+
+    def _on_paired_repo_changed(self, text: str) -> None:
+        """Remember the checkout, so the second audit of a site does not ask.
+
+        Written to settings on every edit rather than on run: a person who
+        picks the folder and then changes their mind about the URL has still
+        told us which checkout this machine works on.
+        """
+        value = (text or "").strip()
+        self.app_state.set_paired_repo(value)
+        if self.settings.last_paired_repo != value:
+            self.settings.last_paired_repo = value
+            self.settings.save()
+
+    def _on_within_changed(self, text: str) -> None:
+        self.app_state.set_within(text)
 
     def _on_browse_clicked(self) -> None:
         path = QFileDialog.getExistingDirectory(self, self.browse_btn.text())

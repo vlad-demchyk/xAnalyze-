@@ -97,6 +97,44 @@ class AppState(QObject):
         #: landmarks: 1074 findings over 144 documents in a real workspace,
         #: with the six loudest rules all browser concepts. See `audit.medium`.
         self._medium: str = ""
+        #: `--repo`: the checkout that serves the site being scanned. Empty
+        #: is the normal case, and the whole feature is what happens when it
+        #: is not: a passage found on a page gets the file and the line that
+        #: wrote it, because a page address tells a reader where to look and
+        #: never where to edit. Only meaningful for a site - a folder run is
+        #: already reading the files.
+        self._paired_repo: str = ""
+        self._within: str = ""
+
+    # -- paired repository -------------------------------------------------
+    @property
+    def paired_repo(self) -> str:
+        return self._paired_repo
+
+    def set_paired_repo(self, value: str) -> None:
+        value = (value or "").strip()
+        if value == self._paired_repo:
+            return
+        self._paired_repo = value
+        self.project_changed.emit()
+        self.any_changed.emit()
+
+    #: `--within`: read only the subtree this selector matches. Empty is the
+    #: whole document, which is what nearly every run wants; it is here for
+    #: the delivered web part or embedded widget that lives inside somebody
+    #: else's page. A selector that matches nothing is an error and not an
+    #: empty result - see `audit.within`.
+    @property
+    def within(self) -> str:
+        return self._within
+
+    def set_within(self, value: str) -> None:
+        value = (value or "").strip()
+        if value == self._within:
+            return
+        self._within = value
+        self.view_changed.emit()
+        self.any_changed.emit()
 
     # -- medium ------------------------------------------------------------
     @property

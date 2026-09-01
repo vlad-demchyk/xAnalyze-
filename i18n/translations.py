@@ -5990,6 +5990,104 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Leggere robots.txt e la sitemap dello stesso dominio",
         "en": "Read robots.txt and the same-domain sitemap",
     },
+    # Said before a run, about depth rather than failure: what this run is
+    # not going to reach, and which switch reaches it. The CLI has printed
+    # these since `cli_impl/prerun.py`; the window said nothing at all.
+    "diagnosis_missed_repo_title": {
+        "uk": "Знахідки назвуть сторінку, а не файл",
+        "it": "I rilievi indicheranno la pagina, non il file",
+        "en": "Findings will name the page, not the file",
+    },
+    "diagnosis_missed_repo_body": {
+        "uk": "Тека з кодом цього сайту не вказана, тож знайдений уривок матиме адресу сторінки і не матиме файла й рядка, де його написано. Вкажіть код за сайтом - і кожен уривок, який є в теці, отримає точне місце.",
+        "it": "Non è indicata la cartella con il codice di questo sito, quindi un passaggio trovato avrà l'indirizzo della pagina e non il file e la riga in cui è scritto. Indica il codice dietro il sito e ogni passaggio presente nella cartella riceverà la sua posizione esatta.",
+        "en": "No checkout was given for this site, so a passage that is found carries the page address and not the file and line where it is written. Point at the code behind the site and every passage that exists there gets an exact place.",
+    },
+    "diagnosis_missed_devserver_title": {
+        "uk": "Проєкт міг би показати себе браузеру",
+        "it": "Il progetto potrebbe mostrarsi a un browser",
+        "en": "The project could serve itself to a browser",
+    },
+    "diagnosis_missed_devserver_body": {
+        "uk": "Це схоже на проєкт {stack}, тобто він уміє запустити власний сервер. Прочитаний як вихідний код, він не проходить правила, яким потрібна намальована сторінка: контраст, порядок фокуса, розкладка на ширині та всі вимірювання.",
+        "it": "Sembra un progetto {stack}, quindi può avviare un proprio server. Letto come codice sorgente, non passa le regole che richiedono una pagina renderizzata: contrasto, ordine del focus, layout a una certa larghezza e tutte le misurazioni.",
+        "en": "This looks like a {stack} project, so it can serve itself. Read as source, it does not run the rules that need a rendered page: contrast, focus order, layout at a width, and every measurement.",
+    },
+    "diagnosis_missed_browser_title": {
+        "uk": "Це лише статичне читання",
+        "it": "Questa è solo la lettura statica",
+        "en": "This is the static reading only",
+    },
+    "diagnosis_missed_browser_body": {
+        "uk": "Браузер вимкнено, тож axe, HTML_CodeSniffer, станові правила і вимірювання не виконуються. Тиха відповідь тут не є тією самою відповіддю, яку дав би прогін із браузером.",
+        "it": "Il browser è disattivato, quindi axe, HTML_CodeSniffer, le regole sugli stati e le misurazioni non vengono eseguite. Un risultato silenzioso qui non è la stessa risposta che darebbe una scansione con il browser.",
+        "en": "The browser is off, so axe, HTML_CodeSniffer, the state rules and the measurements do not run. A quiet result here is not the answer a rendered run would give.",
+    },
+    "diagnosis_missed_breakpoints_title": {
+        "uk": "Аудитується лише ширина робочого столу",
+        "it": "Viene controllata solo la larghezza desktop",
+        "en": "Only the desktop width is audited",
+    },
+    "diagnosis_missed_breakpoints_body": {
+        "uk": "Планшет, мобільний і перевірка перекомпонування на 320 px не виконуються, а саме там живуть відмови адаптивної верстки.",
+        "it": "Tablet, mobile e il controllo di reflow a 320 px non vengono eseguiti, ed è proprio lì che stanno i cedimenti del layout responsive.",
+        "en": "Tablet, mobile and the 320 px reflow check do not run, and that is where responsive failures live.",
+    },
+    "diagnosis_pair_repo": {
+        "uk": "Вказати код за сайтом",
+        "it": "Indica il codice dietro il sito",
+        "en": "Point at the code behind the site",
+    },
+    "diagnosis_all_breakpoints": {
+        "uk": "Перевірити всі ширини",
+        "it": "Controlla tutte le larghezze",
+        "en": "Check every width",
+    },
+    "settings_max_files": {
+        "uk": "Максимум файлів у теці",
+        "it": "Numero massimo di file nella cartella",
+        "en": "Most files in a folder",
+    },
+    "settings_max_files_note": {
+        "uk": "Скільки файлів прогін відкриє в теці, перш ніж зупинитись. Великий монорепозиторій упирається в цю межу, і прогін про це каже - але змінити її досі можна було лише в командному рядку.",
+        "it": "Quanti file una scansione apre in una cartella prima di fermarsi. Un monorepo grande raggiunge questo limite e la scansione lo dichiara, ma finora si poteva cambiarlo solo da riga di comando.",
+        "en": "How many files a run opens in a folder before it stops. A large monorepo reaches this limit and the run says so - but until now the number could only be changed from the command line.",
+    },
+    "finding_written_in": {
+        "uk": "Написано у {path}:{line}",
+        "it": "Scritto in {path}:{line}",
+        "en": "Written in {path}:{line}",
+    },
+    "paired_repo_placeholder": {
+        "uk": "код за цим сайтом (не обовʼязково)",
+        "it": "codice dietro questo sito (facoltativo)",
+        "en": "the code behind this site (optional)",
+    },
+    "paired_repo_full": {
+        "uk": "Тека з кодом, який обслуговує цей сайт. Знахідка в тексті отримає файл і рядок, де цей уривок написано, а не лише адресу сторінки. Порожньо - звичайний прогін.",
+        "it": "La cartella con il codice che serve questo sito. Un rilievo nel testo riceverà il file e la riga in cui il passaggio è scritto, non solo l'indirizzo della pagina. Vuoto: scansione normale.",
+        "en": "The checkout that serves this site. A text finding then carries the file and line where the passage is written, not just the page address. Empty is an ordinary run.",
+    },
+    "within_placeholder": {
+        "uk": "лише ця частина сторінки, напр. .my-webpart",
+        "it": "solo questa parte della pagina, es. .my-webpart",
+        "en": "only this part of the page, e.g. .my-webpart",
+    },
+    "within_full": {
+        "uk": "CSS-селектор частини сторінки, яку ви віддали замовнику: веб-частина, віджет, вбудований блок. Решта документа належить комусь іншому, і сторінкові правила до фрагмента не застосовуються. Якщо селектор нічого не знайшов, прогін скаже про це, а не поверне порожній результат.",
+        "it": "Selettore CSS della parte di pagina che hai consegnato: una web part, un widget, un blocco incorporato. Il resto del documento è di qualcun altro e le regole di pagina non si applicano a un frammento. Se il selettore non trova nulla, la scansione lo dice invece di restituire un risultato vuoto.",
+        "en": "A CSS selector for the part of the page you delivered: a web part, a widget, an embedded block. The rest of the document belongs to somebody else, and page-level rules do not apply to a fragment. A selector that matches nothing is reported, not returned as an empty result.",
+    },
+    "paired_repo_matched": {
+        "uk": "Код за сайтом: {matched} із {total} уривків знайдено у теці.",
+        "it": "Codice dietro il sito: {matched} passaggi su {total} trovati nella cartella.",
+        "en": "The code behind the site: {matched} of {total} passages found in the checkout.",
+    },
+    "paired_repo_none": {
+        "uk": "Код за сайтом: жоден із {total} уривків не знайдено у вибраній теці. Найімовірніше, це не той чекаут - або текст приходить із CMS.",
+        "it": "Codice dietro il sito: nessuno dei {total} passaggi è stato trovato nella cartella scelta. Probabilmente non è quel checkout, oppure il testo arriva da un CMS.",
+        "en": "The code behind the site: none of the {total} passages were found in the chosen folder. Most likely it is the wrong checkout - or the text comes from a CMS.",
+    },
     "word_yes": {"uk": "так", "it": "sì", "en": "yes"},
     "word_no": {"uk": "ні", "it": "no", "en": "no"},
     "severity_critical": {"uk": "критично", "it": "critico", "en": "critical"},
