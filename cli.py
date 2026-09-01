@@ -315,6 +315,34 @@ def cmd_compare(args) -> int:
     return EXIT_OK
 
 
+def _web_parts_for(args) -> list:
+    """The web parts `--web-parts` asks for, or `[]`.
+
+    Refuses rather than guesses: without `--repo` there is no repository to
+    read them from, and a flag that quietly did nothing would leave a whole
+    site audited as one page under a report the caller narrowed on purpose.
+    """
+    if not getattr(args, "web_parts", False):
+        return []
+    repo = getattr(args, "repo", None)
+    if not repo:
+        print("# --web-parts needs --repo: the parts are read from the "
+              "solution that ships them", file=sys.stderr)
+        return []
+    from audit import spfx
+
+    found = spfx.web_parts(repo)
+    if not found:
+        print(f"# --web-parts: no web part manifest under {repo} - nothing "
+              f"to confine the audit to, so the whole page is read",
+              file=sys.stderr)
+        return []
+    print(f"# [web-parts] {len(found)} part(s) from {repo}: "
+          f"{', '.join(p.alias for p in found[:6])}"
+          f"{'…' if len(found) > 6 else ''}", file=sys.stderr)
+    return found
+
+
 def cmd_audit(args) -> int:
     """Audit a URL or a folder across all six categories.
 
@@ -367,7 +395,8 @@ def cmd_audit(args) -> int:
         # everything it needs is inlined.
         result = audit.analyze_page_file(
             target, ai_review=reviewer,
-            within=getattr(args, "within", None) or "")
+            within=getattr(args, "within", None) or "",
+            web_parts=_web_parts_for(args))
     elif is_url:
         from crawler import CrawlConfig, EMPTY_JS_RENDERED, crawl
 
@@ -401,7 +430,8 @@ def cmd_audit(args) -> int:
         result = audit.analyze_pages(
             pages, target, ai_review=reviewer,
             site_controls=getattr(args, "site_controls", False),
-            within=getattr(args, "within", None) or "")
+            within=getattr(args, "within", None) or "",
+            web_parts=_web_parts_for(args))
     else:
         from repo_scanner import scan_repo
 
@@ -889,6 +919,12 @@ def build_parser() -> argparse.ArgumentParser:
                               "page of python.org that was 312 of 348 contrast "
                               "findings, and a report two thirds made of 'we "
                               "do not know' is not a list anybody works through")
+    p_audit.add_argument("--repo", default=None, metavar="PATH",
+                         help="the checkout behind this site: needed by "
+                              "--web-parts, and used to name the file "
+                              "behind a finding")
+    p_audit.add_argument("--web-parts", action="store_true",
+                         help="with --repo pointing at an SPFx solution: audit only the web parts that repository ships, wherever they appear, and name the part behind each finding")
     p_audit.add_argument("--within", metavar="SELECTOR", default=None,
                          help="audit only this part of the page (a SharePoint "
                               "web part, an embedded widget). A generated "
@@ -1141,6 +1177,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_fullscan.add_argument("--unsettled", action="store_true",
                             help="also list what could not be decided, even "
                                  "in the browser (see `audit --unsettled`)")
+    p_fullscan.add_argument("--web-parts", action="store_true",
+                         help="with --repo pointing at an SPFx solution: audit only the web parts that repository ships, wherever they appear, and name the part behind each finding")
     p_fullscan.add_argument("--within", metavar="SELECTOR", default=None,
                             help="scan only this part of each page (see "
                                  "`audit --within`)")

@@ -59,13 +59,24 @@ class Result:
 
 
 def run_tests(result: Result) -> None:
+    """The suite, run the way the project runs it: `python -m pytest tests/`.
+
+    It used to be `unittest.TestLoader().discover(...)` in this process, and
+    that is not the same suite. `tests/conftest.py` points `XDG_CONFIG_HOME`
+    at a temporary directory at collection time, and unittest discovery does
+    not read a conftest - so the gate ran every test against the
+    developer's real `~/.config/xanalyze/settings.json`, and
+    `test_settings_isolation` correctly failed to say so. The release gate
+    reported two failures of its own making on every run, which is the kind
+    of noise that gets a gate ignored.
+    """
     print("tests")
-    loader = unittest.TestLoader()
-    suite = loader.discover(str(ROOT / "tests"), top_level_dir=str(ROOT))
-    runner = unittest.TextTestRunner(verbosity=0, stream=open("/dev/null", "w"))
-    outcome = runner.run(suite)
-    result.check(f"{outcome.testsRun} tests", outcome.wasSuccessful(),
-                 f"{len(outcome.failures)} failed, {len(outcome.errors)} errored")
+    done = subprocess.run([PYTHON, "-m", "pytest", str(ROOT / "tests"), "-q"],
+                          capture_output=True, text=True, cwd=str(ROOT))
+    tail = (done.stdout or "").strip().splitlines()
+    summary = tail[-1] if tail else "no output"
+    result.check(f"suite: {summary}", done.returncode == 0,
+                 "\n".join(tail[-12:]))
 
 
 def _cli(*args, timeout=300):

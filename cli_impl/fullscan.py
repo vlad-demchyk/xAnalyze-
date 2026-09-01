@@ -631,10 +631,13 @@ def _audit_fullscan_target(is_url: bool, is_page_file: bool, target: str,
                 print(f"# [images {seen_images[0]}] {url}", file=sys.stderr,
                       flush=True)
 
+        from cli import _web_parts_for
+
         return audit.analyze_pages(
             pages, target, media_progress=_image_progress,
             site_controls=getattr(args, "site_controls", False),
-            within=getattr(args, "within", None) or "")
+            within=getattr(args, "within", None) or "",
+            web_parts=_web_parts_for(args))
     if is_page_file:
         return audit.analyze_page_file(
             target, within=getattr(args, "within", None) or "")

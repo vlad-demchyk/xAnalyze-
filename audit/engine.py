@@ -400,7 +400,8 @@ def analyze_pages(pages, root: str, rules=None, ai_review=None,
                   media: bool = True, media_fetch=None,
                   media_progress=None,
                   site_controls: bool = False,
-                  within: str = "") -> AccessibilityResult:
+                  within: str = "",
+                  web_parts=()) -> AccessibilityResult:
     """Web mode: run over what the crawler returned.
 
     Pages the crawler could not read are carried through with their error
@@ -430,6 +431,15 @@ def analyze_pages(pages, root: str, rules=None, ai_review=None,
             # regex and not for reading.
             result.markup_sample = page.raw_html[:_MARKUP_SAMPLE]
         result.markup_by_source[page.url] = page.raw_html
+        if web_parts:
+            # One document per part *found on this page*, not one per page.
+            # A repository ships thirty of them and a page carries three;
+            # reporting the other twenty-seven as absent would be a finding
+            # about the tenant's page composition, which is not this
+            # repository's business.
+            result.documents.extend(
+                _documents_for_parts(page, rules, ai_review, web_parts))
+            continue
         result.documents.append(
             analyze_document(page.raw_html, page.url, rules,
                              ai_review=ai_review, within=within))
@@ -523,8 +533,43 @@ def attribute_ownership(result) -> dict:
             counts[owner] = counts.get(owner, 0) + 1
     return counts
 
+def _documents_for_parts(page, rules, ai_review, web_parts) -> list:
+    """This repository's web parts, wherever they appear on this page.
+
+    Each match is audited as its own fragment and each finding is tagged
+    with the part that owns it, so a report over a whole SharePoint site
+    reads as "this part, on these pages" rather than as one undifferentiated
+    list against the tenant's document.
+    """
+    from bs4 import BeautifulSoup
+
+    from audit import within as within_mod
+
+    try:
+        document = BeautifulSoup(page.raw_html or "", "html.parser")
+    except Exception:  # noqa: BLE001 - malformed markup is not a crash
+        return []
+    found = []
+    for part in web_parts:
+        try:
+            element, how, selector = within_mod.narrow_any(document,
+                                                           part.selectors())
+        except within_mod.ScopeNotFound:
+            continue
+        report = analyze_document(str(element), page.url, rules,
+                                  ai_review=ai_review,
+                                  document_kind="fragment")
+        for issue in report.issues:
+            details = dict(issue.details or {})
+            details["web_part"] = part.alias
+            details["matched_by"] = f"{selector} ({how})"
+            issue.details = details
+        found.append(report)
+    return found
+
+
 def analyze_page_file(path: str, rules=None, ai_review=None,
-                      within: str = "") -> AccessibilityResult:
+                      within: str = "", web_parts=()) -> AccessibilityResult:
     """One self-contained HTML file, treated as a page rather than as source.
 
     A page exported or built into a single file - inlined CSS, inlined
@@ -549,6 +594,15 @@ def analyze_page_file(path: str, rules=None, ai_review=None,
     result.markup_by_source[path] = markup
     # Line numbers on: the user has the file open, so "line 42" is directly
     # actionable in a way a CSS selector into a one-file build is not.
+    if web_parts:
+        # The same reading a crawled page gets, for a page saved to disk.
+        class _AsPage:
+            url = path
+            raw_html = markup
+
+        result.documents.extend(
+            _documents_for_parts(_AsPage(), rules, ai_review, web_parts))
+        return result
     result.documents.append(
         analyze_document(markup, path, rules, line_numbers=True,
                          ai_review=ai_review, within=within))

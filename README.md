@@ -328,6 +328,12 @@ A **WordPress theme or plugin** is recognised the way WordPress recognises it: b
 
 A **SharePoint web part** is one subtree of a page the tenant owns. `--within SELECTOR` confines the whole audit to it: the static rules read only that subtree, axe is given it as its `include` context, and HTML_CodeSniffer, the state pass and the measurements are switched off with the reason printed, because each reads the whole document by construction. The subtree is a fragment whatever the file was, so page-level rules stop applying. A generated suffix on the class or id — `CanvasZone_9f8e7d`, `root-137` — does not have to be typed: the selector is retried against the stem, and which reading matched is printed. A selector that matches nothing is an error, never a clean page.
 
+### Many web parts in one repository
+
+A SharePoint solution is not one deliverable — the repositories this was measured against ship 30 and 19 web parts. Three different questions, three answers: one part **as code** (the folder is the scope, repo mode already reads it that way), one part **on the site** (`--within SELECTOR`), and **this repository's parts across the whole site** (`--repo PATH --web-parts`). With a repository given and no scoping flag, the answer stays the whole site and the repository is used to name the file behind a finding.
+
+`--web-parts` reads the solution's manifests — JSONC, comments and trailing commas included, which is what the SPFx generator writes — and finds each part in the page by the GUID SharePoint puts in the DOM, falling back to the stems of the part's own CSS-module classes. Every finding then names the part that owns it and how it was matched. A page carrying none of them produces nothing: which parts a tenant put on a page is not the repository's business.
+
 ### What a run says it is leaving undone
 
 Before the work starts, a run names the depth it is not reaching and the flag that would reach it: a site audited without `--repo` reports the page a finding is on and not the file behind it; a repository read without `--devserver` never renders, so contrast, focus order, reflow and every measurement do not run; `--no-browser` and the default single width say the same thing about themselves. Lines are prefixed `# [hint]` on stderr, so an agent driving the CLI can match on them and answer with the flag rather than accepting the shallow result. It is a notice, never a prompt - a scan that blocks on a question cannot go in a pipeline - and `--no-hints` silences it. The TUI shows the same lines in its run log.

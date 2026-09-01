@@ -163,6 +163,115 @@ class WhatASharePointDeliveryLooksLike(unittest.TestCase):
                 self.assertEqual(stem(generated), wanted)
 
 
+class ManyWebPartsInOneRepository(unittest.TestCase):
+    """The shape a real SharePoint solution has.
+
+    The repositories this was measured against ship **30** and **19** web
+    parts. Three questions follow and they are not the same one: a single
+    part as code (the folder is the scope), a single part on the site
+    (`--within`), and *this repository's parts across the whole site* -
+    which is `--web-parts`. With no scoping flag and a repository given, the
+    answer stays the whole site and the repository names the file behind a
+    finding.
+    """
+
+    PAGE = ('<!doctype html><html lang="en"><head><title>Intranet</title></head>'
+            '<body><div id="SuiteNavPlaceHolder"><img src="suite.png"></div>'
+            '<div data-sp-web-part-id="bc4ab074-e95b-45ee-bfc1-3eaf0c0132ee">'
+            '<img src="ours.png"></div>'
+            '<div class="ricerche_9a8b7c"><img src="alsoOurs.png"></div>'
+            '<div data-sp-web-part-id="00000000-0000-0000-0000-000000000000">'
+            '<img src="someone-elses.png"></div></body></html>')
+
+    def _repo(self, tmp, alias, identifier, scss=""):
+        """A minimal SPFx solution: one manifest, JSONC as the generator
+        writes it - comments that contain quotes, and a trailing comma."""
+        folder = Path(tmp) / "src" / "webparts" / alias.lower()
+        folder.mkdir(parents=True)
+        (folder / f"{alias}.manifest.json").write_text(
+            '{\n'
+            '  "$schema": "https://developer.microsoft.com/schema.json",\n'
+            f'  "id": "{identifier}",\n'
+            f'  "alias": "{alias}",\n'
+            '  "componentType": "WebPart",\n'
+            '  // The "*" signifies that the version comes from package.json\n'
+            '  "version": "*",\n'
+            '  "preconfiguredEntries": [{ "title": { "default": "Ours" } }],\n'
+            '}\n', encoding="utf-8")
+        if scss:
+            (folder / f"{alias}.module.scss").write_text(scss, encoding="utf-8")
+        return tmp
+
+    def test_a_jsonc_manifest_is_read(self):
+        """`json.loads` refuses comments and trailing commas, and every SPFx
+        manifest has both. Measured on a real solution: reading them as JSON
+        found 2 web parts where there are 30."""
+        from audit.spfx import web_parts
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self._repo(tmp, "OursWebPart",
+                       "bc4ab074-e95b-45ee-bfc1-3eaf0c0132ee")
+            found = web_parts(tmp)
+        self.assertEqual([p.alias for p in found], ["OursWebPart"])
+        self.assertEqual(found[0].title, "Ours")
+
+    def test_a_part_is_found_by_its_guid(self):
+        import audit
+        from audit.spfx import web_parts
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self._repo(tmp, "OursWebPart",
+                       "bc4ab074-e95b-45ee-bfc1-3eaf0c0132ee")
+            parts = web_parts(tmp)
+            page = Path(tmp) / "page.html"
+            page.write_text(self.PAGE, encoding="utf-8")
+            result = audit.analyze_page_file(str(page), web_parts=parts)
+        issues = [i for d in result.documents for i in d.issues]
+        self.assertTrue(issues)
+        for issue in issues:
+            with self.subTest(issue.rule_id):
+                self.assertEqual(issue.details["web_part"], "OursWebPart")
+                self.assertIn("exact", issue.details["matched_by"])
+        # The tenant's chrome and another vendor's part are not in the answer.
+        snippets = " ".join(str(i.snippet) for i in issues)
+        self.assertNotIn("suite.png", snippets)
+        self.assertNotIn("someone-elses.png", snippets)
+
+    def test_a_part_without_a_guid_in_the_page_is_found_by_its_class(self):
+        import audit
+        from audit.spfx import web_parts
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self._repo(tmp, "RicercheWebPart",
+                       "36abb284-0fc8-486d-9abf-eedc088593d1",
+                       scss=".ricerche { display: block; }")
+            parts = web_parts(tmp)
+            page = Path(tmp) / "page.html"
+            page.write_text(self.PAGE, encoding="utf-8")
+            result = audit.analyze_page_file(str(page), web_parts=parts)
+        issues = [i for d in result.documents for i in d.issues]
+        self.assertTrue(issues)
+        self.assertIn("class", issues[0].details["matched_by"])
+        self.assertIn("alsoOurs.png", str(issues[0].snippet)
+                      + " ".join(str(i.snippet) for i in issues))
+
+    def test_a_page_carrying_none_of_them_produces_no_documents(self):
+        """A repository ships thirty parts and a page carries three.
+        Reporting the twenty-seven as absent would be a finding about the
+        tenant's page composition, which is not this repository's business."""
+        import audit
+        from audit.spfx import web_parts
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self._repo(tmp, "OursWebPart",
+                       "11111111-1111-1111-1111-111111111111")
+            parts = web_parts(tmp)
+            page = Path(tmp) / "page.html"
+            page.write_text(self.PAGE, encoding="utf-8")
+            result = audit.analyze_page_file(str(page), web_parts=parts)
+        self.assertEqual(result.documents, [])
+
+
 class WhatTheBrowserPassDoesWhenScoped(unittest.TestCase):
 
     def test_axe_is_given_the_include_context(self):

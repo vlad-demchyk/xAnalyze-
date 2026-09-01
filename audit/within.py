@@ -94,6 +94,24 @@ def find(document, selector: str):
     raise ScopeNotFound(selector)
 
 
+def narrow_any(document, selectors) -> tuple:
+    """The first of `selectors` that matches, as `(element, how, selector)`.
+
+    A web part is looked for by several: its GUID in each of the attributes
+    SharePoint is known to write it into, then the stems of its own CSS
+    module classes. The first that matches wins, and which one it was is
+    part of the answer - "found by its GUID" and "found by a class name that
+    looked like yours" are not the same claim.
+    """
+    for selector in selectors:
+        try:
+            element, how = find(document, selector)
+        except ScopeNotFound:
+            continue
+        return element, how, selector
+    raise ScopeNotFound(", ".join(selectors) or "(no selectors)")
+
+
 def narrow(markup: str, selector: str) -> tuple:
     """`(markup_of_the_subtree, how)` for a document and a selector.
 
