@@ -325,6 +325,8 @@ Findings are labelled `exact`, `needs-browser` or `advisory`. `exact` means the 
 
 Media provenance reads IPTC/XMP fields, generator prompt blocks, and C2PA manifests when the optional reader is installed. A manifest may be declared, invalid, or signed by an untrusted credential; these outcomes are kept separate.
 
+On a crawled site **every image the pages refer to is read**, not a sample. Only the header is fetched — an HTTP range request for the first 512 KB, which is where those fields and the pixel dimensions live and where the C2PA marker search stops — so a 6 MB photograph costs 512 KB and nothing is kept in memory after it is read. Images whose bytes are identical to one already read are recognised by hash, analysed once, and reported once with every place they appear. The report states how many addresses were found, how many were read, how many were repeats, and what could not be fetched: an image nobody read has not come back clean, it has not come back.
+
 Repository facts include tracked `.env` files, unignored `.env` files, assistant-named commits, committed assistant configuration, and findings last touched by assistant-authored commits. These are reported as provenance, not as defects in using an assistant.
 
 ## Reports and runs

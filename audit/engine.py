@@ -171,7 +171,24 @@ PAGE_SUFFIXES = {".html", ".htm", ".xhtml"}
 #: to an HTML parser is an open tag, and every finding under it would be about
 #: markup nobody wrote. A `.tsx` file's `<` is markup by definition of the
 #: extension.
-SKIP_AUDIT_SUFFIXES = {".mjs", ".ts", ".js", ".py", ".rb", ".go", ".rs", ".java", ".c", ".cpp", ".h"}
+#: Extended 2026-09-01 after a sweep of seven repositories on this machine.
+#: The list stopped at the languages someone thought of first, and the gate
+#: in front of it is one character - `"<" not in raw_text` - so every other
+#: language's `<` walked straight in: a `WHERE created_at < now()` in a
+#: `.sql` file, a `node -e` heredoc in a `.sh` hook, a `.cjs` config. Those
+#: three suffixes alone produced 51 `abbreviation-expansion` findings about
+#: the words SQL and JSON appearing in a file that has no reader to be
+#: accessible to. Same reasoning as `.ts` above, one measurement later.
+SKIP_AUDIT_SUFFIXES = {
+    ".mjs", ".ts", ".js", ".cjs", ".mts", ".cts",
+    ".py", ".rb", ".go", ".rs", ".java", ".c", ".cpp", ".cc", ".h", ".hpp",
+    ".cs", ".kt", ".kts", ".swift", ".scala", ".dart", ".lua", ".pl", ".r",
+    ".m", ".mm",
+    ".sh", ".bash", ".zsh", ".fish", ".ps1", ".bat",
+    ".sql", ".graphql", ".proto",
+    ".css", ".scss", ".sass", ".less",
+    ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".env",
+}
 #: Directory names that mean "not the product". Matched as whole path
 #: segments, never as substrings: `test` inside a substring also matches
 #: `src/features/coach/CoachTestEditor.tsx` and `SmartTestModal.tsx`, two real
@@ -353,6 +370,7 @@ def analyze_document(markup: str, source: str, rules=None,
 
 def analyze_pages(pages, root: str, rules=None, ai_review=None,
                   media: bool = True, media_fetch=None,
+                  media_progress=None,
                   site_controls: bool = False) -> AccessibilityResult:
     """Web mode: run over what the crawler returned.
 
@@ -411,7 +429,12 @@ def analyze_pages(pages, root: str, rules=None, ai_review=None,
         # questions the default. The budget is what keeps "read the images"
         # from becoming "mirror the site", and whatever it did not reach is
         # counted so the run can say so.
-        scan = media_pass.scan_page_media(pages, fetch=media_fetch)
+        # Said out loud, because it is now the pass that reads *every*
+        # image a crawl found rather than the first forty: on a 250-page
+        # site that is minutes of requests, and a stage that prints nothing
+        # for minutes reads as a hang.
+        scan = media_pass.scan_page_media(pages, fetch=media_fetch,
+                                          progress_cb=media_progress)
         result.media = scan
         result.documents.extend(media_pass.as_web_documents(scan))
     owned = attribute_ownership(result)

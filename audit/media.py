@@ -39,6 +39,7 @@ a document - is the shape this already is, so it joins the audit beside
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -569,12 +570,31 @@ def as_documents(scan: "MediaScan") -> list:
 
 # ------------------------------------------------------------------- the web
 
-#: How much of a site's images one run will fetch. A budget rather than
-#: "all of them", because reading provenance means downloading the file:
-#: a gallery would turn a scan into a mirror of the site.
-WEB_MAX_IMAGES = 40
-WEB_MAX_TOTAL_BYTES = 20 * 1024 * 1024
-WEB_MAX_IMAGE_BYTES = 4 * 1024 * 1024
+#: How much of one image is fetched. The provenance fields and the pixel
+#: dimensions live in the header chunks ahead of the pixels, and the C2PA
+#: marker search stops at `_MARKER_BYTES` anyway - so anything past this is
+#: downloaded and never looked at. It used to be 4 MB per image against a
+#: 512 KB search window, which spent seven eighths of the budget on bytes
+#: nobody read and then stopped the pass at image forty.
+#:
+#: Requested as an HTTP range, so on a server that honours it (this is
+#: nearly universal for static files) a 6 MB photograph costs 512 KB. A
+#: server that ignores the header is capped by the same number while
+#: streaming, which is what the pass did before.
+WEB_HEAD_BYTES = _MARKER_BYTES
+#: Kept as the old name so a caller that passes it explicitly still works.
+WEB_MAX_IMAGE_BYTES = WEB_HEAD_BYTES
+
+#: No count ceiling. The old 40 was chosen when each image cost up to 4 MB;
+#: with a header read and identical bytes analysed once, a whole site's
+#: images cost less than the old forty did. Measured on a live WordPress
+#: site: 148 distinct image addresses over eight pages, median 74 KB, so a
+#: 250-page crawl reads tens of megabytes rather than mirroring the site.
+#:
+#: 0 means "no limit on the count". The byte budget below is the real bound,
+#: and it is the one a run reports when it stops.
+WEB_MAX_IMAGES = 0
+WEB_MAX_TOTAL_BYTES = 256 * 1024 * 1024
 
 #: Attributes that carry an image address, in the order they are read.
 _SRC_ATTRS = ("src", "data-src", "data-lazy-src")
@@ -591,6 +611,17 @@ class MediaFetchScan:
     """
     found: int = 0
     checked: int = 0
+    #: Addresses whose bytes were identical to a file already read. Fetched
+    #: (the bytes are the only way to know) but analysed once, and reported
+    #: once - see `places`.
+    duplicates: int = 0
+    #: Images read to the header rather than to the end. Informational, not
+    #: a gap: everything this pass reads lives in the first `_MARKER_BYTES`.
+    head_only: int = 0
+    #: `{first address: [other addresses with the same bytes]}`. A finding
+    #: names one file and every place it is used, rather than one problem
+    #: per copy.
+    places: dict = field(default_factory=dict)
     skipped_budget: int = 0
     skipped_too_large: int = 0
     unreachable: int = 0
@@ -662,21 +693,35 @@ def _decode_data_uri(url: str) -> bytes | None:
 def _default_fetch(url: str, limit: int):
     """Download at most `limit` bytes. Returns `(data, complete)`.
 
-    Streamed and capped rather than read whole: one hero image at eight
-    megabytes would spend the entire run's budget on itself, and the fields
-    read here are in the first kilobytes anyway.
+    Asked for as a range first: the fields this pass reads sit in the header
+    chunks, so a `Range: bytes=0-N` request gets the same answer as a whole
+    file for a fraction of the traffic, and a 6 MB photograph stops costing
+    6 MB. A server that ignores the header answers 200 with the whole body,
+    and the streamed cap below is the same bound the pass had before.
+
+    `complete` says whether the end of the file was reached, and it is not
+    cosmetic: `read_provenance_bytes` uses it to tell "this file is broken"
+    from "we did not look far enough", and only the first is worth
+    reporting.
     """
     import requests
 
-    with requests.get(url, timeout=10, stream=True) as response:
+    headers = {"Range": f"bytes=0-{max(limit - 1, 0)}"}
+    with requests.get(url, timeout=10, stream=True, headers=headers) as response:
         response.raise_for_status()
+        partial = response.status_code == 206
         chunks, size = [], 0
         for chunk in response.iter_content(64 * 1024):
             chunks.append(chunk)
             size += len(chunk)
             if size > limit:
                 return b"".join(chunks)[:limit], False
-    return b"".join(chunks), True
+    data = b"".join(chunks)
+    if not partial:
+        return data, True
+    # A range that returned fewer bytes than it asked for is the whole file:
+    # the server had nothing more to send.
+    return data, len(data) < limit
 
 
 def scan_page_media(pages, *, fetch=None, max_images: int = WEB_MAX_IMAGES,
@@ -697,6 +742,8 @@ def scan_page_media(pages, *, fetch=None, max_images: int = WEB_MAX_IMAGES,
     fetch = fetch or _default_fetch
     scan = MediaFetchScan()
     seen: set = set()
+    #: sha256 of the bytes read -> the first address they arrived under.
+    by_content: dict = {}
     spent = 0
 
     for page in pages:
@@ -719,7 +766,7 @@ def scan_page_media(pages, *, fetch=None, max_images: int = WEB_MAX_IMAGES,
                 _record(scan, _data_uri_label(url, scan.found), data, True)
                 continue
 
-            if scan.checked >= max_images or spent >= max_total:
+            if (max_images and scan.checked >= max_images) or spent >= max_total:
                 scan.skipped_budget += 1
                 continue
             if progress_cb:
@@ -735,7 +782,28 @@ def scan_page_media(pages, *, fetch=None, max_images: int = WEB_MAX_IMAGES,
             spent += len(data)
             scan.checked += 1
             if not complete:
-                scan.skipped_too_large += 1
+                # A header read is the normal case now, not a shortfall: the
+                # provenance fields and the C2PA marker search both stop at
+                # `_MARKER_BYTES`, so a 6 MB photograph read to 512 KB was
+                # examined in full for everything this pass can see. Only a
+                # read that stopped *short of that window* is a gap, and
+                # with the default limits there is none.
+                scan.head_only += 1
+                if len(data) < _MARKER_BYTES:
+                    scan.skipped_too_large += 1
+            # The same bytes under a second address are the same file. A
+            # theme ships one logo and WordPress serves it from a plugin
+            # path as well; reading it twice would say the same thing twice
+            # and, if it said something, report it as two problems. The
+            # extra addresses are kept as places, so a finding still names
+            # everywhere the file is used.
+            digest = hashlib.sha256(data).hexdigest()
+            first = by_content.get(digest)
+            if first is not None:
+                scan.duplicates += 1
+                scan.places.setdefault(first, []).append(url)
+                continue
+            by_content[digest] = url
             _record(scan, url, data, complete)
     return scan
 

@@ -409,6 +409,48 @@ class AbbreviationExpansion(unittest.TestCase):
         self.assertEqual(issues(markup, "abbreviation-expansion"), [])
 
 
+class WhatCountsAsMarkup(unittest.TestCase):
+    """The gate in front of the repo audit is one character.
+
+    `analyze_files` examines a file when `"<" in raw_text`, which is true of
+    `WHERE created_at < now()` in a `.sql` file and of a `node -e` heredoc in
+    a shell hook. Measured 2026-09-01 over seven repositories: `.sql`, `.sh`
+    and `.cjs` files produced 51 `abbreviation-expansion` findings about the
+    words SQL and JSON - an accessibility rule reporting on a file that has
+    no reader to be accessible to.
+    """
+
+    def test_a_language_whose_angle_bracket_is_an_operator_is_skipped(self):
+        from audit.engine import SKIP_AUDIT_SUFFIXES
+
+        for suffix in (".sql", ".sh", ".cjs", ".yml", ".json", ".css"):
+            with self.subTest(suffix):
+                self.assertIn(suffix, SKIP_AUDIT_SUFFIXES)
+
+    def test_markup_extensions_are_still_read(self):
+        """The other half: `.tsx` was in this list once, and a whole React
+        repository audited down to its empty shell. See `P-19`."""
+        from audit.engine import SKIP_AUDIT_SUFFIXES
+
+        for suffix in (".html", ".tsx", ".jsx", ".vue", ".svelte", ".php"):
+            with self.subTest(suffix):
+                self.assertNotIn(suffix, SKIP_AUDIT_SUFFIXES)
+
+    def test_a_sql_file_produces_no_document(self):
+        import audit
+        from models import FileResult
+
+        files = [FileResult(path="/repo/query.sql",
+                            raw_text="SELECT * FROM t WHERE a < 5 -- JSON API"),
+                 FileResult(path="/repo/page.html",
+                            raw_text="<html lang='en'><body><p>The API is "
+                                     "documented</p></body></html>")]
+        result = audit.analyze_files(files, "/repo", media=False,
+                                     repo_facts=False)
+        self.assertEqual([d.source for d in result.documents],
+                         ["/repo/page.html"])
+
+
 class ImageModernFormat(unittest.TestCase):
     def test_legacy_format_without_srcset_is_reported(self):
         found = issues('<img src="/photo.png" alt="Photo">', "image-modern-format",

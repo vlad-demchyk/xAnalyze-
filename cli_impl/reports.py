@@ -204,6 +204,15 @@ def _write_report(result, args, lang: str, fix_outcome=None, ai_findings=None) -
              "note": s.message()}
             for s in saturated_rules(result)
         ],
+        # What the image pass reached, and what it did not. The pass reads
+        # what a file says about how it was made (IPTC `DigitalSourceType`,
+        # PNG generation parameters, a generator's name in EXIF/XMP, a C2PA
+        # container marker) and it works under a budget: 40 images, 20 MB.
+        # Reporting the findings without the coverage is the one thing that
+        # module must not do - an image nobody fetched has not come back
+        # clean, it has not come back - and until now `result.media` was
+        # written by the pass and read by nobody.
+        "media": _media_coverage(result),
         "ai_patterns": ai_stats,
         "typography": typo_stats,
         # Same list as the history entry's, at the top level where
@@ -252,6 +261,32 @@ def _fix_summary(fix_outcome) -> dict:
             for s in fix_outcome.skipped
         ],
         "errors": list(fix_outcome.errors),
+    }
+
+
+def _media_coverage(result) -> dict:
+    """The image pass's own numbers, or `{}` when no pass ran.
+
+    Kept separate from the findings for the reason `audit.media` states in
+    its first paragraph: the absence of provenance means nothing at all - a
+    re-save or an upload strips every field - so the count of images read is
+    what makes a quiet result readable rather than reassuring.
+    """
+    scan = getattr(result, "media", None)
+    if scan is None:
+        return {}
+    places = getattr(scan, "places", {}) or {}
+    return {
+        "found": getattr(scan, "found", 0),
+        "read": getattr(scan, "checked", 0),
+        # Fetched, then recognised by their bytes as a file already read.
+        # Analysed once and reported once; the extra addresses are places.
+        "duplicates": getattr(scan, "duplicates", 0),
+        "skipped_budget": getattr(scan, "skipped_budget", 0),
+        "skipped_too_large": getattr(scan, "skipped_too_large", 0),
+        "unreachable": getattr(scan, "unreachable", 0),
+        "said_something": len(getattr(scan, "findings", []) or []),
+        "places": {source: list(extra) for source, extra in places.items()},
     }
 
 
@@ -559,6 +594,44 @@ def _report_markdown(payload: dict, lang: str) -> str:
                 exp = ex["explanation"].replace("|", "\\|")[:60]
                 out.append(f"- `{text}` — {exp}")
             out.append("")
+
+    # What the image pass read. A section rather than a line, because a
+    # quiet result here is the easiest thing in the whole report to
+    # misread: no provenance finding is not "the pictures are fine", it is
+    # "the files carry no such field", and a budget means some were never
+    # opened at all.
+    media = payload.get("media") or {}
+    if media.get("found"):
+        out += [
+            "## Image provenance",
+            "",
+            f"**{media['read']}** of **{media['found']}** image address(es) "
+            f"read for what the file says about how it was made: "
+            f"**{media['said_something']}** said anything.",
+            "",
+        ]
+        unread = [
+            (media.get("skipped_budget", 0), "past the per-run byte budget"),
+            (media.get("skipped_too_large", 0),
+             "read short of the provenance window"),
+            (media.get("unreachable", 0), "could not be fetched"),
+        ]
+        duplicates = media.get("duplicates", 0)
+        if duplicates:
+            out.append(f"- **{duplicates}** were the same bytes as a file "
+                       f"already read, so they were analysed once")
+        for count, why in unread:
+            if count:
+                out.append(f"- **{count}** {why}")
+        if any(count for count, _ in unread):
+            out.append("")
+        out += [
+            "A file that says nothing has said nothing: a screenshot, a "
+            "re-save or an upload through most platforms strips every "
+            "provenance field. This section reports what the files carry, "
+            "never a verdict about the pixels.",
+            "",
+        ]
 
     # No comparison section. A report says what is wrong with the page in
     # front of the reader; what changed since Tuesday is a different

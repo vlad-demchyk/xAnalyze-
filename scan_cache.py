@@ -50,10 +50,21 @@ class ScanCache:
                 self._cache = {}
     
     def _save(self) -> None:
-        """Save cache to disk."""
+        """Save cache to disk, atomically.
+
+        Written to a temporary file and renamed, the way `browser_cache`
+        already does it. Writing over the file in place has a window in
+        which it is half a JSON document, and a second scan running at the
+        same time - a perfectly ordinary thing to do - reads it there and
+        throws its own cache away. The rename is atomic on every filesystem
+        this runs on, so a concurrent reader sees either the old file or the
+        new one.
+        """
         self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.cache_path, "w") as f:
-            json.dump(self._cache, f, indent=2, ensure_ascii=False)
+        temp = self.cache_path.with_suffix(".tmp")
+        with open(temp, "w") as handle:
+            json.dump(self._cache, handle, indent=2, ensure_ascii=False)
+        temp.replace(self.cache_path)
     
     def get(self, file_path: str) -> dict | None:
         """Get cached result for a file, or None if not cached / changed."""

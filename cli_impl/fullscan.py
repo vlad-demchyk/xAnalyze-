@@ -463,9 +463,23 @@ def _scan_local_target(target, args, lang, agent_mode):
     scan_result = None
     agent_candidates: list = []
 
-    files = _collect_files(scan_args.paths, scan_args)
+    # What the walk read, not only what it found. `counts` counts files
+    # among the *findings*, so without this a quiet repository cannot say
+    # whether it read four thousand files or none - and `fullscan` was
+    # dropping the diagnostic that `scan --json` has always carried.
+    walked: list = []
+    files = _collect_files(scan_args.paths, scan_args, diagnostics_out=walked)
     if not files:
         return scan_findings, scan_result, agent_candidates
+    # Said out loud, not only in the JSON. Measured on this repository: the
+    # walk stopped at the 5000-file limit with a third of the tree unopened,
+    # `scan` prints that in one line, and `fullscan` printed nothing at all -
+    # so the surface that writes the report was the quiet one.
+    for root, walk in walked:
+        if walk.truncated:
+            print(f"# [scan] {root}: stopped at the {walk.limit}-file limit - "
+                  f"everything past it was not examined. Raise it with "
+                  f"--max-files.", file=sys.stderr, flush=True)
 
     if agent_mode:
         # Agent mode: run offline scan, collect candidates for LLM judgment
@@ -505,8 +519,32 @@ def _scan_local_target(target, args, lang, agent_mode):
                 "style": len([f for f in clean_findings if f.get("source") == "style"]),
                 "characters": len([f for f in clean_findings if f.get("source") == "characters"]),
             },
+            "read": _read_diagnostics(walked),
         }
     return scan_findings, scan_result, agent_candidates
+
+
+def _read_diagnostics(walked) -> list:
+    """The walk's own numbers, in the shape `scan --json` already prints.
+
+    One shape rather than two: an agent that reads a `fullscan` result and
+    an agent that reads a `scan` result are asking the same question - what
+    did this run actually open - and a second spelling of the same answer is
+    how the two drift.
+    """
+    return [
+        {
+            "root": root,
+            "files_read": walk.files_read,
+            "blocks_found": walk.blocks_found,
+            "skipped_ignored": walk.skipped_ignored,
+            "skipped_too_large": walk.skipped_too_large,
+            "unreadable": walk.unreadable,
+            "truncated": walk.truncated,
+            "limit": walk.limit,
+        }
+        for root, walk in walked
+    ]
 
 
 def _crawl_for_fullscan(target: str, args, no_browser: bool):
@@ -582,8 +620,20 @@ def _audit_fullscan_target(is_url: bool, is_page_file: bool, target: str,
     import audit
 
     if is_url:
+        seen_images = [0]
+
+        def _image_progress(url: str) -> None:
+            # Every twenty-fifth, not every one: the point is a heartbeat
+            # that says the stage is moving, and one line per image would
+            # bury the crawl's own output on a site with a thousand of them.
+            seen_images[0] += 1
+            if seen_images[0] % 25 == 1:
+                print(f"# [images {seen_images[0]}] {url}", file=sys.stderr,
+                      flush=True)
+
         return audit.analyze_pages(
-            pages, target, site_controls=getattr(args, "site_controls", False))
+            pages, target, media_progress=_image_progress,
+            site_controls=getattr(args, "site_controls", False))
     if is_page_file:
         return audit.analyze_page_file(target)
     from repo_scanner import scan_repo

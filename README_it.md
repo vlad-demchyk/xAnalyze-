@@ -253,6 +253,8 @@ I risultati hanno livello `exact`, `needs-browser` o `advisory`. `exact` signifi
 
 La provenienza media legge IPTC/XMP e C2PA. I fatti del repository comprendono `.env`, commit e configurazioni degli assistenti AI e blame. Sono informazioni di provenienza, non difetti dell'uso di un assistente.
 
+Su un sito scansionato viene letta **ogni immagine** a cui le pagine fanno riferimento, non un campione. Si scarica solo l'intestazione del file - una richiesta HTTP range dei primi 512 KB, dove stanno quei campi e le dimensioni in pixel e dove si ferma la ricerca del marcatore C2PA - così una fotografia da 6 MB costa 512 KB e dopo la lettura non resta nulla in memoria. Le immagini con byte identici a una già letta vengono riconosciute per hash, analizzate una volta sola e riportate una volta sola con tutti i punti in cui compaiono. Il report dichiara quanti indirizzi sono stati trovati, quanti letti, quanti erano ripetizioni e cosa non è stato scaricato: un'immagine che nessuno ha letto non è risultata pulita, non è arrivata.
+
 ## Report ed esecuzioni
 
 Per impostazione predefinita i documenti sono salvati in `~/Desktop/XAnalyze/`; `XANALYZE_REPORT_ROOT` cambia la directory principale.
