@@ -265,8 +265,12 @@ class AuditWorker(QThread):
                  is_repo: bool = False, is_page_file: bool = False,
                  ignore_patterns=None, max_files: int = 5000,
                  settings=None, pages: list | None = None,
-                 site_controls: bool = False, parent=None):
+                 site_controls: bool = False, medium: str = "", parent=None):
         super().__init__(parent)
+        #: `--medium`: "web", "email", or empty for "read it off each file".
+        #: Only the folder branch reads it - a crawled site is a site, and a
+        #: single page file is autodetected the same way the CLI does it.
+        self.medium = medium
         #: `--site-controls`: also fetch robots.txt and the same-origin
         #: sitemaps it declares. Off unless asked for - it is two requests to
         #: an address the user did not type - and meaningless off the web,
@@ -306,7 +310,8 @@ class AuditWorker(QThread):
                 if self._cancelled:
                     return
                 self.auditing.emit(self.target)
-                result = audit.analyze_files(files, self.target)
+                result = audit.analyze_files(files, self.target,
+                                             force_medium=self.medium or None)
                 ignore_root = self.target
             else:
                 def progress_cb(url: str, depth: int) -> None:
@@ -342,7 +347,8 @@ class AuditWorker(QThread):
 
 def audit_worker_for(source: str, *, target: str, depth: int, max_pages: int,
                      pages=None, ignore_patterns=None, max_files: int = 5000,
-                     settings=None, site_controls: bool = False, parent=None):
+                     settings=None, site_controls: bool = False,
+                     medium: str = "", parent=None):
     """The right `AuditWorker` for the source, or `(None, message)` on refusal.
 
     One place, because there were two: the window and the view model each
@@ -369,7 +375,7 @@ def audit_worker_for(source: str, *, target: str, depth: int, max_pages: int,
         return AuditWorker(target=target, depth=0, max_pages=max_pages,
                            is_repo=True, ignore_patterns=ignore_patterns,
                            max_files=max_files, settings=settings,
-                           parent=parent), ""
+                           medium=medium, parent=parent), ""
     if source == SOURCE_FILE:
         return AuditWorker(target=target, depth=0, max_pages=max_pages,
                            is_page_file=True, settings=settings,

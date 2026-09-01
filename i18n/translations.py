@@ -5436,6 +5436,65 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Due richieste in più allo stesso dominio. Solo per un sito.",
         "en": "Two extra requests to the same domain. Sites only.",
     },
+    "setup_project_title": {
+        "uk": "Профіль проєкту", "it": "Profilo del progetto",
+        "en": "Project profile",
+    },
+    "setup_project_none": {
+        "uk": "Стек не розпізнано - діють лише типові виключення.",
+        "it": "Stack non riconosciuto: valgono solo le esclusioni predefinite.",
+        "en": "No stack recognised - the default exclusions only.",
+    },
+    "setup_project_detected": {
+        "uk": "Розпізнано: {stacks}", "it": "Rilevato: {stacks}",
+        "en": "Detected: {stacks}",
+    },
+    "setup_project_excluded": {
+        "uk": "Пропускається {count} шляхів як не ваш код: {patterns}",
+        "it": "Saltati {count} percorsi perché non sono codice vostro: {patterns}",
+        "en": "Skipping {count} path(s) as not your code: {patterns}",
+    },
+    "setup_project_lift": {
+        "uk": "Сканувати і їх теж",
+        "it": "Analizzare anche quelli",
+        "en": "Scan those as well",
+    },
+    "setup_project_lift_hint": {
+        "uk": "Профіль - це доказ про власність, а не певність. Увімкніть, "
+              "якщо виключений код насправді ваш.",
+        "it": "Il profilo è una prova di proprietà, non una certezza. "
+              "Attivalo se quel codice è davvero vostro.",
+        "en": "A profile is evidence about ownership, not a certainty. Tick "
+              "this when the excluded code is in fact yours.",
+    },
+    "setup_project_medium": {
+        "uk": "Документи - це", "it": "Questi documenti sono",
+        "en": "These documents are",
+    },
+    "setup_medium_auto": {
+        "uk": "визначати з файлу", "it": "da rilevare dal file",
+        "en": "read it off the file",
+    },
+    "setup_medium_web": {
+        "uk": "сторінки для браузера", "it": "pagine per il browser",
+        "en": "pages for a browser",
+    },
+    "setup_medium_email": {
+        "uk": "листи для поштового клієнта",
+        "it": "email per un client di posta",
+        "en": "emails for a mail client",
+    },
+    "setup_project_medium_hint": {
+        "uk": "Зазвичай видно з розмітки. Вкажіть вручну, якщо у листі немає "
+              "ні просторів імен Outlook, ні merge-тегів: у листа немає ні "
+              "canonical, ні Open Graph, ні skip-link.",
+        "it": "Di solito si vede dal markup. Indicalo a mano se l'email non "
+              "ha né namespace Outlook né merge tag: un'email non ha "
+              "canonical, né Open Graph, né skip link.",
+        "en": "Usually visible in the markup. Say it by hand when the email "
+              "carries neither an Outlook namespace nor a merge tag: an email "
+              "has no canonical URL, no Open Graph and no skip link.",
+    },
     "audit_category_accessibility": {
         "uk": "Доступність", "it": "Accessibilità", "en": "Accessibility",
     },

@@ -35,11 +35,17 @@ from analysis_modes import (
     METHOD_LOCAL, READER_BROWSER, SOURCE_FILE, SOURCE_REPO, SOURCE_SITE,
 )
 from audit.base import CATEGORIES, CONFIDENCE_ORDER
+from audit.medium import EMAIL, WEB
 from i18n.translations import t
 from ui import theme
 from ui.widgets import FlowLayout
 
 #: The three sources, with the sentence each one is described by.
+#: What a folder's documents are for. Empty first, because reading it off
+#: the markup is right nearly always - and because a wrong default here
+#: silently drops whole categories of finding.
+MEDIA = ("", WEB, EMAIL)
+
 SOURCES = (
     (SOURCE_SITE, "source_site", "setup_source_site_hint"),
     (SOURCE_REPO, "source_repo", "setup_source_repo_hint"),
@@ -269,6 +275,7 @@ class SetupScreen(QWidget):
         keystroke and a repaint per character is not worth it - so the window
         calls this when the value has actually settled.
         """
+        self._refresh_project()
         self._refresh_drop_zone()
         self._refresh_summary()
 
@@ -321,9 +328,120 @@ class SetupScreen(QWidget):
         self.depth_note.setProperty("class", theme.CLASS_MUTED)
         self.depth_layout.addWidget(self.depth_note)
         card.column.addWidget(self.depth_holder)
+        card.column.addWidget(self._build_project_block())
         card.column.addStretch(1)
         self.source_card = card
         return card
+
+    def _build_project_block(self) -> QWidget:
+        """What the chosen folder turned out to be, and two things that
+        follow from it: what its documents are for, and whether the
+        exclusions the stack implies should stand.
+
+        Shown only for a folder, and only there because that is where both
+        questions exist: a crawled site has no `vendor/` to skip and no
+        `.eml` to mistake for a page.
+
+        The exclusions are the point. Until now the window applied only the
+        flat default list while `xanalyze audit` also applied the detected
+        stack's - so the same WordPress folder produced hundreds of findings
+        in vendored core from the window and none from the CLI. Applying them
+        without saying so would trade that for the opposite failure: a scan
+        that quietly skipped a directory the person does maintain. So it is
+        stated, with the profile's own evidence in reach, and it can be
+        lifted in one click.
+        """
+        holder = QWidget()
+        column = QVBoxLayout(holder)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(4)
+
+        self.project_title = QLabel(t("setup_project_title", self.lang))
+        self.project_title.setProperty("class", theme.CLASS_FIELD_LABEL)
+        column.addWidget(self.project_title)
+
+        self.project_note = QLabel()
+        self.project_note.setProperty("class", theme.CLASS_MUTED)
+        self.project_note.setWordWrap(True)
+        column.addWidget(self.project_note)
+
+        self.project_lift_box = QCheckBox(t("setup_project_lift", self.lang))
+        self.project_lift_box.toggled.connect(
+            self.app_state.set_project_excludes_lifted)
+        column.addWidget(self.project_lift_box)
+        self.project_lift_hint = QLabel(t("setup_project_lift_hint", self.lang))
+        self.project_lift_hint.setProperty("class", theme.CLASS_MUTED)
+        self.project_lift_hint.setWordWrap(True)
+        column.addWidget(self.project_lift_hint)
+
+        self.medium_label = QLabel(t("setup_project_medium", self.lang))
+        self.medium_label.setProperty("class", theme.CLASS_FIELD_LABEL)
+        column.addWidget(self.medium_label)
+        self.medium_combo = QComboBox()
+        self.medium_combo.currentIndexChanged.connect(self._on_medium_changed)
+        column.addWidget(self.medium_combo)
+        self.medium_hint = QLabel(t("setup_project_medium_hint", self.lang))
+        self.medium_hint.setProperty("class", theme.CLASS_MUTED)
+        self.medium_hint.setWordWrap(True)
+        column.addWidget(self.medium_hint)
+
+        self.project_block = holder
+        self._fill_media()
+        return holder
+
+    def _fill_media(self) -> None:
+        current = (self.medium_combo.currentData()
+                   if self.medium_combo.count() else self.app_state.medium)
+        self.medium_combo.blockSignals(True)
+        self.medium_combo.clear()
+        for value in MEDIA:
+            self.medium_combo.addItem(
+                t(f"setup_medium_{value or 'auto'}", self.lang), userData=value)
+        index = self.medium_combo.findData(current or "")
+        self.medium_combo.setCurrentIndex(max(index, 0))
+        self.medium_combo.blockSignals(False)
+
+    def _on_medium_changed(self, _index: int) -> None:
+        self.app_state.set_medium(self.medium_combo.currentData() or "")
+
+    #: How many excluded patterns are named before the rest become a count.
+    #: Enough to recognise the stack's shape; a folder card is not the place
+    #: for a twenty-line list, and the full one is a click away in the
+    #: exclusions dialog.
+    PATTERNS_SHOWN = 4
+
+    def _refresh_project(self) -> None:
+        folder = self.app_state.source == SOURCE_REPO
+        self.project_block.setVisible(folder)
+        if not folder:
+            return
+        profile = self.app_state.project
+        stacks = [stack.name for stack in getattr(profile, "stacks", ())]
+        if not stacks:
+            self.project_note.setText(t("setup_project_none", self.lang))
+            self.project_note.setToolTip("")
+            self.project_lift_box.setVisible(False)
+            self.project_lift_hint.setVisible(False)
+            return
+        patterns = profile.excludes()
+        shown = ", ".join(patterns[:self.PATTERNS_SHOWN])
+        if len(patterns) > self.PATTERNS_SHOWN:
+            shown += ", …"
+        lines = [t("setup_project_detected", self.lang).format(
+            stacks=", ".join(stacks))]
+        if patterns:
+            lines.append(t("setup_project_excluded", self.lang).format(
+                count=len(patterns), patterns=shown))
+        self.project_note.setText("  ".join(lines))
+        # Why each stack was decided, verbatim from the profile: a wrong
+        # answer has to be arguable, and it is only arguable if the marker
+        # file that produced it is in reach.
+        self.project_note.setToolTip("\n".join(profile.reasons()))
+        self.project_lift_box.setVisible(bool(patterns))
+        self.project_lift_hint.setVisible(bool(patterns))
+        self.project_lift_box.blockSignals(True)
+        self.project_lift_box.setChecked(self.app_state.project_excludes_lifted)
+        self.project_lift_box.blockSignals(False)
 
     def _build_reading_card(self) -> QWidget:
         card = SetupCard("setup_step_reading", self.lang)
@@ -533,7 +651,13 @@ class SetupScreen(QWidget):
         self.site_controls_hint.setText(t("setup_report_site_controls_hint", lang))
         for value, box in self.category_boxes.items():
             box.setText(t(f"audit_category_{value}", lang))
+        self.project_title.setText(t("setup_project_title", lang))
+        self.project_lift_box.setText(t("setup_project_lift", lang))
+        self.project_lift_hint.setText(t("setup_project_lift_hint", lang))
+        self.medium_label.setText(t("setup_project_medium", lang))
+        self.medium_hint.setText(t("setup_project_medium_hint", lang))
         self._fill_certainties()
+        self._fill_media()
         self.refresh()
 
     def refresh(self) -> None:
@@ -602,6 +726,7 @@ class SetupScreen(QWidget):
         self.site_controls_box.blockSignals(True)
         self.site_controls_box.setChecked(state.site_controls)
         self.site_controls_box.blockSignals(False)
+        self._refresh_project()
         self._refresh_drop_zone()
         self._refresh_summary()
 

@@ -62,10 +62,7 @@ def _build_ignore_list(args, target: str | None = None) -> list:
     if use_defaults and target:
         import project_profile
 
-        profile = project_profile.detect(target)
-        for pattern in profile.excludes():
-            if pattern not in ignore:
-                ignore.append(pattern)
+        ignore = project_profile.detect(target).applied_to(ignore)
     ignore += list(getattr(args, "exclude", None) or [])
     return ignore
 

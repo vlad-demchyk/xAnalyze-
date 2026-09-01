@@ -535,6 +535,21 @@ class Profile:
                     seen.append(pattern)
         return seen
 
+    def applied_to(self, patterns) -> list:
+        """`patterns`, plus this profile's exclusions, without repeats.
+
+        One function rather than the same three lines in every surface. The
+        CLI had them and the window did not, which is why a folder audited
+        from the window walked into `wp-includes/` and reported hundreds of
+        findings against code the developer cannot change, while the same
+        folder audited from `xanalyze audit` did not.
+        """
+        merged = list(patterns or [])
+        for pattern in self.excludes():
+            if pattern not in merged:
+                merged.append(pattern)
+        return merged
+
     def describe(self) -> str:
         """One line for the run's own output. Empty when nothing matched."""
         if not self.stacks:

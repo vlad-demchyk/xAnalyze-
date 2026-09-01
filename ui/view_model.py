@@ -111,7 +111,11 @@ class MainViewModel(QObject):
         self._cached_files = None
         self._cached_scope = None
 
-        # Repo config
+        # Repo config. The person's own list; what the *run* uses is
+        # `effective_ignore_patterns`, which adds what the detected stack
+        # says is not theirs. Two names because they are two facts, and
+        # storing the sum would make the person's own list unrecoverable the
+        # moment a profile was detected.
         self.repo_ignore_patterns: list[str] = []
 
         # Pending copy pass (for both-questions runs)
@@ -403,7 +407,7 @@ class MainViewModel(QObject):
         self._worker = RepoAnalysisWorker(
             files=self._reusable_files(),
             root_dir=path,
-            ignore_patterns=self.repo_ignore_patterns,
+            ignore_patterns=self.effective_ignore_patterns,
             detector_name=detector_name,
             detector_config=detector_config,
             unicode_categories=self._active_unicode_categories(),
@@ -414,6 +418,12 @@ class MainViewModel(QObject):
                           on_finished=self._on_repo_finished)
         self._worker.start()
         self.busy_changed.emit(True)
+
+    @property
+    def effective_ignore_patterns(self) -> list:
+        """What a folder run actually skips: the person's list plus the
+        detected stack's, unless they have lifted the latter."""
+        return self.state.ignore_patterns_with_project(self.repo_ignore_patterns)
 
     def _start_audit(self):
         """Audit whatever the source is: a site, one page file, or a folder.
@@ -433,9 +443,10 @@ class MainViewModel(QObject):
             max_pages=self.settings.max_pages,
             pages=(self._reusable_pages()
                    if self.state.source == SOURCE_SITE else None),
-            ignore_patterns=self.repo_ignore_patterns,
+            ignore_patterns=self.effective_ignore_patterns,
             settings=self.settings,
             site_controls=self.state.site_controls,
+            medium=self.state.medium,
         )
         if worker is None:
             self.error.emit(self._missing_target_message() if refusal == "no_target"

@@ -211,6 +211,9 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self._last_selected_key: tuple | None = None
         self.wide_mode: bool | None = None  # forces first resizeEvent to initialize layout
         self.medium_mode: bool | None = None  # the second, narrower breakpoint; see MEDIUM_BREAKPOINT
+        #: The person's own exclusion list. What a run skips is
+        #: `effective_ignore_patterns`, which also carries what the detected
+        #: stack says is not theirs - see `AppState.ignore_patterns_with_project`.
         self.repo_ignore_patterns: list[str] = _parse_ignore_text(DEFAULT_IGNORE_PATTERNS)
 
         # -- MVVM: centralized state and business logic --
@@ -350,11 +353,40 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
 
     def _sync_target_to_state(self, _text: str = "") -> None:
         self.app_state.set_target(self._current_target())
+        self._detect_project()
         # `set_target` carries no signal, so the setup screen would not learn
         # that a file was chosen or dropped - and its drop zone is the one
         # place that shows the file's own name and size.
         if getattr(self, "setup_screen", None) is not None:
             self.setup_screen.refresh_target()
+            self.setup_screen.refresh()
+
+    def _detect_project(self) -> None:
+        """Read what the chosen folder is, once per folder.
+
+        Cheap and bounded - marker files two levels down, no file contents -
+        but it is filesystem work on the UI thread, so it runs when the path
+        changes rather than on every repaint. Anything but a folder clears
+        the profile: a stale one would go on excluding a previous project's
+        `vendor/` from the next scan.
+        """
+        from analysis_modes import SOURCE_REPO
+
+        path = self._current_target() if self.app_state.source == SOURCE_REPO else ""
+        if path == getattr(self, "_profiled_path", None):
+            return
+        self._profiled_path = path
+        if not path or not Path(path).is_dir():
+            self.app_state.set_project(None)
+            return
+        import project_profile
+
+        try:
+            self.app_state.set_project(project_profile.detect(path))
+        except OSError:
+            # An unreadable folder is the scan's problem to report, not a
+            # reason for the setup screen to fail to draw.
+            self.app_state.set_project(None)
 
     def _sync_scope_to_state(self, _idx: int = 0) -> None:
         self.app_state.set_scope(self._repo_scope())
@@ -377,6 +409,9 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
     def _sync_source_from_state(self) -> None:
         """Keep the legacy self.source in sync during the transition."""
         self.source = self.app_state.source
+        # Switching *to* a folder with a path already typed is the other way
+        # a folder becomes current, and the path itself did not change.
+        self._detect_project()
 
     def _on_busy_changed(self, busy: bool) -> None:
         self.analyze_btn.setEnabled(not busy)
@@ -2611,7 +2646,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self.worker = RepoAnalysisWorker(
             files=self._reusable_files(),
             root_dir=path,
-            ignore_patterns=self.repo_ignore_patterns,
+            ignore_patterns=self.effective_ignore_patterns,
             detector_name=detector_name,
             detector_config=detector_config,
             unicode_categories=self._active_unicode_categories(),
@@ -2724,9 +2759,10 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             depth=self.depth_spin.value(),
             max_pages=self.settings.max_pages,
             pages=self._reusable_pages() if self.source == SOURCE_SITE else None,
-            ignore_patterns=self.repo_ignore_patterns,
+            ignore_patterns=self.effective_ignore_patterns,
             settings=self.settings,
             site_controls=self.app_state.site_controls,
+            medium=self.app_state.medium,
         )
         if worker is None:
             QMessageBox.warning(self, "", self._missing_target_message()
@@ -3009,6 +3045,12 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         if path:
             self.repo_path_edit.setText(path)
 
+    @property
+    def effective_ignore_patterns(self) -> list:
+        """What a folder run actually skips. See `_on_project_changed`."""
+        return self.app_state.ignore_patterns_with_project(
+            self.repo_ignore_patterns)
+
     def _on_exclusions_clicked(self) -> None:
         dlg = QDialog(self)
         dlg.setWindowTitle(t("exclusions_dialog_title", self.lang))
@@ -3023,6 +3065,11 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         dlg.resize(520, 420)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             self.repo_ignore_patterns = _parse_ignore_text(editor.toPlainText())
+            # The view model holds the same list, and held it by *reference*:
+            # rebinding here left it pointing at the pre-edit one, so an
+            # exclusion added in this dialog was honoured by the audit and
+            # ignored by the text scan.
+            self.view_model.repo_ignore_patterns = self.repo_ignore_patterns
 
     def _on_cancel_clicked(self) -> None:
         self.view_model.cancel()

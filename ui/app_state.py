@@ -46,6 +46,7 @@ class AppState(QObject):
     ai_available_changed = Signal(bool)   # account state changed
     mode_changed = Signal(str)            # derived mode changed
     scope_changed = Signal(str)           # new scope
+    project_changed = Signal()            # detected stack, or its exclusions lifted
     view_changed = Signal()               # audit categories or certainty floor
 
     # Fired after any axis changes, in addition to the specific signal.
@@ -78,6 +79,80 @@ class AppState(QObject):
         #: Off by default on both surfaces, because it is two extra requests
         #: to an address the user did not name.
         self._site_controls: bool = False
+        #: What the chosen folder turned out to be (`project_profile.Profile`),
+        #: and whether the person has overruled the exclusions it implies.
+        #:
+        #: Both live here rather than on the window because they are a run
+        #: choice like every other one on this object, and because the
+        #: *effective* ignore list has to be derived from them in one place -
+        #: two copies of an ignore list is how one surface ends up scanning
+        #: `wp-includes/` while another does not.
+        self._project = None
+        self._project_excludes_lifted: bool = False
+        #: `--medium`: what the documents in a folder are *for*. Empty means
+        #: "read it off each file", which is the right answer nearly always -
+        #: an Outlook namespace or a merge tag settles it. It is here for the
+        #: deliverable that carries neither, where the run would otherwise
+        #: ask an email for a canonical URL, Open Graph tags, a skip link and
+        #: landmarks: 1074 findings over 144 documents in a real workspace,
+        #: with the six loudest rules all browser concepts. See `audit.medium`.
+        self._medium: str = ""
+
+    # -- medium ------------------------------------------------------------
+    @property
+    def medium(self) -> str:
+        return self._medium
+
+    def set_medium(self, value: str) -> None:
+        value = (value or "").strip()
+        if value == self._medium:
+            return
+        self._medium = value
+        self.project_changed.emit()
+        self.any_changed.emit()
+
+    # -- project -----------------------------------------------------------
+    @property
+    def project(self):
+        return self._project
+
+    def set_project(self, value) -> None:
+        if value is self._project:
+            return
+        self._project = value
+        self.project_changed.emit()
+        self.any_changed.emit()
+
+    @property
+    def project_excludes_lifted(self) -> bool:
+        return self._project_excludes_lifted
+
+    def set_project_excludes_lifted(self, value: bool) -> None:
+        """Scan what the profile says is not the product after all.
+
+        A profile is evidence about *ownership*, not a certainty: a fork of a
+        theme, a vendored library somebody does in fact maintain, or a wrong
+        marker makes the exclusion wrong. It is arguable by design - so it is
+        arguable from the window, in one click, with the profile's own
+        reasons on screen beside it.
+        """
+        value = bool(value)
+        if value == self._project_excludes_lifted:
+            return
+        self._project_excludes_lifted = value
+        self.project_changed.emit()
+        self.any_changed.emit()
+
+    def ignore_patterns_with_project(self, base) -> list:
+        """The ignore list a folder run actually uses.
+
+        Derived, never stored: the person's own list plus what the detected
+        stack says is not theirs, unless they have lifted it.
+        """
+        patterns = list(base or [])
+        if self._project is None or self._project_excludes_lifted:
+            return patterns
+        return self._project.applied_to(patterns)
 
     # -- source ------------------------------------------------------------
     @property
