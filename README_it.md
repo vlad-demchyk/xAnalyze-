@@ -234,7 +234,7 @@ falso lì non verrebbe intercettato dalla suite.
 Un progetto viene identificato dai suoi file marcatori, e ciò che risulta essere
 decide cosa è codice di terzi anziché scritto qui:
 
-`angular`, `astro`, `beehiiv`, `carrd`, `craft`, `django`, `docusaurus`, `dotnet`, `drupal`, `eleventy`, `ember`, `flutter`, `gatsby`, `ghost`, `hugo`, `jekyll`, `joomla`, `laravel`, `magento`, `nextjs`, `nuxt`, `qwik`, `rails`, `remix`, `shopify`, `silverstripe`, `spfx`, `spring`, `squarespace`, `statamic`, `storybook`, `sveltekit`, `symfony`, `typo3`, `vite`, `wagtail`, `webflow`, `wix`, `wordpress`
+`angular`, `astro`, `beehiiv`, `carrd`, `craft`, `django`, `docusaurus`, `dotnet`, `drupal`, `eleventy`, `ember`, `flutter`, `gatsby`, `ghost`, `hugo`, `jekyll`, `joomla`, `laravel`, `magento`, `nextjs`, `nuxt`, `qwik`, `rails`, `remix`, `shopify`, `silverstripe`, `spfx`, `spring`, `squarespace`, `statamic`, `storybook`, `sveltekit`, `symfony`, `typo3`, `vite`, `wagtail`, `webflow`, `wix`, `wordpress`, `wordpress-plugin`, `wordpress-theme`
 
 Le firme sono pesate, non contate: ognuna porta una confidenza e una piattaforma
 viene nominata solo quando le corrispondenze sommano 100, quindi un marcatore che
@@ -255,6 +255,12 @@ I risultati hanno livello `exact`, `needs-browser` o `advisory`. `exact` signifi
 La provenienza media legge IPTC/XMP e C2PA. I fatti del repository comprendono `.env`, commit e configurazioni degli assistenti AI e blame. Sono informazioni di provenienza, non difetti dell'uso di un assistente.
 
 Su un sito scansionato viene letta **ogni immagine** a cui le pagine fanno riferimento, non un campione. Si scarica solo l'intestazione del file - una richiesta HTTP range dei primi 512 KB, dove stanno quei campi e le dimensioni in pixel e dove si ferma la ricerca del marcatore C2PA - così una fotografia da 6 MB costa 512 KB e dopo la lettura non resta nulla in memoria. Le immagini con byte identici a una già letta vengono riconosciute per hash, analizzate una volta sola e riportate una volta sola con tutti i punti in cui compaiono. Il report dichiara quanti indirizzi sono stati trovati, quanti letti, quanti erano ripetizioni e cosa non è stato scaricato: un'immagine che nessuno ha letto non è risultata pulita, non è arrivata.
+
+### Lavoro consegnato come frammento del sito di qualcun altro
+
+Un **tema o plugin WordPress** viene riconosciuto come lo riconosce WordPress stesso: dall'intestazione `Theme Name:` in `style.css` e `Plugin Name:` nel file PHP principale del plugin, non dai marcatori dell'installazione attorno — un tema consegnato non ne ha. I suoi template sono letti come frammenti, quindi nessuno chiede a `header.php` un canonical o un `<h1>`: il documento si apre lì e si chiude in `footer.php`.
+
+Una **web part SharePoint** è un sottoalbero di una pagina che appartiene al tenant. `--within SELECTOR` restringe l'intero audit a essa: le regole statiche leggono solo quel sottoalbero, ad axe viene passato come contesto `include`, e HTML_CodeSniffer, il passaggio sugli stati e le misurazioni vengono disattivati dichiarandone il motivo — ognuno di essi legge per costruzione l'intero documento. Il sottoalbero è un frammento qualunque fosse il file, quindi le regole di pagina smettono di applicarsi. Un suffisso generato nella classe o nell'id — `CanvasZone_9f8e7d`, `root-137` — non va digitato: il selettore viene riprovato sulla radice del nome, e viene dichiarato quale lettura ha funzionato. Un selettore che non trova nulla è un errore, mai una pagina pulita.
 
 ### Cosa l'esecuzione dichiara di non fare
 

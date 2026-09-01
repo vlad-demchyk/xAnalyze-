@@ -633,9 +633,11 @@ def _audit_fullscan_target(is_url: bool, is_page_file: bool, target: str,
 
         return audit.analyze_pages(
             pages, target, media_progress=_image_progress,
-            site_controls=getattr(args, "site_controls", False))
+            site_controls=getattr(args, "site_controls", False),
+            within=getattr(args, "within", None) or "")
     if is_page_file:
-        return audit.analyze_page_file(target)
+        return audit.analyze_page_file(
+            target, within=getattr(args, "within", None) or "")
     from repo_scanner import scan_repo
 
     repo_files = scan_repo(target, _build_scan_config(args, target=target))

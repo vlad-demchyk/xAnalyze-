@@ -87,6 +87,15 @@ class Stack:
     #: source, hidden by a wrong guess. A generic name has to be corroborated
     #: by something only the real stack has.
     markers: tuple = ()
+    #: `(path, regex)` pairs where the *content* is the marker. Some stacks
+    #: are not identified by a file name at all: a WordPress theme is a
+    #: folder whose `style.css` carries a `Theme Name:` header, and a plugin
+    #: is a PHP file with `Plugin Name:` in its opening comment. That is not
+    #: a convention this tool invented - it is how WordPress itself finds
+    #: them - and a marker list that only knows file names cannot see it.
+    #: A `*` in the path globs; the regex is searched in the first
+    #: `_CONTENT_MARKER_BYTES` of each match.
+    content_markers: tuple = ()
     #: Gitignore-style patterns for what this stack vendors or generates.
     excludes: tuple = ()
     #: A one-line reason, printed beside the exclusions so a person can
@@ -106,6 +115,22 @@ class Stack:
 #: be a Rails app with a Vite frontend - but the order decides what is
 #: reported first.
 STACKS = (
+    # A theme and a plugin are handed over on their own far more often than
+    # a whole installation is - that is what a contractor delivers - and
+    # neither carries a single marker of the installation around it. They
+    # are listed before `wordpress` so the more specific reading wins the
+    # "reported first" position.
+    Stack("wordpress-theme",
+          content_markers=(("style.css", r"^\s*\**\s*Theme Name:\s*\S"),),
+          excludes=("node_modules/", "vendor/", "dist/", "build/",
+                    "assets/dist/"),
+          why="a theme's own build output and vendored libraries; the theme "
+              "itself is templates, and every one of them is a fragment of a "
+              "page rather than a page"),
+    Stack("wordpress-plugin",
+          content_markers=(("*.php", r"^\s*\**\s*Plugin Name:\s*\S"),),
+          excludes=("node_modules/", "vendor/", "dist/", "build/"),
+          why="a plugin's build output and vendored libraries"),
     Stack("wordpress",
           markers=("wp-config.php", "wp-config-sample.php", "wp-load.php",
                    "wp-content", "wp-includes"),
@@ -182,7 +207,11 @@ STACKS = (
           excludes=("_site/", ".jekyll-cache/", "vendor/bundle/"),
           why="the Jekyll build output"),
     Stack("spfx",
-          markers=("config/package-solution.json",),
+          markers=("config/package-solution.json",
+                   # A single web part handed over without the solution
+                   # around it: the class it extends is the marker, and it
+                   # is in the file that defines the part.
+                   "src/webparts", "*WebPart.ts", "*WebPart.tsx"),
           excludes=("lib/", "temp/", "sharepoint/solution/", "release/",
                     "ClientSideAssets/"),
           why="SPFx compiles TypeScript into lib/ and packages it into sharepoint/"),
@@ -602,6 +631,33 @@ def _search_roots(root: Path) -> list:
     return roots
 
 
+#: How much of a file is read looking for a content marker. The headers
+#: these look for are the first thing in the file by definition - WordPress
+#: itself only reads the first 8 KB of `style.css` - so anything past this
+#: is not a header, it is a coincidence.
+_CONTENT_MARKER_BYTES = 8192
+
+
+def _content_marker_present(root: Path, marker) -> bool:
+    """Is there a file here whose *content* proves this stack?"""
+    import re as _re
+
+    path_pattern, pattern = marker
+    candidates = (sorted(root.glob(path_pattern))[:20] if "*" in path_pattern
+                  else [root / path_pattern])
+    expression = _re.compile(pattern, _re.M | _re.I)
+    for candidate in candidates:
+        try:
+            if not candidate.is_file():
+                continue
+            head = candidate.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if expression.search(head[:_CONTENT_MARKER_BYTES]):
+            return True
+    return False
+
+
 def _marker_present(root: Path, marker) -> bool:
     """Is this marker satisfied here? A tuple means every part must be."""
     if isinstance(marker, tuple):
@@ -609,6 +665,30 @@ def _marker_present(root: Path, marker) -> bool:
     if "*" in marker:
         return any(root.glob(marker))
     return (root / marker).exists()
+
+
+def _content_marker_label(root: Path, base: Path, marker) -> str:
+    """The evidence, as the file and the header that proved it."""
+    path_pattern, pattern = marker
+    header = pattern.strip("^\\s*").split(":")[0].replace("\\*", "").strip("\\s* ")
+    if "*" in path_pattern:
+        import re as _re
+
+        expression = _re.compile(pattern, _re.M | _re.I)
+        for candidate in sorted(root.glob(path_pattern))[:20]:
+            try:
+                if candidate.is_file() and expression.search(
+                        candidate.read_text(encoding="utf-8",
+                                            errors="replace")[:_CONTENT_MARKER_BYTES]):
+                    path_pattern = candidate.name
+                    break
+            except OSError:
+                continue
+    try:
+        where = str((root / path_pattern).relative_to(base))
+    except ValueError:  # pragma: no cover - root is always under base
+        where = path_pattern
+    return f"{where} -> {header}:"
 
 
 def _marker_label(root: Path, base: Path, marker) -> str:
@@ -677,6 +757,19 @@ def detect(root: str | Path) -> Profile:
                     continue
             if proof:
                 break
+        if not proof:
+            # Content markers, for a stack whose proof is inside a file
+            # rather than in its name. See `Stack.content_markers`.
+            for where in roots:
+                for marker in stack.content_markers:
+                    try:
+                        if _content_marker_present(where, marker):
+                            proof = _content_marker_label(where, path, marker)
+                            break
+                    except (OSError, ValueError):
+                        continue
+                if proof:
+                    break
         if not proof:
             for where in roots:
                 dependencies = _dependency_names(where)

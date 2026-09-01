@@ -269,15 +269,43 @@ def analyze_document(markup: str, source: str, rules=None,
                      line_numbers: bool = False, ai_review=None,
                      document_kind: str = "page",
                      source_text: str | None = None,
-                     force_medium: str | None = None) -> DocumentReport:
+                     force_medium: str | None = None,
+                     within: str = "") -> DocumentReport:
     """Run every rule over one document.
 
     `ai_review` is an optional `AIAccessibilityReview`. It runs on the same
     parsed document as the rules rather than on a second pass, so the AI only
     ever judges wording the offline rules could not settle, and its findings
     land in the same list, sorted by the same severity order.
+
+    `within` confines the whole reading to one subtree - the case a delivered
+    SharePoint web part or an embedded widget makes, where the document
+    around it belongs to somebody else. The subtree is then a *fragment* by
+    construction, whatever the file was, so the page-level rules stop
+    applying: it has no `<head>` to carry a canonical link and no business
+    owning the page's only `<h1>`. A selector that matches nothing is an
+    error and not an empty result - see `audit.within`.
     """
     rules = rules if rules is not None else RuleRegistry.all_rules()
+    if within:
+        from audit import within as within_mod
+
+        try:
+            markup, how = within_mod.narrow(markup, within)
+        except within_mod.ScopeNotFound:
+            return DocumentReport(
+                source=source,
+                error=f"--within {within!r} matched nothing on this page")
+        document_kind = "fragment"
+        source_text = markup
+        if how == "stem":
+            # Said, not silently accepted: the selector that was typed is not
+            # the one that matched, and the difference is a generated suffix
+            # this run guessed past.
+            import sys as _sys
+
+            print(f"# [within] {within} matched by stem (the platform's "
+                  f"generated suffix was ignored)", file=_sys.stderr)
     try:
         document = BeautifulSoup(markup, "html.parser")
     except Exception as exc:  # noqa: BLE001 - malformed markup is a finding, not a crash
@@ -371,7 +399,8 @@ def analyze_document(markup: str, source: str, rules=None,
 def analyze_pages(pages, root: str, rules=None, ai_review=None,
                   media: bool = True, media_fetch=None,
                   media_progress=None,
-                  site_controls: bool = False) -> AccessibilityResult:
+                  site_controls: bool = False,
+                  within: str = "") -> AccessibilityResult:
     """Web mode: run over what the crawler returned.
 
     Pages the crawler could not read are carried through with their error
@@ -402,10 +431,25 @@ def analyze_pages(pages, root: str, rules=None, ai_review=None,
             result.markup_sample = page.raw_html[:_MARKUP_SAMPLE]
         result.markup_by_source[page.url] = page.raw_html
         result.documents.append(
-            analyze_document(page.raw_html, page.url, rules, ai_review=ai_review))
+            analyze_document(page.raw_html, page.url, rules,
+                             ai_review=ai_review, within=within))
     # What the response said. Free: these bytes arrived with the page, and
     # until now everything but `Content-Type` was discarded. See
     # `audit.headers`.
+    if within:
+        # Everything below is about the *page* - its response headers, its
+        # canonical, the titles it shares with its siblings, the images it
+        # links to. A run confined to one web part is not making a claim
+        # about any of that, and reporting the tenant's headers under a
+        # finding list the developer asked to be narrowed would be the
+        # widest possible reading of "only inside this part".
+        attribute_ownership(result)
+        applog.info("audit.web_done", pages=len(pages),
+                    documents=len(result.documents),
+                    findings=len(result.issues()), counts=result.counts(),
+                    platform_owned={}, within=within)
+        return result
+
     from audit import crosspage as crosspage_pass
     from audit import crawlability as crawlability_pass
     from audit import headers as header_pass
@@ -479,7 +523,8 @@ def attribute_ownership(result) -> dict:
             counts[owner] = counts.get(owner, 0) + 1
     return counts
 
-def analyze_page_file(path: str, rules=None, ai_review=None) -> AccessibilityResult:
+def analyze_page_file(path: str, rules=None, ai_review=None,
+                      within: str = "") -> AccessibilityResult:
     """One self-contained HTML file, treated as a page rather than as source.
 
     A page exported or built into a single file - inlined CSS, inlined
@@ -505,7 +550,8 @@ def analyze_page_file(path: str, rules=None, ai_review=None) -> AccessibilityRes
     # Line numbers on: the user has the file open, so "line 42" is directly
     # actionable in a way a CSS selector into a one-file build is not.
     result.documents.append(
-        analyze_document(markup, path, rules, line_numbers=True, ai_review=ai_review))
+        analyze_document(markup, path, rules, line_numbers=True,
+                         ai_review=ai_review, within=within))
     return result
 
 

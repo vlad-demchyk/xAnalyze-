@@ -165,11 +165,27 @@ def _run_browser_pass(result, suppressions, args=None) -> None:
     if not targets:
         return
 
+    within = getattr(args, "within", None) or "" if args is not None else ""
     options = browser_mod.BrowserAuditOptions(
         exclude=list(suppressions.selectors),
         disabled_rules=list(suppressions.rules),
         allow_local_files=result.mode == "file",
+        within=within,
+        # axe takes an `include` context and confines itself to it. The
+        # other three read the whole document by construction:
+        # HTML_CodeSniffer walks from `document`, the state pass tabs
+        # through the page, and a measurement is a property of the page
+        # load. Running them here would answer a question the caller did
+        # not ask - and answering it quietly, under a report they narrowed
+        # on purpose - so they are switched off and the reason is printed.
+        run_htmlcs=not within,
+        run_states=not within,
+        run_measurements=not within,
     )
+    if within:
+        print(f"# [within] browser pass: axe only, confined to {within}. "
+              f"HTML_CodeSniffer, the state pass and the measurements read "
+              f"the whole document and are skipped.", file=sys.stderr)
     sizes = _chosen_breakpoints(args) if args is not None else ()
     where = (f" at {len(sizes)} widths" if sizes else "")
     # The document is still keyed by its own source (a path, in file mode), so

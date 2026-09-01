@@ -277,7 +277,7 @@ caught by the suite.
 A project is identified from its own marker files, and what it turns out to be
 decides what is treated as vendored rather than written here:
 
-`angular`, `astro`, `beehiiv`, `carrd`, `craft`, `django`, `docusaurus`, `dotnet`, `drupal`, `eleventy`, `ember`, `flutter`, `gatsby`, `ghost`, `hugo`, `jekyll`, `joomla`, `laravel`, `magento`, `nextjs`, `nuxt`, `qwik`, `rails`, `remix`, `shopify`, `silverstripe`, `spfx`, `spring`, `squarespace`, `statamic`, `storybook`, `sveltekit`, `symfony`, `typo3`, `vite`, `wagtail`, `webflow`, `wix`, `wordpress`
+`angular`, `astro`, `beehiiv`, `carrd`, `craft`, `django`, `docusaurus`, `dotnet`, `drupal`, `eleventy`, `ember`, `flutter`, `gatsby`, `ghost`, `hugo`, `jekyll`, `joomla`, `laravel`, `magento`, `nextjs`, `nuxt`, `qwik`, `rails`, `remix`, `shopify`, `silverstripe`, `spfx`, `spring`, `squarespace`, `statamic`, `storybook`, `sveltekit`, `symfony`, `typo3`, `vite`, `wagtail`, `webflow`, `wix`, `wordpress`, `wordpress-plugin`, `wordpress-theme`
 
 Signatures are scored, not counted: each carries a confidence and a platform is
 named only when the matches add up to 100, so a string that could be there for
@@ -321,6 +321,12 @@ Findings are labelled `exact`, `needs-browser` or `advisory`. `exact` means the 
 **The undecided are not listed.** `needs-browser` is an engine saying it could not tell: "this element is placed on a background image", "absolutely positioned, the background colour cannot be determined". Measured on one page of python.org with a real browser, that was **312 of 348** contrast findings, and the whole run went from 497 findings to **182** once they left. A report two thirds made of "we do not know" is not a list anybody works through, so a run says how many it left out and `--unsettled` brings them back. `--confidence exact` is the stricter view still: it also drops the advisory ones.
 
 `--category`, `--scope`, `--breakpoints`, and `--no-typography` are views over the same scan, not changes to the underlying evidence.
+
+### Work delivered as a fragment of somebody else's site
+
+A **WordPress theme or plugin** is recognised the way WordPress recognises it: by the `Theme Name:` header in `style.css` and the `Plugin Name:` header in the plugin's main PHP file, not by the markers of the installation around it — a delivered theme has none of those. Its templates are read as fragments, so nothing asks `header.php` for a canonical link or an `<h1>`: the document opens there and closes in `footer.php`.
+
+A **SharePoint web part** is one subtree of a page the tenant owns. `--within SELECTOR` confines the whole audit to it: the static rules read only that subtree, axe is given it as its `include` context, and HTML_CodeSniffer, the state pass and the measurements are switched off with the reason printed, because each reads the whole document by construction. The subtree is a fragment whatever the file was, so page-level rules stop applying. A generated suffix on the class or id — `CanvasZone_9f8e7d`, `root-137` — does not have to be typed: the selector is retried against the stem, and which reading matched is printed. A selector that matches nothing is an error, never a clean page.
 
 ### What a run says it is leaving undone
 

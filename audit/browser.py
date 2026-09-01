@@ -100,6 +100,12 @@ class BrowserAuditOptions:
     #: CSS selectors excluded from the engines. Shared with the app's
     #: suppression list, so "not this part of the page" is said once.
     exclude: list = field(default_factory=list)
+    #: One selector the audit is confined to: "only inside this part of the
+    #: page". A SharePoint web part is delivered as a subtree of somebody
+    #: else's document, and auditing the tenant's chrome around it reports
+    #: hundreds of findings nobody involved can act on. Passed to axe as its
+    #: `include` context; see `audit/within.py` for the static side.
+    within: str = ""
     #: Rule ids to switch off, passed through to axe as `rules: {id: {...}}`.
     disabled_rules: list = field(default_factory=list)
     #: Milliseconds to wait after load before auditing, for the JavaScript
@@ -174,7 +180,13 @@ def axe_script(options: BrowserAuditOptions) -> str:
         "resultTypes": ["violations", "incomplete"],
         "rules": {rule: {"enabled": False} for rule in options.disabled_rules},
     }
-    context = {"exclude": [[selector] for selector in options.exclude]} if options.exclude else {}
+    context = {}
+    if options.exclude:
+        context["exclude"] = [[selector] for selector in options.exclude]
+    # "Only inside this" - the opposite question from `exclude`, and the one
+    # a delivered fragment asks. axe takes both in the same context object.
+    if getattr(options, "within", ""):
+        context["include"] = [[options.within]]
     return f"""
 (function() {{
   {_read(AXE_PATH)}

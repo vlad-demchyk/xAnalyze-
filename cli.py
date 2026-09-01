@@ -365,7 +365,9 @@ def cmd_audit(args) -> int:
         # as a page: `<head>` included, line numbers on, and - with --browser -
         # rendered from `file://`, which is faithful precisely because
         # everything it needs is inlined.
-        result = audit.analyze_page_file(target, ai_review=reviewer)
+        result = audit.analyze_page_file(
+            target, ai_review=reviewer,
+            within=getattr(args, "within", None) or "")
     elif is_url:
         from crawler import CrawlConfig, EMPTY_JS_RENDERED, crawl
 
@@ -398,7 +400,8 @@ def cmd_audit(args) -> int:
         
         result = audit.analyze_pages(
             pages, target, ai_review=reviewer,
-            site_controls=getattr(args, "site_controls", False))
+            site_controls=getattr(args, "site_controls", False),
+            within=getattr(args, "within", None) or "")
     else:
         from repo_scanner import scan_repo
 
@@ -629,7 +632,8 @@ def _reaudit(args, target: str, previous):
     import audit
 
     if previous.mode == "file":
-        return audit.analyze_page_file(target)
+        return audit.analyze_page_file(
+            target, within=getattr(args, "within", None) or "")
     from repo_scanner import scan_repo
 
     files = scan_repo(target, _build_scan_config(args, target=target))
@@ -885,6 +889,11 @@ def build_parser() -> argparse.ArgumentParser:
                               "page of python.org that was 312 of 348 contrast "
                               "findings, and a report two thirds made of 'we "
                               "do not know' is not a list anybody works through")
+    p_audit.add_argument("--within", metavar="SELECTOR", default=None,
+                         help="audit only this part of the page (a SharePoint "
+                              "web part, an embedded widget). A generated "
+                              "suffix on the class or id is matched past; a "
+                              "selector that matches nothing is an error")
     p_audit.add_argument("--language", default=None, help="uk | it | en (output language)")
     p_audit.add_argument("--no-ignore", action="store_true",
                          help="report everything, including suppressed findings")
@@ -1132,6 +1141,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_fullscan.add_argument("--unsettled", action="store_true",
                             help="also list what could not be decided, even "
                                  "in the browser (see `audit --unsettled`)")
+    p_fullscan.add_argument("--within", metavar="SELECTOR", default=None,
+                            help="scan only this part of each page (see "
+                                 "`audit --within`)")
     p_fullscan.add_argument("--language", default=None,
                             help="uk | it | en; language of reports (auto-detected if omitted)")
     p_fullscan.add_argument("--breakpoints", nargs="?", const="all", default="desktop",

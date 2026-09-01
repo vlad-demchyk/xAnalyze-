@@ -52,7 +52,10 @@ def _listed(readme: str, heading: str) -> set:
         return set()
     body = text[start:start + 3000]
     # The list is the first backtick-quoted run of comma-separated names.
-    match = re.search(r"`([a-z0-9]+(?:`, `[a-z0-9]+)+)`", body)
+    # Hyphens included: a stack name can carry one (`wordpress-theme`), and
+    # a pattern that stopped at the hyphen read half a name and reported the
+    # README as wrong when it was right.
+    match = re.search(r"`([a-z0-9-]+(?:`, `[a-z0-9-]+)+)`", body)
     return set(match.group(1).split("`, `")) if match else set()
 
 
