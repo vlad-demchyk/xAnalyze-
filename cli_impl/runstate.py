@@ -381,7 +381,16 @@ class RunState:
         lines.append("")
         if info["artifacts"]:
             lines += ["## Written so far", ""]
-            lines += [f"- `{Path(a).name}`" for a in info["artifacts"]]
+            # The name alone when the file is in this folder, the whole path
+            # when it is not. Naming `--report` or `--styled-report` sends
+            # those documents wherever the caller asked, and this list -
+            # which lives *inside* the run folder - was printing their bare
+            # names as if they were here: a reader who opens the folder
+            # finds no `briefing.md` and has nothing to search for.
+            for artifact in info["artifacts"]:
+                path = Path(artifact)
+                inside = path.parent.resolve() == Path(self.run_dir).resolve()
+                lines.append(f"- `{path.name}`" if inside else f"- `{path}`")
             lines.append("")
         if info["resume_with"]:
             lines += ["## Continue", "",

@@ -86,6 +86,42 @@ class Transitions(unittest.TestCase):
                          ["fullscan", "https://x", "--depth", "3"])
 
 
+class WhatTheStateDocumentSaysWasWritten(unittest.TestCase):
+    """`state.md` lives inside the run folder and lists what the run wrote.
+
+    Naming `--report` or `--styled-report` sends those documents wherever
+    the caller asked, and the list printed their bare names regardless - so
+    a reader opening the dated folder is told it holds a `briefing.md` that
+    is not there, with nothing to search for.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.state = _state(self.tmp.name)
+
+    def test_a_document_in_the_folder_is_named_by_its_name(self):
+        inside = self.root / "timings.md"
+        inside.write_text("x", encoding="utf-8")
+        self.state.start("reports")
+        self.state.done("reports", artifacts=[inside])
+        self.assertIn("- `timings.md`", self.state.as_markdown())
+
+    def test_a_document_written_elsewhere_is_named_by_its_path(self):
+        elsewhere = self.root.parent / "somewhere"
+        elsewhere.mkdir(exist_ok=True)
+        self.addCleanup(lambda: [p.unlink() for p in elsewhere.iterdir()]
+                        and elsewhere.rmdir())
+        briefing = elsewhere / "briefing.md"
+        briefing.write_text("x", encoding="utf-8")
+        self.state.start("reports")
+        self.state.done("reports", artifacts=[briefing])
+        markdown = self.state.as_markdown()
+        self.assertIn(f"- `{briefing}`", markdown)
+        self.assertNotIn("- `briefing.md`\n", markdown)
+
+
 class NextPhase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
