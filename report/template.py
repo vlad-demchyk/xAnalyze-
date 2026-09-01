@@ -92,6 +92,10 @@ _LABELS = {
         mode={"text-web": "AI-text scan · website", "text-repo": "AI-text scan · repository",
              "audit-web": "Site audit · website", "audit-repo": "Site audit · repository",
              "audit-file": "Site audit · page"},
+        first_things="Start here", places_col="Places",
+        doc_kind={"page": "Pages", "fragment": "Components and partials",
+            "email": "Emails"},
+        first_things_note="The heaviest thing in each kind of document, by consequence rather than by count.",
         cat={"ai-text": "AI-sounding text", "accessibility": "Accessibility",
             "performance": "Performance", "seo": "SEO", "geo": "GEO readiness", "best-practices": "Best practices",
             "security": "Security"},
@@ -126,6 +130,10 @@ _LABELS = {
         mode={"text-web": "Аналіз тексту · сайт", "text-repo": "Аналіз тексту · репозиторій",
              "audit-web": "Аудит доступності · сайт", "audit-repo": "Аудит доступності · репозиторій",
              "audit-file": "Аудит доступності · сторінка"},
+        first_things="З чого почати", places_col="Місць",
+        doc_kind={"page": "Сторінки", "fragment": "Компоненти й частини",
+            "email": "Листи"},
+        first_things_note="Найважче в кожному роді документів - за наслідком, а не за кількістю.",
         cat={"ai-text": "Схоже на текст ШІ", "accessibility": "Доступність",
             "performance": "Продуктивність", "seo": "SEO", "geo": "GEO-готовність", "best-practices": "Найкращі практики",
             "security": "Безпека"},
@@ -161,6 +169,10 @@ _LABELS = {
              "audit-web": "Audit di accessibilità · sito",
              "audit-repo": "Audit di accessibilità · repository",
              "audit-file": "Audit di accessibilità · pagina"},
+        first_things="Da dove iniziare", places_col="Punti",
+        doc_kind={"page": "Pagine", "fragment": "Componenti e frammenti",
+            "email": "Email"},
+        first_things_note="La cosa più pesante in ogni tipo di documento, per conseguenza e non per quantità.",
         cat={"ai-text": "Testo dall'aspetto artificiale", "accessibility": "Accessibilità",
             "performance": "Prestazioni", "seo": "SEO", "geo": "Prontezza GEO", "best-practices": "Best practice",
             "security": "Sicurezza"},
@@ -535,6 +547,80 @@ def _charts(by_severity: dict, by_category: dict, labels: dict, palette,
     return f'<div class="charts">{"".join(blocks)}</div>'
 
 
+def _first_things(model: ReportModel, labels: dict, palette) -> str:
+    """What to do first, grouped by what the document is.
+
+    A run over a folder of deliverables says "820 findings", and the top of
+    that list is the same six page-level rules repeated over every file -
+    true, and no place to start. This section answers the other question:
+    this is an email, and these three things break it in a mail client; this
+    is a page, and these three are worth an hour.
+
+    Renders nothing at all when no finding recorded what its document was,
+    which is what a text-only run and an older report look like.
+    """
+    groups = model.first_things()
+    if not groups:
+        return ""
+    blocks = []
+    for kind, rows in groups:
+        heading = labels["doc_kind"].get(kind, kind)
+        items = []
+        for finding, places in rows:
+            fix = _flatten_sentence(finding.fix)
+            items.append(
+                f'<li class="first-item">'
+                f'<span class="sev sev-{finding.severity_rank}"></span>'
+                f'<span class="first-title">{_esc(finding.title)}</span>'
+                f'<span class="first-count">{places}</span>'
+                f'<span class="first-fix">{_esc(fix)}</span></li>')
+        blocks.append(f'<div class="first-block"><h3>{_esc(heading)}</h3>'
+                      f'<ol class="first-list">{"".join(items)}</ol></div>')
+    return (f'<section class="first-things"><h2>{_esc(labels["first_things"])}'
+            f'</h2><p class="first-note">{_esc(labels["first_things_note"])}</p>'
+            f'<div class="first-grid">{"".join(blocks)}</div></section>')
+
+
+def _flatten_sentence(text: str, limit: int = 150) -> str:
+    """The first sentence of a fix, for a list that has one line per row.
+
+    The whole fix is three or four sentences and is printed in full on the
+    finding's own card further down; here it would turn a scannable list
+    into a wall.
+    """
+    flat = " ".join((text or "").split())
+    for stop in (". ", "; "):
+        head, sep, _rest = flat.partition(stop)
+        if sep and len(head) > 30:
+            flat = head + "."
+            break
+    return flat if len(flat) <= limit else flat[:limit - 1] + "…"
+
+
+def _first_things_css(palette) -> str:
+    return f"""
+.first-things {{ margin-top: 8mm; }}
+.first-note {{ margin: 0 0 3mm; font-size: 8.5pt; color: {palette.text_muted}; }}
+.first-grid {{ display: flex; gap: 8mm; flex-wrap: wrap; }}
+.first-block {{ flex: 1 1 78mm; min-width: 70mm; }}
+.first-block h3 {{ font-size: 9pt; margin: 0 0 2mm; color: {palette.text_muted};
+  text-transform: uppercase; letter-spacing: .04em; }}
+.first-list {{ margin: 0; padding: 0; list-style: none; }}
+.first-item {{ display: grid; grid-template-columns: 4mm 1fr auto;
+  gap: 0 2mm; padding: 2mm 0; border-top: 1px solid {palette.border}; }}
+/* A square, not a dot: nothing in this document has a radius (see the
+   module docstring), and the suite checks that. */
+.first-item .sev {{ width: 2.4mm; height: 2.4mm; margin-top: 1.6mm; }}
+.first-item .sev-0 {{ background: {palette.sev_critical}; }}
+.first-item .sev-1 {{ background: {palette.sev_high}; }}
+.first-item .sev-2 {{ background: {palette.sev_medium}; }}
+.first-item .sev-3 {{ background: {palette.sev_none}; }}
+.first-title {{ font-weight: 600; }}
+.first-count {{ font-variant-numeric: tabular-nums; color: {palette.text_muted}; }}
+.first-fix {{ grid-column: 2 / 4; font-size: 8.5pt; color: {palette.text_muted}; }}
+"""
+
+
 def _where_the_work_is(model: ReportModel, labels: dict, palette) -> str:
     """The two questions a reader has after the totals: *what* repeats, and
     *where*. Neither was answered anywhere in this document - severity and
@@ -733,6 +819,7 @@ def render_html(model: ReportModel, lang: str = "en") -> str:
     findings_html = ("".join(_finding_card(f, lang, palette) for f in findings)
                      if findings else f'<p class="empty">{_esc(labels["no_findings"])}</p>')
 
+    first_section = _first_things(model, labels, palette)
     work_section = _where_the_work_is(model, labels, palette)
     pages_section = _pages_section(model, labels)
     ai_section = _top_patterns_section(model, labels)
@@ -896,6 +983,7 @@ table.pages-table tr.more td {{ color: {palette.text_muted}; font-style: italic;
 .badge-outline {{ border: 1px solid {palette.border_strong}; color: {palette.text_muted}; }}
 {_severity_css(palette)}
 {_rank_css(palette)}
+{_first_things_css(palette)}
 {role_css(palette)}
 /* Small blocks stay whole: these are short, so keeping them together costs
    a line or two of slack rather than a third of a page. */
@@ -981,6 +1069,8 @@ footer {{
   {what_rows}
   {legend}
 </section>
+
+{first_section}
 
 {work_section}
 

@@ -132,6 +132,30 @@ class ExclusionsFollowFromTheStack(_Built):
         self.assertTrue(is_ignored("web/wp-admin/x.php", matcher))
         self.assertFalse(is_ignored("web/wp-content/themes/mine/header.php", matcher))
 
+    def test_bedrock_is_wordpress_installed_somewhere_else(self):
+        """`web/wp/` is core and `web/app/` is the content directory, so
+        every exclusion that knows WordPress by `wp-content/` misses all of
+        it. Measured on `~/repositories/illimity-bancaifis-it`: 106 of 129
+        findings were about code the project does not write."""
+        from repo_scanner import build_matcher, is_ignored
+
+        profile = self.profile({"web/wp-config.php": "<?php",
+                                "config/application.php": "<?php"})
+        self.assertIn("bedrock", {stack.name for stack in profile.stacks})
+        matcher = build_matcher(profile.excludes())
+        for hidden in ("web/wp/xmlrpc.php", "web/app/plugins/acf/acf.php",
+                       "web/app/languages/it_IT.l10n.php",
+                       "web/app/cache/acorn/x.php",
+                       "web/app/themes/twentytwentyfour/index.php"):
+            self.assertTrue(is_ignored(hidden, matcher), hidden)
+        self.assertFalse(is_ignored(
+            "web/app/themes/mine/resources/views/page.blade.php", matcher))
+
+    def test_a_config_directory_alone_is_not_bedrock(self):
+        """`config/application.php` is a name half the PHP world could use.
+        Detecting the wrong stack hides source, so both halves are required."""
+        self.assertNotIn("bedrock", self.names({"config/application.php": "<?php"}))
+
     def test_an_undetected_project_excludes_nothing_extra(self):
         profile = self.profile({"README.md": "# hello"})
         self.assertEqual(profile.excludes(), [])

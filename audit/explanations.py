@@ -68,6 +68,13 @@ def render(issue, lang: str = "uk") -> IssueExplanation:
     # Values are pre-formatted so a template only has to interpolate: the
     # keys differ per rule, and a missing one must not raise inside the UI.
     fields = _template_fields(details)
+    # A boolean in `details` is a fact, and `True` is not a word in any of
+    # the three languages. Translated here rather than in the rule, because
+    # a rule that emitted "yes" would have written English into a Ukrainian
+    # sentence and no test would have called it a failure.
+    for name, value in list(fields.items()):
+        if isinstance(value, bool):
+            fields[name] = t("word_yes" if value else "word_no", lang)
     _add_count_noun(stem, fields, lang)
 
     # All four strings get the same values: "how to fix it" is worth far

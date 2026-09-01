@@ -124,6 +124,12 @@ class ReportFinding:
     #: guessed from the selector - see `report.markup.element_of` - and used
     #: to ink the finding by role.
     element: str = ""
+    #: What the document this came from is: "page", "fragment" or "email".
+    #: Carried per finding rather than per document because the report groups
+    #: by it - "this is an email, and these three things matter in Outlook"
+    #: is a different sentence from "this page has 23 problems", and the
+    #: reader needs the first one before the second.
+    document_kind: str = ""
 
     @property
     def severity_rank(self) -> int:
@@ -281,6 +287,58 @@ class ReportModel:
             order.append((key, finding))
         return [replace(first, locations=grouped[key]) for key, first in order]
 
+    def first_things(self, per_kind: int = 3) -> list:
+        """What to do first, per kind of document, rather than what is wrong.
+
+        A run over a folder of deliverables answers a question nobody asked:
+        it says "820 findings". Measured on `~/repositories/VSC`, a workspace
+        of newsletters, landing pages and exported layouts, the top of that
+        list is six page-level SEO rules repeated across 93 documents - true,
+        uniform, and useless as a place to start.
+
+        What a person can act on is the other shape of the same data: this
+        is an email, and these three things break it in Outlook; this is a
+        page, and these three are worth an hour. So the findings are grouped
+        by what the document *is* and ranked inside each group by
+        consequence - severity first, then how many distinct places it has,
+        because a serious fault in one file outranks a minor one in forty.
+
+        Returns `[(kind, [(finding, places), ...]), ...]`, worst kind first.
+        Empty when nothing recorded a kind, which is what an older report or
+        a text-only run looks like; the section then does not render at all.
+        """
+        # Counted from the ungrouped findings on purpose. `grouped_findings`
+        # collapses one problem across the whole run, and one problem really
+        # can appear in two kinds of document at once - the same missing
+        # `alt` in a page and in a component. Collapsing first attributes the
+        # whole pile to whichever kind happened to be seen first, which is
+        # how "no h1" arrived under Emails with a count of 34.
+        buckets: dict = {}
+        for finding in self.sorted_findings():
+            kind = finding.document_kind
+            if not kind:
+                continue
+            bucket = buckets.setdefault(kind, {})
+            key = (finding.title, finding.rule_id)
+            first, places = bucket.get(key, (finding, set()))
+            places = set(places)
+            places.add(finding.location)
+            bucket[key] = (first, places)
+        buckets = {kind: {key: (first, len(places))
+                          for key, (first, places) in bucket.items()}
+                   for kind, bucket in buckets.items()}
+        ranked = []
+        for kind, bucket in buckets.items():
+            rows = sorted(bucket.values(),
+                          key=lambda pair: (pair[0].severity_rank, -pair[1]))
+            ranked.append((kind, rows[:per_kind]))
+        # Worst kind first, by the worst thing in it: the reader opens on the
+        # group that has the most serious single finding, not on whichever
+        # kind happens to have the most documents.
+        ranked.sort(key=lambda item: (item[1][0][0].severity_rank
+                                      if item[1] else 99))
+        return [(kind, rows) for kind, rows in ranked if rows]
+
     def counts_by_severity_grouped(self) -> dict:
         """`counts_by_severity`, counting each distinct problem once."""
         counts: dict = {}
@@ -379,6 +437,7 @@ def from_accessibility(result, lang: str = "uk") -> ReportModel:
                 rule_id=issue.rule_id,
                 confidence=getattr(issue, "confidence", ""),
                 caveat=explanation.caveat,
+                document_kind=getattr(document, "kind", ""),
             ))
     return ReportModel(meta=ReportMeta(target=result.root, mode=f"audit-{result.mode}"),
                        findings=findings)

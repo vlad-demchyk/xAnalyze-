@@ -131,13 +131,50 @@ STACKS = (
           content_markers=(("*.php", r"^\s*\**\s*Plugin Name:\s*\S"),),
           excludes=("node_modules/", "vendor/", "dist/", "build/"),
           why="a plugin's build output and vendored libraries"),
+    # Bedrock puts WordPress somewhere else, and everything that knows
+    # WordPress by `wp-content/` walks straight past it: core lives in
+    # `web/wp/`, the content directory is `web/app/`, and configuration is
+    # Composer's and Roots' rather than WordPress's own.
+    #
+    # Measured 2026-09-01 on `~/repositories/illimity-bancaifis-it`: 129
+    # findings, of which **106** were about code this project does not
+    # write - 62 in WordPress's own `.l10n.php` translation tables, 37 in
+    # core files under `web/wp/` (`xmlrpc.php`, `wp-mail.php`), 7 in the
+    # Bedrock config. Twenty-three were about the theme. A report that is
+    # 82 percent somebody else's code is not a strict report, it is a
+    # report about the wrong repository.
+    Stack("bedrock",
+          markers=(("web/wp-config.php", "config/application.php"),
+                   ("web/app", "config/application.php")),
+          excludes=("web/wp/", "web/app/plugins/", "web/app/mu-plugins/",
+                    "web/app/uploads/", "web/app/cache/", "web/app/languages/",
+                    "web/app/themes/twenty*/", "config/", "vendor/"),
+          why="Bedrock installs WordPress core in web/wp/ and its plugins, "
+              "uploads, cache and translation tables in web/app/; none of "
+              "that is written here, and the theme is"),
     Stack("wordpress",
           markers=("wp-config.php", "wp-config-sample.php", "wp-load.php",
                    "wp-content", "wp-includes"),
+          # `wp-admin/` and `wp-includes/` were the two directories anyone
+          # thinks of, and core is not only in directories: an installation
+          # keeps a dozen entry points in its root, and its translation
+          # tables in `wp-content/languages/`. Measured 2026-09-01 on
+          # `~/Local Sites/palmanova`: of 1217 findings, 47 came from
+          # `wp-login.php`, `wp-signup.php`, `wp-mail.php`, `xmlrpc.php` and
+          # their siblings, 314 from GlotPress `.l10n.php` tables, and 11
+          # from WordPress's own `readme.html`. None of that is written by
+          # the site; all of it is overwritten by the next core update.
           excludes=("wp-admin/", "wp-includes/", "wp-content/plugins/",
                     "wp-content/mu-plugins/", "wp-content/uploads/",
                     "wp-content/upgrade/", "wp-content/cache/",
-                    "wp-content/themes/twenty*/"),
+                    "wp-content/languages/",
+                    "wp-content/themes/twenty*/",
+                    "wp-activate.php", "wp-blog-header.php",
+                    "wp-comments-post.php", "wp-config-sample.php",
+                    "wp-cron.php", "wp-links-opml.php", "wp-load.php",
+                    "wp-login.php", "wp-mail.php", "wp-settings.php",
+                    "wp-signup.php", "wp-trackback.php", "xmlrpc.php",
+                    "readme.html", "license.txt"),
           why="WordPress core, bundled plugins and uploads are not this project's code"),
     Stack("drupal",
           markers=("core/lib/Drupal.php", "core/core.services.yml"),

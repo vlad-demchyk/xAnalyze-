@@ -257,6 +257,57 @@ class DeprecatedElements(BestPracticeRule):
         return issues
 
 
+class InPageAnchorMissing(BestPracticeRule):
+    """A link to a place on this page that is not on this page.
+
+    On a site that is one file - a landing page, an exported layout, a
+    single-page brochure - `#pricing` is not a convenience, it *is* the
+    navigation. When the id was renamed and the link was not, the menu item
+    silently does nothing: no error, no 404, the page simply stays where it
+    is, and nothing in a normal audit says why.
+
+    Measured 2026-09-01 on `~/repositories/VSC`, 191 non-email documents:
+    18 anchors in 15 files pointed at an id that does not exist.
+
+    `page_level`, and that is the whole safety of it: in a component or a
+    partial the target legitimately lives in another file, and a rule that
+    did not know the difference would report every well-built React nav.
+    """
+    id = "link-fragment-missing"
+    severity = SERIOUS
+    page_level = True
+
+    #: Fragments every browser resolves by itself, to the top of the
+    #: document. Neither needs an element to exist.
+    _BUILT_IN = {"top", "#"}
+
+    def check(self, document, context) -> list:
+        targets = {tag.get("id") for tag in document.find_all(attrs={"id": True})}
+        targets |= {tag.get("name") for tag in document.find_all("a", attrs={"name": True})}
+        targets.discard(None)
+        targets.discard("")
+        issues = []
+        for tag in document.find_all("a", href=True):
+            href = (tag.get("href") or "").strip()
+            if not href.startswith("#") or len(href) < 2:
+                continue
+            fragment = href[1:]
+            if fragment in self._BUILT_IN or fragment in targets:
+                continue
+            # `href={`#${id}`}` and its friends: the value is not written
+            # yet, so there is nothing to resolve and nothing to report.
+            if is_binding(fragment):
+                continue
+            selector, line = context.locate(tag)
+            issues.append(Issue(
+                rule_id=self.id, severity=self.severity, selector=selector,
+                line=line, snippet=snippet_of(tag), source=context.source,
+                details={"href": href[:80],
+                         "text": " ".join(tag.stripped_strings)[:60]},
+            ))
+        return issues
+
+
 def _with_rel(tag, value: str) -> str:
     attributes = dict(tag.attrs)
     attributes["rel"] = value
@@ -270,5 +321,5 @@ def _with_rel(tag, value: str) -> str:
 
 for _rule in (MixedContent, TargetBlankWithoutNoopener, MissingCharset,
               DocumentTypeMissing, InlineEventHandlers, PasswordFieldOutsideForm,
-              DeprecatedElements):
+              DeprecatedElements, InPageAnchorMissing):
     RuleRegistry.register(_rule)

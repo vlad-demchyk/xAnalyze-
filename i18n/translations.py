@@ -3576,6 +3576,251 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Aggiungi nella pagina di destinazione <link rel=\"alternate\" hreflang=\"…\" href=\"…\"> che riporti a questo URL. Verifica entrambe le pagine dopo la pubblicazione, inclusa la normalizzazione degli URL.",
         "en": "Add a <link rel=\"alternate\" hreflang=\"…\" href=\"…\"> on the target page that returns to this URL. Verify both pages after publishing, including URL normalisation.",
     },
+    "a11y_link_fragment_missing_title": {
+        "uk": "Посилання веде на місце, якого на сторінці немає",
+        "it": "Il link punta a un punto che nella pagina non esiste",
+        "en": "The link points at a place that is not on the page",
+    },
+    "a11y_link_fragment_missing_found": {
+        "uk": "Знайдено посилання «{text}» на {href}: елемента з таким id на сторінці немає.",
+        "it": "Trovato il link «{text}» verso {href}: nella pagina non c'è un elemento con quell'id.",
+        "en": "Found the link \"{text}\" to {href}: no element on the page has that id.",
+    },
+    "a11y_link_fragment_missing_why": {
+        "uk": "Браузер не покаже помилки: сторінка просто залишиться на місці. Для односторінкового сайту це вся навігація - пункт меню перестає працювати, і жоден звичайний аудит не скаже чому. Найчастіша причина - id перейменували, а посилання ні.",
+        "it": "Il browser non mostra alcun errore: la pagina semplicemente resta dov'è. In un sito di una sola pagina questa è tutta la navigazione: la voce di menu smette di funzionare e nessun audit ordinario dice perché. La causa più frequente è un id rinominato senza aggiornare il link.",
+        "en": "The browser shows no error: the page simply stays where it is. On a single-page site this is the whole navigation - the menu item stops working, and nothing in an ordinary audit says why. The usual cause is an id that was renamed while the link was not.",
+    },
+    "a11y_link_fragment_missing_fix": {
+        "uk": "Або поставте id на цільову секцію (<section id=\"pricing\">), або виправте адресу в посиланні. Якщо секцію прибрали навмисно - приберіть і пункт меню, інакше він лишиться пасткою.",
+        "it": "Metti l'id sulla sezione di destinazione (<section id=\"pricing\">) oppure correggi l'indirizzo nel link. Se la sezione è stata rimossa di proposito, togli anche la voce di menu: altrimenti resta una trappola.",
+        "en": "Either give the target section the id (<section id=\"pricing\">) or correct the link. If the section was removed on purpose, remove the menu item too - otherwise it stays a trap.",
+    },
+    # ------------------------------------------------------- email and WP
+    "a11y_email_font_no_fallback_title": {
+        "uk": "Шрифт без запасної родини",
+        "it": "Font senza famiglia di riserva",
+        "en": "A font with no fallback family",
+    },
+    "a11y_email_font_no_fallback_found": {
+        "uk": "Знайдено font-family: {value} - жодної загальної родини в кінці переліку.",
+        "it": "Trovato font-family: {value}, senza alcuna famiglia generica alla fine dell'elenco.",
+        "en": "Found font-family: {value} - no generic family at the end of the list.",
+    },
+    "a11y_email_font_no_fallback_why": {
+        "uk": "Поштові клієнти не завантажують вебшрифти: Outlook і Gmail покажуть тим, що вже є в системі. Якщо в переліку немає загальної родини, вибір робить клієнт, і зазвичай це Times New Roman - лист виглядає інакше, ніж макет.",
+        "it": "I client di posta non scaricano i webfont: Outlook e Gmail useranno ciò che è già installato. Se nell'elenco non c'è una famiglia generica, la scelta la fa il client, di solito Times New Roman: l'email non somiglia più al progetto grafico.",
+        "en": "Mail clients do not download webfonts: Outlook and Gmail render with what is already installed. With no generic family in the list the client picks, and it usually picks Times New Roman - the email stops looking like the design.",
+    },
+    "a11y_email_font_no_fallback_fix": {
+        "uk": "Допишіть у кінець переліку загальну родину: font-family: {value}, Arial, sans-serif. Порядок важливий - клієнт бере перший шрифт, який має.",
+        "it": "Aggiungi una famiglia generica in fondo all'elenco: font-family: {value}, Arial, sans-serif. L'ordine conta: il client usa il primo font che possiede.",
+        "en": "Add a generic family at the end of the list: font-family: {value}, Arial, sans-serif. Order matters - the client takes the first font it has.",
+    },
+    "a11y_email_link_no_colour_title": {
+        "uk": "Посилання без власного кольору",
+        "it": "Link senza un colore proprio",
+        "en": "A link with no colour of its own",
+    },
+    "a11y_email_link_no_colour_found": {
+        "uk": "Знайдено посилання «{text}» без color у власному стилі.",
+        "it": "Trovato il link «{text}» senza color nello stile inline.",
+        "en": "Found the link \"{text}\" with no color in its own style.",
+    },
+    "a11y_email_link_no_colour_why": {
+        "uk": "Клієнт перефарбує посилання сам: Gmail дає синє з підкресленням, застосунок Пошта на iOS - фіолетове для відвіданих, а частина клієнтів у темній темі змінює і колір тексту навколо. Кнопка бренду перетворюється на типове посилання.",
+        "it": "Il client ricolora il link da sé: Gmail lo rende blu sottolineato, Mail su iOS lo mostra viola se visitato e alcuni client in tema scuro cambiano anche il testo attorno. Un pulsante con i colori del marchio diventa un link qualunque.",
+        "en": "The client repaints it: Gmail gives blue and underlined, Mail on iOS shows visited links purple, and some clients in dark mode change the surrounding text too. A brand-coloured button turns into a default link.",
+    },
+    "a11y_email_link_no_colour_fix": {
+        "uk": "Задайте колір просто в елементі: <a style=\"color:#0b5cad; text-decoration:underline\">. Правило в <style> працює в Gmail і Apple Mail, але Outlook.com вирізає <style> цілком, тому інлайн надійніший.",
+        "it": "Imposta il colore direttamente sull'elemento: <a style=\"color:#0b5cad; text-decoration:underline\">. Una regola nel <style> funziona in Gmail e Apple Mail, ma Outlook.com rimuove del tutto <style>, quindi l'inline è più sicuro.",
+        "en": "Set the colour on the element itself: <a style=\"color:#0b5cad; text-decoration:underline\">. A rule in <style> works in Gmail and Apple Mail, but Outlook.com strips <style> entirely, so inline is the safer form.",
+    },
+    "a11y_email_no_preheader_title": {
+        "uk": "У листі немає тексту прев'ю (preheader)",
+        "it": "L'email non ha un testo di anteprima (preheader)",
+        "en": "The email has no preview text (preheader)",
+    },
+    "a11y_email_no_preheader_found": {
+        "uk": "У документі немає прихованого блоку з текстом прев'ю.",
+        "it": "Nel documento non c'è un blocco nascosto con il testo di anteprima.",
+        "en": "The document has no hidden block carrying preview text.",
+    },
+    "a11y_email_no_preheader_why": {
+        "uk": "Рядок під темою листа в поштовій скриньці клієнт бере з першого тексту в тілі. У шаблоні це майже завжди «Переглянути у браузері» або рядок про відписку - тобто найпомітніше місце в скриньці зайняте текстом для тих, хто лист читати не хоче.",
+        "it": "La riga sotto l'oggetto, nella casella di posta, il client la prende dal primo testo nel corpo. In un template è quasi sempre «Visualizza nel browser» o la riga di disiscrizione: il punto più visibile della casella è occupato dal testo per chi l'email non la vuole.",
+        "en": "The line under the subject in the inbox is taken from the first text in the body. In a template that is almost always \"View in browser\" or the unsubscribe line - the most visible spot in the inbox, spent on the text written for people who do not want the email.",
+    },
+    "a11y_email_no_preheader_fix": {
+        "uk": "Додайте першим у <body> прихований блок на 40-90 символів, що продовжує тему листа: <div style=\"display:none; max-height:0; overflow:hidden; mso-hide:all\">…</div>. Далі корисно поставити такий самий блок із нерозривними пробілами, щоб клієнт не дотягував текст із верстки.",
+        "it": "Metti come primo elemento del <body> un blocco nascosto di 40-90 caratteri che prosegue l'oggetto: <div style=\"display:none; max-height:0; overflow:hidden; mso-hide:all\">…</div>. Subito dopo conviene aggiungere un blocco uguale di spazi unificatori, così il client non recupera testo dal layout.",
+        "en": "Put a hidden block of 40-90 characters first in the <body>, continuing the subject line: <div style=\"display:none; max-height:0; overflow:hidden; mso-hide:all\">…</div>. Following it with a block of non-breaking spaces stops the client pulling text out of the layout.",
+    },
+    "a11y_wp_unescaped_output_title": {
+        "uk": "Змінна виводиться в розмітку без екранування",
+        "it": "Una variabile viene stampata nel markup senza escaping",
+        "en": "A variable is printed into the markup unescaped",
+    },
+    "a11y_wp_unescaped_output_found": {
+        "uk": "Знайдено вивід {value} без esc_html(), esc_attr() чи esc_url().",
+        "it": "Trovata la stampa di {value} senza esc_html(), esc_attr() o esc_url().",
+        "en": "Found {value} printed with no esc_html(), esc_attr() or esc_url().",
+    },
+    "a11y_wp_unescaped_output_why": {
+        "uk": "WordPress не екранує вивід за вас. Усе, що є в цій змінній - поле мета, параметр запиту, значення опції, яке може задати редактор, - потрапляє на сторінку як розмітка, тож <script> або onerror усередині виконається у браузері кожного відвідувача. Змінна могла бути очищена раніше в коді, тому це порада перевірити, а не вирок.",
+        "it": "WordPress non fa l'escaping dell'output al posto tuo. Tutto ciò che sta in quella variabile - un campo meta, un parametro della richiesta, un'opzione modificabile da un redattore - finisce nella pagina come markup, quindi un <script> o un onerror al suo interno viene eseguito nel browser di ogni visitatore. La variabile potrebbe essere già stata ripulita più sopra, perciò questo è un invito a verificare, non una condanna.",
+        "en": "WordPress does not escape output for you. Whatever is in that variable - a meta field, a query argument, an option an editor can set - is written into the page as markup, so a <script> or an onerror inside it runs in every visitor's browser. The variable may have been sanitised earlier in the file, so this asks you to check rather than declaring a hole.",
+    },
+    "a11y_wp_unescaped_output_fix": {
+        "uk": "Екрануйте в місці виводу, де це видно: esc_html() для тексту, esc_attr() всередині атрибута, esc_url() для адреси, wp_kses_post() коли розмітка потрібна. Це і є правило WordPress Coding Standards: escape late.",
+        "it": "Fai l'escaping nel punto in cui stampi, dove si vede: esc_html() per il testo, esc_attr() dentro un attributo, esc_url() per un indirizzo, wp_kses_post() quando serve del markup. È la regola dei WordPress Coding Standards: escape late.",
+        "en": "Escape at the point of output, where it can be seen: esc_html() for text, esc_attr() inside an attribute, esc_url() for a URL, wp_kses_post() where markup is genuinely needed. That is the WordPress coding standards rule: escape late.",
+    },
+    # --------------------------------------------------------------- JSX
+    # Checks that exist only because the file is a React source file. The
+    # wording of each fix follows `eslint-plugin-jsx-a11y`, whose errors the
+    # developer reading this has already seen in their editor.
+    "a11y_jsx_label_not_associated_title": {
+        "uk": "Мітка <label> ні з чим не звʼязана",
+        "it": "L'etichetta <label> non è associata a nulla",
+        "en": "The <label> is associated with nothing",
+    },
+    "a11y_jsx_label_not_associated_found": {
+        "uk": "Знайдено <label> з текстом «{text}»: немає ні htmlFor, ні поля всередині.",
+        "it": "Trovato un <label> con il testo «{text}»: senza htmlFor e senza campo all'interno.",
+        "en": "Found a <label> reading \"{text}\": no htmlFor and no field inside it.",
+    },
+    "a11y_jsx_label_not_associated_why": {
+        "uk": "Такий підпис є звичайним текстом поруч із полем. Програма читання з екрана оголосить поле без назви, а клік по підпису не поставить у нього курсор - тобто зона натискання зменшується до самого поля.",
+        "it": "Una didascalia così è solo testo accanto al campo. Uno screen reader annuncia il campo senza nome e il clic sull'etichetta non porta il cursore nel campo: l'area cliccabile si riduce al campo stesso.",
+        "en": "A caption like this is just text next to the field. A screen reader announces the field with no name, and clicking the caption does not focus it, so the target area shrinks to the field itself.",
+    },
+    "a11y_jsx_label_not_associated_fix": {
+        "uk": "Додайте htmlFor={{id}} з тим самим id, що й у поля, або загорніть поле всередину <label>. У JSX атрибут пишеться htmlFor, а не for.",
+        "it": "Aggiungi htmlFor={{id}} con lo stesso id del campo, oppure racchiudi il campo dentro <label>. In JSX l'attributo si scrive htmlFor, non for.",
+        "en": "Add htmlFor={{id}} matching the field's id, or wrap the field inside the <label>. In JSX the attribute is htmlFor, not for.",
+    },
+    "a11y_jsx_click_without_key_title": {
+        "uk": "Обробник кліку, до якого не дістатись з клавіатури",
+        "it": "Gestore di clic irraggiungibile da tastiera",
+        "en": "A click handler no keyboard can reach",
+    },
+    "a11y_jsx_click_without_key_found": {
+        "uk": "Знайдено <{element}> з onClick і без жодного обробника клавіш (onKeyDown, onKeyUp, onKeyPress).",
+        "it": "Trovato <{element}> con onClick e senza alcun gestore di tastiera (onKeyDown, onKeyUp, onKeyPress).",
+        "en": "Found <{element}> with onClick and no key handler at all (onKeyDown, onKeyUp, onKeyPress).",
+    },
+    "a11y_jsx_click_without_key_why": {
+        "uk": "Кнопка і посилання самі перетворюють Enter і пробіл на клік. Звичайний елемент - ні, тому дія існує лише для миші: людина з клавіатурою, зі скрін-рідером або з голосовим керуванням виконати її не може.",
+        "it": "Pulsanti e link trasformano da soli Invio e barra spaziatrice in un clic. Un elemento qualsiasi no, quindi l'azione esiste solo per il mouse: chi usa tastiera, screen reader o comandi vocali non può eseguirla.",
+        "en": "A button or a link turns Enter and Space into a click by itself. A plain element does not, so the action exists for a mouse only: someone on a keyboard, a screen reader or voice control cannot perform it.",
+    },
+    "a11y_jsx_click_without_key_fix": {
+        "uk": "Найкраще - зробити елемент <button type=\"button\">: він дає і фокус, і клавіші, і роль. Якщо розмітку змінити не можна, додайте onKeyDown, який реагує на Enter і Space, разом із role і tabIndex={{0}}.",
+        "it": "La soluzione migliore è usare <button type=\"button\">: dà focus, tastiera e ruolo insieme. Se il markup non si può cambiare, aggiungi un onKeyDown che reagisce a Invio e barra spaziatrice, insieme a role e tabIndex={{0}}.",
+        "en": "Best fix: make it a <button type=\"button\"> - that gives focus, keys and role at once. If the markup cannot change, add an onKeyDown handling Enter and Space, together with a role and tabIndex={{0}}.",
+    },
+    "a11y_jsx_noninteractive_handler_title": {
+        "uk": "Дія на елементі, який ніхто не оголошує контролом",
+        "it": "Azione su un elemento che nessuno annuncia come controllo",
+        "en": "An action on something nothing announces as a control",
+    },
+    "a11y_jsx_noninteractive_handler_found": {
+        "uk": "Знайдено <{element}> з onClick. Роль: {role}; у порядку табуляції: {focusable}.",
+        "it": "Trovato <{element}> con onClick. Ruolo: {role}; nell'ordine di tabulazione: {focusable}.",
+        "en": "Found <{element}> with onClick. Role: {role}; in the tab order: {focusable}.",
+    },
+    "a11y_jsx_noninteractive_handler_why": {
+        "uk": "Клікабельний <div> залишається для скрін-рідера групою тексту: він не оголошується як кнопка, на нього не переводять фокус клавішею Tab і його не знайти в списку елементів керування. Обробник клавіш сам по собі цього не змінює.",
+        "it": "Un <div> cliccabile resta, per uno screen reader, un gruppo di testo: non viene annunciato come pulsante, non riceve il focus con Tab e non compare nell'elenco dei controlli. Aggiungere solo un gestore di tastiera non cambia questo.",
+        "en": "A clickable <div> stays a group of text to a screen reader: it is not announced as a button, Tab does not stop on it, and it is missing from the controls list. A key handler alone does not change that.",
+    },
+    "a11y_jsx_noninteractive_handler_fix": {
+        "uk": "Замініть елемент на <button type=\"button\">. Якщо це неможливо, поставте одночасно role=\"button\" і tabIndex={{0}} - одне без другого залишає половину роботи.",
+        "it": "Sostituisci l'elemento con <button type=\"button\">. Se non è possibile, metti insieme role=\"button\" e tabIndex={{0}}: uno senza l'altro lascia il lavoro a metà.",
+        "en": "Replace the element with <button type=\"button\">. If that is impossible, give it both role=\"button\" and tabIndex={{0}} - either one alone leaves half the job undone.",
+    },
+    "a11y_jsx_tabindex_on_static_title": {
+        "uk": "Зупинка в порядку табуляції без жодної дії",
+        "it": "Una fermata nell'ordine di tabulazione senza alcuna azione",
+        "en": "A stop in the tab order with nothing behind it",
+    },
+    "a11y_jsx_tabindex_on_static_found": {
+        "uk": "Знайдено <{element}> з tabIndex={value} і без дії на цьому елементі.",
+        "it": "Trovato <{element}> con tabIndex={value} e senza alcuna azione sull'elemento.",
+        "en": "Found <{element}> with tabIndex={value} and no action on the element.",
+    },
+    "a11y_jsx_tabindex_on_static_why": {
+        "uk": "Клавіша Tab має вести по тому, що можна зробити. Кожна зайва зупинка на тексті подовжує шлях до справжніх контролів, а людина на ній не отримує нічого: фокус стоїть, робити нічого.",
+        "it": "Il tasto Tab dovrebbe percorrere ciò che si può fare. Ogni fermata superflua su del testo allunga il percorso verso i controlli veri e non offre nulla: il focus è lì e non c'è niente da fare.",
+        "en": "Tab should walk what can be done. Every extra stop on plain text lengthens the path to the real controls and gives the person nothing when they arrive: focus is there, and there is nothing to do.",
+    },
+    "a11y_jsx_tabindex_on_static_fix": {
+        "uk": "Приберіть tabIndex. Якщо елемент справді має бути дією - зробіть його <button>; якщо це ціль для програмного фокуса (модальне вікно, повідомлення), правильне значення tabIndex={{-1}}.",
+        "it": "Rimuovi tabIndex. Se l'elemento deve davvero essere un'azione, rendilo un <button>; se è un bersaglio per il focus da codice (una finestra modale, un messaggio), il valore corretto è tabIndex={{-1}}.",
+        "en": "Remove the tabIndex. If the element really is an action, make it a <button>; if it is a target for scripted focus (a dialog, a message), the correct value is tabIndex={{-1}}.",
+    },
+    "a11y_jsx_autofocus_title": {
+        "uk": "autoFocus переносить фокус до того, як сторінку прочитали",
+        "it": "autoFocus sposta il focus prima che la pagina sia stata letta",
+        "en": "autoFocus moves focus before the page has been read",
+    },
+    "a11y_jsx_autofocus_found": {
+        "uk": "Знайдено <{element}> з autoFocus.",
+        "it": "Trovato <{element}> con autoFocus.",
+        "en": "Found <{element}> with autoFocus.",
+    },
+    "a11y_jsx_autofocus_why": {
+        "uk": "Скрін-рідер починає читати від сфокусованого елемента, тож усе вище - зокрема пояснення, для чого ця форма, - буде пропущене. Людина з екранним збільшувачем раптово опиняється в іншій частині сторінки.",
+        "it": "Uno screen reader inizia a leggere dall'elemento con il focus, quindi tutto ciò che sta sopra - compresa la spiegazione di che cosa serve il modulo - viene saltato. Chi usa un ingranditore si ritrova all'improvviso in un'altra parte della pagina.",
+        "en": "A screen reader starts reading from the focused element, so everything above it - including what the form is for - is skipped. Someone using a magnifier is moved to a different part of the page without asking.",
+    },
+    "a11y_jsx_autofocus_fix": {
+        "uk": "Приберіть autoFocus і ставте фокус тоді, коли людина сама відкрила саме цей елемент: модальне вікно, крок майстра, поле пошуку на сторінці пошуку. Це рішення залежить від сторінки, тому знахідка є порадою, а не помилкою.",
+        "it": "Togli autoFocus e sposta il focus quando è la persona ad aprire proprio quell'elemento: una finestra modale, un passaggio di procedura guidata, il campo di ricerca in una pagina di ricerca. È una scelta che dipende dalla pagina, perciò qui è un consiglio, non un errore.",
+        "en": "Remove autoFocus and set focus when the person themselves opened that element: a dialog, a wizard step, the search field on a search page. The call depends on the page, which is why this is advice rather than an error.",
+    },
+    "a11y_jsx_anchor_not_a_link_title": {
+        "uk": "Посилання без адреси, яке працює лише мишею",
+        "it": "Un link senza indirizzo, utilizzabile solo con il mouse",
+        "en": "A link with no address, usable by mouse only",
+    },
+    "a11y_jsx_anchor_not_a_link_found": {
+        "uk": "Знайдено <a> з onClick і href={href}.",
+        "it": "Trovato <a> con onClick e href={href}.",
+        "en": "Found an <a> with onClick and href={href}.",
+    },
+    "a11y_jsx_anchor_not_a_link_why": {
+        "uk": "Без href браузер не вважає це посиланням: елемент не отримує фокус клавішею Tab і не оголошується як посилання. href=\"#\" робить те саме, лише додатково прокручує сторінку вгору.",
+        "it": "Senza href il browser non lo considera un link: l'elemento non riceve il focus con Tab e non viene annunciato come link. href=\"#\" fa lo stesso, in più riporta la pagina in cima.",
+        "en": "With no href the browser does not treat this as a link: it takes no Tab focus and is not announced as a link. href=\"#\" does the same thing and additionally scrolls the page to the top.",
+    },
+    "a11y_jsx_anchor_not_a_link_fix": {
+        "uk": "Якщо це перехід - поставте справжній href (у React Router - <Link to=\"…\">). Якщо це дія на цій самій сторінці - це кнопка: <button type=\"button\">.",
+        "it": "Se è una navigazione, metti un href vero (con React Router, <Link to=\"…\">). Se è un'azione sulla stessa pagina, è un pulsante: <button type=\"button\">.",
+        "en": "If it navigates, give it a real href (in React Router, <Link to=\"…\">). If it acts on this page, it is a button: <button type=\"button\">.",
+    },
+    "a11y_jsx_dangerous_html_title": {
+        "uk": "Розмітка вставляється в сторінку через dangerouslySetInnerHTML",
+        "it": "Markup inserito nella pagina tramite dangerouslySetInnerHTML",
+        "en": "Markup written into the page through dangerouslySetInnerHTML",
+    },
+    "a11y_jsx_dangerous_html_found": {
+        "uk": "Знайдено <{element}> з dangerouslySetInnerHTML.",
+        "it": "Trovato <{element}> con dangerouslySetInnerHTML.",
+        "en": "Found <{element}> with dangerouslySetInnerHTML.",
+    },
+    "a11y_jsx_dangerous_html_why": {
+        "uk": "Цей рядок парситься як HTML, тому <script> або onerror усередині нього виконається. Значення зазвичай приходить іздалеку - з CMS, з API, з рендерера Markdown, - і файл, який його виводить, не є тим файлом, який його очищає.",
+        "it": "Quella stringa viene interpretata come HTML, quindi un <script> o un onerror al suo interno viene eseguito. Il valore di solito arriva da lontano - un CMS, un'API, un renderer Markdown - e il file che lo mostra non è il file che lo ripulisce.",
+        "en": "That string is parsed as HTML, so a <script> or an onerror inside it runs. The value usually arrives from somewhere else - a CMS field, an API, a Markdown renderer - and the file that renders it is not the file that sanitises it.",
+    },
+    "a11y_jsx_dangerous_html_fix": {
+        "uk": "Перевірте, звідки береться значення, і очищайте його бібліотекою на кшталт DOMPurify безпосередньо перед вставкою. Якщо потрібен лише текст - виведіть його як текст: React екранує його сам.",
+        "it": "Verifica da dove arriva il valore e ripuliscilo con una libreria come DOMPurify subito prima dell'inserimento. Se serve solo testo, mostralo come testo: React lo esegue l'escape da solo.",
+        "en": "Check where the value comes from and sanitise it with something like DOMPurify immediately before it is inserted. If only text is needed, render it as text: React escapes that for you.",
+    },
     "a11y_geo_article_schema_title": {
         "uk": "Стаття не має машиночитаного типу",
         "it": "L'articolo non ha un tipo leggibile dalla macchina",
@@ -5745,6 +5990,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Leggere robots.txt e la sitemap dello stesso dominio",
         "en": "Read robots.txt and the same-domain sitemap",
     },
+    "word_yes": {"uk": "так", "it": "sì", "en": "yes"},
+    "word_no": {"uk": "ні", "it": "no", "en": "no"},
     "severity_critical": {"uk": "критично", "it": "critico", "en": "critical"},
     "severity_serious": {"uk": "серйозно", "it": "serio", "en": "serious"},
     "severity_moderate": {"uk": "помірно", "it": "moderato", "en": "moderate"},

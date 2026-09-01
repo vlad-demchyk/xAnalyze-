@@ -37,6 +37,14 @@ class DocumentReport:
     issues: list = field(default_factory=list)
     error: str | None = None
     elements_checked: int = 0
+    #: What this document *is*, which decides what advice makes sense about
+    #: it: "page" for a finished document, "fragment" for a piece of one, and
+    #: "email" for a page a mail client renders. One word rather than the two
+    #: fields that produced it, because that is how a reader thinks about it -
+    #: and because a report that says "23 things wrong" is far less useful
+    #: than one that says "this is an email, and three of those matter in
+    #: Outlook".
+    kind: str = "page"
 
     def by_severity(self) -> dict:
         out = {level: [] for level in SEVERITY_ORDER}
@@ -228,6 +236,19 @@ def _is_skipped_path(path: str) -> bool:
     return PurePath(name).suffix in SKIP_AUDIT_SUFFIXES
 
 
+#: Suffixes whose markup is JSX rather than HTML. The distinction is not
+#: cosmetic: `onClick` in a `.tsx` file is a function reference React binds,
+#: and `onclick` in a `.html` file is a string the browser evaluates. Same
+#: eight letters to a parser, opposite verdicts to a rule.
+JSX_SUFFIXES = {".jsx", ".tsx"}
+
+
+def _syntax_of(path: str) -> str:
+    """"jsx" for a React source file, "html" for everything else."""
+    suffix = PurePath(path.replace("\\", "/")).suffix.lower()
+    return "jsx" if suffix in JSX_SUFFIXES else "html"
+
+
 #: How much of the first page to keep for platform detection.
 _MARKUP_SAMPLE = 200_000
 
@@ -270,7 +291,9 @@ def analyze_document(markup: str, source: str, rules=None,
                      document_kind: str = "page",
                      source_text: str | None = None,
                      force_medium: str | None = None,
-                     within: str = "") -> DocumentReport:
+                     within: str = "",
+                     syntax: str = "html",
+                     stacks: tuple = ()) -> DocumentReport:
     """Run every rule over one document.
 
     `ai_review` is an optional `AIAccessibilityReview`. It runs on the same
@@ -322,6 +345,12 @@ def analyze_document(markup: str, source: str, rules=None,
     # What the document is *for*, which the file format does not say. See
     # `audit.medium`: an email and a page are both complete HTML documents.
     context.medium = force_medium or medium.detect(markup).name
+    # How the markup is *written*, which the medium does not say. A React
+    # component spells the DOM in its own words - `htmlFor`, `onClick`,
+    # `dangerouslySetInnerHTML` - and a rule that reads those spellings has
+    # nothing to do in a `.html` file. See `Rule.syntaxes`.
+    context.syntax = syntax
+    context.stacks = tuple(stacks or ())
     context.dom_path = _dom_path
     if line_numbers:
         context.line_of = _line_lookup(markup)
@@ -340,6 +369,19 @@ def analyze_document(markup: str, source: str, rules=None,
     # `th:text`, `ng-bind`, `data-i18n` - is written empty on purpose. Read
     # literally it is an empty link with no accessible name.
     resolve_text_directives(document)
+    # A rule that reads a syntax nobody wrote here would either be silent
+    # for free or - worse - match the wrong thing: `onclick` in HTML is an
+    # inline handler and a real finding, while in JSX it is a function
+    # reference and is not. Filtered once, here, so no rule has to ask.
+    rules = [rule for rule in rules
+             if not getattr(rule, "syntaxes", ())
+             or context.syntax in rule.syntaxes]
+    # Same question one level up: what the *project* is built with. A stack
+    # that was not detected is not a stack the rule may assume - see
+    # `Rule.stacks`.
+    rules = [rule for rule in rules
+             if not getattr(rule, "stacks", ())
+             or set(rule.stacks) & set(context.stacks)]
     if context.medium == medium.EMAIL:
         # An HTML email is the same file format as a page and almost nothing
         # else: no canonical URL, never crawled, not shared to Open Graph, and
@@ -347,6 +389,10 @@ def analyze_document(markup: str, source: str, rules=None,
         # The accessibility rules are untouched - `alt`, control names, table
         # headers and contrast are as real in a mail client as in a browser.
         rules = [rule for rule in rules if not getattr(rule, "web_only", False)]
+    else:
+        # And the other way round: the email pack has nothing to say about a
+        # page a browser renders. See `Rule.email_only`.
+        rules = [rule for rule in rules if not getattr(rule, "email_only", False)]
     if document_kind != "page":
         # A Vue single-file component *is* a `<template>`, whose text bs4
         # hides the way it hides a comment. Fragments only: on a served page
@@ -362,6 +408,8 @@ def analyze_document(markup: str, source: str, rules=None,
                 and not getattr(rule, "needs_external_css", False)]
 
     report = DocumentReport(source=source)
+    report.kind = (medium.EMAIL if context.medium == medium.EMAIL
+                   else document_kind)
     report.elements_checked = len(document.find_all(True))
     seen = set()
     for rule in rules:
@@ -646,7 +694,8 @@ def analyze_page_file(path: str, rules=None, ai_review=None,
 
 def analyze_files(file_results, root: str, rules=None, ai_review=None,
                   media: bool = True, repo_facts: bool = True,
-                  force_medium: str | None = None) -> AccessibilityResult:
+                  force_medium: str | None = None,
+                  stacks=None) -> AccessibilityResult:
     """Repo mode: run over the markup files the scanner read.
 
     Only files that actually contain markup are examined. A `.py` opened for
@@ -670,6 +719,20 @@ def analyze_files(file_results, root: str, rules=None, ai_review=None,
     has its priorities wrong.
     """
     rules = rules if rules is not None else RuleRegistry.all_rules()
+    # What the project is built with, asked once for the whole walk. A
+    # stack-specific rule may only run where the stack was *proved*, and the
+    # proof lives on disk rather than in any one file - a theme's
+    # `style.css` header says WordPress, the template that uses `get_header()`
+    # does not say it about itself. Passed in by a caller that already
+    # detected it, so a scan does not walk the tree twice.
+    if stacks is None:
+        import project_profile
+
+        try:
+            stacks = tuple(stack.name for stack in project_profile.detect(root).stacks)
+        except Exception:  # noqa: BLE001 - an undetected stack is not a failed audit
+            stacks = ()
+    stacks = tuple(stacks or ())
     result = AccessibilityResult(root=root, mode="repo",
                                  rules_run=[r.id for r in rules])
     for file_result in file_results:
@@ -726,7 +789,9 @@ def analyze_files(file_results, root: str, rules=None, ai_review=None,
                                   line_numbers=True, ai_review=ai_review,
                                   document_kind=kind,
                                   source_text=file_result.raw_text,
-                                  force_medium=force_medium)
+                                  force_medium=force_medium,
+                                  syntax=_syntax_of(file_result.path),
+                                  stacks=stacks)
         if report.issues or report.error:
             result.documents.append(report)
     if media:

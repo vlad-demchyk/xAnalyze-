@@ -267,6 +267,29 @@ class Rule(ABC):
     #: `control-name`, `table-headers` and contrast are as real in a mail
     #: client as in a browser. See `audit.medium`.
     web_only: bool = False
+    #: The mirror image of `web_only`: a check that means something **only**
+    #: in a mail client. "Give this font a generic fallback" is not advice a
+    #: browser needs - it has the font or downloads it - and "say what colour
+    #: this link is" is only urgent where the client will otherwise pick one.
+    #: Skipped everywhere `audit.medium` did not say email, which means it
+    #: never fires on a page that merely happens to use tables.
+    email_only: bool = False
+    #: Which source syntaxes this check means anything in. Empty - the
+    #: default - is "every one of them", which is right for a rule that reads
+    #: markup: an `<img>` with no `alt` is the same defect in a `.html` file,
+    #: in a Twig template and in a React component.
+    #:
+    #: A non-empty tuple is for a check that reads something only one syntax
+    #: has. `htmlFor`, `onClick` and `dangerouslySetInnerHTML` do not exist in
+    #: HTML at all; they are JSX spellings, and a rule that looks for them
+    #: would be dead weight on every other document. See `audit/rules/jsx.py`.
+    syntaxes: tuple = ()
+    #: Which detected project stacks this check means anything in. Empty is
+    #: "every one of them". A non-empty tuple names stacks as
+    #: `project_profile` names them, and the rule is skipped whenever the
+    #: stack was **not** detected - never guessed at: a WordPress rule on a
+    #: project nobody proved is WordPress is a rule firing on a coincidence.
+    stacks: tuple = ()
 
     @abstractmethod
     def check(self, document, context) -> list:
@@ -318,6 +341,16 @@ class RuleContext:
     #: "web" for a document a browser serves, "email" for one a mail client
     #: renders. Web-only rules are skipped on an email; see `Rule.web_only`.
     medium: str = "web"
+    #: How the markup in this document is written: "html" for markup a
+    #: browser or a mail client receives, "jsx" for a React source file whose
+    #: attributes are JSX spellings of the DOM ones. Rules that read a
+    #: syntax-specific attribute declare it in `Rule.syntaxes`.
+    syntax: str = "html"
+    #: The stacks `project_profile` proved for the project this document
+    #: belongs to, by name. Empty when nothing was detected or when the
+    #: document has no project behind it - a single page named on the command
+    #: line - and a stack-specific rule stays silent in both cases.
+    stacks: tuple = ()
     #: Maps a bs4 tag to a CSS-ish path. Injected rather than imported so the
     #: web and repo paths can supply their own (a repo file also wants a line
     #: number, which a live page has no notion of).
@@ -373,6 +406,23 @@ def remember_source(document, markup: str) -> None:
     setattr(document, LINE_STARTS_ATTR, starts)
 
 
+def document_source(document) -> str:
+    """The file as it is on disk, for a rule that has to read past the DOM.
+
+    Almost every rule reads the parsed tree, and should: that is what a
+    browser will see. A few cannot, because what they check is *removed*
+    before parsing - `repo_scanner.mask_server_tags` takes `<?php wp_head(); ?>`
+    out so the parser does not read it as a processing instruction, and a
+    rule asking whether a theme calls `wp_head()` would then always find that
+    it does not. Those rules read this instead.
+
+    Empty for a document with no source of its own, such as a DOM read back
+    out of a browser - where the question does not arise, because a served
+    page has no template calls left in it.
+    """
+    return getattr(document, SOURCE_ATTR, "") or ""
+
+
 def _source_of(tag):
     """The markup this tag was parsed from, and its line offsets."""
     node = tag
@@ -393,11 +443,24 @@ def _open_tag_end(markup: str, start: int) -> int:
     """
     quote = ""
     depth = 0
-    for index in range(start, len(markup)):
+    index = start
+    while index < len(markup):
         char = markup[index]
         if quote:
             if char == quote:
                 quote = ""
+            index += 1
+            continue
+        # A `//` comment inside a JSX expression, which is legal and common
+        # in a multi-line prop object. Its prose is not code: one apostrophe
+        # in "the plugin's own classes" opened a quote that never closed, the
+        # tag was declared unterminated, and the finding fell back to the
+        # parser's re-print - `<codemirror ""}`}="" ?=""`, which is in nobody's
+        # file. Skipped only inside an expression, so a `//` in a plain HTML
+        # attribute value still means whatever it meant before.
+        if depth > 0 and char == "/" and markup[index:index + 2] == "//":
+            newline = markup.find("\n", index)
+            index = len(markup) if newline == -1 else newline + 1
             continue
         if char in "\"'":
             quote = char
@@ -407,6 +470,7 @@ def _open_tag_end(markup: str, start: int) -> int:
             depth = max(0, depth - 1)
         elif char == ">" and depth == 0:
             return index + 1
+        index += 1
     return -1
 
 
@@ -612,6 +676,41 @@ def resolve_bound_attributes(document) -> None:
             if isinstance(value, list):
                 value = " ".join(value)
             attrs[target] = "{" + str(value or "").strip() + "}"
+
+
+def source_tag_name(tag) -> str:
+    """The tag's name **as it is written in the file**, or "".
+
+    An HTML parser lowercases tag names, so `<Button>` and `<button>` are
+    both `button` by the time a rule sees them - and in JSX that is the whole
+    difference between a design-system component, whose behaviour this file
+    cannot see, and a bare DOM element, whose behaviour is right there in the
+    attributes. Reading it back from the source is the only way to tell.
+
+    Deliberately not `snippet_of(...)[1:]`: the snippet has to find the *end*
+    of the opening tag, which a hostile enough attribute can defeat, and the
+    name is available without that - it is the word immediately after the
+    `<`. Empty for a document with no source text, such as a DOM read out of
+    a browser, where there are no components to confuse anything with.
+    """
+    markup, line_starts = _source_of(tag)
+    line = getattr(tag, "sourceline", None)
+    column = getattr(tag, "sourcepos", None)
+    if not markup or not line_starts or not line or column is None:
+        return ""
+    index = int(line) - 1
+    if not 0 <= index < len(line_starts):
+        return ""
+    start = line_starts[index] + int(column)
+    if not 0 <= start < len(markup) or markup[start] != "<":
+        return ""
+    name = []
+    for char in markup[start + 1:start + 1 + 60]:
+        if char.isalnum() or char in "._-:":
+            name.append(char)
+        else:
+            break
+    return "".join(name)
 
 
 def snippet_of(tag, limit: int = 160) -> str:

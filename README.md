@@ -277,7 +277,7 @@ caught by the suite.
 A project is identified from its own marker files, and what it turns out to be
 decides what is treated as vendored rather than written here:
 
-`angular`, `astro`, `beehiiv`, `carrd`, `craft`, `django`, `docusaurus`, `dotnet`, `drupal`, `eleventy`, `ember`, `flutter`, `gatsby`, `ghost`, `hugo`, `jekyll`, `joomla`, `laravel`, `magento`, `nextjs`, `nuxt`, `qwik`, `rails`, `remix`, `shopify`, `silverstripe`, `spfx`, `spring`, `squarespace`, `statamic`, `storybook`, `sveltekit`, `symfony`, `typo3`, `vite`, `wagtail`, `webflow`, `wix`, `wordpress`, `wordpress-plugin`, `wordpress-theme`
+`angular`, `astro`, `bedrock`, `beehiiv`, `carrd`, `craft`, `django`, `docusaurus`, `dotnet`, `drupal`, `eleventy`, `ember`, `flutter`, `gatsby`, `ghost`, `hugo`, `jekyll`, `joomla`, `laravel`, `magento`, `nextjs`, `nuxt`, `qwik`, `rails`, `remix`, `shopify`, `silverstripe`, `spfx`, `spring`, `squarespace`, `statamic`, `storybook`, `sveltekit`, `symfony`, `typo3`, `vite`, `wagtail`, `webflow`, `wix`, `wordpress`, `wordpress-plugin`, `wordpress-theme`
 
 Signatures are scored, not counted: each carries a confidence and a platform is
 named only when the matches add up to 100, so a string that could be there for
@@ -301,7 +301,7 @@ Use `--scope content` for user-facing copy, `--scope technical` for comments and
 
 How many rules each category actually has, which is a claim the suite checks:
 
-`accessibility` (29), `best-practices` (8), `geo` (2), `performance` (8), `security` (10), `seo` (8)
+`accessibility` (36), `best-practices` (13), `geo` (2), `performance` (8), `security` (10), `seo` (8)
 
 - **Accessibility**: names, labels, headings, language, keyboard access, media alternatives, and related rules.
 - **SEO**: titles, descriptions, canonicals, headings, links, robots directives, and structured page metadata.
@@ -310,9 +310,40 @@ How many rules each category actually has, which is a claim the suite checks:
 - **Security**: insecure forms, unsafe frames, missing script integrity, exposed keys, and password handling.
 - **Best practices**: browser and repository hygiene, including assistant provenance facts.
 
+
+**Rules that only apply to one kind of file.** A check runs where it means
+something and nowhere else, which is decided on evidence rather than by a
+flag: the file's syntax, what `audit.medium` says the document is for, and
+which stack the project proved on disk.
+
+- **React (`.jsx`, `.tsx`)**: `htmlFor` on a label, a click handler with no
+  keyboard equivalent, a static element made interactive, `tabIndex` on
+  something that does nothing, `autoFocus`, an `<a>` with a handler and no
+  destination, and `dangerouslySetInnerHTML`. A component is never treated as
+  a DOM element - `<Button>` is not `<button>`, and what it renders is that
+  component's business.
+- **Email**: a font stack with no generic family behind it, a link with no
+  colour of its own, and a missing preheader. These run only where the
+  document was detected as an email, and the browser-only rules stay off it.
+- **WordPress**: a template variable printed into the markup with no
+  `esc_html()`, `esc_attr()` or `esc_url()` - reported as a best practice
+  with an advisory label, because a static read cannot see whether the value
+  was sanitised earlier. Bedrock layouts are recognised, so WordPress core in
+  `web/wp/` and the translation tables in `web/app/languages/` are not
+  audited as if the project had written them.
+- **Single-page sites**: a link to `#section` where no element has that id.
+  On a site that is one file, that is the whole navigation, and the browser
+  reports nothing when it breaks.
+
 Static analysis reads source files. Browser analysis can inspect rendered DOM, client-side content, responsive states, and response headers. Use `--repo` when a rendered URL also has a local checkout and findings should point to source files.
 
 **The state pass** runs in the browser and checks the page in the state a person puts it in: the focus indicator, keyboard traps, focus order, hover-only content, an open modal that lets focus stay behind it, and the form journey - a field with no accessible name after scripts have run, a field named only by its placeholder, a value the browser itself rejects with nothing announcing it, and error text on screen that no field refers to. It reads and never acts: nothing is typed, clicked or submitted, because on a real site each of those fires the page's own handlers. Filling a field to see what the form does with a wrong value is therefore out of scope, and so is INP, which needs real input to measure.
+
+**Start here.** A run over a folder answers "820 findings", and the top of that
+list is the same page-level rules repeated across every document. The report
+opens instead with the three heaviest things per **kind** of document - pages,
+components, emails - ranked by consequence rather than by count, so a folder of
+newsletters and landing pages reads as two short lists rather than one long one.
 
 ### Certainty and filters
 

@@ -234,7 +234,7 @@ falso lì non verrebbe intercettato dalla suite.
 Un progetto viene identificato dai suoi file marcatori, e ciò che risulta essere
 decide cosa è codice di terzi anziché scritto qui:
 
-`angular`, `astro`, `beehiiv`, `carrd`, `craft`, `django`, `docusaurus`, `dotnet`, `drupal`, `eleventy`, `ember`, `flutter`, `gatsby`, `ghost`, `hugo`, `jekyll`, `joomla`, `laravel`, `magento`, `nextjs`, `nuxt`, `qwik`, `rails`, `remix`, `shopify`, `silverstripe`, `spfx`, `spring`, `squarespace`, `statamic`, `storybook`, `sveltekit`, `symfony`, `typo3`, `vite`, `wagtail`, `webflow`, `wix`, `wordpress`, `wordpress-plugin`, `wordpress-theme`
+`angular`, `astro`, `bedrock`, `beehiiv`, `carrd`, `craft`, `django`, `docusaurus`, `dotnet`, `drupal`, `eleventy`, `ember`, `flutter`, `gatsby`, `ghost`, `hugo`, `jekyll`, `joomla`, `laravel`, `magento`, `nextjs`, `nuxt`, `qwik`, `rails`, `remix`, `shopify`, `silverstripe`, `spfx`, `spring`, `squarespace`, `statamic`, `storybook`, `sveltekit`, `symfony`, `typo3`, `vite`, `wagtail`, `webflow`, `wix`, `wordpress`, `wordpress-plugin`, `wordpress-theme`
 
 Le firme sono pesate, non contate: ognuna porta una confidenza e una piattaforma
 viene nominata solo quando le corrispondenze sommano 100, quindi un marcatore che
@@ -244,9 +244,42 @@ potrebbe essere lì per un altro motivo va corroborato.
 
 Il detector offline combina segnali statistici, struttura, cliché e regole linguistiche. I detector embedding e basati su modello aggiungono un giudizio indipendente. Ogni risultato contiene posizione, punteggio, spiegazione e certezza.
 
-L'audit copre `accessibility` (29), `best-practices` (8), `geo` (2), `performance` (8), `security` (10), `seo` (8) - numeri che la suite verifica contro il registro delle regole. GEO offre solo segnali consultivi su tipo di articolo, autore e data, non una previsione di posizione nelle risposte AI. La modalità statica legge i file; quella browser vede DOM renderizzato, contenuto client-side, stati responsive e header della risposta. `--repo` collega un audit URL al file sorgente.
+L'audit copre `accessibility` (36), `best-practices` (13), `geo` (2), `performance` (8), `security` (10), `seo` (8) - numeri che la suite verifica contro il registro delle regole. GEO offre solo segnali consultivi su tipo di articolo, autore e data, non una previsione di posizione nelle risposte AI. La modalità statica legge i file; quella browser vede DOM renderizzato, contenuto client-side, stati responsive e header della risposta. `--repo` collega un audit URL al file sorgente.
+
+
+**Regole che valgono solo per un tipo di file.** Un controllo viene eseguito
+dove ha senso e da nessun'altra parte, e a deciderlo è una prova, non
+un'opzione: la sintassi del file, ciò che `audit.medium` dice che il documento
+sia e lo stack che il progetto ha dimostrato su disco.
+
+- **React (`.jsx`, `.tsx`)**: `htmlFor` sull'etichetta, un gestore di clic
+  senza equivalente da tastiera, un elemento statico reso interattivo,
+  `tabIndex` dove non c'è alcuna azione, `autoFocus`, una `<a>` con un gestore
+  e senza destinazione e `dangerouslySetInnerHTML`. Un componente non viene mai
+  trattato come un elemento del DOM: `<Button>` non è `<button>`, e ciò che
+  rende è affare di quel componente.
+- **Email**: uno stack di font senza famiglia generica finale, un link senza un
+  colore proprio e il preheader mancante. Valgono solo dove il documento è
+  stato riconosciuto come email, e le regole da browser lì non vengono
+  eseguite.
+- **WordPress**: una variabile di template stampata nel markup senza
+  `esc_html()`, `esc_attr()` o `esc_url()`. È una best practice con etichetta
+  advisory, perché una lettura statica non vede se il valore era già stato
+  ripulito. Le installazioni Bedrock sono riconosciute, così il core di
+  WordPress in `web/wp/` e le tabelle di traduzione in `web/app/languages/`
+  non vengono valutate come se le avesse scritte il progetto.
+- **Siti a pagina singola**: un link a `#sezione` quando nessun elemento ha
+  quell'id. In un sito fatto di un solo file quella è tutta la navigazione, e
+  il browser, quando si rompe, non dice nulla.
 
 **Il passaggio sugli stati** gira nel browser e controlla la pagina nello stato in cui la mette una persona: l'indicatore di focus, le trappole per la tastiera, l'ordine di tabulazione, il contenuto solo al passaggio del mouse, una finestra modale aperta che lascia il focus dietro di sé - e il percorso nel modulo: un campo senza nome accessibile dopo l'esecuzione degli script, un campo chiamato solo dal suo placeholder, un valore che il browser stesso rifiuta senza che nulla lo annunci, e un testo di errore a schermo a cui nessun campo rimanda. Legge e non agisce: non scrive, non clicca e non invia nulla, perché su un sito vero ognuna di queste azioni attiva i gestori della pagina. Riempire un campo per vedere come reagisce il modulo resta quindi fuori portata, come l'INP, che senza input reale non si misura.
+
+**Da dove iniziare.** Una scansione di una cartella risponde «820 rilievi», e in
+cima a quell'elenco ci sono le stesse regole di pagina ripetute in ogni documento.
+Il report parte invece dalle tre cose più pesanti per **tipo** di documento -
+pagine, componenti, email - ordinate per conseguenza e non per quantità: una
+cartella di newsletter e landing page si legge come due elenchi brevi invece che
+come uno lungo.
 
 I risultati hanno livello `exact`, `needs-browser` o `advisory`. `exact` significa che il markup risolve la domanda, `advisory` che nulla la risolve e decide una persona: è una scelta redazionale, ed è ciò che sono i segnali GEO.
 
