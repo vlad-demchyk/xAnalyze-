@@ -33,6 +33,7 @@ import base64
 import html
 from pathlib import Path
 
+from audit.base import ADVISORY, EXACT, NEEDS_BROWSER
 from report.markup import (
     ROLE_LABELS, ROLES, highlight, role_css, role_of, roles_used,
 )
@@ -65,6 +66,8 @@ _LABELS = {
         character="Character", score="Score",
         overview="Overview", what_found="What was found", kind="Kind",
         legend="Element colours", elem_col="Element", no_element="page-level",
+        certainty="Certainty", cert={"exact": "settled", "advisory": "editorial",
+            "needs-browser": "needs a browser"},
         found_markup="Markup as found", fix_markup="Markup as it should be",
         source_group="Where it comes from", detail="Detail",
         chart_severity="By severity", chart_category="By category",
@@ -97,6 +100,8 @@ _LABELS = {
         character="Символ", score="Оцінка",
         overview="Огляд", what_found="Що знайдено", kind="Вид",
         legend="Кольори елементів", elem_col="Елемент", no_element="рівень сторінки",
+        certainty="Певність", cert={"exact": "доведено", "advisory": "редакційне",
+            "needs-browser": "потрібен браузер"},
         found_markup="Розмітка як є", fix_markup="Розмітка як має бути",
         source_group="Звідки", detail="Деталь",
         chart_severity="За тяжкістю", chart_category="За категорією",
@@ -129,6 +134,8 @@ _LABELS = {
         character="Carattere", score="Punteggio",
         overview="Panoramica", what_found="Che cosa è stato trovato", kind="Tipo",
         legend="Colori degli elementi", elem_col="Elemento", no_element="livello pagina",
+        certainty="Certezza", cert={"exact": "accertato", "advisory": "editoriale",
+            "needs-browser": "serve il browser"},
         found_markup="Markup come trovato", fix_markup="Markup come dovrebbe essere",
         source_group="Da dove viene", detail="Dettaglio",
         chart_severity="Per gravità", chart_category="Per categoria",
@@ -298,6 +305,13 @@ def _finding_card(finding, lang: str, palette: Palette) -> str:
         f'<span class="badge sev-{rank}">{_esc(severity_label)}</span>',
         f'<span class="badge badge-outline">{_esc(category_label)}</span>',
     ]
+    # How settled it is, when it is not simply settled. `exact` gets no
+    # badge: a document where most rows carry one would be teaching the
+    # reader to ignore it, and "we measured this" is the default claim.
+    if finding.confidence and finding.confidence != EXACT:
+        label = labels["cert"].get(finding.confidence, finding.confidence)
+        parts.append(f'<span class="badge badge-cert cert-{_esc(finding.confidence)}">'
+                     f'{_esc(label)}</span>')
     if finding.owner:
         parts.append('<span class="badge badge-owner">'
                      f'{_esc(labels["owner"].format(platform=finding.owner))}</span>')
@@ -330,6 +344,11 @@ def _finding_card(finding, lang: str, palette: Palette) -> str:
                 f'<p class="wcag">{_esc(labels["wcag"])}: '
                 f'{_esc(", ".join(finding.wcag))}</p>')
 
+    # What this finding is *not*. Written by `audit.explanations` and shown
+    # by the window and the terminal since they existed; the document a
+    # person hands to somebody else printed the claim without its limit.
+    if finding.caveat:
+        parts.append(f'<p class="caveat">{_esc(finding.caveat)}</p>')
     parts.append('</article>')
     return "\n".join(parts)
 
@@ -897,6 +916,15 @@ pre.snippet .mark {{
 pre.snip-found .mark {{ color: {palette.error_text}; }}
 pre.snip-fix .mark {{ color: {palette.success_text}; }}
 .wcag {{ font-size: 8pt; color: {palette.text_muted}; margin: 1.5mm 0 0; }}
+/* The limit of a finding, in the finding. Set apart by a rule rather than by
+   italics: it is a statement about the row above it, not an aside. */
+.caveat {{
+  font-size: 8.4pt; color: {palette.text_muted}; margin: 2.5mm 0 0;
+  padding-left: 2.5mm; border-left: .7mm solid {palette.border_strong};
+}}
+.badge-cert {{ border: 1px solid {palette.border_strong}; color: {palette.text_muted}; }}
+.badge.cert-{ADVISORY} {{ color: {palette.amber_text}; border-color: {palette.amber}; }}
+.badge.cert-{NEEDS_BROWSER} {{ color: {palette.text_muted}; border-style: dashed; }}
 .badge-owner {{ border: 1px dashed {palette.border_strong}; color: {palette.text_muted}; }}
 .empty {{ color: {palette.text_muted}; }}
 footer {{

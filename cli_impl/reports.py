@@ -278,6 +278,13 @@ def _file_map(result, render, lang: str) -> list:
                 "fix": explanation.fix,
                 "ready_fix": issue.fix_snippet or "",
                 "snippet": issue.snippet,
+                # How settled it is, and what it is not. Both were on the
+                # window and in the terminal and in neither document a
+                # person or an agent is handed: an `advisory` row read as
+                # a measured fact, which is the one thing the confidence
+                # vocabulary exists to prevent.
+                "confidence": getattr(issue, "confidence", ""),
+                "caveat": explanation.caveat,
                 "confirmed_by": (issue.details or {}).get("also_found_by", []),
                 # Empty unless a detected platform emitted this element; see
                 # `audit.engine.attribute_ownership`.
@@ -361,6 +368,8 @@ def _problem_map(result, render, lang: str) -> list:
             "ready_fix": first.fix_snippet or "",
             "snippet": first.snippet,
             "selector": first.selector,
+            "confidence": getattr(first, "confidence", ""),
+            "caveat": explanation.caveat,
             # How many independent engines found it. 1 unless the browser
             # pass ran and a second engine corroborated; see
             # `audit.browser._merge_engine_duplicates`. The number a reader
@@ -399,8 +408,14 @@ def _problems_section(payload: dict) -> list:
                  if problem["occurrences"] > 1 else "")
         out.append(f"### [{problem['severity']}] {problem['title']}{times}")
         out.append("")
+        # The certainty rides on the rule line rather than on its own, and
+        # only when it is not `exact`: a briefing where most rows carry a
+        # certainty note teaches the reader to skip the note.
+        certainty = (f" · certainty {problem['confidence']}"
+                     if problem.get("confidence")
+                     and problem["confidence"] != "exact" else "")
         out.append(f"- rule: `{problem['rule']}` · {problem['category']} "
-                   f"· found by {problem['engine'] or 'static'}")
+                   f"· found by {problem['engine'] or 'static'}{certainty}")
         if problem["found"]:
             out.append(f"- found: {' '.join(problem['found'].split())}")
         if problem["why"]:
@@ -411,6 +426,8 @@ def _problems_section(payload: dict) -> list:
             out.append(f"- ready replacement: `{problem['ready_fix'][:200]}`")
         if problem["snippet"]:
             out.append(f"- element: `{problem['snippet'][:200]}`")
+        if problem.get("caveat"):
+            out.append(f"- note: {' '.join(problem['caveat'].split())}")
         places = problem["places"]
         shown = places[:_PLACES_SHOWN]
         out.append(f"- where ({len(places)}):")

@@ -76,6 +76,21 @@ class ReportFinding:
     #: and a second engine corroborated; the number the JSON already carried
     #: and the printed report did not.
     agreement: int = 1
+    #: How settled the finding is: `exact`, `advisory` or `needs-browser`
+    #: (`audit.base`'s confidence vocabulary). Empty for a text finding,
+    #: which has a score instead.
+    #:
+    #: It reached the window and the terminal and stopped there. The whole
+    #: point of the confidence levels is that an `advisory` finding is a
+    #: judgement call and an `exact` one is not - and the two documents a
+    #: person actually hands on, the styled report and the agent briefing,
+    #: printed them as the same kind of claim.
+    confidence: str = ""
+    #: The sentence that says what this finding is *not*: "an engine could
+    #: not decide this, open it in a browser", "nothing will check this for
+    #: you". Written by `audit.explanations.render` and, until now, dropped
+    #: on the floor by both report adapters.
+    caveat: str = ""
     #: The engine's own identifier for the check, e.g. `axe:button-name`.
     #: Printed as-is beside the engine name: it is what a reader searches
     #: for, what a suppression list names, and what two runs are compared
@@ -130,8 +145,8 @@ class ReportFinding:
         """
         from duplicates import mask_generated_ids
 
-        return (self.category, self.severity, self.rule_id, self.title,
-                self.found, self.why, self.fix,
+        return (self.category, self.severity, self.rule_id, self.confidence,
+                self.title, self.found, self.why, self.fix,
                 mask_generated_ids(" ".join((self.snippet or "").split())),
                 self.replacement, self.engine, self.wcag)
 
@@ -334,6 +349,8 @@ def from_accessibility(result, lang: str = "uk") -> ReportModel:
                 agreement=(issue.details or {}).get("agreement", 1),
                 element=element_of(issue.snippet, issue.selector),
                 rule_id=issue.rule_id,
+                confidence=getattr(issue, "confidence", ""),
+                caveat=explanation.caveat,
             ))
     return ReportModel(meta=ReportMeta(target=result.root, mode=f"audit-{result.mode}"),
                        findings=findings)
