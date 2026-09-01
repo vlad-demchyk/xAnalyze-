@@ -104,14 +104,24 @@ def saturated_rules(result) -> list:
     way a check can be wrong.
     """
     documents = [d for d in getattr(result, "documents", []) if not d.error]
-    total = len(documents)
+    # By address, not by `DocumentReport`. One page is audited as several
+    # documents - its own rules, its response headers, its crawl facts, the
+    # provenance of an image on it - and counting those as the denominator
+    # diluted the share past the point where this guard can fire at all.
+    # Measured 2026-09-01 on a 250-page site: `htmlcs:1_4_3` reached 251 of
+    # the 283 pages, which is the shape this exists to name, and 251 of 879
+    # documents, which is 0.29 and silently under every threshold here.
+    by_address: dict = {}
+    for document in documents:
+        by_address.setdefault(document.source, []).extend(document.issues)
+    total = len(by_address)
     if total < _MIN_DOCUMENTS:
         return _saturated_within_documents(documents)
 
     per_rule: dict = {}
-    for document in documents:
+    for issues in by_address.values():
         seen_here = set()
-        for issue in document.issues:
+        for issue in issues:
             rule = issue.rule_id
             entry = per_rule.setdefault(rule, {"findings": 0, "documents": 0})
             entry["findings"] += 1

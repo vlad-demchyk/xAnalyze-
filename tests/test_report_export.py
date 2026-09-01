@@ -211,6 +211,16 @@ class HtmlTemplateContract(unittest.TestCase):
         self.assertIn("</html>", html)
         self.assertIn("@page", html)  # print CSS, not a screen-only layout
 
+    def test_the_page_has_no_margin_and_body_pads_only_inline(self):
+        """The tint bleeds to the paper edge; only the text gets a gutter,
+        and only left/right - see `report.template`'s docstring."""
+        from report.template import CONTENT_PADDING_H_MM
+
+        html = render_html(self._model(), lang="en")
+        self.assertIn("@page { size: A4; margin: 0; }", html)
+        self.assertIn(
+            f"@media print {{ body {{ padding: 0 {CONTENT_PADDING_H_MM}mm;", html)
+
     def test_expected_sections_are_present(self):
         html = render_html(self._model(), lang="en")
         self.assertIn("Overview", html)
@@ -359,19 +369,18 @@ class PdfRendering(unittest.TestCase):
         self.assertTrue(first.startswith(b"%PDF"))
         self.assertTrue(second.startswith(b"%PDF"))
 
-    def test_printToPdf_gets_nonzero_margins_matching_the_page_css(self):
-        # `printToPdf` does not honour CSS `@page` margins on its own - a
-        # QMarginsF() of all zeros passed to its QPageLayout is Chromium's
-        # "None" print-margins setting, which prints flush to the physical
-        # page edge regardless of what `@page` in template.py says. This
-        # guards against that regression by intercepting the layout
-        # `printToPdf` is actually called with, rather than mocking it away.
+    def test_printToPdf_gets_zero_page_margins(self):
+        # Deliberate: the report's tinted background must bleed to the
+        # physical page edge (see template.py's docstring and its
+        # `@page { margin: 0 }`). The reader's gutter around the *text*
+        # lives as horizontal-only CSS padding on `body` instead - a
+        # non-zero margin here would print a band of plain white between
+        # the paper's edge and the tint. Guards against reintroducing that,
+        # by intercepting the layout `printToPdf` is actually called with.
         from unittest.mock import patch
 
         from PySide6.QtGui import QPageLayout
         from PySide6.QtWebEngineCore import QWebEnginePage
-
-        from report.template import PAGE_MARGIN_H_MM, PAGE_MARGIN_V_MM
 
         captured = {}
 
@@ -383,12 +392,10 @@ class PdfRendering(unittest.TestCase):
             render_pdf("<!doctype html><html><body>x</body></html>")
 
         margins = captured["layout"].margins(QPageLayout.Unit.Millimeter)
-        self.assertGreater(margins.left(), 0)
-        self.assertGreater(margins.top(), 0)
-        self.assertAlmostEqual(margins.left(), PAGE_MARGIN_H_MM, places=2)
-        self.assertAlmostEqual(margins.right(), PAGE_MARGIN_H_MM, places=2)
-        self.assertAlmostEqual(margins.top(), PAGE_MARGIN_V_MM, places=2)
-        self.assertAlmostEqual(margins.bottom(), PAGE_MARGIN_V_MM, places=2)
+        self.assertEqual(margins.left(), 0)
+        self.assertEqual(margins.right(), 0)
+        self.assertEqual(margins.top(), 0)
+        self.assertEqual(margins.bottom(), 0)
 
 
 # --------------------------------------------------------------- export.py

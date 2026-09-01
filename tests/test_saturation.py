@@ -51,6 +51,47 @@ class TheShapeOfABrokenMeasurement(unittest.TestCase):
         self.assertEqual([s.rule for s in found], ["b", "c", "a"])
 
 
+class ThePopulationIsPagesNotDocuments(unittest.TestCase):
+    """One page is audited as several documents.
+
+    Its own rules are one, its response headers another, its crawl facts a
+    third, the provenance of an image on it a fourth. Counting those as the
+    denominator diluted the share past the point where this guard can fire:
+    measured 2026-09-01 on a 250-page site, `htmlcs:1_4_3` reached 251 of
+    283 pages - the shape this exists to name - and 251 of 879 documents,
+    which is 0.29 and under every threshold here.
+    """
+
+    def _result(self, extra_documents_per_page: int):
+        result = AccessibilityResult(root="https://site", mode="web")
+        for number in range(10):
+            source = f"https://site/page{number}"
+            page = DocumentReport(source=source)
+            for index in range(12):
+                page.issues.append(Issue(rule_id="noisy", severity="serious",
+                                         source=source, snippet=f"<i>{index}</i>",
+                                         details={}))
+            result.documents.append(page)
+            for extra in range(extra_documents_per_page):
+                # A header document for the same address: one finding, and
+                # it must not become a page in the denominator.
+                headers = DocumentReport(source=source)
+                headers.issues.append(Issue(rule_id="sec-no-csp",
+                                            severity="moderate", source=source,
+                                            snippet="", details={}))
+                result.documents.append(headers)
+        return result
+
+    def test_extra_documents_for_one_page_do_not_dilute_the_share(self):
+        for extra in (0, 1, 3):
+            with self.subTest(extra_documents=extra):
+                found = saturated_rules(self._result(extra))
+                self.assertEqual([s.rule for s in found], ["noisy"])
+                self.assertEqual(found[0].documents_total, 10)
+                self.assertEqual(found[0].documents, 10)
+                self.assertEqual(found[0].findings, 120)
+
+
 class OrdinaryFindingsAreLeftAlone(unittest.TestCase):
     def test_a_few_findings_everywhere_is_a_real_site_wide_defect(self):
         """A missing skip link on every page is one problem, not a false one."""

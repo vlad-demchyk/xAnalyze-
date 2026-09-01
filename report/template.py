@@ -5,13 +5,17 @@ Follows the same three print-CSS principles xFormat's own HTML export uses
 read for the pattern only — it is a TypeScript/React template, nothing from
 it is imported here):
 
-* `@page { size: A4; margin: ... }` — real page geometry, not a CSS
-  approximation of one. Unlike that template (which renders one continuous
-  virtual page and lets a canvas-slicing pipeline carve it into PDF pages
-  after the fact), this HTML is handed to `QWebEnginePage.printToPdf`
-  directly — Chromium's own print pipeline paginates the flowing content,
-  the same way "Print -> Save as PDF" does in a browser. So the page margin
-  is declared once, in `@page`, and nothing here re-adds it as padding.
+* `@page { size: A4; margin: 0; }` — no page margin. `body`'s own background
+  is the page's background (see the light palette below), and this document
+  reads as a printed page with a tinted ground, not a white sheet with a
+  card floating on it — a physical margin around that ground would put a
+  band of plain white between the paper's edge and the tint, which looks
+  like a mistake, not a design. The gutter readers actually need is around
+  the *text*, not the page, so it lives as horizontal-only padding on
+  `body` (`CONTENT_PADDING_H_MM`) — inline, not block: a heading or a
+  finding card may sit close to the top or bottom of a page (that boundary
+  is already handled by where things break, see below), but never flush
+  against the left or right edge of the tint.
 * Page breaks governed by what must stay together, not by what looks tidy.
   `break-inside: avoid` on every finding card was the obvious rule and the
   wrong one: a tall card that did not fit in the remainder of a page moved to
@@ -47,13 +51,11 @@ from ui.tokens import Palette, palettes
 #: repository alone.
 _LOGO_PATH = Path(__file__).resolve().parent.parent / "ui" / "design" / "assets" / "logo-light.svg"
 
-#: The `@page` margin below, in millimetres - `report.pdf` reads these too,
-#: to pass matching (non-zero) margins into `printToPdf`'s `QPageLayout`.
-#: `printToPdf` does not honour CSS `@page` margins on its own, so the two
-#: numbers must agree or the PDF prints flush to the physical page edge
-#: regardless of what this file says.
-PAGE_MARGIN_V_MM = 20
-PAGE_MARGIN_H_MM = 18
+#: Horizontal-only gutter around text, in millimetres - see the `@page`
+#: note above. `report.pdf` deliberately does *not* read this: the page
+#: itself stays margin-0 (the tint bleeds to the physical edge), and this
+#: number only ever becomes CSS padding on `body`.
+CONTENT_PADDING_H_MM = 18
 
 #: Minimal, self-contained labels for the report's own chrome. Not routed
 #: through `i18n.translations.t()`: this package does not touch that module
@@ -739,18 +741,18 @@ def render_html(model: ReportModel, lang: str = "en") -> str:
     doc_title = f'{labels["title"]} — {model.meta.target}' if model.meta.target else labels["title"]
 
     style = f"""
-@page {{ size: A4; margin: {PAGE_MARGIN_V_MM}mm {PAGE_MARGIN_H_MM}mm; }}
+@page {{ size: A4; margin: 0; }}
 * {{ box-sizing: border-box; }}
 html, body {{ margin: 0; padding: 0; }}
-/* On paper the gutter is `@page`'s and adding padding here would double it.
-   On a screen there is no `@page` at all, so the same document opened in a
-   browser ran flush to both edges of the window - which is where a reader
-   actually reads it before ever printing anything. The two media get the
-   gutter separately, and neither gets it twice. */
+/* Inline-only: text gets a horizontal gutter, the tint behind it does not -
+   see the module docstring. On screen there is no `@page` at all and the
+   window itself has no tint to bleed, so the screen rule adds a matching
+   top/bottom padding too - a document opened in a browser tab, not a paper
+   simulation. */
 @media screen {{
-  body {{ padding: 16mm 18mm 20mm; max-width: 260mm; margin: 0 auto; }}
+  body {{ padding: 16mm {CONTENT_PADDING_H_MM}mm 20mm; max-width: 260mm; margin: 0 auto; }}
 }}
-@media print {{ body {{ padding: 0; max-width: none; }} }}
+@media print {{ body {{ padding: 0 {CONTENT_PADDING_H_MM}mm; max-width: none; }} }}
 /* Not one rounded corner anywhere in this document. A radius says "card",
    "app", "surface"; this is a technical report, and its blocks are meant to
    read as regions of a printed page rather than as widgets lifted off one.
