@@ -13,6 +13,8 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, DataTable, Label, Static
 
+from tui.cells import AUTO_HEIGHT, folded
+
 import applog
 
 from tui.screens.base import XScreen
@@ -73,10 +75,15 @@ class LogsScreen(XScreen):
         for record in reversed(records):
             rest = {k: v for k, v in record.items()
                     if k not in ("at", "level", "event", "run")}
-            table.add_row((record.get("at") or "")[11:19],
-                          record.get("level", ""),
-                          str(record.get("event", ""))[:34],
-                          " ".join(f"{k}={v}" for k, v in rest.items())[:80])
+            # Folded, not sliced. A detail cut at 80 characters ends in the
+            # middle of a `key=value`, and the pair it cuts is usually the
+            # one that explains the line - see `tui.cells`.
+            table.add_row(folded((record.get("at") or "")[11:19]),
+                          folded(record.get("level", "")),
+                          folded(record.get("event", "")),
+                          folded(" ".join(f"{k}={v}"
+                                          for k, v in rest.items())),
+                          height=AUTO_HEIGHT)
 
     def action_only_errors(self) -> None:
         self._level = "warning"

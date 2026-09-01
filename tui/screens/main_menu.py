@@ -21,6 +21,10 @@ from tui.screens.base import XScreen
 MENU = (
     ("1", "scan"), ("2", "audit"), ("3", "fullscan"), ("4", "reports"),
     ("5", "settings"), ("6", "update"), ("7", "uninstall"), ("8", "logs"),
+    # 9 for the same reason Logs is 8: the existing numbers are documented,
+    # are in muscle memory and are what the tests press, so a new entry goes
+    # on the end rather than renumbering seven promises.
+    ("9", "account"),
 )
 
 

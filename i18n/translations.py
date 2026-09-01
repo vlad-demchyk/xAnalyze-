@@ -5436,6 +5436,67 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Due richieste in più allo stesso dominio. Solo per un sito.",
         "en": "Two extra requests to the same domain. Sites only.",
     },
+    "tui_menu_account": {
+        "uk": "Акаунт", "it": "Account", "en": "Account",
+    },
+    "tui_account_title": {
+        "uk": "Акаунт xFormat", "it": "Account xFormat", "en": "xFormat account",
+    },
+    "tui_account_email": {"uk": "Пошта", "it": "Email", "en": "Email"},
+    # The same literal in all three, and a key rather than a literal in the
+    # screen anyway: it shows the *shape* of the value, an address is written
+    # the same way in every language this app speaks, and a placeholder that
+    # bypasses this table is a placeholder nobody notices when it should not.
+    "tui_account_email_placeholder": {
+        "uk": "you@example.com", "it": "you@example.com",
+        "en": "you@example.com",
+    },
+    "tui_account_password": {"uk": "Пароль", "it": "Password", "en": "Password"},
+    "tui_account_sign_out": {"uk": "Вийти", "it": "Esci", "en": "Sign out"},
+    "tui_account_signed_in": {
+        "uk": "Увійшли як {email}", "it": "Connesso come {email}",
+        "en": "Signed in as {email}",
+    },
+    "tui_account_signed_out": {
+        "uk": "Сесії немає.", "it": "Nessuna sessione.", "en": "No session.",
+    },
+    "tui_account_unknown": {
+        "uk": "Не вдалося перевірити сесію: {detail}",
+        "it": "Impossibile verificare la sessione: {detail}",
+        "en": "Could not check the session: {detail}",
+    },
+    "tui_account_working": {
+        "uk": "Входимо…", "it": "Accesso in corso…", "en": "Signing in…",
+    },
+    "tui_account_welcome": {
+        "uk": "Готово.", "it": "Fatto.", "en": "Done.",
+    },
+    "tui_account_privacy": {
+        "uk": "Пароль не зберігається: він обмінюється на токен, який лежить "
+              "у keychain системи.",
+        "it": "La password non viene salvata: viene scambiata con un token "
+              "che risiede nel keychain di sistema.",
+        "en": "The password is not stored: it is exchanged for a token that "
+              "lives in the OS keychain.",
+    },
+    "tui_account_not_xformat": {
+        "uk": "Обраний провайдер не xFormat - змініть його в Налаштуваннях.",
+        "it": "Il provider scelto non è xFormat: cambialo in Impostazioni.",
+        "en": "The chosen provider is not xFormat - change it in Settings.",
+    },
+    "tui_account_elsewhere_anthropic": {
+        "uk": "Anthropic бере ключ, а не логін. Введіть його у вікні "
+              "(зберігається в keychain) або задайте ANTHROPIC_API_KEY.",
+        "it": "Anthropic usa una chiave, non un login. Inseriscila nella "
+              "finestra (va nel keychain) o imposta ANTHROPIC_API_KEY.",
+        "en": "Anthropic takes a key, not a login. Enter it in the window "
+              "(it goes to the keychain) or set ANTHROPIC_API_KEY.",
+    },
+    "tui_account_elsewhere_claude-code": {
+        "uk": "Claude Code керує власним входом: claude auth login",
+        "it": "Claude Code gestisce il proprio accesso: claude auth login",
+        "en": "Claude Code manages its own sign-in: claude auth login",
+    },
     "setup_project_title": {
         "uk": "Профіль проєкту", "it": "Profilo del progetto",
         "en": "Project profile",

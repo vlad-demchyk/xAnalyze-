@@ -232,9 +232,10 @@ class XAnalyzeApp(App):
     #: Screen name -> the class that builds it. One list, because installing
     #: them and re-installing them after a language change must not drift.
     SCREENS_IN_ORDER = ("main", "scan", "audit", "fullscan", "settings",
-                        "reports", "logs", "update", "uninstall")
+                        "reports", "logs", "update", "uninstall", "account")
 
     def _screen_classes(self) -> dict:
+        from tui.screens.account import AccountScreen
         from tui.screens.audit import AuditScreen
         from tui.screens.fullscan import FullscanScreen
         from tui.screens.logs import LogsScreen
@@ -249,7 +250,8 @@ class XAnalyzeApp(App):
                 "audit": AuditScreen, "fullscan": FullscanScreen,
                 "settings": SettingsScreen, "reports": ReportsScreen,
                 "logs": LogsScreen,
-                "update": UpdateScreen, "uninstall": UninstallScreen}
+                "update": UpdateScreen, "uninstall": UninstallScreen,
+                "account": AccountScreen}
 
     def install_all_screens(self) -> None:
         classes = self._screen_classes()

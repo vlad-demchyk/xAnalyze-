@@ -16,6 +16,8 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, DataTable, Label, Static
 
+from tui.cells import AUTO_HEIGHT, folded
+
 from i18n.translations import t
 
 from tui.screens.base import XScreen
@@ -125,12 +127,16 @@ class ReportsScreen(XScreen):
             return
         for run in self._runs[:200]:
             distinct = run.get("distinct")
+            # The target was kept as its *last* 46 characters, which drops
+            # the domain: three runs against three different sites all read
+            # as rows beginning with "...". It folds now - see `tui.cells`.
             table.add_row(
-                (run.get("at") or "?").replace(" UTC", ""),
-                str(run.get("root") or "?")[-46:],
-                str(run.get("mode") or "?"),
-                str(_total(run)),
-                "-" if distinct is None else str(distinct),
+                folded((run.get("at") or "?").replace(" UTC", "")),
+                folded(run.get("root") or "?"),
+                folded(run.get("mode") or "?"),
+                folded(_total(run)),
+                folded("-" if distinct is None else distinct),
+                height=AUTO_HEIGHT,
             )
         self.query_one("#report-status", Label).update(
             self.tr("tui_reports_count", n=len(self._runs)))
