@@ -185,8 +185,18 @@ class PdfRenderer:
             # progress, and the stall window starts again from here rather
             # than counting the load's quiet tail against the printer.
             watch.set_phase("printing")
+            from report.template import PAGE_MARGIN_H_MM, PAGE_MARGIN_V_MM
+
+            # Explicit, non-zero margins here, matching template.py's
+            # `@page { margin: ... }`: printToPdf does not honour CSS
+            # `@page` margins on its own - a QMarginsF() of all zeros is
+            # Chromium's "None" print-margins setting, which prints flush to
+            # the physical edge of the page regardless of what `@page` says.
             layout = QPageLayout(QPageSize(QPageSize.PageSizeId.A4),
-                                 QPageLayout.Orientation.Portrait, QMarginsF())
+                                 QPageLayout.Orientation.Portrait,
+                                 QMarginsF(PAGE_MARGIN_H_MM, PAGE_MARGIN_V_MM,
+                                           PAGE_MARGIN_H_MM, PAGE_MARGIN_V_MM),
+                                 QPageLayout.Unit.Millimeter)
             page.printToPdf(on_pdf, layout)
 
         def on_no_progress(reason: Exception) -> None:

@@ -359,6 +359,37 @@ class PdfRendering(unittest.TestCase):
         self.assertTrue(first.startswith(b"%PDF"))
         self.assertTrue(second.startswith(b"%PDF"))
 
+    def test_printToPdf_gets_nonzero_margins_matching_the_page_css(self):
+        # `printToPdf` does not honour CSS `@page` margins on its own - a
+        # QMarginsF() of all zeros passed to its QPageLayout is Chromium's
+        # "None" print-margins setting, which prints flush to the physical
+        # page edge regardless of what `@page` in template.py says. This
+        # guards against that regression by intercepting the layout
+        # `printToPdf` is actually called with, rather than mocking it away.
+        from unittest.mock import patch
+
+        from PySide6.QtGui import QPageLayout
+        from PySide6.QtWebEngineCore import QWebEnginePage
+
+        from report.template import PAGE_MARGIN_H_MM, PAGE_MARGIN_V_MM
+
+        captured = {}
+
+        def fake_print_to_pdf(self, callback, layout):
+            captured["layout"] = layout
+            callback(b"%PDF-fake")
+
+        with patch.object(QWebEnginePage, "printToPdf", fake_print_to_pdf):
+            render_pdf("<!doctype html><html><body>x</body></html>")
+
+        margins = captured["layout"].margins(QPageLayout.Unit.Millimeter)
+        self.assertGreater(margins.left(), 0)
+        self.assertGreater(margins.top(), 0)
+        self.assertAlmostEqual(margins.left(), PAGE_MARGIN_H_MM, places=2)
+        self.assertAlmostEqual(margins.right(), PAGE_MARGIN_H_MM, places=2)
+        self.assertAlmostEqual(margins.top(), PAGE_MARGIN_V_MM, places=2)
+        self.assertAlmostEqual(margins.bottom(), PAGE_MARGIN_V_MM, places=2)
+
 
 # --------------------------------------------------------------- export.py
 

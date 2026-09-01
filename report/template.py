@@ -47,6 +47,14 @@ from ui.tokens import Palette, palettes
 #: repository alone.
 _LOGO_PATH = Path(__file__).resolve().parent.parent / "ui" / "design" / "assets" / "logo-light.svg"
 
+#: The `@page` margin below, in millimetres - `report.pdf` reads these too,
+#: to pass matching (non-zero) margins into `printToPdf`'s `QPageLayout`.
+#: `printToPdf` does not honour CSS `@page` margins on its own, so the two
+#: numbers must agree or the PDF prints flush to the physical page edge
+#: regardless of what this file says.
+PAGE_MARGIN_V_MM = 20
+PAGE_MARGIN_H_MM = 18
+
 #: Minimal, self-contained labels for the report's own chrome. Not routed
 #: through `i18n.translations.t()`: this package does not touch that module
 #: (see the repository's task boundary), and a report has a small, fixed
@@ -731,7 +739,7 @@ def render_html(model: ReportModel, lang: str = "en") -> str:
     doc_title = f'{labels["title"]} — {model.meta.target}' if model.meta.target else labels["title"]
 
     style = f"""
-@page {{ size: A4; margin: 20mm 18mm; }}
+@page {{ size: A4; margin: {PAGE_MARGIN_V_MM}mm {PAGE_MARGIN_H_MM}mm; }}
 * {{ box-sizing: border-box; }}
 html, body {{ margin: 0; padding: 0; }}
 /* On paper the gutter is `@page`'s and adding padding here would double it.
