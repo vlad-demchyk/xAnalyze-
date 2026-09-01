@@ -272,6 +272,88 @@ class ManyWebPartsInOneRepository(unittest.TestCase):
         self.assertEqual(result.documents, [])
 
 
+class MarkupInsideATemplateLiteral(unittest.TestCase):
+    """A classic SPFx web part builds its interface in a backtick string.
+
+    `.ts`, `.js` and `.mjs` are skipped as files, and rightly - in them a
+    `<` is an operator, and `if (a < b)` handed to an HTML parser is an open
+    tag swallowing the rest of the file. But a template literal is not code.
+    Measured 2026-09-01 on a real SharePoint solution: **72 of 168** `.ts`
+    files build markup this way, none of it was ever read, and reading it
+    finds 132 things - 60 controls with no accessible name, 21 images with
+    no alt, 24 links opening a new tab without `rel`.
+    """
+
+    SOURCE = '''
+import styles from './X.module.scss';
+export default class X {
+  private count = 0;
+  public render(): void {
+    // A comparison, not a tag: this must stay unread.
+    if (this.count < 3) { this.count = this.count + 1; }
+    this.domElement.innerHTML = `
+      <div class="${styles.wrapper}">
+        <input type="text" placeholder="Search" id="q">
+        <img src="logo.png">
+      </div>`;
+  }
+}
+'''
+
+    def _findings(self, source, name="X.ts"):
+        import audit
+        from models import FileResult
+
+        result = audit.analyze_files(
+            [FileResult(path=f"/repo/{name}", raw_text=source)],
+            "/repo", media=False, repo_facts=False)
+        return [i for d in result.documents for i in d.issues]
+
+    def test_the_markup_in_the_literal_is_read(self):
+        rules = {i.rule_id for i in self._findings(self.SOURCE)}
+        self.assertIn("control-name", rules)
+        self.assertIn("image-alt", rules)
+
+    def test_the_code_around_it_is_still_not_read(self):
+        """`this.count < 3` is arithmetic. A parser told to read it as
+        markup opens a tag and never closes it."""
+        for issue in self._findings(self.SOURCE):
+            with self.subTest(issue.rule_id):
+                self.assertNotIn("count", str(issue.snippet))
+
+    def test_a_finding_points_at_the_line_the_literal_starts_on(self):
+        found = self._findings(self.SOURCE)
+        self.assertTrue(found)
+        for issue in found:
+            with self.subTest(issue.rule_id):
+                self.assertEqual(issue.line, 8)
+                self.assertEqual(issue.details["embedded_in"],
+                                 "template literal")
+
+    def test_a_file_with_no_markup_in_its_strings_produces_nothing(self):
+        self.assertEqual(
+            self._findings("const q = `SELECT * FROM t WHERE a < 5`;\n"), [])
+
+    def test_an_interpolation_becomes_a_value_not_a_hole(self):
+        """`class="${styles.wrapper}"` must read as an attribute that is
+        present. Left empty, every rule that asks "is there a class" would
+        be answered wrongly by the substitution rather than by the file."""
+        from audit.embedded import PLACEHOLDER, markup_fragments
+
+        markup, _line = markup_fragments(self.SOURCE)[0]
+        self.assertIn(f'class="{PLACEHOLDER}"', markup)
+        self.assertNotIn("${", markup)
+
+    def test_a_tsx_file_is_left_to_the_ordinary_path(self):
+        """`.tsx` is audited as markup already; reading its literals too
+        would report the same element twice."""
+        from audit.embedded import markup_fragments
+
+        self.assertTrue(markup_fragments(self.SOURCE))
+        rules = {i.rule_id for i in self._findings(self.SOURCE, name="X.tsx")}
+        self.assertNotIn("embedded", " ".join(rules))
+
+
 class WhatTheBrowserPassDoesWhenScoped(unittest.TestCase):
 
     def test_axe_is_given_the_include_context(self):

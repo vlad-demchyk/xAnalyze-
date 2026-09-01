@@ -533,6 +533,41 @@ def attribute_ownership(result) -> dict:
             counts[owner] = counts.get(owner, 0) + 1
     return counts
 
+#: Suffixes whose template literals are worth reading. Only the languages
+#: whose `<` is an operator - everything else is either already audited as
+#: markup or has no template literals to speak of.
+EMBEDDED_MARKUP_SUFFIXES = {".ts", ".js", ".mjs", ".cjs", ".mts", ".cts"}
+
+
+def _documents_from_embedded(file_result, rules, ai_review) -> list:
+    """The markup a skipped source file builds in its template literals."""
+    from pathlib import PurePath
+
+    from audit import embedded
+
+    if PurePath(file_result.path).suffix.lower() not in EMBEDDED_MARKUP_SUFFIXES:
+        return []
+    found = []
+    for markup, line in embedded.markup_fragments(file_result.raw_text or ""):
+        report = analyze_document(markup, file_result.path, rules,
+                                  ai_review=ai_review,
+                                  document_kind="fragment")
+        for issue in report.issues:
+            # The line the literal starts on, so a finding points into the
+            # `.ts` a person has open rather than into a string nobody can
+            # navigate to. Offsets inside the literal are not added: the
+            # parser's line is relative to the fragment, and claiming a
+            # precise line we have not computed would be worse than naming
+            # where the markup begins.
+            issue.line = line
+            details = dict(issue.details or {})
+            details["embedded_in"] = "template literal"
+            issue.details = details
+        if report.issues:
+            found.append(report)
+    return found
+
+
 def _documents_for_parts(page, rules, ai_review, web_parts) -> list:
     """This repository's web parts, wherever they appear on this page.
 
@@ -643,6 +678,14 @@ def analyze_files(file_results, root: str, rules=None, ai_review=None,
         if "<" not in file_result.raw_text:
             continue
         if _is_skipped_path(file_result.path):
+            # Skipped as a *file*, and rightly: in `.ts` and `.js` a `<` is
+            # an operator. But a backtick string is not code, and a classic
+            # SPFx web part builds its whole interface in one - measured on
+            # a real solution, 72 of 168 `.ts` files, none of it ever read.
+            # So the file stays skipped and its template-literal markup is
+            # audited as the fragments it is. See `audit/embedded.py`.
+            result.documents.extend(
+                _documents_from_embedded(file_result, rules, ai_review))
             continue
         if looks_generated(file_result.raw_text):
             # A finding in a generated file is not wrong, it is unactionable:

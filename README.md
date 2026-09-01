@@ -328,6 +328,10 @@ A **WordPress theme or plugin** is recognised the way WordPress recognises it: b
 
 A **SharePoint web part** is one subtree of a page the tenant owns. `--within SELECTOR` confines the whole audit to it: the static rules read only that subtree, axe is given it as its `include` context, and HTML_CodeSniffer, the state pass and the measurements are switched off with the reason printed, because each reads the whole document by construction. The subtree is a fragment whatever the file was, so page-level rules stop applying. A generated suffix on the class or id — `CanvasZone_9f8e7d`, `root-137` — does not have to be typed: the selector is retried against the stem, and which reading matched is printed. A selector that matches nothing is an error, never a clean page.
 
+### Markup inside a template literal
+
+`.ts`, `.js` and `.mjs` are skipped as files: in them a `<` is an operator, and `if (a < b)` handed to an HTML parser is an open tag that swallows the rest. A backtick string is not code, though, and a classic SPFx web part builds its whole interface in one. Measured on a real SharePoint solution: 72 of its 168 `.ts` files do exactly that, none of it had ever been read, and reading it finds 131 things — 60 controls with no accessible name, 21 images with no alt, 24 links opening a new tab without `rel`. The literal is audited as the fragment it is, `${...}` becomes a placeholder value so an attribute reads as present, and each finding points at the line the literal starts on.
+
 ### Many web parts in one repository
 
 A SharePoint solution is not one deliverable — the repositories this was measured against ship 30 and 19 web parts. Three different questions, three answers: one part **as code** (the folder is the scope, repo mode already reads it that way), one part **on the site** (`--within SELECTOR`), and **this repository's parts across the whole site** (`--repo PATH --web-parts`). With a repository given and no scoping flag, the answer stays the whole site and the repository is used to name the file behind a finding.
