@@ -256,6 +256,10 @@ La provenienza media legge IPTC/XMP e C2PA. I fatti del repository comprendono `
 
 Su un sito scansionato viene letta **ogni immagine** a cui le pagine fanno riferimento, non un campione. Si scarica solo l'intestazione del file - una richiesta HTTP range dei primi 512 KB, dove stanno quei campi e le dimensioni in pixel e dove si ferma la ricerca del marcatore C2PA - così una fotografia da 6 MB costa 512 KB e dopo la lettura non resta nulla in memoria. Le immagini con byte identici a una già letta vengono riconosciute per hash, analizzate una volta sola e riportate una volta sola con tutti i punti in cui compaiono. Il report dichiara quanti indirizzi sono stati trovati, quanti letti, quanti erano ripetizioni e cosa non è stato scaricato: un'immagine che nessuno ha letto non è risultata pulita, non è arrivata.
 
+### Cosa l'esecuzione dichiara di non fare
+
+Prima di iniziare, l'esecuzione nomina la profondità che non raggiungerà e il flag che la raggiungerebbe: un sito senza `--repo` riporta la pagina e non il file dietro di essa; un repository senza `--devserver` non viene mai renderizzato, quindi contrasto, ordine di focus, reflow e tutte le misurazioni non girano; `--no-browser` e la larghezza singola predefinita dicono lo stesso di sé. Le righe hanno il prefisso `# [hint]` su stderr, così un agente che guida la CLI può rispondere con il flag invece di accettare il risultato superficiale. È un avviso, mai una domanda - una scansione che si blocca non sta in una pipeline - e `--no-hints` lo silenzia. La TUI mostra le stesse righe nel suo log.
+
 ### La lingua del report
 
 Indicata, rilevata o inglese, in quest'ordine. `--language uk|it|en` decide. Senza, decidono le pagine, ma solo se sono scritte in una di quelle tre: `lang_detect` risponde `other` per una lingua di cui questo strumento non ha liste, e un report in `other` non esiste - niente etichette, niente traduzioni, niente consigli. Tutto il resto è inglese, e l'esecuzione dichiara cosa ha scelto e su quanti passaggi leggibili.

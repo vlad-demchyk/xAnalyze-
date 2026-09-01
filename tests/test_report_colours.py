@@ -156,17 +156,34 @@ class OneRampEverywhere(unittest.TestCase):
 
 
 class TheDocumentHasAGutterInBothMedia(unittest.TestCase):
-    """A report is read on a screen before it is ever printed."""
+    """A report is read on a screen before it is ever printed.
 
-    def test_paper_gets_its_gutter_from_the_page_rule(self):
+    The paper side changed shape 2026-09-01: `@page` went to `margin: 0` so
+    the tinted background bleeds to the sheet edge, and the gutter the text
+    needs became `body` padding under `@media print`. `report/pdf.py` passes
+    a zero `QMarginsF` for the same reason - a page-layout margin there is
+    outside the page box and prints a white band around the tint.
+
+    One thing measured while these tests were brought back in line, and
+    worth knowing before the shape changes again: a **CSS** `@page` margin
+    does *not* cost the bleed. Rendering the same document both ways through
+    `render_pdf` and reading the content streams, each variant paints the
+    same full-sheet rectangle (0 0 794 1123). So the choice between the two
+    is about where the vertical gutter comes from, not about the tint:
+    `body` padding indents the first page only, because padding applies to
+    the flow and not to each sheet, while a `@page` margin insets every
+    page. The horizontal gutter is identical either way.
+    """
+
+    def test_the_page_box_is_the_whole_sheet_so_the_tint_bleeds(self):
         html = render_html(_model(), lang="en")
-        self.assertIn("@page { size: A4; margin: 20mm 18mm; }", html)
+        self.assertIn("@page { size: A4; margin: 0; }", html)
 
-    def test_a_screen_gets_one_too_and_paper_does_not_get_it_twice(self):
+    def test_the_text_gutter_is_body_padding_in_both_media(self):
         html = render_html(_model(), lang="en")
         screen = html.split("@media screen {")[1].split("}")[0]
         self.assertIn("padding:", screen)
-        self.assertIn("@media print { body { padding: 0;", html)
+        self.assertIn("@media print { body { padding: 0 18mm;", html)
 
 
 class SeverityIsAMarkNotAWash(unittest.TestCase):

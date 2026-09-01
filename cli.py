@@ -101,6 +101,10 @@ def cmd_scan(args) -> int:
     target_for_folder = args.paths[0] if args.paths else "."
     folder = runfolder.prepare_for(target_for_folder, args)
 
+    from cli_impl import prerun
+
+    prerun.announce("scan", target_for_folder, args, is_url=False, out=sys.stderr)
+
     files = _collect_files(args.paths, args, missing_out=missing,
                            diagnostics_out=walked)
 
@@ -351,6 +355,10 @@ def cmd_audit(args) -> int:
     # Prepared after the target is resolved, so the folder is named by what
     # was audited rather than by what was typed.
     folder = runfolder.prepare_for(target, args)
+
+    from cli_impl import prerun
+
+    prerun.announce("audit", target, args, is_url=is_url, out=sys.stderr)
 
     if _is_page_file(target) and not args.url:
         # A page built into one file is a finished document, so it is audited
@@ -813,6 +821,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_scan.add_argument("--language", default=None, help="uk | it | en; "
                         "language of the reports' own labels (default: the "
                         "language of the text, or English)")
+    p_scan.add_argument("--no-hints", action="store_true",
+                        help="do not print what this run leaves "
+                             "undone (see cli_impl/prerun.py)")
     p_scan.set_defaults(func=cmd_scan)
 
     p_fix = sub.add_parser("fix", help="rewrite non-keyboard characters in place")
@@ -923,6 +934,9 @@ def build_parser() -> argparse.ArgumentParser:
                               "person to read: a .pdf or .html by suffix. "
                               "Different from --report, which is a briefing "
                               "for an agent")
+    p_audit.add_argument("--no-hints", action="store_true",
+                        help="do not print what this run leaves "
+                             "undone (see cli_impl/prerun.py)")
     p_audit.set_defaults(func=cmd_audit)
 
     # `ai` groups everything that spends money or needs an account, so the
@@ -1137,6 +1151,9 @@ def build_parser() -> argparse.ArgumentParser:
                                  "(no API key needed)")
     p_fullscan.add_argument("--json", action="store_true",
                             help="machine-readable JSON output for agent")
+    p_fullscan.add_argument("--no-hints", action="store_true",
+                        help="do not print what this run leaves "
+                             "undone (see cli_impl/prerun.py)")
     p_fullscan.set_defaults(func=cmd_fullscan)
 
     # `runs` / `resume` / `pause`: a long scan that stops must not be a scan

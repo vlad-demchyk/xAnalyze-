@@ -1209,6 +1209,12 @@ def cmd_fullscan(args) -> int:
         print(f"path not found: {target}", file=sys.stderr)
         return EXIT_ERROR
 
+    # Before any work: what this run is about to leave undone, and the one
+    # flag that would change it. See `cli_impl.prerun`.
+    from cli_impl import prerun
+
+    prerun.announce("fullscan", target, args, is_url=is_url, out=sys.stderr)
+
     repo_arg = getattr(args, "repo", None)
     if repo_arg and not Path(repo_arg).is_dir():
         print(f"--repo path not found or not a directory: {repo_arg}",

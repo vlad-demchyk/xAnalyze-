@@ -322,6 +322,10 @@ Findings are labelled `exact`, `needs-browser` or `advisory`. `exact` means the 
 
 `--category`, `--scope`, `--breakpoints`, and `--no-typography` are views over the same scan, not changes to the underlying evidence.
 
+### What a run says it is leaving undone
+
+Before the work starts, a run names the depth it is not reaching and the flag that would reach it: a site audited without `--repo` reports the page a finding is on and not the file behind it; a repository read without `--devserver` never renders, so contrast, focus order, reflow and every measurement do not run; `--no-browser` and the default single width say the same thing about themselves. Lines are prefixed `# [hint]` on stderr, so an agent driving the CLI can match on them and answer with the flag rather than accepting the shallow result. It is a notice, never a prompt - a scan that blocks on a question cannot go in a pipeline - and `--no-hints` silences it. The TUI shows the same lines in its run log.
+
 ### The report's language
 
 Named, detected, or English, in that order. `--language uk|it|en` wins. Without it the pages decide, but only when what they are written in is one of those three: `lang_detect` answers `other` for a language this tool has no lists for, and a report has no labels, no translations and no advice in `other`. Anything else is English, and the run says which it chose and on how many readable passages.
