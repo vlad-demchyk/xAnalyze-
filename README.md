@@ -535,6 +535,16 @@ Comments and blank lines are preserved when the application updates this file.
 - C2PA details require the optional `c2pa-python` and `cryptography` packages.
 - On 16-color terminals, some severity colors collapse, but severity labels remain textual.
 
+### Building a release
+
+```bash
+make version        # what config.py says
+make rebuild-all    # both bundles, at that version
+make package        # the two archives a release needs
+```
+
+`make package` refuses to run over a stale bundle and writes `xanalyze-cli-macos-<arch>.tar.gz` and `XAnalyze.app.zip` - the exact names `xanalyze update` looks for on the latest GitHub release. Anything else and the updater cannot find them. Neither archive is signed or notarised: until it is, a first launch of the app needs Control-click > Open.
+
 ## Requirements
 
 - Python 3.14+

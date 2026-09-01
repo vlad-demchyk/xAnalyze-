@@ -417,6 +417,16 @@ Si possono aggiungere le sezioni `[rules]`, `[selectors]`, `[fingerprints]`, olt
 - C2PA richiede i pacchetti opzionali `c2pa-python` e `cryptography`.
 - Nei terminali a 16 colori alcuni colori di gravità si fondono, ma le etichette testuali restano.
 
+### Creare una release
+
+```bash
+make version        # che cosa dice config.py
+make rebuild-all    # entrambi i bundle, a quella versione
+make package        # i due archivi che compongono una release
+```
+
+`make package` si rifiuta di lavorare su un bundle non aggiornato e scrive `xanalyze-cli-macos-<arch>.tar.gz` e `XAnalyze.app.zip`, esattamente i nomi che `xanalyze update` cerca nell'ultima release su GitHub. Con altri nomi l'updater non li trova. Nessuno dei due archivi è firmato o notarizzato: finché non lo sarà, il primo avvio dell'app richiede Control-click > Open.
+
 ## Requisiti
 
 - Python 3.14+

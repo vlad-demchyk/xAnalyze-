@@ -1,4 +1,4 @@
-.PHONY: rebuild-cli rebuild-app version check-cli check-app
+.PHONY: rebuild-cli rebuild-app version check-cli check-app package
 
 SHELL := /bin/bash
 VENV := venv
@@ -53,6 +53,32 @@ rebuild-app:
 	@echo "App $(SOURCE_VERSION) built. Verify: $(APP_DIR)/Contents/MacOS/XAnalyze --version"
 
 rebuild-all: rebuild-cli rebuild-app
+
+# --- release artefacts ---
+#
+# The names are not decorative: `updater.py` looks for exactly these, in this
+# order, when `xanalyze update` asks GitHub for the latest release. A release
+# whose assets are named anything else is a release nobody can update to.
+#
+# Both are rebuilt from what is in `dist/` right now and refuse to run over a
+# stale bundle: publishing an archive of the previous version under this
+# version's tag is the one packaging mistake that cannot be spotted by
+# looking at the release page.
+
+ARCH := $(shell uname -m | sed 's/x86_64/x64/')
+CLI_ARCHIVE := dist/xanalyze-cli-macos-$(ARCH).tar.gz
+APP_ARCHIVE := dist/XAnalyze.app.zip
+
+package: check-cli check-app
+	@echo "Packaging $(SOURCE_VERSION) for $(ARCH) ..."
+	rm -f "$(CLI_ARCHIVE)" "$(APP_ARCHIVE)"
+	cd dist && tar czf "$(notdir $(CLI_ARCHIVE))" "$(notdir $(CLI_DIR))"
+	cd dist && ditto -c -k --sequesterRsrc --keepParent "$(notdir $(APP_DIR))" "$(notdir $(APP_ARCHIVE))"
+	@echo "Wrote:"
+	@ls -lh "$(CLI_ARCHIVE)" "$(APP_ARCHIVE)" | awk '{print "  " $$9 "  " $$5}'
+	@echo "These are the two asset names that 'xanalyze update' looks for."
+	@echo "Unsigned: a first launch of the app needs Control-click > Open until it is notarised."
+
 
 # --- convenience: rebuild only if version drifted ---
 
