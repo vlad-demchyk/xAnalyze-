@@ -131,5 +131,100 @@ class WhatReachesTheRun(_Window):
         self.assertEqual(window.view_model._web_parts_for_run(), ())
 
 
+class OneProjectOutOfSeveral(_Window):
+    def _monorepo(self) -> Path:
+        return self.tree({
+            "package.json": '{"workspaces":["apps/*"],'
+                            '"scripts":{"dev":"turbo dev"}}',
+            "apps/web/package.json": '{"scripts":{"dev":"vite"}}',
+            "apps/web/vite.config.ts": "export default {}",
+            "apps/admin/package.json": '{"scripts":{"dev":"vite"}}',
+            "apps/admin/vite.config.ts": "export default {}",
+        })
+
+    def test_the_folder_is_asked_which_project(self):
+        window = self.window()
+        window.app_state.set_source(SOURCE_REPO)
+        window.repo_path_edit.setText(str(self._monorepo()))
+        combo = window.setup_screen.project_combo
+        self.assertTrue(combo.isVisibleTo(window.setup_screen))
+        offered = {combo.itemText(i) for i in range(combo.count())}
+        self.assertTrue({"web", "admin"} <= offered)
+
+    def test_choosing_one_narrows_every_pass_and_the_dev_server(self):
+        """The run, the ignore file and the server have to agree about which
+        project this is, or the server started belongs to another one."""
+        window = self.window()
+        root = self._monorepo()
+        window.app_state.set_source(SOURCE_REPO)
+        window.repo_path_edit.setText(str(root))
+        combo = window.setup_screen.project_combo
+        combo.setCurrentIndex(combo.findText("web"))
+        chosen = str(root / "apps" / "web")
+        self.assertEqual(window.app_state.chosen_project, chosen)
+        self.assertEqual(window.app_state.scan_target, chosen)
+        self.assertEqual(window._run_folder(), chosen)
+        self.assertEqual(window._ignore_scan_root(), chosen)
+        # The field still shows the folder that was picked: narrowing must
+        # not lose the path the choice was made inside.
+        self.assertEqual(window.repo_path_edit.text(), str(root))
+
+    def test_a_choice_does_not_survive_a_different_folder(self):
+        window = self.window()
+        window.app_state.set_source(SOURCE_REPO)
+        window.repo_path_edit.setText(str(self._monorepo()))
+        combo = window.setup_screen.project_combo
+        combo.setCurrentIndex(combo.findText("web"))
+        other = self.tree({"elsewhere/index.html": "<html></html>"})
+        window.repo_path_edit.setText(str(other / "elsewhere"))
+        self.assertEqual(window.app_state.chosen_project, "")
+        self.assertEqual(window.app_state.scan_target, str(other / "elsewhere"))
+
+    def test_a_single_project_folder_is_not_asked(self):
+        window = self.window()
+        window.app_state.set_source(SOURCE_REPO)
+        window.repo_path_edit.setText(str(self.tree(
+            {"vite.config.ts": "export default {}"})))
+        self.assertFalse(
+            window.setup_screen.project_combo.isVisibleTo(window.setup_screen))
+
+
+class WhatOnlyTheCommandLineCouldAsk(_Window):
+    def test_a_site_can_be_read_as_a_stranger_sees_it(self):
+        window = self.window()
+        window.app_state.set_source(SOURCE_SITE)
+        window.url_edit.setText("https://example.com")
+        box = window.setup_screen.no_session_box
+        self.assertTrue(box.isVisibleTo(window.setup_screen))
+        box.setChecked(True)
+        self.assertTrue(window.app_state.no_session)
+
+    def test_a_folder_has_no_door_to_walk_past(self):
+        window = self.window()
+        window.app_state.set_source(SOURCE_REPO)
+        window.repo_path_edit.setText(str(self.tree({"a.html": "<html></html>"})))
+        self.assertFalse(
+            window.setup_screen.no_session_box.isVisibleTo(window.setup_screen))
+
+    def test_the_start_command_is_offered_where_a_server_exists(self):
+        window = self.window()
+        window.app_state.set_source(SOURCE_REPO)
+        window.repo_path_edit.setText(str(self.tree(
+            {"package.json": '{"scripts":{"dev":"vite"}}'})))
+        edit = window.setup_screen.start_command_edit
+        self.assertTrue(edit.isVisibleTo(window.setup_screen))
+        edit.setText("npm run dev:site")
+        window.setup_screen.dev_port_spin.setValue(5173)
+        self.assertEqual(window.app_state.start_command, "npm run dev:site")
+        self.assertEqual(window.app_state.dev_server_port, 5173)
+
+    def test_it_is_not_offered_where_nothing_can_serve(self):
+        window = self.window()
+        window.app_state.set_source(SOURCE_REPO)
+        window.repo_path_edit.setText(str(self.tree({"a.html": "<html></html>"})))
+        self.assertFalse(window.setup_screen.start_command_edit
+                         .isVisibleTo(window.setup_screen))
+
+
 if __name__ == "__main__":
     unittest.main()

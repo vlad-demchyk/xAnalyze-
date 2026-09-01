@@ -279,6 +279,9 @@ class RunScreen(XScreen):
         "incremental": False,
         "devserver": False,
         "web_parts": False,
+        "project": None,
+        "start_command": None,
+        "dev_server_port": None,
         "repo": None,
         "medium": None,
         "max_files": 5000,
@@ -292,6 +295,42 @@ class RunScreen(XScreen):
             if not self._plan.applies(option) and hasattr(args, option):
                 setattr(args, option, inert)
         return args
+
+    def _fill_projects(self, plan) -> None:
+        """Offer the projects in this folder, or hide the question."""
+        from textual.widgets import Select
+
+        try:
+            select = self.query_one("#project", Select)
+        except Exception:  # noqa: BLE001 - a screen without the control
+            return
+        shown = plan.ambiguous()
+        for widget in self.query(".field-project"):
+            widget.display = shown
+        select.display = shown
+        if not shown:
+            select.set_options([(self.tr("tui_project_whole"), "")])
+            select.value = ""
+            return
+        options = [(self.tr("tui_project_whole"), "")]
+        options += [(name, name) for name in plan.choices()]
+        current = select.value
+        select.set_options(options)
+        # A folder that was already narrowed keeps the choice; a different
+        # folder cannot, because the name belonged to the previous one.
+        select.value = current if current in dict(options) else ""
+
+    def chosen_project(self) -> str:
+        """The project the person picked, or `""` for the whole folder."""
+        from textual.widgets import Select
+
+        try:
+            select = self.query_one("#project", Select)
+        except Exception:  # noqa: BLE001 - a screen without the control
+            return ""
+        if not select.display:
+            return ""
+        return select.value or ""
 
     def _note_change(self, widget_id: str, value) -> None:
         """Record a control the person changed - and only the person."""
@@ -326,6 +365,19 @@ class RunScreen(XScreen):
                 self.query_one(f"#{widget_id}").display = shown
             except Exception:  # noqa: BLE001 - an id a screen does not have
                 pass
+        # Which project, when the folder holds more than one. Filled from
+        # the plan rather than typed: a folder of twenty solutions is a list
+        # to pick from, and typing one of twenty names correctly is not the
+        # question a person should be asked.
+        self._fill_projects(plan)
+
+        # The dev-server overrides, only where there is a server to
+        # override. Detection reads one script name out of `package.json`,
+        # and a monorepo has several - see `devserver.servers_under`.
+        serves = bool(getattr(plan, "servers", ()))
+        for widget in self.query(".field-server"):
+            widget.display = serves
+
         # The URL field an SPFx checkout asks for, and nothing else does.
         for prompt in ("site-url",):
             wanted = plan.asks_for(prompt.replace("-", "_"))

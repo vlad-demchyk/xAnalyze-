@@ -137,7 +137,10 @@ class MainViewModel(QObject):
         """Build a normalised request from the current state."""
         return AnalysisRequest(
             source=self.state.source,
-            target=self.state.target,
+            # `scan_target`, not `target`: one project may have been chosen
+            # out of a folder that holds several, and every pass has to read
+            # the same one.
+            target=self.state.scan_target,
             depth=self.state.depth,
             readers=self.state.readers,
             checks=self.state.checks,
@@ -363,7 +366,7 @@ class MainViewModel(QObject):
             self._start_web_analysis()
 
     def _start_web_analysis(self, root: str = ""):
-        url = root or self.state.target
+        url = root or self.state.scan_target
         if not url:
             from i18n.translations import t
             self.error.emit(t("url_label_full", self.settings.ui_language))
@@ -392,6 +395,7 @@ class MainViewModel(QObject):
             # `repo_pairing`.
             paired_repo=self.state.paired_repo,
             paired_ignore=self.effective_ignore_patterns,
+            no_session=self.state.no_session,
         )
         self._wire_worker(self._worker,
                           on_finished=self._on_web_finished)
@@ -399,10 +403,10 @@ class MainViewModel(QObject):
         self.busy_changed.emit(True)
 
     def _start_file_copy_analysis(self):
-        self._start_repo_analysis(self.state.target)
+        self._start_repo_analysis(self.state.scan_target)
 
     def _start_repo_analysis(self, path: str | None = None):
-        path = path if path is not None else self.state.target
+        path = path if path is not None else self.state.scan_target
         if not path:
             from i18n.translations import t
             self.error.emit(t("no_repo_path", self.settings.ui_language))
@@ -443,7 +447,7 @@ class MainViewModel(QObject):
         lang = self.settings.ui_language
         worker, refusal = audit_worker_for(
             self.state.source,
-            target=self.state.target,
+            target=self.state.scan_target,
             depth=self.state.depth,
             max_pages=self.settings.max_pages,
             pages=(self._reusable_pages()
@@ -455,6 +459,7 @@ class MainViewModel(QObject):
             medium=self.state.medium,
             within=self.state.within,
             web_parts=self._web_parts_for_run(),
+            no_session=self.state.no_session,
         )
         if worker is None:
             self.error.emit(self._missing_target_message() if refusal == "no_target"
@@ -750,7 +755,7 @@ class MainViewModel(QObject):
         if model is None:
             return None
         lang = self.settings.ui_language
-        target = self.state.target or (
+        target = self.state.scan_target or (
             getattr(self.result, "root_url", None) or "scan")
         folder = runfolder.prepare(target)
         written, absent = {}, {}
@@ -832,7 +837,7 @@ class MainViewModel(QObject):
 
     def _ignore_scan_root(self) -> str | None:
         if self.state.source == SOURCE_REPO:
-            return self.state.target or None
+            return self.state.scan_target or None
         if self.state.source == SOURCE_FILE:
             path = self.state.target
             return str(Path(path).parent) if path else None

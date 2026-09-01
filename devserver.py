@@ -215,6 +215,91 @@ def detect_stack(repo: Path) -> Stack | None:
     return None
 
 
+def is_workspace_root(repo: Path) -> bool:
+    """Does this directory's dev server serve more than this directory?
+
+    A monorepo root is not a project that happens to contain projects: its
+    `dev` script starts, or orchestrates, the applications under it.
+    Measured on `~/repositories/XFormat`: the root declares
+    `workspaces: ["apps/*", "packages/*"]` and a `dev` script, and each of
+    its four applications declares a `dev` script of its own. Starting the
+    root's server and auditing it as "the project" audits whichever app that
+    script happens to bring up first.
+
+    Read from the manifests the package managers themselves read - npm and
+    yarn `workspaces`, pnpm's `pnpm-workspace.yaml`, and the lockfile-level
+    workspace files of the others - never guessed from a directory called
+    `apps/`.
+    """
+    import json
+
+    for name in ("pnpm-workspace.yaml", "lerna.json", "nx.json",
+                 "turbo.json", "rush.json"):
+        if (repo / name).exists():
+            return True
+    manifest = repo / "package.json"
+    if not manifest.is_file():
+        return False
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return bool(data.get("workspaces"))
+
+
+@dataclass(frozen=True)
+class Server:
+    """One directory that can serve itself, and what serving it means."""
+    root: str
+    #: `devserver.Stack.name` - "node", "django", "rails".
+    stack: str
+    #: True when starting this one starts (or orchestrates) more than itself.
+    #: The caller has to say so rather than pretend the choice is not there.
+    workspace: bool = False
+    #: True when the dependencies are already installed, so starting it will
+    #: not ask to run an install first.
+    ready: bool = True
+
+
+def servers_under(root: str | Path, projects=None) -> list:
+    """Every dev server this target could start, nearest first.
+
+    `projects` is `project_profile.projects(root)` when the caller already
+    has it - both walk the same tree and neither needs to walk it twice.
+
+    A monorepo answers with more than one, and that is the whole point: the
+    root's server and each application's own server are different runs, and
+    a flag that silently took the first was making the choice for the person
+    who asked for it.
+    """
+    root = Path(root)
+    found: list = []
+    seen: set = set()
+    candidates = [root]
+    for profile in (projects or ()):
+        candidates.append(Path(getattr(profile, "root", "")))
+    for candidate in candidates:
+        key = str(candidate)
+        if not key or key in seen or not candidate.is_dir():
+            continue
+        seen.add(key)
+        stack = detect_stack(candidate)
+        if stack is None:
+            continue
+        try:
+            # A Node project answers off the filesystem; the other two shell
+            # out, which is not something to do once per project in a
+            # twenty-project folder while a form is being drawn.
+            ready = (stack.deps_satisfied(candidate)
+                     if stack.name == "node" else True)
+        except Exception:  # noqa: BLE001 - a stack that cannot answer is not
+            ready = True   # a reason for a form to fail to draw
+        found.append(Server(root=key, stack=stack.name,
+                            workspace=is_workspace_root(candidate),
+                            ready=ready))
+    return found
+
+
 def pick_port() -> int:
     """A port nothing is listening on right now.
 

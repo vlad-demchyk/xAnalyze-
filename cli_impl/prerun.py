@@ -179,9 +179,16 @@ def profile(command: str, target: str, args, *, is_url: bool, out) -> list:
         print(f"{PROFILE_PREFIX} ask {prompt.field}: "
               f"{run_profile.explain(prompt, lang)}", file=out, flush=True)
     if plan.ambiguous():
-        names = ", ".join(Path(p.root).name for p in plan.projects[:6])
-        more = "…" if len(plan.projects) > 6 else ""
+        names = ", ".join(plan.choices()[:6])
+        more = ", …" if len(plan.projects) > 6 else ""
         print(f"{PROFILE_PREFIX} {len(plan.projects)} projects under this "
-              f"folder ({names}{more}); auditing all of them as one. Name "
-              f"one to audit it on its own.", file=out, flush=True)
+              f"folder ({names}{more}); auditing all of them as one. "
+              f"`--project NAME` audits one on its own.", file=out, flush=True)
+    shared = plan.shared_server()
+    if shared is not None and plan.project_servers():
+        print(f"{PROFILE_PREFIX} this is a workspace root: its own dev server "
+              f"is what --devserver starts, and "
+              f"{len(plan.project_servers())} project(s) under it have one "
+              f"of their own. `--project NAME` starts that project's.",
+              file=out, flush=True)
     return applied

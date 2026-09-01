@@ -391,7 +391,11 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         """
         from analysis_modes import SOURCE_REPO
 
-        path = self._current_target() if self.app_state.source == SOURCE_REPO else ""
+        # The chosen project when there is one: its `vendor/` is what this
+        # run will skip, and the folder above it may be a different stack
+        # entirely.
+        path = (self._run_folder() if self.app_state.source == SOURCE_REPO
+                else "")
         if path == getattr(self, "_profiled_path", None):
             return
         self._profiled_path = path
@@ -420,17 +424,27 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         from analysis_modes import SOURCE_SITE
 
         key = (self.app_state.source, self.app_state.target,
-               self.app_state.paired_repo)
+               self.app_state.chosen_project, self.app_state.paired_repo)
         if key == getattr(self, "_planned_key", None):
             return
         self._planned_key = key
+        import project_profile
         import run_profile
 
         try:
+            # Built for what the run will read, but told about every project
+            # in the folder the person picked: narrowing must not make the
+            # list of things to narrow to disappear.
+            folder = self.app_state.target
+            projects = None
+            if (self.app_state.chosen_project
+                    and self.app_state.source != SOURCE_SITE):
+                projects = project_profile.projects(folder)
             plan = run_profile.build(
-                self.app_state.target,
+                self.app_state.scan_target,
                 forced_url=self.app_state.source == SOURCE_SITE,
                 profile=self.app_state.project,
+                projects=projects,
                 repo=self.app_state.paired_repo)
         except OSError:
             # An unreadable folder is the scan's problem to report, not a
@@ -1401,6 +1415,14 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         # here, so there is still one place a chosen path can be wrong in.
         self.setup_screen.choose_file_requested.connect(
             self._on_browse_file_clicked)
+        # The plan the setup screen draws was already built - by the startup
+        # sync, before this screen existed - and the cache below would have
+        # made the next call a no-op. So the screen is handed it now, or the
+        # controls that depend on it appear on the first unrelated click
+        # instead of at startup, and the window's minimum width moves under
+        # somebody who only pressed a breakpoint button.
+        self._planned_key = None
+        self._refresh_run_plan()
         self.body_stack.addWidget(self.setup_screen)       # index 0
         self.body_stack.addWidget(self.columns_splitter)   # index 1
         # Starts on the working layout so that the first `show_setup(True)`
@@ -2717,14 +2739,25 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             return None
         import devserver
 
-        repo = Path(self.repo_path_edit.text().strip())
+        repo = Path(self._run_folder())
         if not repo.is_dir():
             return None
         return devserver.detect_stack(repo)
 
+    def _run_folder(self) -> str:
+        """The folder a run actually reads.
+
+        The typed path, unless one project inside it was chosen. Everything
+        that acts on "the repository" - the dev server, the ignore file, the
+        scan itself - has to agree about which one, or the server started
+        would belong to a different project from the one being audited.
+        """
+        return (self.app_state.chosen_project
+                or self.repo_path_edit.text().strip())
+
     def _begin_devserver_flow(self, stack) -> None:
         """Confirm an install if (and only if) one is needed, then start."""
-        repo = Path(self.repo_path_edit.text().strip())
+        repo = Path(self._run_folder())
         if stack.deps_satisfied(repo):
             self._start_devserver_then_analyze(True)  # nothing to install
             return
@@ -2745,13 +2778,15 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         """
         from ui.worker import DevServerWorker
 
-        repo_path = self.repo_path_edit.text().strip()
+        repo_path = self._run_folder()
         self.status_bar.showMessage(t("devserver_starting", self.lang))
         # `busy_changed` has not fired yet - `analyze()` has not been called -
         # so the button is disabled by hand for this phase, exactly as
         # `_on_busy_changed` would do once it has.
         self.analyze_btn.setEnabled(False)
-        worker = DevServerWorker(repo_path, install_confirmed)
+        worker = DevServerWorker(repo_path, install_confirmed,
+                                 start_command=self.app_state.start_command,
+                                 port=self.app_state.dev_server_port)
         worker.ready.connect(self._on_devserver_ready)
         worker.failed.connect(self._on_devserver_failed)
         worker.finished.connect(self._on_worker_thread_finished)
@@ -3007,7 +3042,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self._start_repo_analysis(self.file_path_edit.text().strip())
 
     def _start_repo_analysis(self, path: str | None = None) -> None:
-        path = path if path is not None else self.repo_path_edit.text().strip()
+        path = path if path is not None else self._run_folder()
         if not path:
             QMessageBox.warning(self, "", t("no_repo_path", self.lang))
             return
@@ -3045,7 +3080,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         A site has no folder on this machine - see `_add_fingerprint_suppression`.
         """
         if self.source == SOURCE_REPO:
-            path = self.repo_path_edit.text().strip()
+            path = self._run_folder()
             return path or None
         if self.source == SOURCE_FILE:
             path = self.file_path_edit.text().strip()

@@ -95,6 +95,9 @@ a single HTML file is read as the finished page it is.
 | `--report PATH`, `--styled-report PATH` | agent briefing (`.md`/`.json`) and human report (`.pdf`/`.html`) |
 | `--json`, `--check` | machine-readable output; exit 1 on serious findings |
 | `--language uk\|it\|en` | report language; detected from the pages otherwise |
+| `--project NAME` | one project inside a folder that holds several, by folder name or path |
+| `--start-command CMD`, `--dev-server-port N` | what to run instead of the detected script, and the port to expect |
+| `--no-session` | read a site the way a stranger does, ignoring any stored sign-in |
 | `--profile-defaults` | switch on what the detected stack asks for (see below) |
 
 ## What it checks
@@ -159,9 +162,20 @@ nothing for this target is not shown - nor read, so a `--devserver` ticked for
 a repository does not follow you to a single file.
 
 A folder holding several projects is asked about rather than merged: twenty
-SPFx solutions in one directory are twenty deliverables. A repository that
-proves something of its own is still one project - Bedrock's `web/` is that
-project's docroot, not a second project.
+SPFx solutions in one directory are twenty deliverables. `--project NAME`, and
+the picker the window and the terminal form show, audit one of them on its own
+- the scan, the ignore file and the dev server all follow it, so they cannot
+end up describing different projects. A repository that proves something of
+its own is still one project: Bedrock's `web/` is that project's docroot, not
+a second project.
+
+**A monorepo has more than one dev server, and they are not the same run.**
+The root's `dev` script starts, or orchestrates, the applications under it;
+each application has a script of its own. `--devserver` was picking silently.
+Now the run says which one it would start and that naming a project starts
+that project's instead - measured on a real workspace, where the root
+declares `workspaces: ["apps/*"]` and each of four applications declares its
+own `dev`. `--start-command` overrides the script where neither is right.
 
 ## Work delivered as a fragment of somebody else's site
 

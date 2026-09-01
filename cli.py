@@ -344,6 +344,31 @@ def _web_parts_for(args) -> list:
     return found
 
 
+def _narrow_to_project(target: str, args):
+    """`(target, "")`, or `("", why not)` when `--project` names nothing.
+
+    Shared by `audit` and `fullscan`, and refusing rather than guessing: a
+    misspelled project silently auditing the whole folder is the behaviour
+    `--project` exists to replace, and it would look exactly like success.
+    """
+    import run_profile
+
+    wanted = (getattr(args, "project", None) or "").strip()
+    if not wanted:
+        return target, ""
+    plan = run_profile.build(target, forced_url=getattr(args, "url", False))
+    if plan.kind != run_profile.KIND_REPO:
+        return "", ("--project names a folder inside a folder; "
+                    f"{target} is not one")
+    chosen = run_profile.choose_project(plan, wanted)
+    if chosen:
+        print(f"# [profile] auditing {wanted} on its own, not the whole folder",
+              file=sys.stderr)
+        return chosen, ""
+    choices = ", ".join(plan.choices()) or "none - nothing under it proved a stack"
+    return "", f"--project {wanted}: no such project here. Found: {choices}"
+
+
 def cmd_audit(args) -> int:
     """Audit a URL or a folder across all six categories.
 
@@ -382,6 +407,15 @@ def cmd_audit(args) -> int:
     if not is_url and not Path(target).exists():
         print(f"path not found: {target}", file=sys.stderr)
         return EXIT_ERROR
+
+    # `--project`: one deliverable out of a folder that holds several. Done
+    # before the run folder is prepared, so the folder is named after what
+    # was audited.
+    narrowed, refusal = _narrow_to_project(target, args)
+    if refusal:
+        print(refusal, file=sys.stderr)
+        return EXIT_ERROR
+    target = narrowed
 
     # Prepared after the target is resolved, so the folder is named by what
     # was audited rather than by what was typed.
@@ -1102,6 +1136,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_audit.add_argument("--no-session", action="store_true",
                         help="ignore any stored sign-in for this host and "
                              "read the site the way a stranger sees it")
+    p_audit.add_argument("--project", default=None, metavar="NAME",
+                         help="one project inside this folder, by its folder name "
+                              "or a path: a directory of twenty SPFx solutions is "
+                              "twenty deliverables, and auditing it as one root "
+                              "reports them as one")
     p_audit.add_argument("--profile-defaults", action="store_true",
                          help="switch on what the detected stack asks for "
                               "(printed either way as `# [profile]` lines); "
@@ -1331,6 +1370,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_fullscan.add_argument("--no-session", action="store_true",
                         help="ignore any stored sign-in for this host and "
                              "read the site the way a stranger sees it")
+    p_fullscan.add_argument("--project", default=None, metavar="NAME",
+                        help="one project inside this folder, by its folder name "
+                             "or a path: a directory of twenty SPFx solutions is "
+                             "twenty deliverables, and auditing it as one root "
+                             "reports them as one")
     p_fullscan.add_argument("--profile-defaults", action="store_true",
                         help="switch on what the detected stack asks for "
                              "(printed either way as `# [profile]` lines); "

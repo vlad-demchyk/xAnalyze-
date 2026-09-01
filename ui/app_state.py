@@ -104,6 +104,23 @@ class AppState(QObject):
         #: otherwise; meaningless without a paired repository, which is why
         #: `run_profile` only ever suggests it for a site that has one.
         self._web_parts: bool = False
+        #: One project inside the chosen folder, by absolute path, or empty
+        #: for the whole folder. A directory of twenty SPFx solutions is
+        #: twenty deliverables, and reading it as one root reported them as
+        #: one - see `project_profile.projects`.
+        self._chosen_project: str = ""
+        #: `--no-session`: read the site the way a stranger sees it. Off, so
+        #: the ordinary run is the one that reads what the person can see -
+        #: and switching it on is how they find out how much of the site is
+        #: behind the door they walked through without noticing.
+        self._no_session: bool = False
+        #: `--start-command` and `--dev-server-port`: what to run instead of
+        #: the detected script, and which port to expect. Both empty in the
+        #: ordinary case. They exist because detection reads one script name
+        #: out of `package.json`, and a monorepo has several - the root's
+        #: `dev` is not the same server as an application's.
+        self._start_command: str = ""
+        self._dev_server_port: int = 0
         #: `--medium`: what the documents in a folder are *for*. Empty means
         #: "read it off each file", which is the right answer nearly always -
         #: an Outlook namespace or a merge tag settles it. It is here for the
@@ -191,6 +208,63 @@ class AppState(QObject):
         call that rebuilt it; there is nothing here for a signal to wake.
         """
         self._run_plan = value
+
+    @property
+    def chosen_project(self) -> str:
+        return self._chosen_project
+
+    def set_chosen_project(self, value: str) -> None:
+        value = (value or "").strip()
+        if value == self._chosen_project:
+            return
+        self._chosen_project = value
+        self.project_changed.emit()
+        self.any_changed.emit()
+
+    @property
+    def no_session(self) -> bool:
+        return self._no_session
+
+    def set_no_session(self, value: bool) -> None:
+        value = bool(value)
+        if value == self._no_session:
+            return
+        self._no_session = value
+        self.any_changed.emit()
+
+    @property
+    def start_command(self) -> str:
+        return self._start_command
+
+    def set_start_command(self, value: str) -> None:
+        value = (value or "").strip()
+        if value == self._start_command:
+            return
+        self._start_command = value
+
+    @property
+    def dev_server_port(self) -> int:
+        return self._dev_server_port
+
+    def set_dev_server_port(self, value: int) -> None:
+        try:
+            value = int(value or 0)
+        except (TypeError, ValueError):
+            value = 0
+        if value == self._dev_server_port:
+            return
+        self._dev_server_port = value
+
+    @property
+    def scan_target(self) -> str:
+        """What a run actually reads.
+
+        The typed path, unless one project inside it was chosen. Separate
+        from `target` on purpose: the field keeps showing the folder the
+        person picked, and only the run narrows - so clearing the choice
+        cannot lose the path it was made inside.
+        """
+        return self._chosen_project or self._target
 
     @property
     def profile_touched(self) -> set:

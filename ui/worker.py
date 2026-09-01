@@ -92,6 +92,7 @@ class AnalysisWorker(_PairingMixin, QThread):
                  detector_config: dict, max_pages: int = 30,
                  unicode_categories: tuple | None = None, settings=None,
                  pages: list | None = None, paired_repo: str = "",
+                 no_session: bool = False,
                  paired_ignore=None, parent=None):
         super().__init__(parent)
         self.settings = settings
@@ -100,6 +101,9 @@ class AnalysisWorker(_PairingMixin, QThread):
         #: finding stops being "somewhere on the pricing page". Empty is the
         #: normal case and changes nothing. See `repo_pairing`.
         self.paired_repo = (paired_repo or "").strip()
+        #: `--no-session`: ignore any stored sign-in for this host. Off, so
+        #: the ordinary run is the one that reads what the person can see.
+        self.no_session = bool(no_session)
         self.paired_ignore = list(paired_ignore or [])
         #: How many distinct passages the checkout explained, and how many
         #: there were. Read by the window: three matches out of forty means
@@ -142,8 +146,12 @@ class AnalysisWorker(_PairingMixin, QThread):
                 config = CrawlConfig(max_depth=self.depth, max_pages=self.max_pages)
                 # Read as the person who signed in, when they did. Both
                 # clients or neither: see `site_session.apply_to`.
-                self.session_host, self.session_values = site_session.apply_to(
-                    config, self.root_url)
+                # `no_session` is `--no-session`: read the site the way a
+                # stranger sees it, which is the only way to find out that
+                # half of it is behind a door.
+                if not self.no_session:
+                    self.session_host, self.session_values = \
+                        site_session.apply_to(config, self.root_url)
                 pages = crawl(self.root_url, config, progress_cb=progress_cb,
                               walk=walk)
             if self._cancelled:
@@ -324,7 +332,8 @@ class AuditWorker(QThread):
                  ignore_patterns=None, max_files: int = 5000,
                  settings=None, pages: list | None = None,
                  site_controls: bool = False, medium: str = "",
-                 within: str = "", web_parts=(), parent=None):
+                 within: str = "", web_parts=(), no_session: bool = False,
+                 parent=None):
         super().__init__(parent)
         #: `--within`: confine the reading to one subtree. The document is
         #: then a *fragment* by construction, so the page-level rules stop
@@ -349,6 +358,8 @@ class AuditWorker(QThread):
         #: somebody else's page. Empty is the ordinary case, and an empty
         #: tuple audits the whole document exactly as before.
         self.web_parts = tuple(web_parts or ())
+        #: `--no-session`: see `WebAnalysisWorker.no_session`.
+        self.no_session = bool(no_session)
         #: Pages already fetched - by an earlier run, or by the browser on the
         #: main thread. Given them, this worker does not crawl: a run that asks
         #: both questions about one site must fetch it once.
@@ -397,8 +408,9 @@ class AuditWorker(QThread):
                 else:
                     config = CrawlConfig(max_depth=self.depth,
                                          max_pages=self.max_pages)
-                    self.session_host, self.session_values = \
-                        site_session.apply_to(config, self.target)
+                    if not self.no_session:
+                        self.session_host, self.session_values = \
+                            site_session.apply_to(config, self.target)
                     pages = crawl(self.target, config, progress_cb=progress_cb)
                 if self._cancelled:
                     return
@@ -427,7 +439,7 @@ def audit_worker_for(source: str, *, target: str, depth: int, max_pages: int,
                      pages=None, ignore_patterns=None, max_files: int = 5000,
                      settings=None, site_controls: bool = False,
                      medium: str = "", within: str = "", web_parts=(),
-                     parent=None):
+                     no_session: bool = False, parent=None):
     """The right `AuditWorker` for the source, or `(None, message)` on refusal.
 
     One place, because there were two: the window and the view model each
@@ -469,7 +481,8 @@ def audit_worker_for(source: str, *, target: str, depth: int, max_pages: int,
     return AuditWorker(pages=pages, target=address, depth=depth,
                        max_pages=max_pages, settings=settings,
                        site_controls=site_controls, within=within,
-                       web_parts=web_parts, parent=parent), ""
+                       web_parts=web_parts, no_session=no_session,
+                       parent=parent), ""
 
 
 class RewriteAllWorker(QThread):
@@ -572,10 +585,18 @@ class DevServerWorker(QThread):
     ready = Signal(str, object)  # local URL, the running DevServerProcess
     failed = Signal(str)         # why it never became ready
 
-    def __init__(self, repo_path: str, install_confirmed: bool, parent=None):
+    def __init__(self, repo_path: str, install_confirmed: bool,
+                 start_command: str = "", port: int = 0, parent=None):
         super().__init__(parent)
         self.repo_path = repo_path
         self.install_confirmed = install_confirmed
+        #: `--start-command`: what to run instead of the detected script.
+        #: Split here, at the boundary, so a fixed argv is what reaches
+        #: `devserver.build_plan` - the same contract the CLI has.
+        self.start_command = (start_command or "").strip()
+        #: `--dev-server-port`: the port to expect, for the stacks that do
+        #: not announce their own (Django, Rails).
+        self.port = int(port or 0)
         self.proc = None
 
     def run(self) -> None:
@@ -588,7 +609,12 @@ class DevServerWorker(QThread):
             if stack is None:
                 self.failed.emit("no dev server detected")
                 return
-            plan = devserver.build_plan(stack, repo)
+            import shlex
+
+            start_argv = (shlex.split(self.start_command)
+                          if self.start_command else None)
+            plan = devserver.build_plan(stack, repo, start_argv=start_argv,
+                                        port=self.port or None)
             if plan.install_argv is not None:
                 if not self.install_confirmed:
                     self.failed.emit(

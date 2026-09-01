@@ -56,6 +56,13 @@ class AuditScreen(RunScreen):
 
             # What the target's own stack asked for, and why. Empty - and
             # invisible - until something asks.
+            # Which project, when the folder holds more than one. Hidden
+            # until one does - see `RunScreen._fill_projects`.
+            yield Label(self.tr("tui_project_label"), classes="field-project")
+            yield Select([(self.tr("tui_project_whole"), "")], value="",
+                         allow_blank=False, id="project",
+                         classes="field-project")
+
             yield Label("", id="audit-profile", classes="hint")
 
             # One sentence, not three labelled dropdowns - see
@@ -249,6 +256,7 @@ class AuditScreen(RunScreen):
             # under each control. Applying it a second time inside the
             # command would overwrite whatever the person changed after
             # seeing it.
+            project=self.chosen_project() or None,
             profile_defaults=False,
             _explicit=set(self._touched),
             no_hints=True,

@@ -221,3 +221,90 @@ class SeveralProjectsInOneFolder(_Built):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OneProjectOutOfSeveral(_Built):
+    def test_a_project_is_named_by_its_folder_or_by_a_path(self):
+        root = self.build({
+            "apps/web/vite.config.ts": "export default {}",
+            "apps/admin/vite.config.ts": "export default {}",
+        })
+        plan = run_profile.build(str(root))
+        self.assertEqual(sorted(plan.choices()), ["admin", "web"])
+        for spelling in ("web", "apps/web", str(root / "apps" / "web")):
+            with self.subTest(spelling=spelling):
+                self.assertEqual(run_profile.choose_project(plan, spelling),
+                                 str(root / "apps" / "web"))
+
+    def test_a_name_nothing_matches_is_refused(self):
+        """Silently auditing the whole folder is the behaviour `--project`
+        exists to replace, and it would look exactly like success."""
+        root = self.build({"apps/web/vite.config.ts": "export default {}",
+                           "apps/admin/vite.config.ts": "export default {}"})
+        plan = run_profile.build(str(root))
+        self.assertEqual(run_profile.choose_project(plan, "nope"), "")
+
+    def test_choosing_is_only_offered_where_there_is_a_choice(self):
+        root = self.build({"vite.config.ts": "export default {}"})
+        plan = run_profile.build(str(root))
+        self.assertFalse(plan.ambiguous())
+        self.assertEqual(plan.choices(), [Path(root).name])
+
+
+class WhichDevServerAMonorepoMeans(_Built):
+    def _monorepo(self) -> Path:
+        return self.build({
+            "package.json": '{"workspaces":["apps/*"],'
+                            '"scripts":{"dev":"turbo dev"}}',
+            "apps/web/package.json": '{"scripts":{"dev":"vite"}}',
+            "apps/web/vite.config.ts": "export default {}",
+            "apps/admin/package.json": '{"scripts":{"dev":"vite"}}',
+            "apps/admin/vite.config.ts": "export default {}",
+        })
+
+    def test_the_root_and_each_application_are_different_servers(self):
+        plan = run_profile.build(str(self._monorepo()))
+        roots = {Path(server.root).name for server in plan.servers}
+        self.assertIn("web", roots)
+        self.assertIn("admin", roots)
+        self.assertIsNotNone(plan.shared_server())
+        self.assertEqual(len(plan.project_servers()), 2)
+
+    def test_the_reason_says_which_one_would_start(self):
+        """`--devserver` was deciding this silently, and a root's `dev`
+        script is not the application's."""
+        plan = run_profile.build(str(self._monorepo()))
+        sentence = run_profile.explain(plan.suggestion("devserver"), "en")
+        self.assertIn("monorepo root", sentence)
+
+    def test_an_ordinary_project_says_the_ordinary_thing(self):
+        root = self.build({"package.json": '{"scripts":{"dev":"vite"}}',
+                           "vite.config.ts": "export default {}"})
+        plan = run_profile.build(str(root))
+        self.assertIsNone(plan.shared_server())
+        self.assertNotIn("monorepo",
+                         run_profile.explain(plan.suggestion("devserver"), "en"))
+
+    def test_a_folder_that_serves_nothing_lists_no_servers(self):
+        root = self.build({"index.html": "<html></html>"})
+        self.assertEqual(run_profile.build(str(root)).servers, [])
+
+
+class ADevServerIsFoundWhereItLives(_Built):
+    def test_a_workspace_root_is_read_from_its_own_manifest(self):
+        import devserver
+
+        root = self.build({"package.json": '{"workspaces":["apps/*"]}'})
+        self.assertTrue(devserver.is_workspace_root(Path(root)))
+
+    def test_a_plain_project_is_not_a_workspace(self):
+        import devserver
+
+        root = self.build({"package.json": '{"scripts":{"dev":"vite"}}'})
+        self.assertFalse(devserver.is_workspace_root(Path(root)))
+
+    def test_a_pnpm_workspace_is_one_too(self):
+        import devserver
+
+        root = self.build({"pnpm-workspace.yaml": "packages:\n  - apps/*\n"})
+        self.assertTrue(devserver.is_workspace_root(Path(root)))

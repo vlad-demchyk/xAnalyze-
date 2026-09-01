@@ -26,8 +26,8 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QButtonGroup, QCheckBox, QComboBox, QHBoxLayout, QLabel, QPushButton,
-    QRadioButton, QVBoxLayout, QWidget,
+    QButtonGroup, QCheckBox, QComboBox, QHBoxLayout, QLabel, QLineEdit,
+    QPushButton, QRadioButton, QSpinBox, QVBoxLayout, QWidget,
 )
 
 from analysis_modes import (
@@ -409,9 +409,53 @@ class SetupScreen(QWidget):
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(4)
 
+        # Which project, when the folder holds more than one. A list rather
+        # than a text field: twenty SPFx solutions is something to pick from,
+        # not something to spell.
+        self.project_label = QLabel(t("setup_project_which", self.lang))
+        self.project_label.setProperty("class", theme.CLASS_FIELD_LABEL)
+        column.addWidget(self.project_label)
+        self.project_combo = QComboBox()
+        self.project_combo.currentIndexChanged.connect(self._on_project_chosen)
+        column.addWidget(self.project_combo)
+
         self.web_parts_box = QCheckBox(t("setup_web_parts", self.lang))
         self.web_parts_box.toggled.connect(self.app_state.set_web_parts)
         column.addWidget(self.web_parts_box)
+
+        # `--no-session`: read the site the way a stranger sees it. Only for
+        # a site, because a folder has no door and a local file no session.
+        self.no_session_box = QCheckBox(t("setup_no_session", self.lang))
+        self.no_session_box.toggled.connect(self.app_state.set_no_session)
+        column.addWidget(self.no_session_box)
+        self.no_session_hint = QLabel(t("setup_no_session_hint", self.lang))
+        self.no_session_hint.setProperty("class", theme.CLASS_MUTED)
+        self.no_session_hint.setWordWrap(True)
+        column.addWidget(self.no_session_hint)
+
+        # `--start-command` and `--dev-server-port`. Detection reads one
+        # script name out of `package.json`, and a monorepo has several: the
+        # root's `dev` is not the same server as an application's. Shown
+        # only where there is a server to start.
+        self.start_command_label = QLabel(t("setup_start_command", self.lang))
+        self.start_command_label.setProperty("class", theme.CLASS_FIELD_LABEL)
+        column.addWidget(self.start_command_label)
+        self.start_command_edit = QLineEdit()
+        self.start_command_edit.setPlaceholderText(
+            t("setup_start_command_placeholder", self.lang))
+        self.start_command_edit.textChanged.connect(
+            self.app_state.set_start_command)
+        column.addWidget(self.start_command_edit)
+        self.dev_port_label = QLabel(t("setup_dev_port", self.lang))
+        self.dev_port_label.setProperty("class", theme.CLASS_FIELD_LABEL)
+        column.addWidget(self.dev_port_label)
+        self.dev_port_spin = QSpinBox()
+        self.dev_port_spin.setRange(0, 65535)
+        self.dev_port_spin.setSpecialValueText(
+            t("setup_dev_port_auto", self.lang))
+        self.dev_port_spin.valueChanged.connect(
+            self.app_state.set_dev_server_port)
+        column.addWidget(self.dev_port_spin)
 
         self.profile_note = QLabel()
         self.profile_note.setProperty("class", theme.CLASS_MUTED)
@@ -426,11 +470,42 @@ class SetupScreen(QWidget):
         self.profile_block = holder
         return holder
 
+    def _on_project_chosen(self, _index: int) -> None:
+        self.app_state.set_chosen_project(self.project_combo.currentData() or "")
+
+    def _fill_projects(self, plan) -> None:
+        """Offer the projects in this folder, or hide the question."""
+        several = plan is not None and plan.ambiguous()
+        self.project_label.setVisible(several)
+        self.project_combo.setVisible(several)
+        if not several:
+            # A choice made inside another folder does not survive it: the
+            # name belonged to that folder, and carrying it over would audit
+            # a path that is no longer under the target.
+            self.app_state.set_chosen_project("")
+            return
+        from pathlib import Path
+
+        current = self.app_state.chosen_project
+        self.project_combo.blockSignals(True)
+        self.project_combo.clear()
+        self.project_combo.addItem(t("setup_project_whole", self.lang),
+                                   userData="")
+        for profile in plan.projects:
+            self.project_combo.addItem(Path(profile.root).name,
+                                       userData=profile.root)
+        index = self.project_combo.findData(current)
+        self.project_combo.setCurrentIndex(max(index, 0))
+        self.project_combo.blockSignals(False)
+        if index < 0 and current:
+            self.app_state.set_chosen_project("")
+
     def _refresh_profile(self) -> None:
         """The suggestions, their reasons, and the several-projects question."""
         import run_profile
 
         plan = self.app_state.run_plan
+        self._fill_projects(plan)
         if plan is None:
             self.profile_block.setVisible(False)
             return
@@ -448,6 +523,21 @@ class SetupScreen(QWidget):
         self.profile_note.setText("  ".join(lines))
         self.profile_note.setVisible(bool(lines))
 
+        # A site can be read signed out; a folder and a file cannot.
+        site = self.app_state.source == SOURCE_SITE
+        self.no_session_box.setVisible(site)
+        self.no_session_hint.setVisible(site)
+        if site:
+            self.no_session_box.blockSignals(True)
+            self.no_session_box.setChecked(self.app_state.no_session)
+            self.no_session_box.blockSignals(False)
+
+        # The dev-server overrides, only where a server exists to override.
+        serves = bool(getattr(plan, "servers", ()))
+        for widget in (self.start_command_label, self.start_command_edit,
+                       self.dev_port_label, self.dev_port_spin):
+            widget.setVisible(serves)
+
         several = plan.ambiguous()
         if several:
             from pathlib import Path
@@ -457,7 +547,8 @@ class SetupScreen(QWidget):
                                        .format(count=len(plan.projects),
                                                names=names))
         self.projects_note.setVisible(several)
-        self.profile_block.setVisible(bool(lines) or wants_parts or several)
+        self.profile_block.setVisible(bool(lines) or wants_parts or several
+                                      or site or serves)
 
     def _fill_media(self) -> None:
         current = (self.medium_combo.currentData()
@@ -723,6 +814,14 @@ class SetupScreen(QWidget):
             box.setText(t(f"audit_category_{value}", lang))
         self.project_title.setText(t("setup_project_title", lang))
         self.web_parts_box.setText(t("setup_web_parts", lang))
+        self.project_label.setText(t("setup_project_which", lang))
+        self.no_session_box.setText(t("setup_no_session", lang))
+        self.no_session_hint.setText(t("setup_no_session_hint", lang))
+        self.start_command_label.setText(t("setup_start_command", lang))
+        self.start_command_edit.setPlaceholderText(
+            t("setup_start_command_placeholder", lang))
+        self.dev_port_label.setText(t("setup_dev_port", lang))
+        self.dev_port_spin.setSpecialValueText(t("setup_dev_port_auto", lang))
         self.project_lift_box.setText(t("setup_project_lift", lang))
         self.project_lift_hint.setText(t("setup_project_lift_hint", lang))
         self.medium_label.setText(t("setup_project_medium", lang))

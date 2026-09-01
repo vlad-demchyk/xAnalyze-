@@ -1217,6 +1217,16 @@ def cmd_fullscan(args) -> int:
         print(f"path not found: {target}", file=sys.stderr)
         return EXIT_ERROR
 
+    # `--project`: one deliverable out of a folder that holds several. Done
+    # before anything is prepared, so every document is named after what was
+    # actually audited. See `cli._narrow_to_project`.
+    from cli import _narrow_to_project
+
+    target, refusal = _narrow_to_project(target, args)
+    if refusal:
+        print(refusal, file=sys.stderr)
+        return EXIT_ERROR
+
     # Before any work: what this run is about to leave undone, and the one
     # flag that would change it. See `cli_impl.prerun`.
     from cli_impl import prerun

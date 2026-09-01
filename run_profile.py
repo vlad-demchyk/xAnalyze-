@@ -29,7 +29,7 @@ became unreachable - which is the defect this whole module is a reaction to.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 #: A live address, crawled.
@@ -100,6 +100,8 @@ _OPTION_KINDS = {
     # What the documents in a folder are *for*. One named file settles it by
     # its own suffix and headers; a site is a site.
     "medium": (KIND_REPO,),
+    # One deliverable out of a folder that holds several.
+    "project": (KIND_REPO,),
     # Reads part manifests out of a checkout - see `audit/spfx.py`.
     "web_parts": (KIND_SITE, KIND_FILE),
     # Everything below reaches all three, and is listed so the table is the
@@ -241,6 +243,11 @@ class Plan:
     #: question a folder of several solutions has to be asked - see
     #: `project_profile.projects`.
     projects: list = field(default_factory=list)
+    #: Every dev server this target could start - `devserver.Server`. A
+    #: monorepo answers with the root's own and one per application, and the
+    #: two are different runs: the root's `dev` script serves the workspace,
+    #: an application's serves that application. See `devserver.servers_under`.
+    servers: list = field(default_factory=list)
 
     def fields(self) -> tuple:
         return fields_for(self.kind)
@@ -265,6 +272,36 @@ class Plan:
     def ambiguous(self) -> bool:
         """Does this folder hold more than one project?"""
         return len(self.projects) > 1
+
+    def choices(self) -> list:
+        """What `--project` accepts here: the last component of each root.
+
+        Names rather than paths, because that is what a person reads off a
+        folder and types back. Two projects with the same last component are
+        possible in a deep tree, and `resolve_project` answers that by taking
+        a path as well.
+        """
+        from pathlib import Path as _Path
+
+        return [_Path(profile.root).name for profile in self.projects]
+
+    def shared_server(self):
+        """The workspace server, when this target is a monorepo root.
+
+        `None` for an ordinary project. A monorepo root that can serve
+        itself is the case the `--devserver` flag was silently deciding: its
+        script starts, or orchestrates, the applications under it, and each
+        of those has a server of its own.
+        """
+        for server in self.servers:
+            if server.workspace and server.root == self.target:
+                return server
+        return None
+
+    def project_servers(self) -> list:
+        """The dev servers that belong to a project rather than to the root."""
+        return [server for server in self.servers
+                if server.root != self.target]
 
     def apply(self, args, touched=()) -> list:
         """Set what this target asks for on `args`, and say what was set.
@@ -331,6 +368,13 @@ def build(target: str, profile=None, forced_url: bool = False,
             projects = project_profile.projects(target)
         except OSError:
             projects = []
+    servers: list = []
+    if kind == KIND_REPO and target:
+        import devserver
+        try:
+            servers = devserver.servers_under(target, projects)
+        except OSError:
+            servers = []
 
     names = [stack.name for stack in getattr(profile, "stacks", ())]
     evidence = getattr(profile, "evidence", {}) or {}
@@ -361,9 +405,18 @@ def build(target: str, profile=None, forced_url: bool = False,
             continue
         prompts.append(Prompt(field=recipe.option, reason=recipe.reason,
                               stack=name, evidence=evidence.get(name, "")))
-    return Plan(kind=kind, target=target, profile=profile,
+    plan = Plan(kind=kind, target=target, profile=profile,
                 suggestions=tuple(suggestions), prompts=tuple(prompts),
-                projects=list(projects or []))
+                projects=list(projects or []), servers=servers)
+    # A monorepo root's dev server is not this project's dev server. Saying
+    # "start it" without saying *which* is the flag deciding for the person
+    # who asked for it, so the sentence changes rather than the value.
+    if plan.shared_server() is not None and plan.project_servers():
+        plan.suggestions = tuple(
+            replace(item, reason="why_devserver_workspace")
+            if item.option == "devserver" else item
+            for item in plan.suggestions)
+    return plan
 
 
 def explain(item, lang: str = "en", enabled: bool = True) -> str:
@@ -384,3 +437,37 @@ def explain(item, lang: str = "en", enabled: bool = True) -> str:
         return t(f"{stem}_stack", lang).format(
             why=why, stack=stack, evidence=evidence)
     return t(stem, lang).format(why=why)
+
+
+def choose_project(plan, name: str) -> str:
+    """The root of the project `name` picks out, or `""`.
+
+    A folder of twenty SPFx solutions is twenty deliverables, and naming one
+    is how a person audits one. Accepted spellings: the project's own folder
+    name (`web`), a path relative to the target (`apps/web`), or an absolute
+    path - because a form hands over a path and a person types a name, and
+    refusing either would make one of the two surfaces wrong.
+
+    Empty for a name nothing matches, so the caller can print the choices
+    rather than silently audit the whole folder - which is the behaviour
+    this whole feature exists to replace.
+    """
+    from pathlib import Path as _Path
+
+    wanted = (name or "").strip().rstrip("/")
+    if not wanted:
+        return ""
+    target = _Path(plan.target) if plan.target else None
+    for profile in plan.projects:
+        root = _Path(profile.root)
+        if wanted.lower() == root.name.lower():
+            return str(root)
+        if str(root) == wanted:
+            return str(root)
+        if target is not None:
+            try:
+                if str(root.relative_to(target)) == wanted:
+                    return str(root)
+            except ValueError:  # pragma: no cover - not under the target
+                continue
+    return ""

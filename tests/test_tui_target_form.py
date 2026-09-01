@@ -271,5 +271,100 @@ class TheFullScanFormFollowsTheTarget(_Form):
         run(go())
 
 
+class OneProjectOutOfSeveral(_Form):
+    def setUp(self):
+        super().setUp()
+        from tui.screens.fullscan import FullscanScreen
+
+        self.screen_class = FullscanScreen
+
+    def _monorepo(self) -> Path:
+        return self.tree({
+            "package.json": '{"workspaces":["apps/*"],'
+                            '"scripts":{"dev":"turbo dev"}}',
+            "apps/web/package.json": '{"scripts":{"dev":"vite"}}',
+            "apps/web/vite.config.ts": "export default {}",
+            "apps/admin/package.json": '{"scripts":{"dev":"vite"}}',
+            "apps/admin/vite.config.ts": "export default {}",
+        })
+
+    def test_the_projects_are_offered_and_the_choice_reaches_the_run(self):
+        async def go():
+            from tui.app import XAnalyzeApp
+
+            app = XAnalyzeApp()
+            async with app.run_test(size=(120, 70)) as pilot:
+                screen = await self.open(pilot, app)
+                await self.aim(pilot, screen, str(self._monorepo()))
+                picker = screen.query_one("#project", Select)
+                self.assertTrue(picker.display)
+                offered = {label for label, _value in picker._options
+                           if isinstance(label, str)}
+                self.assertTrue({"web", "admin"} <= offered)
+                picker.value = "web"
+                # The profile pre-ticks the dev server for a Vite project,
+                # and an unbuilt one asks to install first - a modal, not a
+                # run. This test is about the project picker.
+                screen.query_one("#devserver", Checkbox).value = False
+                await pilot.pause()
+                screen._run_fullscan()
+                await pilot.pause()
+                self.assertEqual(self.started["args"].project, "web")
+                app.exit()
+
+        run(go())
+
+    def test_a_folder_with_one_project_is_not_asked(self):
+        async def go():
+            from tui.app import XAnalyzeApp
+
+            app = XAnalyzeApp()
+            async with app.run_test(size=(120, 70)) as pilot:
+                screen = await self.open(pilot, app)
+                await self.aim(pilot, screen, str(self.tree(
+                    {"vite.config.ts": "export default {}"})))
+                self.assertFalse(screen.query_one("#project").display)
+                screen._run_fullscan()
+                await pilot.pause()
+                self.assertIsNone(self.started["args"].project)
+                app.exit()
+
+        run(go())
+
+    def test_the_dev_server_overrides_appear_only_where_a_server_does(self):
+        async def go():
+            from tui.app import XAnalyzeApp
+
+            app = XAnalyzeApp()
+            async with app.run_test(size=(120, 70)) as pilot:
+                screen = await self.open(pilot, app)
+                folder = self.tree({"package.json": '{"scripts":{"dev":"v"}}',
+                                    "page.html": "<html></html>"})
+                await self.aim(pilot, screen, str(folder))
+                self.assertTrue(screen.query_one("#start-command").display)
+                screen.query_one("#start-command", Input).value = "npm run x"
+                screen.query_one("#dev-server-port", Input).value = "5173"
+                await self.aim(pilot, screen, str(folder / "page.html"))
+                self.assertFalse(screen.query_one("#start-command").display)
+                screen.query_one("#devserver", Checkbox).value = False
+                await pilot.pause()
+                screen._run_fullscan()
+                await pilot.pause()
+                args = self.started["args"]
+                self.assertIsNone(args.start_command)
+                self.assertIsNone(args.dev_server_port)
+                app.exit()
+
+        run(go())
+
+    def test_a_port_that_is_not_a_number_means_work_it_out(self):
+        from tui.screens.fullscan import _port_or_none
+
+        self.assertIsNone(_port_or_none(""))
+        self.assertIsNone(_port_or_none("soon"))
+        self.assertIsNone(_port_or_none("99999"))
+        self.assertEqual(_port_or_none("5173"), 5173)
+
+
 if __name__ == "__main__":
     unittest.main()

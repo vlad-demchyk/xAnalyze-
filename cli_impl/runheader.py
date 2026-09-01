@@ -75,6 +75,12 @@ def describe(command: str, target: str, args, *, language: str = "",
                         ("web_parts", "web parts only")):
         if getattr(args, flag, False):
             rows.append((label, "yes"))
+    # Which project, when one was picked out of a folder that holds
+    # several. Without it two runs over the same monorepo read as two runs
+    # over the same thing, which is exactly what they are not.
+    project = getattr(args, "project", None)
+    if project:
+        rows.append(("project", str(project)))
     # What the detected stack switched on, when it switched anything on.
     # Set by `cli_impl.prerun.profile`; a parameter that changed what was
     # measured has to be in the document that reports the measurement.

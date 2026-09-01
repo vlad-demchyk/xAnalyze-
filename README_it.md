@@ -98,6 +98,9 @@ conoscere:
 | `--report PERCORSO`, `--styled-report PERCORSO` | briefing per un agente (`.md`/`.json`) e report per una persona (`.pdf`/`.html`) |
 | `--json`, `--check` | output leggibile da una macchina; codice 1 con risultati seri |
 | `--language uk\|it\|en` | lingua del report; altrimenti dedotta dalle pagine |
+| `--project NOME` | un progetto dentro una cartella che ne contiene più d'uno, per nome o percorso |
+| `--start-command CMD`, `--dev-server-port N` | cosa eseguire al posto dello script rilevato, e la porta da attendere |
+| `--no-session` | leggere un sito come lo vede un estraneo, ignorando l'accesso memorizzato |
 | `--profile-defaults` | attivare ciò che lo stack rilevato chiede (vedi sotto) |
 
 ## Cosa controlla
@@ -166,9 +169,21 @@ bersaglio non raggiunge nulla non viene mostrato né letto, quindi un
 `--devserver` attivato per un repository non vi segue su un singolo file.
 
 Una cartella con più progetti viene interrogata invece che fusa in silenzio:
-venti soluzioni SPFx in una cartella sono venti artefatti. Un repository che ha
-provato qualcosa di suo resta un progetto solo: `web/` in Bedrock è la docroot di
-quel progetto, non un secondo progetto.
+venti soluzioni SPFx in una cartella sono venti artefatti. `--project NOME`, e
+il selettore che la finestra e il modulo del terminale mostrano, analizzano uno
+solo di essi: la scansione, il file di esclusioni e il dev server lo seguono
+insieme, quindi non possono finire per descrivere progetti diversi. Un
+repository che ha provato qualcosa di suo resta un progetto solo: `web/` in
+Bedrock è la docroot di quel progetto, non un secondo progetto.
+
+**Un monorepo ha più di un dev server, e non sono la stessa esecuzione.** Lo
+script `dev` della radice avvia, o orchestra, le applicazioni sotto di essa;
+ognuna di queste ha uno script proprio. `--devserver` sceglieva in silenzio.
+Ora l'esecuzione dice quale partirebbe e che indicare un progetto avvia quello
+del progetto - misurato su un workspace reale, dove la radice dichiara
+`workspaces: ["apps/*"]` e ognuna delle quattro applicazioni dichiara il
+proprio `dev`. `--start-command` sostituisce lo script dove nessuno dei due va
+bene.
 
 ## Lavoro consegnato come frammento del sito di qualcun altro
 

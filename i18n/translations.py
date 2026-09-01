@@ -5855,6 +5855,17 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "read off disk this is templates the bundler has not run yet: "
               "`<App />` is not a heading",
     },
+    "why_devserver_workspace": {
+        "uk": "у корені монорепо є свій dev-скрипт, і в кожного застосунку "
+              "під ним теж: запуститься саме кореневий - вкажіть проєкт, "
+              "щоб запустити його власний",
+        "it": "la radice del monorepo ha il proprio script dev, e ogni "
+              "applicazione sotto di essa pure: partirà quello della radice "
+              "- indicate un progetto per avviare il suo",
+        "en": "the monorepo root has its own dev script and so does every "
+              "application under it: the root's is what starts - name a "
+              "project to start that project's instead",
+    },
     "why_breakpoints_file": {
         "uk": "один документ нікуди не веде, тож лишається єдина вісь - "
               "ширина; переповнення 1.4.10 видно не на типовій",
@@ -5879,6 +5890,43 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Attivato perché {why}",
         "en": "Enabled, because {why}",
     },
+    "setup_no_session": {
+        "uk": "Читати як стороння людина",
+        "it": "Leggere come un estraneo",
+        "en": "Read it the way a stranger sees it",
+    },
+    "setup_no_session_hint": {
+        "uk": "Ігнорує збережений вхід для цього хоста. Так видно, скільки "
+              "сайту насправді за дверима.",
+        "it": "Ignora l'accesso memorizzato per questo host. Così si vede "
+              "quanta parte del sito è davvero dietro una porta.",
+        "en": "Ignores the stored sign-in for this host - which is how you "
+              "find out how much of the site is really behind a door.",
+    },
+    "setup_start_command": {
+        "uk": "Команда запуску сервера (необовʼязково)",
+        "it": "Comando di avvio del server (facoltativo)",
+        "en": "Command that starts the server (optional)",
+    },
+    "setup_start_command_placeholder": {
+        "uk": "npm run dev:site", "it": "npm run dev:site",
+        "en": "npm run dev:site",
+    },
+    "setup_dev_port": {
+        "uk": "Порт сервера", "it": "Porta del server", "en": "Server port",
+    },
+    "setup_dev_port_auto": {
+        "uk": "визначити автоматично", "it": "rilevare automaticamente",
+        "en": "work it out",
+    },
+    "setup_project_which": {
+        "uk": "Який проєкт із теки аудитувати",
+        "it": "Quale progetto della cartella analizzare",
+        "en": "Which project in this folder to audit",
+    },
+    "setup_project_whole": {
+        "uk": "уся тека", "it": "tutta la cartella", "en": "the whole folder",
+    },
     "setup_web_parts": {
         "uk": "Лише веб-парти, які віддає цей репозиторій",
         "it": "Solo le web part che questo repository consegna",
@@ -5902,6 +5950,13 @@ _STRINGS: dict[str, dict[str, str]] = {
         "uk": "https://contoso.sharepoint.com/sites/intranet",
         "it": "https://contoso.sharepoint.com/sites/intranet",
         "en": "https://contoso.sharepoint.com/sites/intranet",
+    },
+    "tui_project_label": {
+        "uk": "Який проєкт із теки", "it": "Quale progetto della cartella",
+        "en": "Which project in this folder",
+    },
+    "tui_project_whole": {
+        "uk": "уся тека", "it": "tutta la cartella", "en": "the whole folder",
     },
     "tui_projects_several": {
         "uk": "У теці {count} окремих проєкти ({names}). Зараз вони "

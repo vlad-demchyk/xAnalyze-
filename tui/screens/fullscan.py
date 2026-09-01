@@ -13,6 +13,20 @@ from tui.screens.base import RunScreen
 from tui.screens.confirm import ConfirmModal
 
 
+def _port_or_none(text: str):
+    """A port number, or `None` for "work it out".
+
+    A field is text and a port is a number, and a person types neither
+    reliably: anything that is not a number means the same as an empty
+    field, which is the answer that lets the run continue.
+    """
+    try:
+        value = int((text or "").strip())
+    except ValueError:
+        return None
+    return value if 0 < value < 65536 else None
+
+
 class FullscanScreen(RunScreen):
     """Form to configure and run a full scan."""
 
@@ -51,6 +65,13 @@ class FullscanScreen(RunScreen):
                         id="site-url", classes="field-site-url")
 
             # What the target's own stack asked for, and why.
+            # Which project, when the folder holds more than one. Hidden
+            # until one does - see `RunScreen._fill_projects`.
+            yield Label(self.tr("tui_project_label"), classes="field-project")
+            yield Select([(self.tr("tui_project_whole"), "")], value="",
+                         allow_blank=False, id="project",
+                         classes="field-project")
+
             yield Label("", id="fullscan-profile", classes="hint")
 
             # The design's toolbar (artboard 3a) reads "analyze Site ·
@@ -144,6 +165,15 @@ class FullscanScreen(RunScreen):
             # confusing outcome, not a helpful one. A repo scanned with this
             # unchecked is scanned statically, same as always.
             yield Checkbox(self.tr("tui_devserver"), id="devserver")
+            # What to run instead of the detected script, and the port to
+            # expect for the stacks that do not announce their own. Shown
+            # only where there is a server to start.
+            yield Label(self.tr("setup_start_command"), classes="field-server")
+            yield Input(placeholder=self.tr("setup_start_command_placeholder"),
+                        id="start-command", classes="field-server")
+            yield Label(self.tr("setup_dev_port"), classes="field-server")
+            yield Input(placeholder=self.tr("setup_dev_port_auto"),
+                        id="dev-server-port", classes="field-server")
 
             yield Static("")
             with Horizontal():
@@ -190,6 +220,7 @@ class FullscanScreen(RunScreen):
             target=target,
             url=False,
             web_parts=web_parts,
+            project=self.chosen_project() or None,
             profile_defaults=False,
             _explicit=set(self._touched),
             depth=int(self.query_one("#depth", Select).value or 0),
@@ -200,8 +231,10 @@ class FullscanScreen(RunScreen):
             no_default_excludes=False,
             repo=repo,
             devserver=self.query_one("#devserver", Checkbox).value,
-            start_command=None,
-            dev_server_port=None,
+            start_command=(self.query_one("#start-command", Input).value.strip()
+                           or None),
+            dev_server_port=_port_or_none(
+                self.query_one("#dev-server-port", Input).value),
             yes=False,
             detector="offline",
             scope="both",
