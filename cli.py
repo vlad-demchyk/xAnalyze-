@@ -94,6 +94,13 @@ def cmd_scan(args) -> int:
     unjudged: list = []
     walked: list = []
 
+    # A dated folder, and the two documents in it, unless this run is being
+    # parsed rather than read. See `runfolder.prepare_for`.
+    from cli_impl import runfolder
+
+    target_for_folder = args.paths[0] if args.paths else "."
+    folder = runfolder.prepare_for(target_for_folder, args)
+
     files = _collect_files(args.paths, args, missing_out=missing,
                            diagnostics_out=walked)
 
@@ -119,8 +126,14 @@ def cmd_scan(args) -> int:
     else:
         _print_human(findings, walked=walked,
                      scope=getattr(args, "scope", "content"))
+    if getattr(args, "report", None):
+        from cli_impl.reports import write_text_briefing
+
+        write_text_briefing(files, findings, args, args.report)
     if getattr(args, "styled_report", None):
         _write_styled_text_report(files, findings, args)
+    if folder is not None:
+        print(f"# run folder: {folder.run}", file=sys.stderr)
     if missing:
         # Said again at the end: the warning above scrolls past a long report,
         # and "nothing found" plus exit 0 is indistinguishable from success.
@@ -308,6 +321,7 @@ def cmd_audit(args) -> int:
     import audit
     from audit.explanations import one_line, render, summary_line
     from i18n.translations import t
+    from cli_impl import runfolder
 
     # Built before the crawl so a missing sign-in fails immediately, rather
     # than after crawling thirty pages.
@@ -333,6 +347,10 @@ def cmd_audit(args) -> int:
     if not is_url and not Path(target).exists():
         print(f"path not found: {target}", file=sys.stderr)
         return EXIT_ERROR
+
+    # Prepared after the target is resolved, so the folder is named by what
+    # was audited rather than by what was typed.
+    folder = runfolder.prepare_for(target, args)
 
     if _is_page_file(target) and not args.url:
         # A page built into one file is a finished document, so it is audited
@@ -414,7 +432,9 @@ def cmd_audit(args) -> int:
         print(f"# {hidden} check(s) could not be decided and are not listed; "
               f"add --unsettled to see them", file=sys.stderr)
 
-    lang = args.language or "en"
+    from i18n.translations import report_language
+
+    lang = report_language(args.language)
 
     fix_outcome = None
     if getattr(args, "fix", False):
@@ -435,8 +455,16 @@ def cmd_audit(args) -> int:
         from report.export import write_styled_report
         from report.model import from_accessibility
 
-        write_styled_report(args.styled_report, from_accessibility(result, lang), lang)
+        from cli_impl.reports import _command_of
+        from cli_impl.runheader import describe
+
+        model = from_accessibility(result, lang)
+        model.meta.run = describe(_command_of(args), result.root, args,
+                                  language=lang)
+        write_styled_report(args.styled_report, model, lang)
         print(f"# styled report: {args.styled_report}", file=sys.stderr)
+    if folder is not None:
+        print(f"# run folder: {folder.run}", file=sys.stderr)
 
     if args.json:
         print(json.dumps({
@@ -779,8 +807,12 @@ def build_parser() -> argparse.ArgumentParser:
                              "person to read: a .pdf or .html by suffix. "
                              "Different from --json/--check, which are for a "
                              "pipeline, not a reader")
+    p_scan.add_argument("--report", metavar="PATH", default=None,
+                        help="agent briefing for this scan (.md); written "
+                             "into the run folder when not named")
     p_scan.add_argument("--language", default=None, help="uk | it | en; "
-                        "language of --styled-report's own labels (default en)")
+                        "language of the reports' own labels (default: the "
+                        "language of the text, or English)")
     p_scan.set_defaults(func=cmd_scan)
 
     p_fix = sub.add_parser("fix", help="rewrite non-keyboard characters in place")

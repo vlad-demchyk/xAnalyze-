@@ -7,6 +7,23 @@ from __future__ import annotations
 
 LANGUAGES = {"uk": "Українська", "it": "Italiano", "en": "English"}
 
+
+def report_language(asked: str | None, detected: str | None = None) -> str:
+    """The language a report is written in: asked for, detected, or English.
+
+    One owner, because the three surfaces that decide this - `fullscan`,
+    `audit` and the report writer - each had their own `or "en"` and none of
+    them checked the value. `lang_detect` answers `other` for a page in a
+    language this tool has no lists for, and `--language fr` is a value a
+    person can type; both used to travel on as the report language, and both
+    read as English only because every lookup here falls back to English on
+    a missing key. That is an accident where a decision belongs.
+    """
+    for candidate in (asked, detected):
+        if candidate in LANGUAGES:
+            return candidate
+    return "en"
+
 _STRINGS: dict[str, dict[str, str]] = {
     # Window title only (OS title bar / dock / taskbar) — the in-app header
     # already shows the "XAnalyze" wordmark on its own (see main_window's

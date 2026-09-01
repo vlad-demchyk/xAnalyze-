@@ -178,6 +178,12 @@ class ReportMeta:
     target: str
     #: "text-web" | "text-repo" | "audit-web" | "audit-repo" | "audit-file"
     mode: str
+    #: `[(label, value)]` describing the run that produced this document -
+    #: the command and the parameters that changed what it measured. Empty
+    #: when the caller did not say, which is honest: a document that does
+    #: not know how it was produced should not invent an answer. See
+    #: `cli_impl.runheader`.
+    run: list = field(default_factory=list)
     generated_at: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat(timespec="seconds"))
     generator: str = "AI Content Scanner"

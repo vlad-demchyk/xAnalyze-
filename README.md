@@ -33,6 +33,7 @@ XAnalyze scans a website, HTML file, repository, or source directory and reports
 - **Repository facts**: tracked or unignored `.env` files, assistant-related commits or configuration, and blame for findings.
 - **Media provenance**: IPTC/XMP metadata and optional C2PA manifests. This is file evidence, not a verdict about pixels.
 - **Run history**: pause, resume, compare, and inspect the documents produced by each run.
+- **A report from every command**: `scan`, `audit` and `fullscan` each write a briefing and a styled report into a dated run folder, and every document opens by naming the command and the parameters that changed what it measured.
 - **One binary, three surfaces**: the packaged app offers on first launch to put the `xanalyze` command on your `PATH`, so the CLI and the TUI need no second download.
 
 ### Combined scan
@@ -320,6 +321,10 @@ Findings are labelled `exact`, `needs-browser` or `advisory`. `exact` means the 
 **The undecided are not listed.** `needs-browser` is an engine saying it could not tell: "this element is placed on a background image", "absolutely positioned, the background colour cannot be determined". Measured on one page of python.org with a real browser, that was **312 of 348** contrast findings, and the whole run went from 497 findings to **182** once they left. A report two thirds made of "we do not know" is not a list anybody works through, so a run says how many it left out and `--unsettled` brings them back. `--confidence exact` is the stricter view still: it also drops the advisory ones.
 
 `--category`, `--scope`, `--breakpoints`, and `--no-typography` are views over the same scan, not changes to the underlying evidence.
+
+### The report's language
+
+Named, detected, or English, in that order. `--language uk|it|en` wins. Without it the pages decide, but only when what they are written in is one of those three: `lang_detect` answers `other` for a language this tool has no lists for, and a report has no labels, no translations and no advice in `other`. Anything else is English, and the run says which it chose and on how many readable passages.
 
 ### Media provenance and repository facts
 

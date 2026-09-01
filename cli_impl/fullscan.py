@@ -646,10 +646,42 @@ def _audit_fullscan_target(is_url: bool, is_page_file: bool, target: str,
                                force_medium=getattr(args, "medium", None))
 
 
-def _detect_report_language(lang, pages) -> str:
-    """Auto-detect the report language from crawled page content."""
+#: The languages a report exists in. `report/template.py` carries labels for
+#: exactly these, `i18n.translations` carries strings for exactly these, and
+#: `detector_advice` writes advice in exactly these - so the list lives with
+#: the strings, and `i18n.translations.report_language` is the one function
+#: that decides.
+from i18n.translations import LANGUAGES as _LANGUAGES, report_language
+
+REPORT_LANGUAGES = tuple(sorted(_LANGUAGES))
+
+
+def _detect_report_language(lang, pages, announce=None) -> str:
+    """Which language the report is written in, and why.
+
+    Three steps, in this order:
+
+    1. `--language`, when it names one of `REPORT_LANGUAGES`. What the
+       caller asked for is the answer, and a value outside the three is
+       refused rather than half-honoured.
+    2. What the pages are written in, when that is one of the three. Voted
+       on passages long enough to read, not on menu labels - see below.
+    3. English.
+
+    Step 3 is the part that was missing. `lang_detect` answers `other` for a
+    page in a language this tool has no lists for, and that answer was being
+    used as the report language: a German or Spanish site produced a report
+    whose language is `"other"`, which no label table and no advice list
+    has. It read as English only because every lookup happens to fall back
+    to English on a missing key - an accident, in the one place that should
+    be a decision.
+    """
     if lang is not None:
-        return lang
+        chosen = report_language(lang)
+        if chosen != lang and announce:
+            announce(f"# [report] language {lang!r} is not one of "
+                     f"{', '.join(REPORT_LANGUAGES)}; writing in English")
+        return chosen
     # Only blocks long enough to *read* vote. Every block used to, and a
     # navigation label is one or two words: measured on an Italian site whose
     # prose is 9:2 Italian, the whole-page vote was 23 `en` against 19 `it`
@@ -670,8 +702,14 @@ def _detect_report_language(lang, pages) -> str:
             all_hints.append(block.language_hint)
             if len(block.text.split()) >= MIN_WORDS:
                 long_hints.append(block.language_hint)
-    hints = long_hints or all_hints
-    return Counter(hints).most_common(1)[0][0] if hints else "en"
+    hints = [h for h in (long_hints or all_hints) if h in REPORT_LANGUAGES]
+    if not hints:
+        return report_language(None)
+    chosen, votes = Counter(hints).most_common(1)[0]
+    if announce:
+        announce(f"# [report] language {chosen} "
+                 f"({votes} of {len(hints)} readable passage(s))")
+    return chosen
 
 
 def _issues_at_floor(audit_result, floor: str | None,
@@ -875,6 +913,11 @@ def _styled_report_model(audit_result, content_findings: list, lang: str,
     model = None
     if audit_result:
         model = from_accessibility(audit_result, lang=lang)
+        from cli_impl.reports import _command_of
+        from cli_impl.runheader import describe
+
+        model.meta.run = describe(_command_of(args), audit_result.root, args,
+                                  language=lang)
 
     if content_findings:
         text_model = from_text_analysis(_ScanResultShim(list(content_findings)))
@@ -982,7 +1025,7 @@ def _write_markdown_briefing(args, audit_result, agent_mode: bool,
 
 
 def _write_run_documents(folder, target: str, timings, payload, combined,
-                         documents: int) -> None:
+                         documents: int, args=None) -> None:
     """The two documents that describe the run rather than the target.
 
     `timings.md` says where the time went, so "why did this take an hour"
@@ -994,7 +1037,17 @@ def _write_run_documents(folder, target: str, timings, payload, combined,
     from cli_impl.reports import write_comparison_document
 
     summary = combined.get("summary", {})
+    # The same passport the reports carry, so a folder of timings from
+    # several runs can be told apart by what each run actually did rather
+    # than by its clock time alone.
+    from cli_impl.reports import _command_of
+    from cli_impl.runheader import as_line, describe
+
+    extra = {}
+    if args is not None:
+        extra["run"] = as_line(describe(_command_of(args), target, args))
     timings.write(folder.timings, target, extra={
+        **extra,
         "pages or files examined": documents,
         "findings": summary.get("total_findings", 0),
         "AI patterns": summary.get("ai_patterns", 0),
@@ -1425,7 +1478,9 @@ def _run_phases_body(args, state, folder, timings, target, lang, is_url, is_page
                          unsettled=bool(getattr(args, "unsettled", False))))
     timings.finish()
 
-    lang = _detect_report_language(lang, pages)
+    lang = _detect_report_language(
+        lang, pages,
+        announce=lambda line: print(line, file=sys.stderr, flush=True))
 
     # --- Phase 3: Build combined result ---
     clean_findings = scan_result["findings"] if scan_result else []
@@ -1521,7 +1576,7 @@ def _run_phases_body(args, state, folder, timings, target, lang, is_url, is_page
             _write_run_documents(
                 folder, target, timings, written.get("payload"), combined,
                 len({d.source for d in audit_result.documents})
-                if audit_result else 0)
+                if audit_result else 0, args=args)
             if state is not None:
                 state.done("documents", artifacts=[
                     p for p in (folder.timings, folder.changes) if p.exists()])

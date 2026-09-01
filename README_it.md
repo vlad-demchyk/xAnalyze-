@@ -31,6 +31,7 @@ XAnalyze scansiona siti, file HTML, repository e directory di codice indicando l
 - **Fatti del repository**: file `.env` tracciati o non ignorati, configurazioni e commit legati ad assistenti AI, blame dei risultati.
 - **Provenienza media**: metadati IPTC/XMP e manifest C2PA opzionali. Sono fatti del file, non un verdetto sui pixel.
 - **Cronologia**: pausa, ripresa, confronto e documenti di ogni esecuzione.
+- **Un report da ogni comando**: `scan`, `audit` e `fullscan` scrivono un briefing e un report impaginato in una cartella datata, e ogni documento si apre dichiarando il comando e i parametri che hanno cambiato ciò che è stato misurato.
 - **Un binario, tre superfici**: al primo avvio l'app impacchettata propone di aggiungere il comando `xanalyze` al `PATH`, così CLI e TUI non richiedono un secondo download.
 
 `fullscan` unisce controlli del testo, dei caratteri e del sito. Un repository locale viene analizzato staticamente, salvo usare `--devserver`.
@@ -254,6 +255,10 @@ I risultati hanno livello `exact`, `needs-browser` o `advisory`. `exact` signifi
 La provenienza media legge IPTC/XMP e C2PA. I fatti del repository comprendono `.env`, commit e configurazioni degli assistenti AI e blame. Sono informazioni di provenienza, non difetti dell'uso di un assistente.
 
 Su un sito scansionato viene letta **ogni immagine** a cui le pagine fanno riferimento, non un campione. Si scarica solo l'intestazione del file - una richiesta HTTP range dei primi 512 KB, dove stanno quei campi e le dimensioni in pixel e dove si ferma la ricerca del marcatore C2PA - così una fotografia da 6 MB costa 512 KB e dopo la lettura non resta nulla in memoria. Le immagini con byte identici a una già letta vengono riconosciute per hash, analizzate una volta sola e riportate una volta sola con tutti i punti in cui compaiono. Il report dichiara quanti indirizzi sono stati trovati, quanti letti, quanti erano ripetizioni e cosa non è stato scaricato: un'immagine che nessuno ha letto non è risultata pulita, non è arrivata.
+
+### La lingua del report
+
+Indicata, rilevata o inglese, in quest'ordine. `--language uk|it|en` decide. Senza, decidono le pagine, ma solo se sono scritte in una di quelle tre: `lang_detect` risponde `other` per una lingua di cui questo strumento non ha liste, e un report in `other` non esiste - niente etichette, niente traduzioni, niente consigli. Tutto il resto è inglese, e l'esecuzione dichiara cosa ha scelto e su quanti passaggi leggibili.
 
 ## Report ed esecuzioni
 

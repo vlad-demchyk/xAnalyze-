@@ -772,6 +772,8 @@ h1, h2, h3 {{ font-family: '{palette.font}', Arial, sans-serif; color: {palette.
 .report-header img {{ width: 22mm; height: auto; flex: 0 0 auto; }}
 .report-header h1 {{ font-size: 17pt; margin: 0 0 1.5mm; overflow-wrap: anywhere; }}
 .report-header .meta {{ margin: 0; font-size: 9pt; color: {palette.text_muted}; }}
+.report-header .run {{ margin: 1.5mm 0 0; font-size: 8pt; color: {palette.text_muted};
+  overflow-wrap: anywhere; }}
 /* Not `break-inside: avoid`. The overview carries charts and a table and is
    taller than it was; forbidding a break inside it meant that whenever it did
    not fit in what was left of page one, the whole block jumped to page two and
@@ -945,6 +947,15 @@ footer {{
 
     logo_img = f'<img src="{logo}" alt="">' if logo else ""
 
+    run_line = ""
+    if getattr(model.meta, "run", None):
+        # One line rather than a table: it is the document's passport, not
+        # its content, and a reader checks it once. Every parameter that
+        # changed what was measured is in it - see `cli_impl.runheader`.
+        run_line = ('<p class="run">'
+                    + _esc(" · ".join(f"{label} {value}"
+                                      for label, value in model.meta.run))
+                    + "</p>")
     return f"""<!doctype html>
 <html lang="{_esc(lang)}">
 <head>
@@ -958,6 +969,7 @@ footer {{
   <div>
     <h1>{_esc(model.meta.target or labels["title"])}</h1>
     <p class="meta">{_esc(mode_label)} &middot; {_esc(labels["generated"])} {_esc(model.meta.generated_at)}</p>
+    {run_line}
   </div>
 </header>
 

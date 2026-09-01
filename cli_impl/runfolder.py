@@ -109,6 +109,32 @@ class RunFolder:
         return sorted(others, key=lambda p: p.name)
 
 
+def prepare_for(target: str, args, *, machine_flags=("json", "check")):
+    """A run folder for a command that did not have one, and where its
+    reports go.
+
+    `fullscan` has kept a dated folder per run since it existed; `scan` and
+    `audit` wrote wherever they were told and nowhere otherwise, so the two
+    commands a person is most likely to run first were the two that left no
+    document behind. Same policy as `fullscan`: a named `--report` or
+    `--styled-report` goes exactly where it was asked, and everything else
+    lands in the folder.
+
+    `machine_flags` are the ones that mean "this output is being parsed, not
+    read" - `--json`, `--check`. A pipeline step must not start leaving
+    folders on someone's Desktop, so those runs get no folder at all and are
+    unchanged from before.
+    """
+    if any(getattr(args, flag, False) for flag in machine_flags):
+        return None
+    folder = prepare(target)
+    if not getattr(args, "styled_report", None):
+        args.styled_report = str(folder.styled_report)
+    if not getattr(args, "report", None):
+        args.report = str(folder.report)
+    return folder
+
+
 class RunDocuments:
     """What one run's folder ended up containing, and what it did not.
 

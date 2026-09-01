@@ -27,7 +27,12 @@ def _write_styled_text_report(files, findings, args) -> None:
     from report.export import write_styled_report
     from report.model import from_text_analysis
 
-    lang = getattr(args, "language", None) or "en"
+    # Not `or "en"`: `--language fr` and a detected `other` both used to
+    # travel on as a language nothing here has strings for. See
+    # `i18n.translations.report_language`.
+    from i18n.translations import report_language
+
+    lang = report_language(getattr(args, "language", None))
     root = args.paths[0] if len(args.paths) == 1 else ", ".join(args.paths)
     # A finding replayed from the incremental cache has no `TextSpan`: the
     # span does not survive JSON, and the report is built from spans. Such a
@@ -37,12 +42,111 @@ def _write_styled_text_report(files, findings, args) -> None:
     spans = [f["_span"] for f in findings if f.get("_span") is not None]
     skipped = len(findings) - len(spans)
     result = RepoAnalysisResult(root_dir=root, files=files, spans=spans)
-    write_styled_report(args.styled_report, from_text_analysis(result), lang)
+    from cli_impl.runheader import describe
+
+    model = from_text_analysis(result)
+    model.meta.run = describe(_command_of(args), root, args, language=lang)
+    write_styled_report(args.styled_report, model, lang)
     print(f"# styled report: {args.styled_report}", file=sys.stderr)
     if skipped:
         print(f"# {skipped} finding(s) came from the incremental cache and are "
               f"not in the styled report; run without --incremental for a "
               f"complete document", file=sys.stderr)
+
+
+def write_text_briefing(files, findings, args, path) -> None:
+    """`scan --report`: the text scan's own briefing, in markdown.
+
+    `--styled-report` has always existed for a person and `--json` for a
+    pipeline; between them sat the document an agent reads, and the text
+    scan was the one command that could not produce it. The audit briefing
+    (`_write_report`) is built from an `AccessibilityResult` and cannot
+    describe a text scan, so this is its counterpart rather than a flag on
+    it: same shape - what this run was, where the work is, what to open
+    first - over the findings a scan actually has.
+    """
+    from collections import Counter
+    from pathlib import Path
+
+    from i18n.translations import report_language
+    from cli_impl.runheader import describe
+
+    lang = report_language(getattr(args, "language", None))
+    root = args.paths[0] if len(args.paths) == 1 else ", ".join(args.paths)
+    by_source = Counter(f.get("source", "") for f in findings)
+    by_confidence = Counter(f.get("confidence", "") for f in findings)
+    by_file = Counter(f.get("file", "") for f in findings)
+
+    out = [f"# Scan of {root}", "",
+           f"Generated {_now()} · {len(findings)} finding(s) in "
+           f"{len(by_file)} file(s) of {len(files)} read.", "",
+           "## This run", ""]
+    out += [f"- **{label}:** {value}" for label, value
+            in describe(_command_of(args), root, args, language=lang)]
+    out += ["", "## What was found", ""]
+    if not findings:
+        # An empty table reads as a broken report; the sentence reads as an
+        # answer. And it is the answer that needs the coverage beside it,
+        # which the line above already carries: nothing found *in what*.
+        out += ["Nothing. The files above were read and no finding came out "
+                "of them - which is a result, not an absence of one.", ""]
+    else:
+        out += ["| kind | count |", "|---|---|"]
+        for kind, count in by_source.most_common():
+            out.append(f"| {kind or 'unnamed'} | {count} |")
+        out += ["", "| certainty | count |", "|---|---|"]
+        for level, count in by_confidence.most_common():
+            out.append(f"| {level or 'unstated'} | {count} |")
+        out.append("")
+
+    if by_file:
+        out += ["## Files, worst first", "", "| file | findings |", "|---|---|"]
+        for name, count in by_file.most_common(_PAGES_LISTED):
+            out.append(f"| {name} | {count} |")
+        rest = len(by_file) - _PAGES_LISTED
+        if rest > 0:
+            out.append(f"| *and {rest} more* | |")
+        out.append("")
+
+    # The findings themselves, worst first and cut off: a briefing is read,
+    # and `--json` is the complete list for anything that parses.
+    ranked = sorted(findings, key=lambda f: -(f.get("score") or 0))
+    if ranked:
+        out += ["## Findings, most certain first", ""]
+        for finding in ranked[:_FINDINGS_LISTED]:
+            where = finding.get("file", "")
+            line = finding.get("line") or 0
+            out.append(f"- `{where}:{line}` — {finding.get('explanation', '')}")
+        rest = len(ranked) - _FINDINGS_LISTED
+        if rest > 0:
+            out.append(f"- *and {rest} more; `--json` has all of them*")
+        out.append("")
+
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    Path(path).write_text("\n".join(out), encoding="utf-8")
+    print(f"# report: {path}", file=sys.stderr)
+
+
+#: How many findings a briefing lists before it stops informing.
+_FINDINGS_LISTED = 40
+
+
+def _now() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+
+def _command_of(args) -> str:
+    """Which subcommand produced this document.
+
+    Read off argparse's own `func` default rather than passed in by every
+    caller: `p_audit.set_defaults(func=cmd_audit)` already records it, and a
+    second place to state it is a second place to get it wrong.
+    """
+    func = getattr(args, "func", None)
+    name = getattr(func, "__name__", "") or ""
+    return name[4:] if name.startswith("cmd_") else (name or "scan")
 
 
 def _write_report(result, args, lang: str, fix_outcome=None, ai_findings=None) -> dict:
@@ -172,10 +276,19 @@ def _write_report(result, args, lang: str, fix_outcome=None, ai_findings=None) -
                 ],
             }
 
+    from cli_impl.runheader import describe
+
     payload = {
         "generated": entry["at"],
         "root": result.root,
         "mode": result.mode,
+        # What produced this document: the command and the parameters that
+        # changed what it measured. Two reports on one site differ by a
+        # factor of three depending on whether the browser ran, and neither
+        # of them used to say which one it was. See `cli_impl.runheader`.
+        "run": [{"label": label, "value": value} for label, value
+                in describe(_command_of(args), result.root, args,
+                            language=lang)],
         "summary": {
             "counts": counts,
             "total": sum(counts.values()),
@@ -490,6 +603,11 @@ def _report_markdown(payload: dict, lang: str) -> str:
         f"{summary['documents']} document(s) examined.",
         "",
     ]
+    run = payload.get("run") or []
+    if run:
+        out += ["## This run", ""]
+        out += [f"- **{row['label']}:** {row['value']}" for row in run]
+        out.append("")
 
     # The index of what was examined, as a table and worst first.
     #
