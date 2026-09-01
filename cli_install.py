@@ -162,3 +162,31 @@ def installed_target(link_dir: Path = USER_BIN_DIR) -> Path | None:
     if target.is_symlink():
         return Path(os.readlink(target))
     return None
+
+
+def offer_is_due(already_offered: bool,
+                 link_dir: Path = USER_BIN_DIR) -> bool:
+    """Whether the packaged app should offer to install the command itself.
+
+    The button in Settings was the only way in, and a command nobody finds
+    is a command nobody has: the frozen binary already *is* the CLI and the
+    TUI, and the only thing between the user and both of them is a symlink
+    they have to go looking for.
+
+    Three conditions, and each one is a refusal to nag:
+
+    * `already_offered` - asked once, ever. The answer "no" is an answer,
+      and asking again on the next launch would make it a nag.
+    * `bundled_cli_path()` - a dev run has nothing to link (`python cli.py`
+      is the command already), so there is nothing to ask about.
+    * `installed_target()` - somebody who already pressed the button, or who
+      linked the binary by hand, gets no dialog at all.
+
+    A pure function of those three so the decision can be tested without a
+    QApplication; the dialog it gates lives in `main.py`.
+    """
+    if already_offered:
+        return False
+    if bundled_cli_path() is None:
+        return False
+    return installed_target(link_dir) is None

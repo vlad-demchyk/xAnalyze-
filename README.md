@@ -33,6 +33,7 @@ XAnalyze scans a website, HTML file, repository, or source directory and reports
 - **Repository facts**: tracked or unignored `.env` files, assistant-related commits or configuration, and blame for findings.
 - **Media provenance**: IPTC/XMP metadata and optional C2PA manifests. This is file evidence, not a verdict about pixels.
 - **Run history**: pause, resume, compare, and inspect the documents produced by each run.
+- **One binary, three surfaces**: the packaged app offers on first launch to put the `xanalyze` command on your `PATH`, so the CLI and the TUI need no second download.
 
 ### Combined scan
 
@@ -51,6 +52,11 @@ curl -L -o XAnalyze.app.zip https://github.com/vlad-demchyk/xAnalyze-/releases/l
 unzip XAnalyze.app.zip
 mv XAnalyze.app /Applications/
 ```
+
+The app and the command line are one binary. On its first launch the app
+offers, once, to link it as `xanalyze` in `~/.local/bin` so the CLI and the
+TUI work in a terminal; declining is remembered, and the same install lives
+in Settings -> Command line.
 
 ### macOS/Linux CLI
 

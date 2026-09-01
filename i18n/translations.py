@@ -2221,6 +2221,33 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Installa il comando «xanalyze»",
         "en": "Install the 'xanalyze' command",
     },
+    "cli_offer_title": {
+        "uk": "Команда «xanalyze» у терміналі",
+        "it": "Il comando «xanalyze» nel terminale",
+        "en": "The 'xanalyze' command in your terminal",
+    },
+    "cli_offer_body": {
+        "uk": "Цей застосунок уміє працювати і з термінала: скани, аудити та "
+              "текстовий інтерфейс. Для цього потрібне посилання «xanalyze» у "
+              "{dir}. Встановити зараз? Це можна зробити й пізніше в "
+              "налаштуваннях.",
+        "it": "Questa app funziona anche da terminale: scansioni, audit e "
+              "interfaccia testuale. Serve un collegamento «xanalyze» in "
+              "{dir}. Installarlo ora? Puoi farlo anche dopo, dalle "
+              "impostazioni.",
+        "en": "This app also works from a terminal: scans, audits and the "
+              "text interface. That needs an 'xanalyze' link in {dir}. "
+              "Install it now? You can also do it later in Settings.",
+    },
+    "cli_offer_yes": {
+        "uk": "Встановити", "it": "Installa", "en": "Install",
+    },
+    "cli_offer_no": {
+        "uk": "Пізніше", "it": "Più tardi", "en": "Later",
+    },
+    "cli_offer_done": {
+        "uk": "Готово: {path}", "it": "Fatto: {path}", "en": "Done: {path}",
+    },
     "settings_cli_remove": {
         "uk": "Прибрати команду «xanalyze»",
         "it": "Rimuovi il comando «xanalyze»",

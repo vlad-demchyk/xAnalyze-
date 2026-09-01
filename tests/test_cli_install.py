@@ -145,5 +145,50 @@ class AdminElevatedPath(_ScratchCase):
         self.assertEqual(len(admin_calls), 1)
 
 
+class TheFirstRunOffer(_ScratchCase):
+    """`cli_install.offer_is_due`: asked once, in the packaged app, when the
+    command is not there yet. Every branch is a refusal to nag."""
+
+    def _frozen(self):
+        return mock.patch("cli_install.bundled_cli_path",
+                          return_value=self.source)
+
+    def test_a_packaged_run_without_the_command_is_asked(self):
+        with self._frozen():
+            self.assertTrue(cli_install.offer_is_due(False, link_dir=self.link_dir))
+
+    def test_a_dev_run_is_never_asked(self):
+        # `python main.py` has nothing to link: the CLI is `python cli.py`.
+        with mock.patch("cli_install.bundled_cli_path", return_value=None):
+            self.assertFalse(cli_install.offer_is_due(False, link_dir=self.link_dir))
+
+    def test_asking_once_is_asking_once(self):
+        with self._frozen():
+            self.assertFalse(cli_install.offer_is_due(True, link_dir=self.link_dir))
+
+    def test_an_already_installed_command_asks_nothing(self):
+        self.link_dir.mkdir(parents=True)
+        (self.link_dir / cli_install.CLI_NAME).symlink_to(self.source)
+        with self._frozen():
+            self.assertFalse(cli_install.offer_is_due(False, link_dir=self.link_dir))
+
+
+class TheOfferIsRememberedAcrossLaunches(unittest.TestCase):
+    """The flag lives in `config.Settings`, so it survives a restart - which
+    is the whole point of asking only once."""
+
+    def test_the_flag_round_trips_through_settings(self):
+        import config
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch("config.config_file",
+                            return_value=Path(tmp) / "settings.json"):
+                settings = config.Settings()
+                self.assertFalse(settings.cli_install_offered)
+                settings.cli_install_offered = True
+                settings.save()
+                self.assertTrue(config.Settings.load().cli_install_offered)
+
+
 if __name__ == "__main__":
     unittest.main()

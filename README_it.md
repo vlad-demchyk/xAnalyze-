@@ -31,6 +31,7 @@ XAnalyze scansiona siti, file HTML, repository e directory di codice indicando l
 - **Fatti del repository**: file `.env` tracciati o non ignorati, configurazioni e commit legati ad assistenti AI, blame dei risultati.
 - **Provenienza media**: metadati IPTC/XMP e manifest C2PA opzionali. Sono fatti del file, non un verdetto sui pixel.
 - **Cronologia**: pausa, ripresa, confronto e documenti di ogni esecuzione.
+- **Un binario, tre superfici**: al primo avvio l'app impacchettata propone di aggiungere il comando `xanalyze` al `PATH`, così CLI e TUI non richiedono un secondo download.
 
 `fullscan` unisce controlli del testo, dei caratteri e del sito. Un repository locale viene analizzato staticamente, salvo usare `--devserver`.
 
@@ -45,6 +46,12 @@ curl -L -o XAnalyze.app.zip https://github.com/vlad-demchyk/xAnalyze-/releases/l
 unzip XAnalyze.app.zip
 mv XAnalyze.app /Applications/
 ```
+
+L'app e la riga di comando sono un unico binario. Al primo avvio la finestra
+propone **una volta sola** di creare il collegamento `xanalyze` in
+`~/.local/bin`, così CLI e TUI funzionano nel terminale; il rifiuto viene
+ricordato e la stessa installazione resta nelle Impostazioni ->
+«Comando nel terminale».
 
 ### CLI macOS/Linux
 

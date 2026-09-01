@@ -59,6 +59,39 @@ _ITALIAN_MARKERS = (
 _UKRAINIAN_ONLY = set("іїєґІЇЄҐ")
 _RUSSIAN_ONLY = set("ыэъёЫЭЪЁ")
 
+#: The tie-breaker for the case the letters above cannot read: a paragraph
+#: that carries **no** letter unique to either side. `P-34`: one of the 48
+#: Russian paragraphs is written entirely in shared letters ("вид
+#: человеческой деятельности, направленной на удовлетворение нужд и
+#: потребностей"), and a bare `>` on the letter counts hands 0-0 to the left
+#: operand, so it read as Ukrainian. Inverting the comparison is not the fix
+#: - 11 of the Ukrainian entries carry no unique letter either, and short UI
+#: strings are the bulk of them.
+#:
+#: So the tie asks words instead. Every marker below is a function word or an
+#: ending that belongs to one side and is **absent from the other side of the
+#: corpus**: measured over 506 Ukrainian entries (`labelled`, `prose`,
+#: `promotional`, `unlabelled`, `negative_pool`) and the 48 Russian
+#: paragraphs of `corpus/foreign.jsonl`, the split is 506/506 and 48/48.
+#:
+#: Three words were measured and removed: `ого ` (Ukrainian "повного",
+#: "чистого"), ` все ` (ordinary Ukrainian) and ` также ` - each one pulled
+#: real Ukrainian entries over the line on an ending both languages share.
+_RUSSIAN_WORD_MARKERS = (
+    " и ", " что ", " это ", " как ", " или ", " был ", " была ", " были ",
+    " они ", " она ", " его ", " если ", " который ", " которая ",
+    " которые ", " ещё ", " еще ", " только ", " может ", " быть ", " нет ",
+    " чем ", " этой ", " этот ", " эти ", " таких ", " такой ",
+    "ение ", "ения ", "ений ", "ению ", "ание ", "ания ", "аний ", "ённ",
+)
+_UKRAINIAN_WORD_MARKERS = (
+    " та ", " що ", " як ", " із ", " він ", " ця ", " цей ", " ці ",
+    " лише ", " дуже ", " його ", " щоб ", " може ", " треба ", " бути ",
+    " усі ", " всі ", " який ", " яка ", " які ", " ніж ", " але ",
+    " тому ", " після ", " перед ", " через ", " від ", " немає ", " є ",
+    "ення ", "ції ", " ваш ", " наш ",
+)
+
 #: Function words of languages this tool has no lists for. Only words that
 #: are *not* also ordinary Italian: `del`, `una`, `se`, `su` and `le` were in
 #: here first and pulled 13 Italian entries out of the corpus with them.
@@ -165,8 +198,16 @@ def guess_language_safe(text: str) -> str | None:
             # pass the share test, and calling them Ukrainian is not a
             # harmless label: it picks the cliché list and it is what the
             # rewrite provider is told to answer in.
-            if (sum(1 for c in letters if c in _RUSSIAN_ONLY)
-                    > sum(1 for c in letters if c in _UKRAINIAN_ONLY)):
+            russian = sum(1 for c in letters if c in _RUSSIAN_ONLY)
+            ukrainian = sum(1 for c in letters if c in _UKRAINIAN_ONLY)
+            if russian != ukrainian:
+                return UNSUPPORTED if russian > ukrainian else "uk"
+            # 0-0, or the same count on both sides: the letters cannot read
+            # this paragraph, so ask the words. See `_RUSSIAN_WORD_MARKERS`.
+            padded_cyrillic = f" {text.lower()} "
+            if (sum(padded_cyrillic.count(m) for m in _RUSSIAN_WORD_MARKERS)
+                    > sum(padded_cyrillic.count(m)
+                          for m in _UKRAINIAN_WORD_MARKERS)):
                 return UNSUPPORTED
             return "uk"
 

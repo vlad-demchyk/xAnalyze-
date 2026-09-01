@@ -89,6 +89,30 @@ class LanguagesThisToolDoesNotHave(unittest.TestCase):
     def test_ukrainian_is_still_ukrainian(self):
         self.assertEqual(guess_language(self.UKRAINIAN), "uk")
 
+    # `P-34`: a paragraph written entirely in letters both languages share.
+    # The letter counts come out 0-0, and `>` used to hand that to Ukrainian.
+    RUSSIAN_WITHOUT_UNIQUE_LETTERS = (
+        "Маркетинг — вид человеческой деятельности, направленной на "
+        "удовлетворение нужд и потребностей посредством обмена.")
+    UKRAINIAN_WITHOUT_UNIQUE_LETTERS = (
+        "Ця сторінка розповідає, як тексти для реклами пишуть на замовлення "
+        "та чому вони так схожі один на одного.")
+
+    def test_a_zero_zero_tie_is_read_by_words_not_by_the_left_operand(self):
+        self.assertEqual(
+            guess_language(self.RUSSIAN_WITHOUT_UNIQUE_LETTERS), UNSUPPORTED)
+        self.assertEqual(
+            guess_language(self.UKRAINIAN_WITHOUT_UNIQUE_LETTERS), "uk")
+
+    def test_a_short_ukrainian_string_with_no_evidence_stays_ukrainian(self):
+        # 11 of 185 Ukrainian corpus entries carry no unique letter either,
+        # and most are short interface strings. Inverting the comparison
+        # instead of asking the words would have cost every one of them.
+        for text in ("Вибрати все", "Переглянути все", "Вийти з повного екрану",
+                     "Прибрати з улюблених"):
+            with self.subTest(text):
+                self.assertEqual(guess_language(text), "uk")
+
     def test_latin_languages_without_lists_are_named_as_such(self):
         for name, text in (("spanish", self.SPANISH), ("french", self.FRENCH),
                            ("german", self.GERMAN), ("polish", self.POLISH)):

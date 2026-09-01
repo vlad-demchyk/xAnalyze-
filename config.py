@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 APP_NAME = "xanalyze"
-APP_VERSION = "0.49.0"
+APP_VERSION = "0.50.0"
 # Pre-rename config dir name. Only used to migrate an existing install's
 # settings into the new location the first time this runs after upgrading;
 # see `migrate_legacy_file`.
@@ -144,6 +144,13 @@ class Settings:
     # individual dismissed findings. See suppression.py; a scanned project
     # can add its own list in a committed `.xanalyze-ignore` file.
     ignore: dict = field(default_factory=dict)
+
+    # Whether the packaged app has already offered to put the `xanalyze`
+    # command on PATH (`cli_install.offer_is_due`). Set once the question has
+    # been *asked*, not once it has been answered yes: "no" is an answer, and
+    # re-asking on every launch would turn a convenience into a nag. Someone
+    # who changes their mind has the button in Settings.
+    cli_install_offered: bool = False
 
     # Off by default: a repo target's dev server may already be running
     # (someone's own `npm run dev` in another terminal), and starting a

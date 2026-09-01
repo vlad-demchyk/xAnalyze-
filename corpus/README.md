@@ -151,6 +151,27 @@ and `феномен` - words an article about productivity or cloud computing is
 simply written in. Seventeen cliché entries were retired, held-out recall did
 not move, and `tests/test_prose_corpus.py` holds the zero.
 
+## `negative_pool.jsonl` - the shortest register there is
+
+292 human interface lines from the xFormat product in English, Italian and
+Ukrainian: buttons, menu items, form labels, validation messages, empty
+states. Every entry carries its source (`UI navigation`, `UI form`, …) and its
+register, because "0 false alarms" is a claim about a register and an entry
+that does not name one cannot support it.
+
+It is a **yardstick only**, for the same reason as `prose.jsonl`, and for one
+more that is specific to it: **no entry here reaches five words** — the
+longest is four. `EmbeddingDetector` refuses anything shorter than five, so
+merging this file into `labelled.jsonl` would hand that detector nothing it
+can read while restating every ratio measured on that file, and would make
+these lines a *component* of the detector meant to judge them.
+
+Measured 2026-09-01, held by `tests/test_negative_pool_corpus.py`: **0 of
+292** cross the reporting threshold in the wording pass, and the embedding
+pass returns no span at all. This is the register where a cliché list is
+cheapest to break silently — one wrong entry flags the menu on every page of
+a site at once.
+
 ## Running it
 
     python scripts/calibrate.py                 # metrics at the current bands
