@@ -415,6 +415,66 @@ class BrowserAuditRunner:
         return result
 
 
+def session_profile(host: str, parent=None):
+    """A persistent QtWebEngine profile for a host the person signed in to.
+
+    The default profile for an audit is off-the-record on purpose: reading
+    somebody's site must not leave its cookies in the user's own browsing
+    data. A signed-in run is the one case where that is exactly what is
+    wanted, and only for the host it was created for - so the profile is
+    named after the host and stored under this app's own directory. See
+    `site_session` for where, and for how it is forgotten.
+
+    Returns `None` when there is no stored session for the host, which keeps
+    every caller's normal path unchanged: no session, no persistent profile.
+    """
+    import site_session
+
+    host = site_session.host_of(host) or host
+    if not host or not site_session.has_session(host):
+        return None
+    return open_session_profile(host, parent=parent)
+
+
+#: One profile per host for the life of the process.
+#:
+#: Not a cache for speed. A `QWebEngineProfile` must outlive every page made
+#: from it, and a profile parented to a dialog is destroyed when the dialog
+#: is - in whatever order Qt happens to destroy the children, which is how
+#: "Release of profile requested but WebEnginePage still not deleted. Expect
+#: troubles!" appears on a perfectly ordinary close. Keeping it here means
+#: the profile outlives the window by construction, and reopening the sign-in
+#: window for the same host reuses the session rather than racing it.
+_SESSION_PROFILES: dict = {}
+
+
+def open_session_profile(host: str, parent=None):
+    """The same profile, created if it does not exist yet.
+
+    Split from `session_profile` because signing in is the one moment the
+    profile has to be brought into being; every other caller must not create
+    a session as a side effect of looking for one.
+
+    `parent` is accepted and deliberately ignored - see `_SESSION_PROFILES`.
+    """
+    from PySide6.QtWebEngineCore import QWebEngineProfile
+
+    import site_session
+
+    host = site_session.host_of(host) or host
+    existing = _SESSION_PROFILES.get(host)
+    if existing is not None:
+        return existing
+    path = site_session.profile_dir(host, create=True)
+    profile = QWebEngineProfile(f"xanalyze-{host}")
+    profile.setPersistentStoragePath(str(path))
+    profile.setCachePath(str(path / "cache"))
+    profile.setPersistentCookiesPolicy(
+        QWebEngineProfile.PersistentCookiesPolicy.ForcePersistentCookies)
+    _SESSION_PROFILES[host] = profile
+    return profile
+
+
 class html_renderer:
     """A `render(url) -> html` callable backed by one browser, as a context.
 
@@ -428,17 +488,22 @@ class html_renderer:
     its own work, not inside it.
     """
 
-    def __init__(self, settle_ms: int = 1200, allow_local_files: bool = False):
+    def __init__(self, settle_ms: int = 1200, allow_local_files: bool = False,
+                 session_host: str = ""):
         self.options = browser.BrowserAuditOptions(
             run_axe=False, run_htmlcs=False, run_measurements=False,
             run_states=False, capture_html=True, settle_ms=settle_ms,
             allow_local_files=allow_local_files,
         )
+        #: Render as the person who signed in, when they did. Empty - the
+        #: normal case - keeps the off-the-record profile.
+        self.session_host = session_host or ""
         self.runner = None
 
     def __enter__(self):
         ensure_headless_application()
-        self.runner = BrowserAuditRunner(self.options)
+        profile = session_profile(self.session_host) if self.session_host else None
+        self.runner = BrowserAuditRunner(self.options, profile=profile)
         return self
 
     def __exit__(self, *_exc):

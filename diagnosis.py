@@ -40,6 +40,11 @@ UNREACHABLE = "unreachable"
 RENDER_FAILED = "render_failed"
 TRUNCATED = "truncated"
 MEDIA_UNCHECKED = "media_unchecked"
+#: What was audited was the door, not the site. Not a failure of the run and
+#: not a finding about the page: it is the reason the findings in the report
+#: are about a login form. See `audit.authwall`.
+AUTH_WALL = "auth_wall"
+AUTH_WALL_WHOLE = "auth_wall_whole"
 SATURATED_RULE = "saturated_rule"
 UNKNOWN_FAILURE = "unknown_failure"
 
@@ -198,6 +203,33 @@ def diagnose_audit(result) -> list:
         fields={"unchecked": scan.unchecked, "checked": scan.checked,
                 "found": scan.found},
         evidence_key="diagnosis_media_unchecked_evidence",
+        actions=())]
+
+
+def diagnose_auth_wall(result) -> list:
+    """The login walls a crawl ran into, as one notice per crawl.
+
+    One notice and not one per address, because a wall answering on forty
+    addresses is one wall - and the count is the part worth reading, since
+    those forty pages were not audited. When *everything* the run read was a
+    wall, that is said separately and more plainly: a clean summary over
+    nothing but login forms is the most misleading output this tool has.
+    """
+    report = getattr(result, "auth", None)
+    if report is None or not report.blocked:
+        return []
+    signals = report.by_signal()
+    kinds = ", ".join(sorted(signals))
+    evidence = "; ".join(
+        f"{signal} · " + ", ".join(_short(wall.url) for wall in walls[:_NAMED])
+        + (f", +{len(walls) - _NAMED}" if len(walls) > _NAMED else "")
+        for signal, walls in sorted(signals.items()))
+    kind = AUTH_WALL_WHOLE if report.whole_site else AUTH_WALL
+    return [Diagnosis(
+        kind,
+        fields={"blocked": report.blocked, "pages": report.pages_read,
+                "signals": kinds},
+        evidence=evidence,
         actions=())]
 
 

@@ -1052,6 +1052,13 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self.within_edit = QLineEdit()
         self.within_edit.textChanged.connect(self._on_within_changed)
 
+        # Half of what is worth auditing is behind a login, and the only way
+        # in that does not involve this app handling anybody's credentials is
+        # for the person to sign in themselves, in a real browser window. See
+        # `ui.site_sign_in` and `site_session`.
+        self.sign_in_site_btn = QPushButton()
+        self.sign_in_site_btn.clicked.connect(self._on_sign_in_site)
+
         self.auto_devserver_check = QCheckBox()
         self.auto_devserver_check.setChecked(self.settings.auto_start_devserver)
         self.auto_devserver_check.toggled.connect(self._on_auto_devserver_toggled)
@@ -1190,7 +1197,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         for w in (self.method_label, self.method_combo,
                   self.provider_label, self.provider_combo,
                   self.paired_repo_edit, self.paired_repo_btn,
-                  self.within_edit,
+                  self.within_edit, self.sign_in_site_btn,
                   self.auto_devserver_check, self.start_server_btn):
             adv_layout.addWidget(w)
         self.advanced_row.setVisible(False)
@@ -1591,6 +1598,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self.paired_repo_edit.setToolTip(t("paired_repo_full", lang))
         self.paired_repo_btn.setText(t("browse_button", lang))
         self.paired_repo_btn.setToolTip(t("paired_repo_full", lang))
+        self._refresh_sign_in_button()
         self.within_edit.setPlaceholderText(t("within_placeholder", lang))
         self.within_edit.setToolTip(t("within_full", lang))
         self.auto_devserver_check.setToolTip(t("auto_devserver_check_full", lang))
@@ -2258,6 +2266,10 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         # `--within` narrows a document, so it belongs wherever there is one
         # to narrow: a page on a site, or a page in a file.
         self.within_edit.setVisible(not is_repo and wants_audit)
+        # Signing in is a question about a site and nothing else: a folder
+        # has no door and a local file has no session.
+        self.sign_in_site_btn.setVisible(not is_repo and not is_file)
+        self._refresh_sign_in_button()
         # The row is shared, but the two halves never appear together: three
         # buttons rewrite prose, three act on an audit, and offering both at
         # once would mean six buttons of which half do nothing.
@@ -3117,6 +3129,47 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             if path.suffix.lower() in self.DROPPABLE_PAGES:
                 return SOURCE_FILE, str(path)
         return None
+
+    def _on_sign_in_site(self) -> None:
+        """Open a browser window on the target and let the person sign in.
+
+        Nothing is typed for them and nothing is remembered about them: the
+        window is a browser, the site's own form is what they fill in, and
+        what survives is what the site handed that browser.
+        """
+        import site_session
+        from ui.site_sign_in import SiteSignInDialog
+
+        self._sync_state_from_ui()
+        target = (self.app_state.target or "").strip()
+        host = site_session.host_of(target)
+        if not host:
+            self.status_bar.showMessage(t("sign_in_site_needs_url", self.lang))
+            return
+        address = target if "://" in target else f"https://{target}"
+        dialog = SiteSignInDialog(address, lang=self.lang, parent=self)
+        dialog.exec()
+        self._refresh_sign_in_button()
+        if dialog.saved:
+            self.status_bar.showMessage(
+                t("sign_in_site_active", self.lang, host=host))
+
+    def _refresh_sign_in_button(self) -> None:
+        """Say whether this host already has a session, on the button itself.
+
+        A person has to be able to see that this machine holds a way into
+        their account without opening a dialog to find out.
+        """
+        import site_session
+
+        host = site_session.host_of(self.url_edit.text())
+        signed_in = bool(host) and site_session.has_session(host)
+        self.sign_in_site_btn.setText(
+            t("sign_in_site_change", self.lang) if signed_in
+            else t("sign_in_site_button", self.lang))
+        self.sign_in_site_btn.setToolTip(
+            t("sign_in_site_have", self.lang, host=host) if signed_in
+            else t("sign_in_site_full", self.lang))
 
     def _on_browse_paired_repo(self) -> None:
         path = QFileDialog.getExistingDirectory(self, self.paired_repo_btn.text())

@@ -49,7 +49,7 @@ from __future__ import annotations
 import re
 import uuid
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -126,6 +126,14 @@ class CrawlConfig:
     render_timeout: float = 30.0
     same_domain_only: bool = True
     render_mode: str = RENDER_NEVER
+    #: Cookies from a session the person signed in themselves, `{name: value}`.
+    #:
+    #: Two clients read one site: this fetcher and, when rendering, a browser.
+    #: They share no storage, so a sign-in performed in the browser leaves
+    #: this half looking at the login form - the two halves of one run
+    #: disagreeing about who is asking. See `site_session`; the values are
+    #: never logged and never reach a report.
+    cookies: dict = field(default_factory=dict)
 
 
 def _normalize(url: str) -> str:
@@ -443,6 +451,10 @@ def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
     results: list[PageResult] = []
     session = requests.Session()
     session.headers.update({"User-Agent": USER_AGENT})
+    for name, value in (config.cookies or {}).items():
+        # Set on the session rather than sent as a header, so redirects and
+        # the site's own `Set-Cookie` behave as they do in a browser.
+        session.cookies.set(name, value)
 
     #: Pages actually read as HTML. The budget counts these rather than
     #: `len(results)`, because a result is also recorded for an address that

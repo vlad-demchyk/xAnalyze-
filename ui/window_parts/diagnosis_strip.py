@@ -204,6 +204,11 @@ class DiagnosisStripMixin:
         one that just arrived.
         """
         items = []
+        if getattr(self, "audit_result", None) is not None:
+            # First: it changes what every other line means. Three findings
+            # on a login form are not three findings on the application
+            # behind it.
+            items.extend(dx.diagnose_auth_wall(self.audit_result))
         if getattr(self, "result", None) is not None:
             items.extend(dx.diagnose_result(self.result))
         if getattr(self, "audit_result", None) is not None:

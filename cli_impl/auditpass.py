@@ -368,7 +368,34 @@ def _render_mode(args) -> str:
     return RENDER_AUTO
 
 
-def _crawl_maybe_rendering(target: str, config, progress_cb=None):
+def apply_session(target: str, config, use_session: bool = True) -> str:
+    """Sign this crawl in, when the person has signed in to this host.
+
+    Both halves or neither. `requests` fetches the pages and QtWebEngine
+    renders them, and the two share no storage: giving the cookies to one of
+    them produces a run where the browser sees the account and the fetch sees
+    the login form. So the cookies go on the config and the host is returned
+    for the renderer, and the caller passes it on.
+
+    Returns the host to render as, or `""`. Says so on stderr, because a run
+    that is authenticated is a different run and the log has to show which:
+    the host, never a value.
+    """
+    if not use_session:
+        return ""
+    import site_session
+
+    host, count = site_session.apply_to(config, target)
+    if not host:
+        return ""
+    print(f"# [session] signed in as the stored session for {host} "
+          f"({count} value(s); pass --no-session to run as a stranger)",
+          file=sys.stderr, flush=True)
+    return host
+
+
+def _crawl_maybe_rendering(target: str, config, progress_cb=None,
+                           session_host: str = ""):
     """Crawl, starting a browser only if the configuration can use one."""
     from crawler import RENDER_NEVER, crawl
 
@@ -383,7 +410,7 @@ def _crawl_maybe_rendering(target: str, config, progress_cb=None):
         print(f"# SPA/React/Vue pages may return empty results.", file=sys.stderr)
         print(f"# Install PySide6 and QtWebEngine for full SPA support.", file=sys.stderr)
         return crawl(target, config, progress_cb=progress_cb)
-    with driver.html_renderer() as render:
+    with driver.html_renderer(session_host=session_host) as render:
         return crawl(target, config, render=render, progress_cb=progress_cb)
 
 

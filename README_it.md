@@ -274,6 +274,16 @@ sia e lo stack che il progetto ha dimostrato su disco.
 
 **Il passaggio sugli stati** gira nel browser e controlla la pagina nello stato in cui la mette una persona: l'indicatore di focus, le trappole per la tastiera, l'ordine di tabulazione, il contenuto solo al passaggio del mouse, una finestra modale aperta che lascia il focus dietro di sé - e il percorso nel modulo: un campo senza nome accessibile dopo l'esecuzione degli script, un campo chiamato solo dal suo placeholder, un valore che il browser stesso rifiuta senza che nulla lo annunci, e un testo di errore a schermo a cui nessun campo rimanda. Legge e non agisce: non scrive, non clicca e non invia nulla, perché su un sito vero ognuna di queste azioni attiva i gestori della pagina. Riempire un campo per vedere come reagisce il modulo resta quindi fuori portata, come l'INP, che senza input reale non si misura.
 
+### Siti dietro un accesso
+
+Metà di ciò che vale la pena controllare sta dietro un accesso: un'area di amministrazione, un'area personale, una intranet, uno staging sotto autenticazione di base. Due cose distinte, in quest'ordine.
+
+**Lo strumento dice quando sta guardando una porta.** La scansione registra se un indirizzo ha risposto con un accesso invece che con una pagina - un 401 con lo schema che dichiara, un 403 senza, un reindirizzamento a un indirizzo di accesso, un campo password nel markup - e lo riporta come un fatto sulla **scansione**, non come un rilievo sul sito. Un muro che risponde su quaranta indirizzi è una riga sola, e quando tutto ciò che la scansione ha letto era un muro lo dice chiaramente: un riepilogo pulito su nient'altro che moduli di accesso è l'output più fuorviante che questo strumento possa produrre. Il report porta lo stesso paragrafo, perché il report è ciò che una persona consegna a un'altra.
+
+**L'accesso lo fai tu.** `xanalyze login https://example.com/admin` apre una vera finestra del browser sul modulo del sito; 2FA, SSO e captcha funzionano, perché è un browser. Lo strumento non vede mai nome utente o password: viene conservato solo ciò che il sito ha dato a quel browser, in un profilo intitolato all'host, nella cartella dell'app, leggibile solo da te. Le scansioni di quell'host la usano poi in **entrambi** i client: il fetch e il rendering ricevono la stessa sessione, altrimenti il browser vedrebbe l'account e la scansione il modulo di accesso. `--no-session` legge il sito come lo vede un estraneo. `xanalyze login --list` mostra che cosa c'è su questa macchina, `xanalyze login --forget HOST` ne rimuove una, e lo stesso elenco con un pulsante è nelle Impostazioni. Una scansione che era autenticata e ha comunque trovato un muro dice che la sessione è scaduta, invece di segnalare il sito come chiuso. Nella finestra è il pulsante **Accedi al sito**.
+
+Nulla di una sessione raggiunge mai un report, un log, una cartella di scansione o il terminale: il fatto e l'host, mai un valore.
+
 **Da dove iniziare.** Una scansione di una cartella risponde «820 rilievi», e in
 cima a quell'elenco ci sono le stesse regole di pagina ripetute in ogni documento.
 Il report parte invece dalle tre cose più pesanti per **tipo** di documento -

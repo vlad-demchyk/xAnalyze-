@@ -203,6 +203,13 @@ class ReportModel:
     pages: list = field(default_factory=list)          # [{source, findings_count, error}]
     ai_patterns: dict = field(default_factory=dict)     # {total, high, medium, low, files, top_patterns}
     typography: dict = field(default_factory=dict)      # {total, files, by_character, top_examples}
+    #: What stood in front of the site: `{blocked, pages, whole, rows}`, where
+    #: a row is `{signal, count, addresses}`. Empty when nothing was walled,
+    #: which is nearly always. It is in the report and not only in the
+    #: terminal because the report is the artefact somebody hands to somebody
+    #: else, and "40 pages, 3 findings" over a login form is the one sentence
+    #: in it that would be a lie.
+    auth: dict = field(default_factory=dict)
 
     def counts_by_severity(self) -> dict:
         counts: dict[str, int] = {}
@@ -440,4 +447,21 @@ def from_accessibility(result, lang: str = "uk") -> ReportModel:
                 document_kind=getattr(document, "kind", ""),
             ))
     return ReportModel(meta=ReportMeta(target=result.root, mode=f"audit-{result.mode}"),
-                       findings=findings)
+                       findings=findings, auth=_auth_summary(result))
+
+
+def _auth_summary(result) -> dict:
+    """`AccessibilityResult.auth` as the flat shape a template renders."""
+    report = getattr(result, "auth", None)
+    if report is None or not report.blocked:
+        return {}
+    rows = []
+    for signal, walls in sorted(report.by_signal().items()):
+        rows.append({
+            "signal": signal,
+            "count": len(walls),
+            "addresses": [wall.url for wall in walls[:5]],
+            "detail": walls[0].detail,
+        })
+    return {"blocked": report.blocked, "pages": report.pages_read,
+            "whole": report.whole_site, "rows": rows}

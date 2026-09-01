@@ -553,6 +553,10 @@ def _crawl_for_fullscan(target: str, args, no_browser: bool):
     render_mode = RENDER_NEVER if no_browser else RENDER_AUTO
     config = CrawlConfig(max_depth=args.depth, max_pages=args.max_pages,
                          render_mode=render_mode)
+    from cli_impl.auditpass import apply_session
+
+    session_host = apply_session(
+        target, config, use_session=not getattr(args, "no_session", False))
     print(f"# [stage crawl] depth={args.depth} "
           f"max_pages={args.max_pages or 'unlimited'} render={render_mode}",
           file=sys.stderr, flush=True)
@@ -566,7 +570,8 @@ def _crawl_for_fullscan(target: str, args, no_browser: bool):
         print(f"# [crawl {crawled}{limit}] depth={depth} {url}",
               file=sys.stderr, flush=True)
 
-    pages = _crawl_maybe_rendering(target, config, progress_cb=_crawl_progress)
+    pages = _crawl_maybe_rendering(target, config, progress_cb=_crawl_progress,
+                                   session_host=session_host)
     print(f"# [crawl done] {len(pages)} page(s)", file=sys.stderr, flush=True)
     return pages, target
 

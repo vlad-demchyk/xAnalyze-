@@ -68,6 +68,10 @@ class AccessibilityResult:
     #: reason git could not answer, which is the difference between "no
     #: assistant commits" and "no history to look at".
     repo: object = None
+    #: What stood in front of the site, when anything did: the login walls
+    #: this crawl ran into (`audit.authwall.WallReport`). `None` when nobody
+    #: looked, which is a repo run - a folder has no door.
+    auth: object = None
     #: A slice of the markup the crawl actually saw, kept so the report can
     #: ask what platform served it. The documents keep addresses, not bodies,
     #: so without this the answer would have to be fetched a second time.
@@ -508,9 +512,16 @@ def analyze_pages(pages, root: str, rules=None, ai_review=None,
                     platform_owned={}, within=within)
         return result
 
+    from audit import authwall as authwall_pass
     from audit import crosspage as crosspage_pass
     from audit import crawlability as crawlability_pass
     from audit import headers as header_pass
+
+    # Whether what was read is the site or the door in front of it. A
+    # diagnostic about the run and never a finding about the page: a login
+    # wall is not a defect, it is the reason the pages in this report are not
+    # the pages anyone wanted audited. See `audit.authwall`.
+    result.auth = authwall_pass.scan(pages)
 
     result.documents.extend(header_pass.as_documents(pages))
     # The crawler already paid for these response codes and headers. Turn

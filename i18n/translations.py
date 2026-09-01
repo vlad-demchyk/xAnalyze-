@@ -5993,6 +5993,26 @@ _STRINGS: dict[str, dict[str, str]] = {
     # Said before a run, about depth rather than failure: what this run is
     # not going to reach, and which switch reaches it. The CLI has printed
     # these since `cli_impl/prerun.py`; the window said nothing at all.
+    "diagnosis_auth_wall_title": {
+        "uk": "Частина адрес відповіла формою входу",
+        "it": "Alcuni indirizzi hanno risposto con una schermata di accesso",
+        "en": "Some addresses answered with a login wall",
+    },
+    "diagnosis_auth_wall_body": {
+        "uk": "{blocked} із {pages} прочитаних адрес - це вхід, а не сторінка ({signals}). Те, що стоїть за ними, цей прогін не читав, тож знахідки на цих адресах стосуються форми входу, а не застосунку за нею.",
+        "it": "{blocked} indirizzi su {pages} letti sono un accesso, non una pagina ({signals}). Ciò che sta dietro non è stato letto da questa scansione, quindi i rilievi su quegli indirizzi riguardano il modulo di accesso, non l'applicazione dietro di esso.",
+        "en": "{blocked} of the {pages} addresses read are a login, not a page ({signals}). What stands behind them was not read by this run, so findings at those addresses are about the sign-in form and not about the application behind it.",
+    },
+    "diagnosis_auth_wall_whole_title": {
+        "uk": "Прочитано лише вхід - сайт не аудитувався",
+        "it": "È stato letto solo l'accesso: il sito non è stato analizzato",
+        "en": "Only the login was read - the site was not audited",
+    },
+    "diagnosis_auth_wall_whole_body": {
+        "uk": "Усі {pages} адрес, які цей прогін прочитав, виявились формою входу ({signals}). Підсумок нижче стосується сторінки входу, і чистий результат тут не означає, що із сайтом усе гаразд. Увійдіть у сайт або вкажіть публічну адресу.",
+        "it": "Tutti i {pages} indirizzi letti da questa scansione sono risultati una schermata di accesso ({signals}). Il riepilogo qui sotto riguarda la pagina di accesso, e un risultato pulito non significa che il sito stia bene. Accedi al sito oppure indica un indirizzo pubblico.",
+        "en": "Every one of the {pages} addresses this run read turned out to be a login ({signals}). The summary below is about the sign-in page, and a clean result here does not mean the site is fine. Sign in to the site, or point the run at a public address.",
+    },
     "diagnosis_missed_repo_title": {
         "uk": "Знахідки назвуть сторінку, а не файл",
         "it": "I rilievi indicheranno la pagina, non il file",
@@ -6052,6 +6072,77 @@ _STRINGS: dict[str, dict[str, str]] = {
         "uk": "Скільки файлів прогін відкриє в теці, перш ніж зупинитись. Великий монорепозиторій упирається в цю межу, і прогін про це каже - але змінити її досі можна було лише в командному рядку.",
         "it": "Quanti file una scansione apre in una cartella prima di fermarsi. Un monorepo grande raggiunge questo limite e la scansione lo dichiara, ma finora si poteva cambiarlo solo da riga di comando.",
         "en": "How many files a run opens in a folder before it stops. A large monorepo reaches this limit and the run says so - but until now the number could only be changed from the command line.",
+    },
+    "settings_sessions": {
+        "uk": "Збережені сесії сайтів ({count}): {hosts}. Зберігається лише те, що сайт видав браузеру; ці значення не потрапляють ані у звіт, ані в журнал.",
+        "it": "Sessioni di siti salvate ({count}): {hosts}. Viene conservato solo ciò che il sito ha dato al browser; quei valori non finiscono né nei report né nei log.",
+        "en": "Stored site sessions ({count}): {hosts}. Only what the site gave the browser is kept, and those values never reach a report or a log.",
+    },
+    "settings_sessions_none": {
+        "uk": "Збережених сесій сайтів немає. «Увійти на сайт» у вікні відкриває справжній браузер, щоб ви увійшли самі.",
+        "it": "Nessuna sessione di sito salvata. «Accedi al sito» nella finestra apre un vero browser perché tu acceda di persona.",
+        "en": "No stored site sessions. \"Sign in to the site\" in the window opens a real browser so you can sign in yourself.",
+    },
+    "settings_forget_sessions": {
+        "uk": "Забути всі сесії", "it": "Dimentica tutte le sessioni",
+        "en": "Forget every session",
+    },
+    "settings_forget_sessions_confirm": {
+        "uk": "Видалити збережені сесії для: {hosts}? Наступний прогін цих сайтів читатиме їх так, як бачить сторонній.",
+        "it": "Rimuovere le sessioni salvate per: {hosts}? La prossima scansione leggerà quei siti come li vede un estraneo.",
+        "en": "Remove the stored sessions for: {hosts}? The next run reads those sites the way a stranger sees them.",
+    },
+    "sign_in_site_button": {
+        "uk": "Увійти на сайт", "it": "Accedi al sito", "en": "Sign in to the site",
+    },
+    "sign_in_site_change": {
+        "uk": "Сесія є - змінити", "it": "Sessione presente - cambia",
+        "en": "Signed in - change",
+    },
+    "sign_in_site_full": {
+        "uk": "Відкриває справжнє вікно браузера на цій адресі, щоб ви увійшли самі. Прогін після цього читатиме сайт як ви. Інструмент не бачить ні логіна, ні пароля.",
+        "it": "Apre una vera finestra del browser su questo indirizzo perché tu acceda di persona. Dopo, la scansione leggerà il sito come te. Lo strumento non vede né nome utente né password.",
+        "en": "Opens a real browser window on this address so you can sign in yourself. The run then reads the site as you. The tool sees neither your username nor your password.",
+    },
+    "sign_in_site_have": {
+        "uk": "Для {host} на цій машині збережено сесію. Натисніть, щоб увійти знову або видалити її.",
+        "it": "Per {host} è salvata una sessione su questa macchina. Premi per accedere di nuovo o per rimuoverla.",
+        "en": "A session for {host} is stored on this machine. Press to sign in again or to remove it.",
+    },
+    "sign_in_site_needs_url": {
+        "uk": "Спочатку вкажіть адресу сайту, на який треба увійти.",
+        "it": "Indica prima l'indirizzo del sito a cui accedere.",
+        "en": "Give the address of the site to sign in to first.",
+    },
+    "sign_in_site_title": {
+        "uk": "Вхід на {host}",
+        "it": "Accesso a {host}",
+        "en": "Sign in to {host}",
+    },
+    "sign_in_site_note": {
+        "uk": "Це справжнє вікно браузера на {host}. Увійдіть так, як звикли - разом із 2FA, SSO чи капчею. Інструмент не бачить ні логіна, ні пароля: він збереже лише те, що сайт видав цьому браузеру, і використає це в наступному прогоні. Натисніть «Готово», коли опинитесь усередині.",
+        "it": "Questa è una vera finestra del browser su {host}. Accedi come fai di solito, anche con 2FA, SSO o captcha. Lo strumento non vede né nome utente né password: conserverà solo ciò che il sito ha dato a questo browser e lo userà nella prossima scansione. Premi «Fatto» quando sei dentro.",
+        "en": "This is a real browser window on {host}. Sign in the way you normally do - including 2FA, SSO or a captcha. The tool sees neither your username nor your password: it keeps only what the site gave this browser, and uses that on the next run. Press \"Done\" once you are inside.",
+    },
+    "sign_in_site_done": {"uk": "Готово", "it": "Fatto", "en": "Done"},
+    "sign_in_site_forget": {
+        "uk": "Забути цю сесію", "it": "Dimentica questa sessione",
+        "en": "Forget this session",
+    },
+    "sign_in_site_saved": {
+        "uk": "Сесію для {host} збережено ({count} значень). Її вміст не потрапляє ні у звіт, ні в журнал.",
+        "it": "Sessione per {host} salvata ({count} valori). Il contenuto non finisce né nel report né nei log.",
+        "en": "The session for {host} is saved ({count} values). Its contents never reach a report or a log.",
+    },
+    "sign_in_site_forgotten": {
+        "uk": "Сесію для {host} видалено з цієї машини.",
+        "it": "La sessione per {host} è stata rimossa da questa macchina.",
+        "en": "The session for {host} has been removed from this machine.",
+    },
+    "sign_in_site_active": {
+        "uk": "Прогін виконано у сесії, у яку ви увійшли самі ({host}).",
+        "it": "Scansione eseguita nella sessione a cui hai effettuato l'accesso ({host}).",
+        "en": "This run used the session you signed in to yourself ({host}).",
     },
     "finding_written_in": {
         "uk": "Написано у {path}:{line}",

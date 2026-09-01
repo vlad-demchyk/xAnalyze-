@@ -6,6 +6,7 @@ from __future__ import annotations
 from PySide6.QtCore import QThread, Signal
 
 import applog
+import site_session
 import suppression
 from crawler import CrawlConfig, crawl
 from detectors.base import DetectorUnavailable
@@ -106,6 +107,11 @@ class AnalysisWorker(_PairingMixin, QThread):
         #: would never say so.
         self.paired_matched = 0
         self.paired_total = 0
+        #: Which host's stored session this run used, and how many values it
+        #: carried. The count is for the status line; the values never leave
+        #: `site_session`.
+        self.session_host = ""
+        self.session_values = 0
         self.ignore_root = None  # a URL has no folder to hold an ignore file
         #: Pages already fetched by an earlier run over the same target. Given
         #: them, this worker never touches the network: the expensive half of a
@@ -134,6 +140,10 @@ class AnalysisWorker(_PairingMixin, QThread):
                 pages: list[PageResult] = self.pages
             else:
                 config = CrawlConfig(max_depth=self.depth, max_pages=self.max_pages)
+                # Read as the person who signed in, when they did. Both
+                # clients or neither: see `site_session.apply_to`.
+                self.session_host, self.session_values = site_session.apply_to(
+                    config, self.root_url)
                 pages = crawl(self.root_url, config, progress_cb=progress_cb,
                               walk=walk)
             if self._cancelled:
@@ -323,6 +333,8 @@ class AuditWorker(QThread):
         #: nothing comes back as an error on that document rather than as a
         #: clean result.
         self.within = (within or "").strip()
+        self.session_host = ""
+        self.session_values = 0
         #: `--medium`: "web", "email", or empty for "read it off each file".
         #: Only the folder branch reads it - a crawled site is a site, and a
         #: single page file is autodetected the same way the CLI does it.
@@ -376,10 +388,11 @@ class AuditWorker(QThread):
                 if self.pages is not None:
                     pages = self.pages
                 else:
-                    pages = crawl(self.target,
-                                  CrawlConfig(max_depth=self.depth,
-                                              max_pages=self.max_pages),
-                                  progress_cb=progress_cb)
+                    config = CrawlConfig(max_depth=self.depth,
+                                         max_pages=self.max_pages)
+                    self.session_host, self.session_values = \
+                        site_session.apply_to(config, self.target)
+                    pages = crawl(self.target, config, progress_cb=progress_cb)
                 if self._cancelled:
                     return
                 self.auditing.emit(self.target)

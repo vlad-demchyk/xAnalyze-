@@ -654,6 +654,23 @@ class SettingsDialog(QDialog):
         layout.addWidget(cli_group)
         self._refresh_cli_status()
 
+        # --- sessions this machine holds ---------------------------------
+        # A tool that quietly keeps a way into somebody's account and offers
+        # no way to see or remove it is not a tool anyone should install. The
+        # hosts are listed; nothing about their contents is, ever.
+        self.sessions_label = muted("")
+        self.sessions_label.setWordWrap(True)
+        layout.addWidget(self.sessions_label)
+        session_actions = QHBoxLayout()
+        self.forget_sessions_btn = QPushButton(
+            t("settings_forget_sessions", self.lang))
+        self.forget_sessions_btn.setProperty("class", theme.CLASS_QUIET)
+        self.forget_sessions_btn.clicked.connect(self._on_forget_sessions)
+        session_actions.addWidget(self.forget_sessions_btn)
+        session_actions.addStretch(1)
+        layout.addLayout(session_actions)
+        self._refresh_sessions_label()
+
         # --- what a run leaves behind ------------------------------------
         # Artboard 3q puts the cache and the uninstall here, and both are
         # about the same thing: what this tool has put on the machine.
@@ -695,6 +712,35 @@ class SettingsDialog(QDialog):
         self._refresh_logs_label()
 
         return w
+
+    def _refresh_sessions_label(self) -> None:
+        import site_session
+
+        hosts = site_session.known_hosts()
+        self.sessions_label.setText(
+            t("settings_sessions_none", self.lang) if not hosts
+            else t("settings_sessions", self.lang, hosts=", ".join(hosts),
+                   count=len(hosts)))
+        self.forget_sessions_btn.setEnabled(bool(hosts))
+
+    def _on_forget_sessions(self) -> None:
+        """Delete every stored site session. Asked first: this is the thing
+        that makes signing in again necessary, and a stray click should not
+        cost somebody a round of 2FA."""
+        from PySide6.QtWidgets import QMessageBox
+
+        import site_session
+
+        hosts = site_session.known_hosts()
+        if not hosts:
+            return
+        answer = QMessageBox.question(
+            self, "", t("settings_forget_sessions_confirm", self.lang,
+                        hosts=", ".join(hosts)))
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        site_session.forget_all()
+        self._refresh_sessions_label()
 
     def _refresh_logs_label(self) -> None:
         import applog

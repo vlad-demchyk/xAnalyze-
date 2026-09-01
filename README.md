@@ -345,6 +345,16 @@ opens instead with the three heaviest things per **kind** of document - pages,
 components, emails - ranked by consequence rather than by count, so a folder of
 newsletters and landing pages reads as two short lists rather than one long one.
 
+### Sites behind a login
+
+Half of what is worth checking stands behind a sign-in: an admin area, an account page, an intranet, a staging site under basic auth. Two separate things, in this order.
+
+**The tool says when it is looking at a door.** A crawl records whether an address answered with a login rather than a page - a 401 and the scheme it names, a 403 with no scheme, a redirect to a sign-in address, a password field in the markup - and reports it as a fact about the *run*, not as a finding about the site. One wall answering on forty addresses is one row, and when everything a run read was a wall it says that plainly: a clean summary over nothing but sign-in forms is the most misleading output this tool can produce. The report carries the same paragraph, because the report is the artefact somebody hands to somebody else.
+
+**You sign in yourself.** `xanalyze login https://example.com/admin` opens a real browser window on the site's own form; 2FA, SSO and a captcha all work, because it is a browser. This tool never sees a username or a password - what is kept is what the site handed that browser, in a profile named after the host, under the app's own directory, readable only by you. Runs against that host then use it, in both clients: the fetch and the rendering pass are given the same session, or the browser would see the account while the crawl saw the login form. `--no-session` reads the site the way a stranger does. `xanalyze login --list` shows what this machine holds, `xanalyze login --forget HOST` removes one, and Settings has the same list with a button. A run that was signed in and still met a wall says the session has expired rather than reporting the site as walled. The window has the same thing as **Sign in to the site**.
+
+Nothing about a session ever reaches a report, a log, a run folder or the terminal: the fact and the host, never a value.
+
 ### Certainty and filters
 
 Findings are labelled `exact`, `needs-browser` or `advisory`. `exact` means the markup settles the question, `advisory` means nothing will settle it and a person decides — an editorial call, which is what the GEO signals are.

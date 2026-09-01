@@ -58,7 +58,8 @@ from cli_impl.reports import (  # noqa: F401 - re-exported for `import cli`
 from cli_impl.auditpass import (  # noqa: F401 - re-exported for `import cli`
     PAGE_FILE_SUFFIXES, _audit_at_widths, _browser_url,
     _chosen_breakpoints, _crawl_maybe_rendering, _is_page_file,
-    _render_mode, _run_browser_pass, _wrap, looks_like_url, with_scheme,
+    _render_mode, _run_browser_pass, _wrap, apply_session, looks_like_url,
+    with_scheme,
 )
 from cli_impl.aicmds import (  # noqa: F401 - re-exported for `import cli`
     _provider_for, _xformat_provider,
@@ -405,6 +406,10 @@ def cmd_audit(args) -> int:
         # crawler, not two.
         config = CrawlConfig(max_depth=args.depth, max_pages=args.max_pages,
                              render_mode=_render_mode(args))
+        # A site the person signed in to is read as them, in both clients.
+        # See `cli_impl.auditpass.apply_session`.
+        session_host = apply_session(
+            target, config, use_session=not getattr(args, "no_session", False))
 
         crawled = 0
 
@@ -415,7 +420,9 @@ def cmd_audit(args) -> int:
             print(f"# [crawl {crawled}{limit}] depth={depth} {url}",
                   file=sys.stderr, flush=True)
 
-        pages = _crawl_maybe_rendering(target, config, progress_cb=_crawl_progress)
+        pages = _crawl_maybe_rendering(target, config,
+                                       progress_cb=_crawl_progress,
+                                       session_host=session_host)
         print(f"# [crawl done] {len(pages)} page(s)", file=sys.stderr, flush=True)
         
         # Check if SPA pages were detected but not rendered
@@ -472,6 +479,7 @@ def cmd_audit(args) -> int:
     if hidden:
         print(f"# {hidden} check(s) could not be decided and are not listed; "
               f"add --unsettled to see them", file=sys.stderr)
+    _announce_auth_walls(result)
 
     from i18n.translations import report_language
 
@@ -580,6 +588,71 @@ def _owned_counts(result) -> dict:
     return counts
 
 
+def cmd_login(args) -> int:
+    """Sign in to a site by hand, so a run can read what is behind the login.
+
+    The whole command is a browser window: it opens the address, the person
+    signs in the way they always do - including 2FA and SSO, which work here
+    because this really is a browser - and what the site gives that browser
+    is kept for the next run. This tool never sees a credential.
+
+    `--forget` and `--list` are the other half of that bargain. Something
+    that quietly keeps a way into somebody's account and offers no way to see
+    or remove it is not a tool anyone should install.
+    """
+    import site_session
+
+    if getattr(args, "list", False):
+        hosts = site_session.known_hosts()
+        if not hosts:
+            print("no stored sessions")
+            return 0
+        for host in hosts:
+            print(host)
+        return 0
+
+    target = (getattr(args, "url", "") or "").strip()
+    host = site_session.host_of(target)
+    if getattr(args, "forget", False):
+        if not host:
+            removed = site_session.forget_all()
+            print(f"forgot {removed} session(s)")
+            return 0
+        print(f"forgot the session for {host}" if site_session.forget(host)
+              else f"no stored session for {host}")
+        return 0
+
+    if not host:
+        print("login needs a URL: xanalyze login https://example.com/admin",
+              file=sys.stderr)
+        return 2
+
+    try:
+        from PySide6.QtWidgets import QApplication
+
+        from ui.site_sign_in import SiteSignInDialog
+    except Exception as exc:  # noqa: BLE001 - a build without Qt says so
+        print(f"signing in needs the desktop components: {exc}", file=sys.stderr)
+        return 1
+
+    address = target if "://" in target else f"https://{target}"
+    app = QApplication.instance() or QApplication([])
+    from i18n.translations import report_language
+
+    dialog = SiteSignInDialog(address, lang=report_language(
+        getattr(args, "language", "")))
+    dialog.exec()
+    if not dialog.saved:
+        print("nothing saved", file=sys.stderr)
+        return 1
+    # The count and the host, and nothing else. A terminal keeps scrollback
+    # and scrollback gets pasted into issues.
+    print(f"session stored for {host}; runs against that host will use it. "
+          f"Remove it with: xanalyze login --forget {host}")
+    del app
+    return 0
+
+
 def cmd_logs(args) -> int:
     """The app's own log, for whoever has to debug a run that already ended.
 
@@ -668,6 +741,41 @@ def _reaudit(args, target: str, previous):
 
     files = scan_repo(target, _build_scan_config(args, target=target))
     return audit.analyze_files(files, target)
+
+
+def _announce_auth_walls(result) -> None:
+    """Say if what was audited was the door rather than the site.
+
+    Printed before anything else about the findings, because it changes what
+    they mean: three findings on a login form are not three findings on the
+    application behind it, and the summary underneath cannot say so on its
+    own. Silent when nothing was walled, which is nearly always.
+    """
+    report = getattr(result, "auth", None)
+    if report is None or not report.blocked:
+        return
+    for signal, walls in report.by_signal().items():
+        addresses = ", ".join(wall.url for wall in walls[:3])
+        if len(walls) > 3:
+            addresses += f", +{len(walls) - 3}"
+        detail = walls[0].detail
+        print(f"# [authwall] {len(walls)} address(es) answered with a login "
+              f"wall ({signal}: {detail}): {addresses}", file=sys.stderr)
+    if report.whole_site:
+        print("# [authwall] every page this run read was a login wall, so "
+              "nothing behind it was audited. Sign in first, or point the "
+              "run at a page that is public.", file=sys.stderr)
+    # The case worth naming separately: this run *was* signed in and still
+    # met a door. That is an expired session, and reporting it as "the site
+    # has a login" would send somebody to sign in again without saying why
+    # the last sign-in stopped counting.
+    import site_session
+
+    host = site_session.host_of(getattr(result, "root", "") or "")
+    if host and site_session.has_session(host):
+        print(f"# [session] the stored session for {host} did not get past "
+              f"the login - it has most likely expired. Sign in again with: "
+              f"xanalyze login {host}", file=sys.stderr)
 
 
 def _apply_fixes(result, args, lang: str):
@@ -979,6 +1087,9 @@ def build_parser() -> argparse.ArgumentParser:
                               "person to read: a .pdf or .html by suffix. "
                               "Different from --report, which is a briefing "
                               "for an agent")
+    p_audit.add_argument("--no-session", action="store_true",
+                        help="ignore any stored sign-in for this host and "
+                             "read the site the way a stranger sees it")
     p_audit.add_argument("--no-hints", action="store_true",
                         help="do not print what this run leaves "
                              "undone (see cli_impl/prerun.py)")
@@ -1201,6 +1312,9 @@ def build_parser() -> argparse.ArgumentParser:
                                  "(no API key needed)")
     p_fullscan.add_argument("--json", action="store_true",
                             help="machine-readable JSON output for agent")
+    p_fullscan.add_argument("--no-session", action="store_true",
+                        help="ignore any stored sign-in for this host and "
+                             "read the site the way a stranger sees it")
     p_fullscan.add_argument("--no-hints", action="store_true",
                         help="do not print what this run leaves "
                              "undone (see cli_impl/prerun.py)")
@@ -1228,6 +1342,20 @@ def build_parser() -> argparse.ArgumentParser:
     logs_sub.add_parser("clean", help="apply the retention limits now").set_defaults(func=cmd_logs)
     logs_sub.add_parser("clear", help="delete every log file").set_defaults(func=cmd_logs)
     p_logs.set_defaults(func=cmd_logs)
+
+    p_login = sub.add_parser(
+        "login",
+        help="sign in to a site by hand, so a run can read what is behind it")
+    p_login.add_argument("url", nargs="?", default="",
+                         help="the address to sign in to")
+    p_login.add_argument("--forget", action="store_true",
+                         help="remove the stored session for this host "
+                              "(or every host, with no URL)")
+    p_login.add_argument("--list", action="store_true",
+                         help="list the hosts that have a stored session")
+    p_login.add_argument("--language", default="",
+                         help="interface language for the sign-in window")
+    p_login.set_defaults(func=cmd_login)
 
     p_update = sub.add_parser(
         "update",

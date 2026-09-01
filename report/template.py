@@ -92,6 +92,14 @@ _LABELS = {
         mode={"text-web": "AI-text scan · website", "text-repo": "AI-text scan · repository",
              "audit-web": "Site audit · website", "audit-repo": "Site audit · repository",
              "audit-file": "Site audit · page"},
+        authwall="What was behind a login",
+        authwall_some="{blocked} of the {pages} addresses read were a sign-in page, not a page of the site. Nothing behind them was read by this run.",
+        authwall_whole="Every one of the {pages} addresses read was a sign-in page. Nothing in this report is about the site behind it.",
+        authwall_col_signal="What said so", authwall_col_where="Where",
+        authwall_signal={"http-401": "401 with an authentication scheme",
+            "http-403": "403, refused without a reason",
+            "login-redirect": "redirected to a sign-in address",
+            "password-form": "a password field on the page"},
         first_things="Start here", places_col="Places",
         doc_kind={"page": "Pages", "fragment": "Components and partials",
             "email": "Emails"},
@@ -130,6 +138,14 @@ _LABELS = {
         mode={"text-web": "Аналіз тексту · сайт", "text-repo": "Аналіз тексту · репозиторій",
              "audit-web": "Аудит доступності · сайт", "audit-repo": "Аудит доступності · репозиторій",
              "audit-file": "Аудит доступності · сторінка"},
+        authwall="Що було за логіном",
+        authwall_some="{blocked} із {pages} прочитаних адрес - це сторінка входу, а не сторінка сайту. Того, що за ними, цей прогін не читав.",
+        authwall_whole="Усі {pages} прочитані адреси виявились сторінкою входу. Жодне число в цьому звіті не стосується сайту за нею.",
+        authwall_col_signal="Що на це вказало", authwall_col_where="Де",
+        authwall_signal={"http-401": "401 із названою схемою автентифікації",
+            "http-403": "403, відмова без пояснення",
+            "login-redirect": "перенаправлення на адресу входу",
+            "password-form": "поле пароля на сторінці"},
         first_things="З чого почати", places_col="Місць",
         doc_kind={"page": "Сторінки", "fragment": "Компоненти й частини",
             "email": "Листи"},
@@ -169,6 +185,14 @@ _LABELS = {
              "audit-web": "Audit di accessibilità · sito",
              "audit-repo": "Audit di accessibilità · repository",
              "audit-file": "Audit di accessibilità · pagina"},
+        authwall="Che cosa stava dietro un accesso",
+        authwall_some="{blocked} indirizzi su {pages} letti erano una pagina di accesso, non una pagina del sito. Ciò che sta dietro non è stato letto da questa scansione.",
+        authwall_whole="Tutti i {pages} indirizzi letti erano una pagina di accesso. Nessun numero in questo report riguarda il sito che sta dietro.",
+        authwall_col_signal="Che cosa lo indica", authwall_col_where="Dove",
+        authwall_signal={"http-401": "401 con uno schema di autenticazione",
+            "http-403": "403, rifiuto senza motivo",
+            "login-redirect": "reindirizzamento a un indirizzo di accesso",
+            "password-form": "un campo password nella pagina"},
         first_things="Da dove iniziare", places_col="Punti",
         doc_kind={"page": "Pagine", "fragment": "Componenti e frammenti",
             "email": "Email"},
@@ -547,6 +571,43 @@ def _charts(by_severity: dict, by_category: dict, labels: dict, palette,
     return f'<div class="charts">{"".join(blocks)}</div>'
 
 
+def _behind_the_login(model: ReportModel, labels: dict, palette) -> str:
+    """What the run did not read, because a door was in front of it.
+
+    Placed above everything else in the document for the same reason the
+    terminal prints it first: it changes what every other number means. A
+    report that says "40 pages, 3 findings" over a site that answered with
+    one login form forty times is not a strict report, it is a false one,
+    and this is the paragraph that stops it being handed on as true.
+    """
+    auth = model.auth or {}
+    if not auth.get("blocked"):
+        return ""
+    rows = "".join(
+        f'<tr><td>{_esc(labels["authwall_signal"].get(row["signal"], row["signal"]))}</td>'
+        f'<td class="num">{row["count"]}</td>'
+        f'<td class="detail">{_esc(", ".join(row["addresses"]))}</td></tr>'
+        for row in auth.get("rows", ()))
+    headline = (labels["authwall_whole"] if auth.get("whole")
+                else labels["authwall_some"]).format(
+        blocked=auth["blocked"], pages=auth["pages"])
+    return (f'<section class="authwall"><h2>{_esc(labels["authwall"])}</h2>'
+            f'<p class="authwall-note">{_esc(headline)}</p>'
+            f'<table class="category-table find-table">'
+            f'<tr><th>{_esc(labels["authwall_col_signal"])}</th>'
+            f'<th class="num">{_esc(labels["count"])}</th>'
+            f'<th>{_esc(labels["authwall_col_where"])}</th></tr>'
+            f'{rows}</table></section>')
+
+
+def _authwall_css(palette) -> str:
+    return f"""
+.authwall {{ margin-bottom: 8mm; border-left: 2px solid {palette.sev_high};
+  padding-left: 5mm; }}
+.authwall-note {{ margin: 0 0 3mm; }}
+"""
+
+
 def _first_things(model: ReportModel, labels: dict, palette) -> str:
     """What to do first, grouped by what the document is.
 
@@ -819,6 +880,7 @@ def render_html(model: ReportModel, lang: str = "en") -> str:
     findings_html = ("".join(_finding_card(f, lang, palette) for f in findings)
                      if findings else f'<p class="empty">{_esc(labels["no_findings"])}</p>')
 
+    authwall_section = _behind_the_login(model, labels, palette)
     first_section = _first_things(model, labels, palette)
     work_section = _where_the_work_is(model, labels, palette)
     pages_section = _pages_section(model, labels)
@@ -984,6 +1046,7 @@ table.pages-table tr.more td {{ color: {palette.text_muted}; font-style: italic;
 {_severity_css(palette)}
 {_rank_css(palette)}
 {_first_things_css(palette)}
+{_authwall_css(palette)}
 {role_css(palette)}
 /* Small blocks stay whole: these are short, so keeping them together costs
    a line or two of slack rather than a third of a page. */
@@ -1069,6 +1132,8 @@ footer {{
   {what_rows}
   {legend}
 </section>
+
+{authwall_section}
 
 {first_section}
 

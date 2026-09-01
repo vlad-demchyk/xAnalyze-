@@ -495,6 +495,7 @@ class MainViewModel(QObject):
         self.error.emit(message)
 
     def _on_web_finished(self, result: AnalysisResult):
+        self._report_session()
         self._report_pairing()
         if isinstance(self.result, RepoAnalysisResult) and self.state.source == SOURCE_FILE:
             # Merge browser findings into the code analysis result
@@ -505,6 +506,22 @@ class MainViewModel(QObject):
             self._remember_extraction(self._last_request,
                                       pages=result.pages)
             self.web_result_ready.emit(result)
+
+    def _report_session(self, worker=None) -> None:
+        """Say when a run read the site as a signed-in person.
+
+        The host and nothing else. A run that was authenticated is a
+        different run - what it found is what *that account* sees - and a
+        report of it that does not say so is a report about the wrong
+        visitor.
+        """
+        from i18n.translations import t
+
+        worker = worker if worker is not None else self._worker
+        host = getattr(worker, "session_host", "")
+        if host:
+            self.status_message.emit(
+                t("sign_in_site_active", self.settings.ui_language, host=host))
 
     def _report_pairing(self) -> None:
         """Say how much of the site the paired checkout actually explained.
@@ -540,6 +557,7 @@ class MainViewModel(QObject):
             self.repo_result_ready.emit(result)
 
     def _on_audit_finished(self, result):
+        self._report_session()
         self.audit_result = result
         self.audit_result_ready.emit(result)
         if self._last_request and self._last_request.wants_browser:
