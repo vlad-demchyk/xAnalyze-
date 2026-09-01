@@ -106,6 +106,40 @@ class Structure(unittest.TestCase):
         markup = "<table><tr><td>a</td></tr><tr><td>b</td></tr></table>"
         self.assertEqual(len(issues(markup, "table-headers")), 1)
 
+    def test_a_layout_table_has_no_headers_to_be_missing(self):
+        """Measured 2026-09-01 on a workspace of email deliverables: all 47
+        findings of this rule were `<table width="100%" cellpadding="0"
+        cellspacing="0" border="0">`, the wrapper an email is laid out in.
+        The rule was reporting the absence of something that must not be
+        there, at `serious`."""
+        layout = ('<table width="100%" cellpadding="0" cellspacing="0" border="0">'
+                  '<tr><td>a</td><td>b</td></tr><tr><td>c</td><td>d</td></tr>'
+                  '</table>')
+        self.assertEqual(issues(layout, "table-headers"), [])
+
+    def test_a_table_that_wraps_another_table_is_a_wrapper(self):
+        nested = ("<table><tr><td>"
+                  "<table><tr><td>a</td></tr><tr><td>b</td></tr></table>"
+                  "</td></tr><tr><td>x</td></tr></table>")
+        # The inner one is still judged on its own merits; the wrapper is not
+        # a data table and is not reported as one.
+        found = issues(nested, "table-headers")
+        self.assertEqual(len(found), 1)
+
+    def test_role_none_is_the_same_statement_as_presentation(self):
+        markup = ('<table role="none"><tr><td>a</td><td>b</td></tr>'
+                  '<tr><td>c</td><td>d</td></tr></table>')
+        self.assertEqual(issues(markup, "table-headers"), [])
+
+    def test_a_data_table_with_a_caption_is_still_data(self):
+        """A caption is what a data table has and a layout wrapper does not,
+        so it wins over the presentational attributes."""
+        markup = ('<table cellpadding="0" cellspacing="0" border="0">'
+                  '<caption>Prices</caption>'
+                  '<tr><td>a</td><td>b</td></tr><tr><td>c</td><td>d</td></tr>'
+                  '</table>')
+        self.assertEqual(len(issues(markup, "table-headers")), 1)
+
 
 class Keyboard(unittest.TestCase):
     def test_positive_tabindex_is_reported(self):
@@ -404,9 +438,62 @@ class AbbreviationExpansion(unittest.TestCase):
         if found:
             self.assertEqual(found[0].details["abbreviation"], "WCAG")
 
+    def test_a_comment_is_not_content(self):
+        """`find_all(string=True)` returns comments too. Measured across
+        three repositories: more hits came from HTML comments - "STEP 1
+        WIREFRAME", "MASTHEAD (upload img/...)" - than from the pages' own
+        prose. A comment has no reader to be accessible to."""
+        markup = ('<html lang="en"><head><title>T</title></head><body>'
+                  '<!-- STEP 1 WIREFRAME: HTML and CSS, no JSON here -->'
+                  '<p>Ordinary copy with no abbreviation in it.</p>'
+                  '</body></html>')
+        self.assertEqual(issues(markup, "abbreviation-expansion"), [])
+
+    def test_the_page_s_own_prose_is_still_read(self):
+        markup = ('<html lang="en"><head><title>T</title></head><body>'
+                  '<p>The API is documented elsewhere.</p></body></html>')
+        found = issues(markup, "abbreviation-expansion")
+        self.assertEqual([f.details["abbreviation"] for f in found], ["API"])
+
     def test_abbreviation_with_abbr_is_fine(self):
         markup = '<html lang="en"><head><title>T</title></head><body><p>The <abbr title="Web Content Accessibility Guidelines">WCAG</abbr> standard is important</p></body></html>'
         self.assertEqual(issues(markup, "abbreviation-expansion"), [])
+
+
+class BackgroundVideoAndCaptions(unittest.TestCase):
+    """1.2.2 is about the audio of synchronised media.
+
+    Measured 2026-09-01 on a live site: `<video autoplay muted loop
+    playsinline>` - the hero background idiom, with no `controls` and so no
+    way for a visitor to turn sound on - was reported at `serious` on every
+    page for captions it has no audio to carry.
+    """
+
+    BACKGROUND = ('<video class="hero" autoplay muted loop playsinline>'
+                  '<source src="hero.mp4" type="video/mp4"></video>')
+
+    def test_a_muted_uncontrollable_background_video_is_not_asked_for_captions(self):
+        self.assertEqual(issues(self.BACKGROUND, "media-captions"), [])
+
+    def test_the_same_video_with_controls_is(self):
+        """Controls mean the visitor can unmute it, so there is audio to
+        caption after all."""
+        with_controls = self.BACKGROUND.replace("<video ", "<video controls ")
+        self.assertEqual(len(issues(with_controls, "media-captions")), 1)
+
+    def test_an_unmuted_video_is_still_asked(self):
+        unmuted = self.BACKGROUND.replace(" muted", "")
+        self.assertEqual(len(issues(unmuted, "media-captions")), 1)
+
+    def test_audio_is_never_exempt(self):
+        self.assertEqual(len(issues('<audio autoplay muted src="a.mp3"></audio>',
+                                    "media-captions")), 1)
+
+    def test_a_captioned_video_was_always_fine(self):
+        captioned = self.BACKGROUND.replace(
+            "</video>", '<track kind="captions" src="c.vtt"></video>')
+        self.assertEqual(issues(captioned.replace(" muted", ""),
+                                "media-captions"), [])
 
 
 class WhatCountsAsMarkup(unittest.TestCase):

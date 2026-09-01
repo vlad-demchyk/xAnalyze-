@@ -276,7 +276,19 @@ def issues_for(pages) -> list:
 
 
 def as_documents(pages, root_url: str = "", site_controls: bool = False) -> list:
-    """Keep crawl-wide facts in one synthetic document for the report."""
+    """One document per address, the way every other pass reports.
+
+    These findings are per page - this page answers 404, that page carries
+    `X-Robots-Tag: noindex` - and they used to be handed back as a single
+    document named after the *first* one. Every per-page view inherited
+    that: measured 2026-09-01 on a 250-page site where the whole site is
+    `noindex`, the home page was reported with **335** findings, 282 of them
+    facts about other pages, and the page index printed that number beside
+    its address.
+
+    Each issue already carries the address it is about, so the grouping is
+    the only thing that was wrong.
+    """
     from .engine import DocumentReport
 
     issues = issues_for(pages)
@@ -284,5 +296,8 @@ def as_documents(pages, root_url: str = "", site_controls: bool = False) -> list
         issues.extend(site_control_issues(root_url))
     if not issues:
         return []
-    return [DocumentReport(source=issues[0].source, issues=issues,
-                           elements_checked=len(pages))]
+    by_source: dict = {}
+    for issue in issues:
+        by_source.setdefault(issue.source, []).append(issue)
+    return [DocumentReport(source=source, issues=found, elements_checked=1)
+            for source, found in by_source.items()]

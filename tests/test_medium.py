@@ -49,6 +49,29 @@ class EmailHasToProveItself(unittest.TestCase):
         self.assertFalse(medium.detect(
             '<table role="presentation"></table>' * 3).is_email)
 
+    def test_a_table_layout_with_an_email_attribute_settles_it(self):
+        """Measured 2026-09-01 over 324 HTML files: seventeen lay out in
+        three or more presentation tables, all seventeen are email
+        deliverables, and every one carries a fixed narrow table width, a
+        `bgcolor` or a `<td align>`. Asking for the colour-schemes meta as
+        well left twelve of them audited as web pages."""
+        for attribute in ('<table role="presentation" width="600">',
+                          '<tr bgcolor="#131317">',
+                          '<td align="center">'):
+            with self.subTest(attribute):
+                markup = ('<table role="presentation"></table>' * 3) + attribute
+                found = medium.detect(markup)
+                self.assertTrue(found.is_email, found.evidence)
+                self.assertIn("presentation tables", found.evidence)
+
+    def test_a_modern_page_with_tables_is_still_a_page(self):
+        """The other side of the trade: presentation tables alone, with no
+        attribute a browser stopped needing in 1999, stay web."""
+        markup = ('<div class="grid">'
+                  + '<table role="presentation"><tr><td>x</td></tr></table>' * 4
+                  + '</div>')
+        self.assertFalse(medium.detect(markup).is_email)
+
     def test_an_ordinary_page_is_web(self):
         found = medium.detect(
             '<!DOCTYPE html><html lang="en"><head><title>x</title></head>'

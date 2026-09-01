@@ -419,7 +419,7 @@ def analyze_pages(pages, root: str, rules=None, ai_review=None,
     # What only a whole crawl can see: the same title, description or
     # canonical repeated across pages. Every rule above reads one document,
     # so this class of problem was invisible by construction.
-    result.documents.extend(crosspage_pass.as_documents(pages))
+    result.documents.extend(crosspage_pass.as_documents(pages, root_url=root))
     if media:
         from audit import media as media_pass
 

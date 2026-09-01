@@ -555,9 +555,32 @@ class MediaWithoutCaptions(AccessibilityRule):
     confidence = NEEDS_BROWSER
     wcag = ("1.2.2",)
 
+    @staticmethod
+    def _is_decorative_background(tag) -> bool:
+        """A muted, looping, uncontrollable video has no audio to caption.
+
+        1.2.2 is about the audio of synchronised media. The background video
+        idiom - `<video autoplay muted loop playsinline>` with no `controls`
+        - plays no sound and gives the visitor no way to turn any on, so
+        there is nothing for a caption to carry. `media-autoplay` next door
+        already exempts the same element for the same reason.
+
+        Measured 2026-09-01 on a live site: the hero video on every page of
+        it was reported at `serious` for missing captions it cannot use.
+        What such a video *does* need is a text alternative for what it
+        shows, which is 1.2.1 and 1.2.3 and a different question from this
+        one.
+        """
+        return (tag.name == "video"
+                and tag.has_attr("muted")
+                and tag.has_attr("autoplay")
+                and not tag.has_attr("controls"))
+
     def check(self, document, context) -> list:
         issues = []
         for tag in document.find_all(("video", "audio")):
+            if self._is_decorative_background(tag):
+                continue
             tracks = tag.find_all("track")
             if any((t.get("kind") or "").lower() in ("captions", "subtitles") for t in tracks):
                 continue
@@ -604,10 +627,47 @@ class TableStructure(AccessibilityRule):
     severity = SERIOUS
     wcag = ("1.3.1",)
 
+    #: Attributes that mean "this table is drawing a layout". A data table
+    #: does not switch its borders and spacing off: the idiom below is the
+    #: one every HTML email and every 2005 page is built from.
+    _LAYOUT_ATTRS = ("cellpadding", "cellspacing", "border")
+
+    @classmethod
+    def _is_layout(cls, table) -> bool:
+        """Is this table drawing a layout rather than holding data?
+
+        `role="presentation"` says so outright, and everything below is for
+        the tables that do not say it. Measured 2026-09-01 on a workspace of
+        Beehiiv and Ghost deliverables: **47** findings of this rule, at
+        `serious`, every one of them against
+        `<table width="100%" cellpadding="0" cellspacing="0" border="0">` -
+        the wrapper an email is laid out in. A layout table has no headers
+        to be missing, so the rule was reporting the absence of something
+        that must not be there.
+
+        Three questions, each one a thing a data table does not do: declare
+        itself presentational, switch its borders and spacing off, or wrap
+        another table.
+
+        A fourth was measured and dropped: "every row holds one cell". It
+        catches the same emails and it also catches a one-column list of
+        values, which is a data table with a missing header - the thing this
+        rule exists to find. The three above cover all 47 real findings
+        without that trade.
+        """
+        if str(table.get("role") or "").lower() in ("presentation", "none"):
+            return True
+        if table.find("th") is not None or table.find("caption") is not None:
+            return False
+        attributes = [a for a in cls._LAYOUT_ATTRS if table.get(a) is not None]
+        if len(attributes) >= 2 and str(table.get("border", "")).strip() in ("0", ""):
+            return True
+        return table.find("table") is not None
+
     def check(self, document, context) -> list:
         issues = []
         for table in document.find_all("table"):
-            if table.get("role") == "presentation":
+            if self._is_layout(table):
                 continue
             rows = table.find_all("tr")
             if len(rows) < 2:
@@ -1382,9 +1442,20 @@ class AbbreviationExpansion(AccessibilityRule):
         body and the footer reported it three times. 3.1.4 is about the
         first occurrence - the reader needs the expansion once.
         """
+        from bs4 import Comment, Doctype, ProcessingInstruction
+
         issues = []
         reported = set()
+        # `string=True` returns every `NavigableString`, and a comment is
+        # one. Measured 2026-09-01 across three repositories: more hits came
+        # from HTML comments - "STEP 1 WIREFRAME", "MASTHEAD (upload
+        # img/web/logo-simple.png...)" - than from the page's own prose. A
+        # comment has no reader to be accessible to, and `stripped_strings`,
+        # which every other rule here reads through, skips them already.
+        skip_types = (Comment, Doctype, ProcessingInstruction)
         for tag in document.find_all(string=True):
+            if isinstance(tag, skip_types):
+                continue
             if tag.parent.name in ("script", "style", "code", "pre", "abbr"):
                 continue
             parent = tag.parent

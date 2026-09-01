@@ -157,12 +157,24 @@ def issues_for(pages) -> list:
     return issues
 
 
-def as_documents(pages) -> list:
-    """The run-level findings, in one report addressed to the run."""
+def as_documents(pages, root_url: str = "") -> list:
+    """One document per address, and the run-level ones addressed to the run.
+
+    A repeated title belongs to the page that repeats it, and that is what
+    `source` on each issue already says. Handing them all back under the
+    first page's address made that page look like the site's worst - the
+    same miscount `crawlability.as_documents` carried, and for the same
+    reason.
+
+    `root_url`, when given, is where a finding with no page of its own goes.
+    """
     from .engine import DocumentReport
 
     issues = issues_for(pages)
     if not issues:
         return []
-    return [DocumentReport(source=issues[0].source, issues=issues,
-                           elements_checked=len(pages))]
+    by_source: dict = {}
+    for issue in issues:
+        by_source.setdefault(issue.source or root_url, []).append(issue)
+    return [DocumentReport(source=source, issues=found, elements_checked=1)
+            for source, found in by_source.items()]

@@ -55,6 +55,26 @@ _ANY_TABLE = re.compile(r"<table[\s>]", re.I)
 #: How many presentation tables before "laid out in tables" is fair to say.
 _TABLE_LAYOUT_MIN = 3
 
+#: What a table layout is corroborated *by*, when there is no merge tag and
+#: no Outlook namespace to settle it. Each is an attribute a browser has not
+#: needed since HTML 4 and a mail client still does: a table pinned to the
+#: 500-720 px an email is designed for, a `bgcolor` on a row or cell, an
+#: `align` on a cell.
+#:
+#: Measured 2026-09-01 over 324 HTML files in seven repositories: **17** of
+#: them lay out in three or more presentation tables, all seventeen are
+#: email deliverables (Beehiiv and Ghost templates), and every one carries
+#: at least one of these three attributes. On the other side, eight pages of
+#: a live WordPress site carry **zero** presentation tables. Before this,
+#: five of the seventeen were recognised and twelve were audited as web
+#: pages - `seo-canonical`, `seo-open-graph`, `skip-link` and
+#: `landmark-regions` on a file that lands in a mail client.
+_EMAIL_TABLE_ATTRS = (
+    re.compile(r"<table[^>]+width\s*=\s*[\"']?(?:5\d\d|6\d\d|7[0-2]\d)\b", re.I),
+    re.compile(r"<t[dr][^>]+bgcolor\s*=", re.I),
+    re.compile(r"<td[^>]+align\s*=", re.I),
+)
+
 
 @dataclass(frozen=True)
 class Medium:
@@ -85,8 +105,18 @@ def detect(markup: str) -> Medium:
     corroborating = []
     if _EMAIL_META.search(text):
         corroborating.append("supported-color-schemes meta")
-    if len(_PRESENTATION_TABLE.findall(text)) >= _TABLE_LAYOUT_MIN:
-        corroborating.append("laid out in presentation tables")
+    tables = len(_PRESENTATION_TABLE.findall(text))
+    if tables >= _TABLE_LAYOUT_MIN:
+        corroborating.append(f"{tables} presentation tables")
+        # A table layout plus one attribute no browser has needed since
+        # HTML 4 is not a second opinion, it is the same fact twice - and
+        # asking for the meta as well left twelve of seventeen email
+        # templates being audited as web pages. See `_EMAIL_TABLE_ATTRS`.
+        for pattern in _EMAIL_TABLE_ATTRS:
+            match = pattern.search(text)
+            if match:
+                return Medium(EMAIL, f"{tables} presentation tables + "
+                                     f"{match.group(0).strip()[:40]!r}")
     if len(corroborating) >= 2:
         return Medium(EMAIL, " + ".join(corroborating))
     return Medium(WEB, "")
