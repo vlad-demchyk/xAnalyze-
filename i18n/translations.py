@@ -6092,6 +6092,18 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Rimuovere le sessioni salvate per: {hosts}? La prossima scansione leggerà quei siti come li vede un estraneo.",
         "en": "Remove the stored sessions for: {hosts}? The next run reads those sites the way a stranger sees them.",
     },
+    "compare_widths": {
+        "uk": "Дві ширини поруч", "it": "Due larghezze affiancate",
+        "en": "Two widths side by side",
+    },
+    "compare_widths_full": {
+        "uk": "Показує сторінку водночас на найширшій і найвужчій із перевірених ширин. Перемикач вище й далі керує лівою панеллю, тож будь-яку ширину можна поставити проти 320 px - саме там живуть відмови адаптивної верстки.",
+        "it": "Mostra la pagina contemporaneamente alla larghezza più ampia e a quella più stretta tra quelle controllate. Il selettore sopra continua a comandare il pannello di sinistra, così puoi confrontare qualsiasi larghezza con i 320 px, dove stanno i cedimenti del layout responsive.",
+        "en": "Shows the page at the widest and the narrowest audited width at once. The switcher above still drives the left-hand pane, so any width can be put against 320 px - which is where responsive failures live.",
+    },
+    "compare_widths_caption": {
+        "uk": "{width} px", "it": "{width} px", "en": "{width} px",
+    },
     "sign_in_site_button": {
         "uk": "Увійти на сайт", "it": "Accedi al sito", "en": "Sign in to the site",
     },

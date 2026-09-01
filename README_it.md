@@ -284,6 +284,8 @@ Metà di ciò che vale la pena controllare sta dietro un accesso: un'area di amm
 
 Nulla di una sessione raggiunge mai un report, un log, una cartella di scansione o il terminale: il fatto e l'host, mai un valore.
 
+**Due larghezze affiancate.** La colonna di anteprima ha un selettore di larghezza, e un selettore risponde a una larghezza per volta: verificare «si rompe solo su mobile» voleva dire passare avanti e indietro tenendo a mente il layout desktop. Il pulsante di confronto mette in scena insieme la larghezza più ampia e la più stretta tra quelle controllate, entrambe sulla stessa pagina; il selettore continua a comandare il pannello di sinistra, così qualsiasi larghezza può essere messa a confronto con il controllo di reflow a 320 px. La seconda anteprima viene creata solo al primo clic, perché una vista browser è un processo di rendering a sé.
+
 **Da dove iniziare.** Una scansione di una cartella risponde «820 rilievi», e in
 cima a quell'elenco ci sono le stesse regole di pagina ripetute in ogni documento.
 Il report parte invece dalle tre cose più pesanti per **tipo** di documento -

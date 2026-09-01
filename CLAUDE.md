@@ -24,7 +24,7 @@
 ## Запуск і перевірки
 
 ```bash
-source venv/bin/activate          # venv/ і venv-py39-old/ у .gitignore
+source venv/bin/activate          # venv/ у .gitignore; venv-py39-old/ видалено 2026-09-01
 pip install -r requirements.txt
 
 python main.py                    # десктоп (Qt)

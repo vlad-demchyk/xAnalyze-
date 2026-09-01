@@ -368,6 +368,8 @@ class FindingsPanelMixin:
         if self.current_preview_url != block.page_url:
             self.current_preview_url = block.page_url
             self.site_view.setHtml(page.raw_html, QUrl(block.page_url))
+            self.mirror_preview_to_comparison(html=page.raw_html,
+                                              base=QUrl(block.page_url))
         else:
             self._run_pending_highlight()
 

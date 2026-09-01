@@ -339,6 +339,8 @@ Static analysis reads source files. Browser analysis can inspect rendered DOM, c
 
 **The state pass** runs in the browser and checks the page in the state a person puts it in: the focus indicator, keyboard traps, focus order, hover-only content, an open modal that lets focus stay behind it, and the form journey - a field with no accessible name after scripts have run, a field named only by its placeholder, a value the browser itself rejects with nothing announcing it, and error text on screen that no field refers to. It reads and never acts: nothing is typed, clicked or submitted, because on a real site each of those fires the page's own handlers. Filling a field to see what the form does with a wrong value is therefore out of scope, and so is INP, which needs real input to measure.
 
+**Two widths side by side.** The preview column has a width switcher, and a switcher answers one width at a time - so checking "this only breaks on mobile" meant flipping back and forth and holding the desktop layout in your head. The comparison button puts the widest and the narrowest audited width on screen at once, both showing the same page; the switcher still drives the left-hand pane, so any width can be put against the 320 px reflow check. The second view is built only when the button is first pressed, because a browser view is a renderer process.
+
 **Start here.** A run over a folder answers "820 findings", and the top of that
 list is the same page-level rules repeated across every document. The report
 opens instead with the three heaviest things per **kind** of document - pages,

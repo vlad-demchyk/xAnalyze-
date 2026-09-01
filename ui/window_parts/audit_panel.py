@@ -315,6 +315,7 @@ class AuditPanelMixin:
         if self.current_preview_url != address:
             self.current_preview_url = address
             self.site_view.setUrl(QUrl(address))
+            self.mirror_preview_to_comparison(QUrl(address))
         else:
             self._run_pending_highlight()
 

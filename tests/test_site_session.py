@@ -202,6 +202,47 @@ class BothClientsOrNeither(_Isolated):
         self.assertEqual(captured, {"sid": "x"})
 
 
+class ClosingTheWindow(_Isolated):
+    """Closing with the title-bar button must not leave half a session.
+
+    QtWebEngine writes the persistent profile the moment the site sets a
+    cookie, and closing the window does not undo that - so without this the
+    renderer would be signed in and the fetcher would not, which is the exact
+    split the feature exists to avoid.
+    """
+
+    def setUp(self):
+        super().setUp()
+        try:
+            from PySide6.QtWidgets import QApplication  # noqa: F401
+        except Exception:  # noqa: BLE001
+            self.skipTest("PySide6 not available")
+
+    def test_a_dialog_closed_without_done_still_keeps_what_it_collected(self):
+        import site_session as ss
+        from ui.site_sign_in import SiteSignInDialog
+
+        dialog = SiteSignInDialog.__new__(SiteSignInDialog)
+        dialog.host = "a.example"
+        dialog.saved = False
+        dialog._cookies = {"sid": "x"}
+        dialog._keep_what_the_browser_has()
+        self.assertTrue(dialog.saved)
+        self.assertEqual(ss.load_cookies("a.example"), {"sid": "x"})
+
+    def test_a_dialog_that_collected_nothing_stores_nothing(self):
+        import site_session as ss
+        from ui.site_sign_in import SiteSignInDialog
+
+        dialog = SiteSignInDialog.__new__(SiteSignInDialog)
+        dialog.host = "a.example"
+        dialog.saved = False
+        dialog._cookies = {}
+        dialog._keep_what_the_browser_has()
+        self.assertFalse(dialog.saved)
+        self.assertFalse(ss.has_session("a.example"))
+
+
 class TheCommandLine(_Isolated):
     def test_listing_says_so_when_there_is_nothing(self):
         import cli

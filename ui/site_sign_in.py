@@ -127,7 +127,27 @@ class SiteSignInDialog(QDialog):
         self.saved = False
         self.status.setText(t("sign_in_site_forgotten", self.lang, host=self.host))
 
+    def _keep_what_the_browser_has(self) -> None:
+        """Save on the way out too, so a session cannot end up half-made.
+
+        The persistent profile is written by QtWebEngine the moment the site
+        sets a cookie, and closing the window does not undo that - so a
+        person who signed in and then closed with the title-bar button would
+        leave the *renderer* authenticated and the *fetcher* not, which is
+        the exact split this whole feature exists to avoid. Pressing Done is
+        still the way to be told it worked; this is the safety net under it.
+        """
+        if self.saved or not self._cookies:
+            return
+        site_session.save_cookies(self.host, self._cookies)
+        self.saved = True
+
+    def reject(self) -> None:  # noqa: D102 - Qt's name; see the helper above
+        self._keep_what_the_browser_has()
+        super().reject()
+
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt's name
+        self._keep_what_the_browser_has()
         # The profile owns a running renderer process; releasing it here
         # rather than at interpreter shutdown is what stops Qt's "profile
         # still in use" warning, which is a real warning about a real leak.

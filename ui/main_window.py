@@ -762,6 +762,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             address = _browser_url(first.source)
             self.current_preview_url = address
             self.site_view.setUrl(QUrl(address))
+            self.mirror_preview_to_comparison(QUrl(address))
         self._update_audit_buttons_enabled()
         self.diagnose_finished_run()
         self._refresh_summary()
@@ -1427,9 +1428,30 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
                 lambda _checked=False, chosen=name: self._on_breakpoint_clicked(chosen))
             breakpoint_layout.addWidget(button)
             self.breakpoint_buttons[name] = (button, width)
+        # Artboard 3o asks for two widths *at once*, and the switcher above
+        # can only ever answer one at a time: a person checking "this only
+        # breaks on mobile" has to flip back and forth and hold the desktop
+        # layout in their head. Side by side, the difference is the thing on
+        # screen rather than the thing being remembered.
+        self.compare_widths_btn = QPushButton()
+        self.compare_widths_btn.setCheckable(True)
+        self.compare_widths_btn.clicked.connect(self._on_compare_widths)
+        breakpoint_layout.addWidget(self.compare_widths_btn)
+        #: The second view, built on first use. A `QWebEngineView` is a
+        #: renderer process; making one for a comparison nobody asked for
+        #: would cost every user of this window for the sake of a button.
+        self.compare_view = None
+        self.compare_pane = None
         col1_layout.addWidget(self.breakpoint_row)
 
-        col1_layout.addWidget(self.col1_stack, stretch=1)
+        # A row rather than the stack alone, so the comparison pane can sit
+        # beside it without the stack having to know about it.
+        preview_row = QWidget()
+        self._preview_row = QHBoxLayout(preview_row)
+        self._preview_row.setContentsMargins(0, 0, 0, 0)
+        self._preview_row.setSpacing(self.palette_tokens.space_1)
+        self._preview_row.addWidget(self.col1_stack, 1)
+        col1_layout.addWidget(preview_row, stretch=1)
         # Added to the splitter below rather than here. The columns are built
         # preview-first because the preview owns the width switcher and the
         # stack the other panels are pushed onto, but they are *read* findings
@@ -1623,6 +1645,8 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self.scope_combo.blockSignals(False)
         self.scope_combo.setToolTip(t(f"scope_{self._repo_scope()}_full", lang))
 
+        self.compare_widths_btn.setText(t("compare_widths", self.lang))
+        self.compare_widths_btn.setToolTip(t("compare_widths_full", self.lang))
         for name, (button, width) in self.breakpoint_buttons.items():
             # The number, as artboard 3a writes it. "desktop" and "mobile"
             # name a device; the page lays out to a width, and the width is
@@ -1702,6 +1726,54 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         width = self.breakpoint_buttons[chosen][1]
         self._apply_preview_width(None if release else width)
 
+    def _on_compare_widths(self, checked: bool) -> None:
+        """Show the page at the widest and the narrowest width, side by side.
+
+        Which two: the first and the last of `audit.responsive.BREAKPOINTS`,
+        which is desktop against the 320px reflow check - the pair a
+        responsive failure is nearly always between. The width buttons keep
+        working on the left-hand pane, so a person can put any width against
+        the reflow one.
+        """
+        if checked and self.compare_pane is None:
+            self._build_compare_pane()
+        if self.compare_pane is None:
+            self.compare_widths_btn.setChecked(False)
+            return
+        self.compare_pane.setVisible(checked)
+        if checked:
+            address = self.current_preview_url or ""
+            if address:
+                self.compare_view.setUrl(QUrl(address))
+            elif self.site_view.url().isValid():
+                self.compare_view.setUrl(self.site_view.url())
+        self._fit_preview_zoom()
+
+    def _build_compare_pane(self) -> None:
+        """The second view, and the column that holds it."""
+        from PySide6.QtWidgets import QVBoxLayout
+
+        widths = responsive_breakpoints()
+        if len(widths) < 2:
+            return
+        self._compare_width = widths[-1][1]
+        self.compare_view = QWebEngineView()
+        self.compare_view.page().setBackgroundColor(
+            QColor(self.palette_tokens.page_bg))
+        self.compare_pane = QWidget()
+        pane = QVBoxLayout(self.compare_pane)
+        pane.setContentsMargins(0, 0, 0, 0)
+        pane.setSpacing(self.palette_tokens.space_1)
+        caption = muted(t("compare_widths_caption", self.lang,
+                          width=self._compare_width))
+        caption.setWordWrap(True)
+        pane.addWidget(caption)
+        pane.addWidget(self.compare_view, 1)
+        self.compare_pane.setVisible(False)
+        # Beside the stack, inside the same column: the comparison is a way
+        # of looking at the preview, not a fourth panel to switch to.
+        self._preview_row.addWidget(self.compare_pane, 1)
+
     def _apply_preview_width(self, width) -> None:
         """Show the page as it lays out at one viewport width.
 
@@ -1728,6 +1800,9 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         pane of a splitter, so its width changes without the chosen
         breakpoint changing at all.
         """
+        pane = getattr(self, "compare_pane", None)
+        if pane is not None and pane.isVisible():
+            self._fit_compare_zoom()
         chosen = getattr(self, "_preview_width", None)
         if not chosen:
             self.site_view.setMaximumWidth(16777215)  # Qt's own "no maximum"
@@ -1749,6 +1824,43 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             # the label of this one.
             self.site_view.setMaximumWidth(16777215)
             self.site_view.setZoomFactor(available / chosen)
+
+    def mirror_preview_to_comparison(self, url=None, html: str = "",
+                                     base=None) -> None:
+        """Give the comparison pane whatever the main preview was just given.
+
+        Called by the places that load the preview, so the two panes are the
+        same page at two widths rather than two pages. Silent when the pane
+        does not exist or is hidden, which is the normal case.
+        """
+        pane = getattr(self, "compare_pane", None)
+        if pane is None or not pane.isVisible() or self.compare_view is None:
+            return
+        if html:
+            self.compare_view.setHtml(html, base or QUrl())
+        elif url is not None:
+            self.compare_view.setUrl(url if isinstance(url, QUrl) else QUrl(url))
+        self._fit_compare_zoom()
+
+    def _fit_compare_zoom(self) -> None:
+        """Fit the narrow view into its half of the column.
+
+        Same rule as the single preview: scale down so the page still lays
+        out at the width it is labelled with, never up - a 320px layout blown
+        up to fill 500px is a picture of a phone rather than a page at 320.
+        """
+        if self.compare_view is None:
+            return
+        available = self.compare_pane.width()
+        if available <= 0:
+            return
+        chosen = getattr(self, "_compare_width", 320) or 320
+        if available >= chosen:
+            self.compare_view.setMaximumWidth(chosen)
+            self.compare_view.setZoomFactor(1.0)
+        else:
+            self.compare_view.setMaximumWidth(16777215)
+            self.compare_view.setZoomFactor(available / chosen)
 
     def _repaint_preview_background(self) -> None:
         self.site_view.page().setBackgroundColor(QColor(self.palette_tokens.page_bg))
