@@ -93,6 +93,63 @@
   --success: #3f7a58;
   --green: #3f7a58;
   --success-bg: #e6efe8;
+
+  /* ══ Everything below completes the system ══════════════════════════════
+   *
+   * This file began as a *layer*: only the values that differ from the
+   * shared xFormat token file, which supplied the rest. That made the web
+   * file mandatory, and the consequence was not theoretical - no bundle ever
+   * shipped this overlay, `overlay_file()` degraded silently to the shared
+   * file, and every frozen build painted in xFormat's web colours while the
+   * source tree painted in XAnalyze's.
+   *
+   * So the rest is stated here too, read off the same artboards by counting
+   * the numbers they actually use. The shared file is now a base this can be
+   * layered on, not a base it needs: layering it changes nothing, which is
+   * what `tests/test_design_system.py` asserts.
+   */
+
+  /* ── Type. The artboards set the window's own root at 13.5px and reach for
+   *    12px (secondary), 15px (a screen heading) and 22px (the page title).
+   *    Two families, and only two: Geist and Geist Mono, in 20 and 74 uses. ── */
+  --font: "Geist", "Apple Color Emoji", "Segoe UI Emoji", system-ui, -apple-system, sans-serif;
+  --font-mono: "Geist Mono", "SF Mono", "Cascadia Code", "Fira Code", monospace;
+  --font-size-base: 13.5px;
+  --font-size-sm: 12px;
+  --font-size-lg: 15px;
+  --font-size-xl: 22px;
+
+  /* ── Radii. Four steps, counted across the artboards with the 999px pills
+   *    and the 2px skeleton bars set aside: the panel (14px, 59 uses), a
+   *    block nested inside one (10px, 100), a button (8px, 81) and a chip or
+   *    an inline value (7px, 91). ── */
+  --radius: 14px;
+  --radius-lg: 10px;
+  --radius-md: 8px;
+  --radius-sm: 7px;
+
+  /* ── Spacing. The gap between two surfaces is 8px in 150 places, the gap
+   *    inside one is 6px, and 16px is the step above both. ── */
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+
+  /* ── Ink on a fill. `--on-error` is white because the artboards' numbered
+   *    pins put white on #c0564f; `--on-accent` is the surface tone, because
+   *    the one solid accent the design fills (a progress bar) carries no
+   *    text and the tint form (#e8e5f7 with #4b46b8 on it) is what does. ── */
+  --on-error: #ffffff;
+  --on-accent: #fbfaf8;
+
+  /* Amber one step down, for the rare place amber is a word rather than a
+   * fill - the artboards' own warning ink (artboard 3i). */
+  --amber-d: #a8752a;
+
+  /* ── Scrollbars. The artboards draw none, so this is the only pair here
+   *    that is derived rather than read: the thumb is `--border-strong` at
+   *    the alpha the shared system uses, and its hover a step darker. ── */
+  --sb-thumb: #c9c4baa3;
+  --sb-thumb-hover: #b4afa78c;
 }
 
 [data-theme="dark"] {
@@ -151,4 +208,12 @@
   --success: #84bb9a;
   --green: #84bb9a;
   --success-bg: #26332c;
+
+  /* The completion above, for this sheet. Type, radii and spacing are the
+   * same system on both - a corner does not change with the light - so only
+   * the colour half is restated. */
+  --on-accent: #191816;
+  --amber-d: #cfae66;
+  --sb-thumb: #4a453fa3;
+  --sb-thumb-hover: #5f5a538c;
 }

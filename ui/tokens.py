@@ -1,22 +1,29 @@
-"""The bridge to xFormat's design system.
+"""XAnalyze's design system, read from CSS.
 
-The web app, the landing page and the admin console all take their colours,
-radii, spacing and type scale from one file — `apps/web/src/styles/tokens.css`
-in the `XFormat` repository. This module reads that same file and turns it
-into plain Python values, so the desktop app is styled from the design
-system rather than from a second, drifting copy of it.
+The system is `ui/design/xanalyze-desktop.css`: every colour, radius, type
+size and space the window paints with, read off the design bundle's own
+artboards (17 of them, 2026-08-24) by counting the numbers they actually
+use. It is complete on its own.
 
-Where the file is looked for, in order:
+It did not start that way. It began as a thin *layer* over xFormat's shared
+web token file - only the values that differ - which made that file
+mandatory, and the consequence was not theoretical: no bundle ever shipped
+the overlay, `overlay_file()` degraded silently to the shared file, and every
+frozen build of this app painted in xFormat's web colours while the source
+tree painted in XAnalyze's. One severity had two different reds depending on
+which surface you looked at.
+
+So the shared file is now a **base, not a requirement**. When it is present
+it is layered under the overlay and changes nothing (`tests/test_design_system.py`
+asserts exactly that); when it is absent - a bundle, a checkout without the
+sibling repository - the window and the report look the same as they always
+did. Where it is looked for, in order:
 
 1. `$XFORMAT_TOKENS_CSS`, when set — point it anywhere.
-2. The sibling checkout: `../XFormat/apps/web/src/styles/tokens.css`
-   relative to this repository. This is the live file, so a token changed
-   in the frontend shows up in the desktop app on the next launch.
-3. `ui/design/xformat-tokens.css` — a vendored snapshot, so the app still
-   starts (and still looks like xFormat) on a machine that only has this
-   repository checked out.
+2. The sibling checkout: `../XFormat/apps/web/src/styles/tokens.css`.
+3. `ui/design/xformat-tokens.css` — a vendored snapshot.
 
-Only the parts of CSS that actually appear in the token file are supported:
+Only the parts of CSS that actually appear in these files are supported:
 custom properties, `var(--x)` references (resolved recursively, with the
 fallback form `var(--x, y)`), `rem` lengths, and the two theme scopes
 (`:root` for light, `[data-theme="dark"]` for dark). `color-mix()` is
@@ -41,13 +48,16 @@ TOKEN_SEARCH_PATHS = (
     _REPO_ROOT / "ui" / "design" / "xformat-tokens.css",
 )
 
-#: The desktop's own layer, applied *on top of* whichever file above was
-#: found rather than instead of it. `tokens.css` is shared with the web app,
-#: the landing page and the admin console; the desktop design mutes every
-#: semantic hue, and muting them in the shared file would repaint all three.
-#: So the window states its differences here and leaves the shared file
-#: alone. Overriding it (or pointing it at nothing) falls back to the plain
-#: xFormat palette, which is a complete theme in its own right.
+#: The design system itself, layered on top of whichever base file above was
+#: found. It declares every token `Palette` reads, so the base is optional:
+#: `tokens.css` is shared with the web app, the landing page and the admin
+#: console, and the desktop design differs from all three - most visibly in
+#: muting every semantic hue - so stating XAnalyze's values in the shared
+#: file would repaint three web surfaces to fix one desktop one.
+#:
+#: Pointing `$XANALYZE_DESKTOP_CSS` at nothing turns it off and leaves the
+#: window on the plain xFormat palette, which is a complete theme in its own
+#: right. That is a debugging aid, not the shipping arrangement.
 OVERLAY_PATH = _REPO_ROOT / "ui" / "design" / "xanalyze-desktop.css"
 
 # Stop at the first closing brace rather than requiring one at the start of a
@@ -718,12 +728,14 @@ class Palette:
 def palettes(overlay: bool = True) -> dict:
     """Both themes, ready to use.
 
-    `overlay=False` returns the plain xFormat palette, without the desktop
-    layer. That is what the HTML and PDF reports want: a report is a
-    document, opened in a browser and sent to other people, so it belongs to
-    the same design system as the web app rather than to the window that
-    generated it. The desktop layer mutes every semantic hue and tints the
-    paper off-white, and both of those are wrong on a page someone prints.
+    `overlay=False` returns the plain xFormat palette, without XAnalyze's
+    own system on top. That is a comparison tool - "what do the shared
+    tokens alone look like" - and not a mode anything ships in. The styled
+    report used to ask for it, on the argument that a report is a document
+    and the overlay is a screen decision; the argument does not survive
+    reading the design bundle, whose own report artboard (3h) is drawn in
+    these colours. It now asks for `overlay=True` like every other surface,
+    so one severity is one colour wherever a person meets it.
     """
     tokens = load_tokens(overlay=overlay_file() if overlay else None)
     return {
