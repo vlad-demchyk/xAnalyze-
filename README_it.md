@@ -271,7 +271,14 @@ xanalyze fullscan https://example.com --progress jsonl
 
 Senza il flag non cambia nulla: le stesse righe leggibili, nessun JSON.
 `finding` è spento finché non lo si chiede, perché su un sito grande sono
-decine di migliaia di eventi. Una riga che non si legge come JSON non l'ha
+decine di migliaia di eventi.
+
+Non è il default, e di proposito: una persona al terminale vuole le frasi, e il
+progresso è già acceso - `jsonl` cambia il **formato**, non se la scansione si
+racconta. Chi sta leggendo è una proprietà dell'ambiente, non del comando:
+imposta `XANALYZE_PROGRESS=jsonl` una volta e ogni scansione in quella shell lo
+parla; `--progress human` su un singolo comando vince comunque, così una
+scansione resta sempre leggibile a occhio. Una riga che non si legge come JSON non l'ha
 scritta XAnalyze - Qt scrive la propria diagnostica sullo stesso flusso -
 quindi va saltata, non trattata come un errore.
 
@@ -332,6 +339,16 @@ e quella rotta deve produrre quelli giusti, quindi è un'affermazione misurata:
 Il markup in una tecnologia non elencata viene comunque letto - il parser non lo
 rifiuta - ma nulla ha dimostrato che un file corretto in quella tecnologia torni
 pulito.
+
+**Entrambi i passaggi leggono un template lato server.** Una vista
+`.blade.php`, il `.php` di un tema WordPress, un file `.twig`, `.erb`, `.ejs`,
+`.phtml` o `.liquid` è markup con un linguaggio server mescolato dentro, quindi
+il suo testo viene letto dai passaggi sui pattern AI e sui caratteri
+esattamente come lo sarebbe l'`.html` che produce, e il suo markup viene
+verificato allo stesso modo. Ciò che il linguaggio di template emette -
+`{{ $plan->name }}`, `<?php echo … ?>`, `@endsection` - non è testo e non viene
+letto come tale. Un `.php` che è un controller e non una vista resta codice:
+`$id < 10` è un confronto, non un tag.
 
 ## Stack che riconosce
 

@@ -261,6 +261,13 @@ xanalyze fullscan https://example.com --progress jsonl
 
 Without the flag nothing changes: the same human lines, no JSON. `finding` is
 off unless asked for, because a large site produces tens of thousands of them.
+
+It is not the default, and deliberately: a person at a terminal wants the
+sentences, and progress is already on - `jsonl` changes the *format*, not
+whether the run reports itself. Which one is reading is a property of the
+environment rather than of the command, so set `XANALYZE_PROGRESS=jsonl` once
+and every run in that shell speaks it; `--progress human` on a single command
+still wins, so one run can always be read by eye.
 A line that does not parse as JSON did not come from XAnalyze - Qt writes its
 own diagnostics to the same stream - so skip it rather than failing on it.
 
@@ -318,6 +325,15 @@ broken half must produce the right ones, so this is a measured claim:
 
 Markup in anything not on this list is still read - the parser does not refuse
 it - but nothing has proved that a correct file in it comes back clean.
+
+**Both passes read a server template.** A `.blade.php` view, a WordPress
+theme's `.php`, a `.twig`, `.erb`, `.ejs`, `.phtml` or `.liquid` file is markup
+with a server language mixed into it, so its copy is read by the AI-pattern and
+character passes exactly as the `.html` it produces would be, and its markup is
+audited the same way. What the template language emits - `{{ $plan->name }}`,
+`<?php echo … ?>`, `@endsection` - is not copy and is not read as it. A `.php`
+file that is a controller rather than a view stays code: `$id < 10` is a
+comparison, not a tag.
 
 ## Stacks it recognises
 

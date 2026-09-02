@@ -646,6 +646,7 @@ def cmd_audit(args) -> int:
         model = from_accessibility(result, lang)
         model.meta.run = describe(_command_of(args), result.root, args,
                                   language=lang)
+        model.meta.repo = str(getattr(args, "repo", "") or "")
         write_styled_report(args.styled_report, model, lang)
         progress.notice("report", f"styled report: {args.styled_report}",
                         human=f"# styled report: {args.styled_report}",
@@ -1067,12 +1068,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-update-check", action="store_true", default=False,
         help="skip the automatic daily check for a newer version")
     parser.add_argument(
-        "--progress", default="human", metavar="FORMAT",
+        "--progress", default=None, metavar="FORMAT",
         choices=("human", "jsonl", "jsonl=findings"),
         help="how the run reports itself on stderr: human (the default, "
              "unchanged) | jsonl (one JSON object per line, an event per "
              "step) | jsonl=findings (the same plus one object per finding). "
-             "See progress.py for the event list")
+             "$XANALYZE_PROGRESS sets it for every run in a shell; this flag "
+             "wins over it. See progress.py for the event list")
     parser.add_argument(
         "--version", action="version",
         version=f"xanalyze {config.APP_VERSION}")

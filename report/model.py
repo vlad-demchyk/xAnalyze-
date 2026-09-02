@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 
 from models import AnalysisResult, CodeBlock, Confidence
 
@@ -192,7 +193,41 @@ class ReportMeta:
     run: list = field(default_factory=list)
     generated_at: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat(timespec="seconds"))
-    generator: str = "AI Content Scanner"
+    generator: str = "XAnalyze"
+    #: The checkout behind the target, when the run knew of one (`--repo`, or
+    #: the folder whose dev server is being read). It is what names a run
+    #: against `http://127.0.0.1:5173/`: an address like that identifies a
+    #: port on this machine and nothing else, and a report headed by it is
+    #: unrecognisable a week later.
+    repo: str = ""
+
+
+def display_name(target: str, repo: str = "") -> str:
+    """The short name this run should be called by.
+
+    The heading used to be the raw target, so a report was headed
+    `/Users/vlad/repositories/ai-content-scanner/simulations/mixed-problems`
+    - a line that wraps to three, says almost nothing at a glance, and is
+    mostly somebody's home directory. The full target does not disappear; it
+    moves to the line under the heading, where a path belongs.
+
+    A local address is the case that needs `repo`: `127.0.0.1:5173` names a
+    port, and the thing being audited is the checkout serving it.
+    """
+    from urllib.parse import urlparse
+
+    text = (target or "").strip()
+    if not text:
+        return ""
+    if text.startswith(("http://", "https://")):
+        host = urlparse(text).hostname or text
+        local = (host in ("localhost", "127.0.0.1", "::1", "0.0.0.0")
+                 or host.startswith("192.168.") or host.startswith("10."))
+        if local and repo:
+            return Path(repo.rstrip("/")).name or host
+        return host
+    name = Path(text.rstrip("/")).name
+    return name or text
 
 
 @dataclass
@@ -360,6 +395,67 @@ def _text_location(block) -> str:
     if isinstance(block, CodeBlock):
         return f"{block.file_path}:{block.line_number}"
     return getattr(block, "page_url", "")
+
+
+#: The category a character/typography finding is filed under. Separate from
+#: `CATEGORY_AI_TEXT` for the same reason that one is separate from the audit
+#: categories: a curly quote and a sentence that reads like a model wrote it
+#: are different problems with different fixes, and a summary that merges
+#: them cannot say which pass did the work.
+CATEGORY_TYPOGRAPHY = "typography"
+
+
+def from_finding_dicts(findings, target: str | None = None,
+                       character_of=None) -> ReportModel:
+    """A `ReportModel` from the plain dicts `fullscan` already has.
+
+    `from_text_analysis` needs live `TextSpan` and block objects. `fullscan`
+    does not have them by the time it writes reports - the checkpoint keeps
+    the public dicts, because spans hold detector objects that do not
+    survive JSON - so it passed a stand-in whose `spans` was permanently
+    `[]`. Every content finding was dropped on the floor: the styled report's
+    cards, its two charts and its finding list counted the audit only, while
+    the sections below them, filled from the same dicts by a different route,
+    listed the AI patterns and the characters. Measured 2026-09-02 on
+    `simulations/mixed-problems`: 18 findings in the summary, 33 in the run.
+
+    So this reads the dicts directly. It is the shorter path anyway - the
+    dict already carries the file, the line, the text, the explanation and
+    the replacement - and it cannot silently produce nothing, because there
+    is no object graph to be missing.
+    """
+    # `character_of` is a parameter and not an import: the predicate lives in
+    # `cli_impl.fullscan`, which imports this module, and reaching back for
+    # it would make the two modules import each other. The caller that owns
+    # the answer passes it.
+    is_character_finding = character_of or (lambda _finding: False)
+
+    rows: list[ReportFinding] = []
+    for finding in findings or ():
+        text = finding.get("text", "") or ""
+        title = " ".join(text.split())
+        if len(title) > 90:
+            title = title[:89] + "…"
+        line = finding.get("line")
+        path = finding.get("file", "") or finding.get("source", "") or ""
+        location = f"{path}:{line}" if path and line else (path or "")
+        replacement = finding.get("replacement")
+        character = is_character_finding(finding)
+        rows.append(ReportFinding(
+            title=title or "(empty match)",
+            category=CATEGORY_TYPOGRAPHY if character else CATEGORY_AI_TEXT,
+            severity=finding.get("confidence", "") or "medium",
+            location=location,
+            found=title,
+            why=(finding.get("explanation")
+                 or finding.get("offline_explanation", "") or ""),
+            fix=replacement or "",
+            snippet=text,
+            replacement=replacement or "",
+            engine=finding.get("detector", "") or finding.get("source", ""),
+        ))
+    return ReportModel(meta=ReportMeta(target=target or "", mode="text-repo"),
+                       findings=rows)
 
 
 def from_text_analysis(result, target: str | None = None,

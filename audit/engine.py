@@ -666,6 +666,36 @@ def _documents_for_parts(page, rules, ai_review, web_parts) -> list:
     return found
 
 
+def _mask_for_audit(markup: str, path: str) -> str:
+    """Hide what an HTML parser reads as something other than what it is.
+
+    Two masks, and the **order is load-bearing**. A PHP block may hold a
+    `//` comment of its own:
+
+        <a href="..."<?php echo $aria; // phpcs:ignore ?>>
+
+    Masking comments first blanks from `//` to end of line, which takes the
+    closing `?>>` with it. The block is then unterminated, the anchor
+    swallows everything down to the next `?>`, and a link whose text sits on
+    the following line reports as nameless. Removing the whole server tag
+    first means its comment never reaches the comment masker.
+
+    `<?php echo esc_html($name); ?>` is a *processing instruction* to the
+    parser and carries no text, so a link or a field named by the server read
+    as nameless. On three real WordPress projects this was the largest single
+    source of false `control-name` criticals.
+
+    One function because there were two call sites and only one of them did
+    it: `analyze_files` masked, `analyze_page_file` did not, so
+    `xanalyze audit header.php` and the same file inside a folder scan
+    disagreed about whether its link had a name. Measured 2026-09-02.
+    """
+    from repo_scanner import mask_code_comments, mask_server_tags
+
+    markup = mask_server_tags(markup)
+    return mask_code_comments(markup, path, server_tags_masked=True)
+
+
 def analyze_page_file(path: str, rules=None, ai_review=None,
                       within: str = "", web_parts=()) -> AccessibilityResult:
     """One self-contained HTML file, treated as a page rather than as source.
@@ -690,6 +720,14 @@ def analyze_page_file(path: str, rules=None, ai_review=None,
         result.documents.append(DocumentReport(source=path, error=str(exc)))
         return result
     result.markup_by_source[path] = markup
+    # A `.php` or `.twig` file named directly is still a template, and the
+    # parser needs the same masking a folder scan gives it. Only for those
+    # suffixes: a finished `.html` page has nothing to mask, and masking is
+    # not free of consequence.
+    from repo_scanner import _SERVER_TEMPLATE_EXTENSIONS
+
+    if Path(path).suffix.lower() in _SERVER_TEMPLATE_EXTENSIONS:
+        markup = _mask_for_audit(markup, path)
     # Line numbers on: the user has the file open, so "line 42" is directly
     # actionable in a way a CSS selector into a one-file build is not.
     if web_parts:
@@ -780,26 +818,7 @@ def analyze_files(file_results, root: str, rules=None, ai_review=None,
             # `// the <img> is replaced on remount` is an element with no alt
             # to an HTML parser. Masked rather than stripped, so every line and
             # column still points where it did.
-            from repo_scanner import mask_code_comments, mask_server_tags
-            # Server tags first, and the order is load-bearing. A PHP block
-            # may hold a `//` comment of its own:
-            #
-            #     <a href="..."<?php echo $aria; // phpcs:ignore ?>>
-            #
-            # Masking comments first blanks from `//` to end of line, which
-            # takes the closing `?>>` with it. The block is then unterminated,
-            # the anchor swallows everything down to the next `?>`, and a link
-            # whose text sits on the following line reports as nameless.
-            # Removing the whole server tag first means its comment never
-            # reaches the comment masker.
-            markup = mask_server_tags(markup)
-            # `<?php echo esc_html($name); ?>` is a *processing instruction*
-            # to the parser and carries no text, so a link or a field named by
-            # the server read as nameless. On three real WordPress projects
-            # this was the largest single source of false `control-name`
-            # criticals.
-            markup = mask_code_comments(markup, file_result.path,
-                                        server_tags_masked=True)
+            markup = _mask_for_audit(markup, file_result.path)
         report = analyze_document(markup, file_result.path, rules,
                                   line_numbers=True, ai_review=ai_review,
                                   document_kind=kind,

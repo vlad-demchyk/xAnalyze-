@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QPoint, QSize, QUrl, Qt
-from PySide6.QtGui import QColor, QIcon, QKeySequence, QShortcut
+from PySide6.QtGui import QColor, QIcon, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QHBoxLayout,
@@ -132,6 +132,21 @@ MEDIUM_BREAKPOINT = 620
 #: Kept in the repository rather than reached for in the xFormat checkout, so
 #: the app is the same whether it runs from source or from a bundle.
 ASSETS = Path(__file__).resolve().parent / "design" / "assets"
+
+
+def _brand_pixmap(path: Path, widget) -> QPixmap:
+    """The mark at 20 pt, sharp on whatever screen the window is on.
+
+    Scaled to the widget's device pixel ratio and told about it, because a
+    20x20 pixmap on a 2x display is drawn at 20 physical pixels and looks
+    like a thumbnail of itself.
+    """
+    ratio = widget.devicePixelRatioF() if widget is not None else 1.0
+    side = max(1, int(round(20 * ratio)))
+    pixmap = QPixmap(str(path)).scaled(
+        side, side, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+    pixmap.setDevicePixelRatio(ratio)
+    return pixmap
 
 # Translated like everything else now. It was hardcoded English, with a
 # comment explaining that the translations file belonged to someone else at
@@ -887,7 +902,6 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         who needs it is actually looking. The account moves to the right end
         of the row; see `_build_account_control`.
         """
-        from PySide6.QtSvgWidgets import QSvgWidget
 
         bar = QWidget()
         bar.setProperty("class", theme.CLASS_BRAND)
@@ -895,11 +909,15 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(self.palette_tokens.space_sm)
 
-        mark = ASSETS / ("logo-dark.svg" if theme.resolve_mode(self.settings.theme) == "dark"
-                         else "logo-light.svg")
+        # One file for both themes. The mark is a single blue on
+        # transparency, so it reads on either canvas and there is no light
+        # copy to go invisible on a dark one - which is what the two SVGs
+        # existed to work around.
+        mark = ASSETS / "logo-small.png"
         if mark.is_file():
-            self.brand_mark = QSvgWidget(str(mark))
+            self.brand_mark = QLabel()
             self.brand_mark.setFixedSize(QSize(20, 20))
+            self.brand_mark.setPixmap(_brand_pixmap(mark, self.brand_mark))
             layout.addWidget(self.brand_mark)
         else:
             self.brand_mark = None
@@ -983,15 +1001,18 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             button.setText("")
 
     def _repaint_brand(self) -> None:
-        """Swap the mark when the theme changes: the light logo on a dark
-        canvas is invisible, which is the whole reason two files exist."""
+        """Redraw the mark after a theme change.
+
+        It no longer swaps files - one mark serves both canvases - but the
+        pixmap is still re-made, because a theme change can follow a move to
+        a screen with a different pixel ratio and a stale pixmap is a blurry
+        one.
+        """
         if getattr(self, "brand_mark", None) is None:
             return
-        mark = ASSETS / ("logo-dark.svg"
-                         if theme.resolve_mode(self.settings.theme) == "dark"
-                         else "logo-light.svg")
+        mark = ASSETS / "logo-small.png"
         if mark.is_file():
-            self.brand_mark.load(str(mark))
+            self.brand_mark.setPixmap(_brand_pixmap(mark, self.brand_mark))
 
     def _build_ui(self) -> None:
         central = QWidget()

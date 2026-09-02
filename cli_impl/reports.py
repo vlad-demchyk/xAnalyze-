@@ -47,6 +47,7 @@ def _write_styled_text_report(files, findings, args) -> None:
 
     model = from_text_analysis(result)
     model.meta.run = describe(_command_of(args), root, args, language=lang)
+    model.meta.repo = str(getattr(args, "repo", "") or "")
     write_styled_report(args.styled_report, model, lang)
     progress.notice("report", f"styled report: {args.styled_report}",
                     human=f"# styled report: {args.styled_report}",

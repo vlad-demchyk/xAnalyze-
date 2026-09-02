@@ -24,6 +24,7 @@ its own errors. A progress stream that can kill a scan is worse than none.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from datetime import datetime, timezone
 
@@ -67,18 +68,33 @@ _findings = False
 _summary: dict = {}
 
 
+#: Set this and every run in the shell speaks JSONL, without the flag on each
+#: command. It exists because the flag is not the right default and the wish
+#: behind "make it the default" still is: a person at a terminal wants the
+#: sentences, an agent wants the objects, and which one is reading is a
+#: property of the environment rather than of the command. The flag wins over
+#: it, so one run can always be read by eye.
+ENV_VAR = "XANALYZE_PROGRESS"
+
+
 def configure(spec: str | None) -> str:
-    """Read `--progress`; returns the mode actually in force.
+    """Read `--progress`, falling back to `$XANALYZE_PROGRESS`.
 
     Accepts `human`, `jsonl` and `jsonl=findings`. An unknown spelling is
-    argparse's job to reject, so anything unrecognised here falls back to
-    the human output rather than to an error: a progress format is not worth
-    failing a scan over.
+    argparse's job to reject on the command line, so anything unrecognised
+    here falls back to the human output rather than to an error: a progress
+    format is not worth failing a scan over, and an environment variable
+    with a typo in it must not break every command in the shell.
     """
     global _mode, _findings
 
     _mode, _findings = MODE_HUMAN, False
     text = (spec or "").strip().lower()
+    if not text or text == MODE_HUMAN:
+        # `--progress human` is a deliberate "give me the sentences", so it
+        # overrides the environment; an absent flag is not, so it does not.
+        if spec is None or not spec.strip():
+            text = (os.environ.get(ENV_VAR) or "").strip().lower()
     if not text or text == MODE_HUMAN:
         return _mode
     name, _, option = text.partition("=")

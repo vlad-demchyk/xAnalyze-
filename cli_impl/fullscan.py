@@ -871,17 +871,6 @@ def _attach_agent_payload(combined: dict, agent_candidates: list,
     )
 
 
-class _ScanResultShim:
-    """Adapts raw finding dicts to what report.model.from_text_analysis reads."""
-
-    def __init__(self, findings):
-        self.spans = []
-        self._findings = findings
-
-    def blocks(self):
-        return []
-
-
 def is_character_finding(finding: dict) -> bool:
     """Is this about a character, rather than about the wording?
 
@@ -965,7 +954,9 @@ def _styled_report_model(args, audit_result, content_findings: list,
     all, on every run, while the suite stayed green. See
     `tests/test_styled_report_written.py`.
     """
-    from report.model import from_accessibility, from_text_analysis
+    from report.model import (
+        from_accessibility, from_finding_dicts, from_text_analysis,
+    )
 
     model = None
     if audit_result:
@@ -975,9 +966,21 @@ def _styled_report_model(args, audit_result, content_findings: list,
 
         model.meta.run = describe(_command_of(args), audit_result.root, args,
                                   language=lang)
+        # The checkout behind the address, when there is one. `--devserver`
+        # sets `args.repo` to the folder it started, so a run against
+        # `http://127.0.0.1:5173/` is headed by the project's name instead
+        # of by a port number. See `report.model.display_name`.
+        model.meta.repo = str(getattr(args, "repo", "") or "")
 
     if content_findings:
-        text_model = from_text_analysis(_ScanResultShim(list(content_findings)))
+        # `from_finding_dicts`, not `from_text_analysis`: by this point the
+        # live spans are gone - the checkpoint keeps the public dicts,
+        # because a span holds detector objects that do not survive JSON -
+        # and the dicts are what the run still has. Every content finding used to be
+        # dropped here, so the report's cards and charts counted the audit
+        # only - 18 of 33 on `simulations/mixed-problems`.
+        text_model = from_finding_dicts(list(content_findings),
+                                        character_of=is_character_finding)
         if model:
             model.findings.extend(text_model.findings)
         else:

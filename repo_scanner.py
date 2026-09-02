@@ -80,7 +80,15 @@ _BACKEND_LANGUAGE = {
     ".go": "go", ".java": "java", ".cs": "cs",
 }
 
-CONTENT_EXTENSIONS = DEFAULT_EXTENSIONS + BACKEND_EXTENSIONS
+# Markup with a server language mixed into it. Not `DEFAULT_EXTENSIONS`,
+# because the tag walk over these has to mask the server tags first
+# (see `_extract_blocks`), and not `BACKEND_EXTENSIONS`, because they are
+# pages rather than programs. `.php` and `.erb` are already reachable
+# through `BACKEND_EXTENSIONS`; these are the ones that were reachable
+# through neither, so a Twig or EJS project's copy was never opened at all.
+TEMPLATE_EXTENSIONS = (".phtml", ".ejs", ".twig", ".liquid")
+
+CONTENT_EXTENSIONS = DEFAULT_EXTENSIONS + BACKEND_EXTENSIONS + TEMPLATE_EXTENSIONS
 
 # Where a localised product keeps its copy. The files are ordinary JSON or
 # YAML and would be meaningless to scan wholesale — `package.json` and
@@ -111,7 +119,7 @@ def is_locale_file(path) -> bool:
 TECHNICAL_EXTENSIONS = DEFAULT_EXTENSIONS + (
     ".py", ".css", ".scss", ".less", ".go", ".rs", ".java", ".kt", ".php",
     ".rb", ".sh", ".sql", ".c", ".h", ".cpp", ".cs", ".swift", ".yml",
-    ".yaml", ".toml",
+    ".yaml", ".toml", ".phtml", ".erb", ".ejs", ".twig", ".liquid",
 )
 
 # Measured against ~/repositories/xformat (11.7k content blocks): sampling
@@ -211,7 +219,8 @@ _CODE_COMMENT_RE = re.compile(
 _HASH_COMMENT_RE = re.compile(r"(?<!\$)#(?!\{)[^\n]*")
 _HASH_COMMENT_EXTENSIONS = frozenset((".py", ".rb", ".php"))
 #: File types whose comments only exist inside a server-template block.
-_SERVER_TEMPLATE_EXTENSIONS = frozenset((".php", ".phtml", ".erb", ".ejs"))
+_SERVER_TEMPLATE_EXTENSIONS = frozenset(
+    (".php", ".phtml", ".erb", ".ejs", ".twig", ".liquid"))
 
 
 def _mask_hash_comments(text: str) -> str:
@@ -588,12 +597,20 @@ def _is_markup_run(text: str) -> bool:
     return "{" not in text and "}" not in text and _is_probably_content(text)
 
 
-def _extract_literal_runs(span_text: str, span_start: int) -> list[tuple[int, int, str]]:
-    """Split a >...< gap on {expression} boundaries and yield the literal
-    text runs in between, as (absolute_start, absolute_end, text)."""
+def _extract_literal_runs(span_text: str, span_start: int,
+                          splitter=None) -> list[tuple[int, int, str]]:
+    """Split a >...< gap on expression boundaries and yield the literal
+    text runs in between, as (absolute_start, absolute_end, text).
+
+    `splitter` overrides the JSX brace pattern for a server template, where
+    the interruptions are a different set: `<?php ?>`, `{{ $name }}`,
+    `@endsection`. It is a *different* regex rather than an addition to the
+    default, because `{...}` on its own is Blade's own escaping and JSX's
+    expression, and one file is never both.
+    """
     runs: list[tuple[int, int, str]] = []
     cursor = 0
-    for m in _JS_EXPR_RE.finditer(span_text):
+    for m in (splitter or _JS_EXPR_RE).finditer(span_text):
         _emit_run(runs, span_text, span_start, cursor, m.start())
         cursor = m.end()
     _emit_run(runs, span_text, span_start, cursor, len(span_text))
@@ -1026,6 +1043,23 @@ _SERVER_TAG = re.compile(
     re.S)
 
 
+#: What separates one run of literal copy from the next inside a server
+#: template's markup. `_SERVER_TAG` covers the shapes an HTML parser cannot
+#: read; these are the ones it reads as ordinary text but a person never
+#: sees: Blade's `{{ }}` and `{!! !!}`, and its `@directive(...)` lines.
+#: Handlebars and Vue share the first, so `.hbs` and a `.vue` template get
+#: the same treatment for free.
+_TEMPLATE_EXPR_RE = re.compile(
+    r"\{\{-?.*?-?\}\}"               # Blade, Twig, Handlebars, Vue, Angular
+    r"|\{!!.*?!!\}"                    # Blade, unescaped
+    r"|@[a-zA-Z]+(?:\s*\([^()\n]*\))?",  # @extends('…'), @endsection
+    re.S)
+
+#: One regex for everything that interrupts copy in a server template.
+_TEMPLATE_SPLIT_RE = re.compile(
+    "|".join((_SERVER_TAG.pattern, _TEMPLATE_EXPR_RE.pattern)), re.S)
+
+
 def mask_server_tags(raw_text: str) -> str:
     """Rewrite server-side template tags as client-side bindings.
 
@@ -1163,16 +1197,42 @@ def _extract_blocks(raw_text: str, file_path: str,
 
     seen_spans: set[tuple[int, int]] = set()
 
-    # Backend languages carry no markup of their own — see BACKEND_EXTENSIONS
-    # — so the tag walk is skipped for them entirely rather than run and
-    # produce nothing (or, worse, mis-fire on a `<` comparison).
-    if suffix not in BACKEND_EXTENSIONS:
-        for gap in _TAG_GAP_RE.finditer(masked):
+    # Backend *languages* carry no markup of their own — see
+    # BACKEND_EXTENSIONS — so the tag walk is skipped for them rather than
+    # run and produce nothing (or, worse, mis-fire on a `<` comparison).
+    #
+    # A server *template* is the other thing entirely, and treating it as
+    # code was measured wrong on 2026-09-02: the same file read 2 blocks as
+    # `.html` and 1 as `.blade.php`, so the whole visible copy of a Laravel
+    # front end - and of every WordPress theme, which is `.php` too - went
+    # unread by the AI-pattern and character passes. The audit had it right
+    # all along: it masks the server tags and parses the markup
+    # (`audit.engine`), and this is the same move on this side.
+    #
+    # The walk runs over `mask_server_tags(...)` so `<?php ... ?>` is not
+    # read as a tag, but the runs are cut from the *original* text, with the
+    # template's own interruptions as boundaries - otherwise every span
+    # would carry the mask and fail the offset check below.
+    server_template = suffix in _SERVER_TEMPLATE_EXTENSIONS
+    if suffix not in BACKEND_EXTENSIONS or server_template:
+        # Blade's `{{ … }}` is masked too, but only for finding the tags -
+        # `mask_server_tags` deliberately leaves it alone because to the
+        # audit it is a page's visible text. Here it hides a `>`:
+        # `{{ $plan->name }}` inside an `<h1>` made the walk lose the
+        # heading and everything after it on that line.
+        walk_text = masked
+        if server_template:
+            walk_text = _TEMPLATE_EXPR_RE.sub(_blank_but_newlines,
+                                              mask_server_tags(masked))
+        splitter = _TEMPLATE_SPLIT_RE if server_template else None
+        for gap in _TAG_GAP_RE.finditer(walk_text):
             if not _renders_text(gap.group("name")):
                 continue
-            gap_text = gap.group("gap")
             gap_start = gap.start("gap")
-            for start, end, text in _extract_literal_runs(gap_text, gap_start):
+            gap_text = (raw_text[gap_start:gap.end("gap")] if server_template
+                        else gap.group("gap"))
+            for start, end, text in _extract_literal_runs(gap_text, gap_start,
+                                                          splitter):
                 if not _is_markup_run(text):
                     continue
                 if (start, end) in seen_spans:
