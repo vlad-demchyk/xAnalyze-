@@ -105,7 +105,7 @@ class RunResult:
 
         Read from the progress lines rather than from the arguments: the
         command decides where a default report goes (a per-target folder on
-        the Desktop), and the screen should name what was actually written.
+        Documents), and the screen should name what was actually written.
         """
         wanted = ("# report:", "# styled report:", "# agent briefing:",
                   "# timings:", "# comparison:", "# run folder:")

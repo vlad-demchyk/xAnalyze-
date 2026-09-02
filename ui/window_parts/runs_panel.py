@@ -4,7 +4,7 @@ A full scan of a large site is a three-quarter-hour job, and it can stop for
 reasons that have nothing to do with the target - a wedged renderer, a laptop
 closing, someone wanting their machine back. Before this the interface had no
 idea any of that had happened: a stopped run was simply gone, and the only
-evidence was a folder on the Desktop nobody was told about.
+evidence was a folder in Documents nobody was told about.
 
 The list is built by walking the run folders, the same walk `xanalyze runs`
 does, and not from a registry the interface keeps of its own. One fact, one

@@ -224,7 +224,10 @@ moduli di accesso è l'output più fuorviante che questo strumento possa produrr
 ## Report
 
 Ogni comando scrive una cartella datata, per impostazione predefinita in
-`~/Desktop/XAnalyze/` (`XANALYZE_REPORT_ROOT` la sposta):
+`~/Documents/XAnalyze/` (`XANALYZE_REPORT_ROOT` la sposta). Un archivio rimasto
+in `~/Desktop/XAnalyze/` da una versione precedente viene spostato alla prima
+esecuzione, così lo storico che serve al confronto resta dove lo strumento lo
+cerca.
 
 ```text
 XAnalyze/example.com/2026-09-02-0930/

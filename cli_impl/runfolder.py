@@ -2,7 +2,7 @@
 
 One folder per target, one sub-folder per run inside it:
 
-    ~/Desktop/XAnalyze/example.com/
+    ~/Documents/XAnalyze/example.com/
         2026-08-24-0930/
             report.md
             report.pdf
@@ -29,10 +29,14 @@ from pathlib import Path
 
 import progress
 
-#: The folder every project folder lives under. Named, not the bare Desktop:
-#: a tool that drops folders directly on someone's Desktop is a tool they
-#: uninstall.
-DESKTOP_FOLDER = "XAnalyze"
+#: The folder every project folder lives under. Named, not the bare parent:
+#: a tool that drops folders directly into someone's Documents is a tool
+#: they uninstall.
+REPORTS_FOLDER = "XAnalyze"
+
+#: Where it used to live. Kept only so `default_root` can move an existing
+#: one across; nothing writes here any more.
+_OLD_PARENT = "Desktop"
 
 #: Anything that is not a letter, digit, dot or dash becomes one dash, so a
 #: URL or a path turns into one readable folder name. Dots are kept because
@@ -67,15 +71,56 @@ def slug_for(target: str) -> str:
     return text[:_MAX_SLUG]
 
 
-def _desktop() -> Path:
-    """The Desktop, or the home folder when there is no Desktop.
+def _documents() -> Path:
+    """Documents, or the home folder when there is no Documents.
 
-    A machine without `~/Desktop` (a container, a server, a localised
-    account whose Desktop lives elsewhere) must still get its documents
-    somewhere findable rather than an error.
+    Documents and not the Desktop (changed 2026-09-02, at the owner's
+    request): a run leaves a folder per target and a sub-folder per run
+    inside it, which is an archive that grows, and an archive on the Desktop
+    is in the way of everything else all day. macOS localises the *display*
+    name of both folders and keeps `Documents` on disk, so this is the same
+    path on an English and a non-English account.
+
+    A machine without `~/Documents` - a container, a server - must still get
+    its documents somewhere findable rather than an error.
     """
-    desktop = Path.home() / "Desktop"
-    return desktop if desktop.is_dir() else Path.home()
+    documents = Path.home() / "Documents"
+    return documents if documents.is_dir() else Path.home()
+
+
+def _move_old_root(new_root: Path) -> None:
+    """Move a pre-existing `~/Desktop/XAnalyze` to `new_root`, once.
+
+    Without this the change of default reads as data loss: the runs panel
+    empties, and the second run of a target has nothing to compare against
+    because its history is still on the Desktop. Moving rather than copying,
+    so nothing is left behind - the point of the request was that the
+    Desktop stops collecting folders.
+
+    Only when the destination does not exist yet. Merging two roots would
+    have to decide what happens to two runs of the same target in the same
+    minute, and quietly picking one is worse than leaving both where the
+    person can see them.
+    """
+    old = Path.home() / _OLD_PARENT / REPORTS_FOLDER
+    if new_root.exists() or not old.is_dir() or old == new_root:
+        return
+    try:
+        new_root.parent.mkdir(parents=True, exist_ok=True)
+        old.rename(new_root)
+    except OSError:
+        # A cross-device move, a locked folder, a sync client holding it: the
+        # new root is created empty by the caller and the old one stays
+        # readable where it is. Said out loud rather than swallowed.
+        progress.notice("run-folder",
+                        f"reports are now written to {new_root}; the earlier "
+                        f"ones could not be moved and are still in {old}",
+                        human=f"# note: earlier reports are still in {old}")
+        return
+    progress.notice("run-folder",
+                    f"moved earlier reports from {old} to {new_root}",
+                    human=f"# moved earlier reports from {old} to {new_root}",
+                    old=str(old), new=str(new_root))
 
 
 class RunFolder:
@@ -123,7 +168,7 @@ def prepare_for(target: str, args, *, machine_flags=("json", "check")):
 
     `machine_flags` are the ones that mean "this output is being parsed, not
     read" - `--json`, `--check`. A pipeline step must not start leaving
-    folders on someone's Desktop, so those runs get no folder at all and are
+    folders in someone's Documents, so those runs get no folder at all and are
     unchanged from before.
     """
     if any(getattr(args, flag, False) for flag in machine_flags):
@@ -171,23 +216,36 @@ class RunDocuments:
 
 
 #: Overrides where project folders are created. For a machine with no
-#: Desktop worth writing to - a CI runner, a container - and for tests,
-#: which must not write into the person's actual Desktop.
+#: Documents folder worth writing to - a CI runner, a container - and for
+#: tests, which must not write into the person's actual Documents.
 ROOT_ENV = "XANALYZE_REPORT_ROOT"
 
 
-def default_root() -> Path:
+def default_root(*, migrate: bool = True) -> Path:
+    """Where project folders go.
+
+    `migrate=False` for a caller that is only asking - the uninstaller
+    listing what it will leave behind must not move the person's archive as
+    a side effect of describing it.
+    """
     import os
     override = os.environ.get(ROOT_ENV)
     if override:
         return Path(override).expanduser()
-    return _desktop() / DESKTOP_FOLDER
+    root = _documents() / REPORTS_FOLDER
+    # Checked on every call rather than once at import: this is the only
+    # place that knows the answer, and an app left open across the upgrade
+    # would otherwise never notice. It costs one `exists()` on a path that
+    # is about to be written to anyway.
+    if migrate:
+        _move_old_root(root)
+    return root
 
 
 def prepare(target: str, *, root: Path | None = None) -> RunFolder:
     """Create this run's folder under this target's folder, and return it.
 
-    `root` overrides the Desktop, for tests and for anyone who would rather
+    `root` overrides the default, for tests and for anyone who would rather
     the documents landed elsewhere; so does `XANALYZE_REPORT_ROOT`.
     """
     base = Path(root) if root is not None else default_root()

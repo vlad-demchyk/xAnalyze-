@@ -210,7 +210,7 @@ def add_run_parsers(sub) -> None:
     p_runs.add_argument("--json", action="store_true",
                         help="machine-readable output")
     p_runs.add_argument("--root", default=argparse.SUPPRESS,
-                        help="where run folders live (default: the Desktop)")
+                        help="where run folders live (default: ~/Documents/XAnalyze)")
     p_runs.set_defaults(func=cmd_runs)
 
     p_resume = sub.add_parser(

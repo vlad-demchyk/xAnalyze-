@@ -213,8 +213,10 @@ most misleading output this tool can produce.
 
 ## Reports
 
-Every command writes a dated run folder, `~/Desktop/XAnalyze/` by default
-(`XANALYZE_REPORT_ROOT` moves it):
+Every command writes a dated run folder, `~/Documents/XAnalyze/` by default
+(`XANALYZE_REPORT_ROOT` moves it). An archive already in `~/Desktop/XAnalyze/`
+from an earlier version is moved across on the first run, so the run history a
+comparison needs stays where the tool looks for it:
 
 ```text
 XAnalyze/example.com/2026-09-02-0930/

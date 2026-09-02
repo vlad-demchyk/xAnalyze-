@@ -16,7 +16,7 @@ What counts as "the app":
 What deliberately stays:
   * `.xanalyze/` run-history folders inside scanned projects — they live in
     the user's repositories, next to their files
-  * reports already written to ~/Desktop — user data, not app state
+  * reports already written to ~/Documents/XAnalyze — user data, not app state
   * `.xanalyze-ignore` files and `.bak` backups inside repositories
 
 Both lists are shown to the user before anything is removed.
@@ -113,11 +113,23 @@ def enumerate_items() -> list[UninstallItem]:
 def remaining_notes() -> list[str]:
     """Things uninstall does not remove, so the summary says so plainly."""
     notes = []
-    desktop_reports = list((Path.home() / "Desktop").glob("xanalyze-*.pdf"))
-    desktop_reports += list((Path.home() / "Desktop").glob("xanalyze-*.html"))
-    desktop_reports += list((Path.home() / "Desktop").glob("xanalyze-*.md"))
+    # The archive of run folders, wherever it currently is. `migrate=False`:
+    # this function describes what will be left behind and must not move
+    # anything while doing it.
+    from cli_impl import runfolder
+
+    root = runfolder.default_root(migrate=False)
+    if root.is_dir():
+        runs = [p for p in root.iterdir() if p.is_dir()]
+        notes.append(f"{len(runs)} report folder(s) left in {root}")
+    # Loose files from before run folders existed. Still named, because they
+    # are still on people's Desktops.
+    desktop = Path.home() / "Desktop"
+    desktop_reports = [p for pattern in ("xanalyze-*.pdf", "xanalyze-*.html",
+                                         "xanalyze-*.md")
+                       for p in desktop.glob(pattern)]
     if desktop_reports:
-        notes.append(f"{len(desktop_reports)} report(s) left on ~/Desktop")
+        notes.append(f"{len(desktop_reports)} older report(s) left on ~/Desktop")
     notes.append(".xanalyze/ history folders and .xanalyze-ignore files "
                  "inside your repositories are left untouched")
     return notes

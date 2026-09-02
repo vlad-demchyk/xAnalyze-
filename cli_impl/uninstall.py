@@ -21,7 +21,7 @@ def cmd_uninstall(args) -> int:
     Lists what was found (PATH symlinks, the application bundle, the config
     directory, keychain entries), asks for confirmation, then removes it.
     Repository files (.xanalyze-ignore, .bak backups, run history inside
-    scanned projects) and reports on the Desktop are never touched.
+    scanned projects) and reports in ~/Documents/XAnalyze are never touched.
 
     With --dry-run: only list. With --yes: skip the confirmation.
     """
