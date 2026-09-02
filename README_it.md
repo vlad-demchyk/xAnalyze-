@@ -239,6 +239,13 @@ Ogni documento si apre nominando il comando e i parametri che hanno cambiato ci�
 che è stato misurato. Un problema ripetuto è elencato una volta sola, con i suoi
 luoghi annidati sotto. `--json` conserva ogni risultato, per la CI.
 
+Per via di questo raggruppamento il riepilogo contiene due unità di misura,
+quindi ogni riga dichiara la propria: una categoria conta i **problemi
+distinti**, il conteggio dei caratteri conta le **occorrenze**, ed entrambi i
+numeri sono stampati sotto la stessa intestazione invece che uno al posto
+dell'altro. Cinque problemi tipografici su cinquantadue occorrenze sono due
+fatti, non una contraddizione.
+
 ## Pilotarlo da un agente
 
 `--json` risponde a lavoro finito. Su un sito di trenta pagine sono minuti di

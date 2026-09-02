@@ -8,9 +8,9 @@ that drifts apart if it is written twice.
 """
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
+import progress
 from report.model import ReportModel
 from report.template import render_html
 
@@ -55,9 +55,21 @@ def write_styled_report(path, model: ReportModel, lang: str = "en",
             # Said out loud as well as written into the file: a caller
             # watching stderr must not have to open the PDF to learn that it
             # is a stand-in.
-            print(f"# the PDF could not be printed ({exc}); wrote a one-page "
-                  f"notice to {written} - the full report is the Markdown one",
-                  file=sys.stderr, flush=True)
+            #
+            # Through `progress`, not `print`. A bare line here was the one
+            # place a run under `--progress jsonl` could put something that
+            # is not JSON into the stream - measured 2026-09-02 on a machine
+            # with no QtWebEngine, where an agent parsing the stream got a
+            # `#` line and a decode error at the exact moment it most needed
+            # to be told the PDF is a stand-in.
+            progress.notice(
+                "report",
+                f"the PDF could not be printed ({exc}); wrote a one-page "
+                f"notice to {written} - the full report is the Markdown one",
+                human=f"# the PDF could not be printed ({exc}); wrote a "
+                      f"one-page notice to {written} - the full report is "
+                      f"the Markdown one",
+                path=str(written), reason=str(exc))
     else:
         target.write_text(html, encoding="utf-8")
     return html

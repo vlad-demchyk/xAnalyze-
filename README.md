@@ -229,6 +229,12 @@ Every document opens by naming the command and the parameters that changed
 what was measured. A repeated problem is listed once with its locations nested
 under it. `--json` keeps every finding, for CI.
 
+Because of that grouping the summary holds two units at once, so every row
+of it names its own: a category counts **distinct problems**, a character
+tally counts **occurrences**, and both numbers are printed under the same
+heading rather than one replacing the other. Five typography problems over
+fifty-two occurrences is two facts, not a contradiction.
+
 ## Driving it from an agent
 
 `--json` answers when the run is over. On a thirty-page site that is minutes

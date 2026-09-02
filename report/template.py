@@ -41,7 +41,8 @@ from audit.base import ADVISORY, EXACT, NEEDS_BROWSER
 from report.markup import (
     ROLE_LABELS, ROLES, highlight, role_css, role_of, roles_used,
 )
-from report.model import CATEGORY_AI_TEXT, ReportModel
+from report.model import (CATEGORY_AI_TEXT, CATEGORY_TYPOGRAPHY,
+                          ReportModel)
 from ui.tokens import Palette, palettes
 
 #: Vendored alongside the app icon — see `ui/main_window.py`'s `ASSETS`.
@@ -92,6 +93,7 @@ _LABELS = {
         top_patterns="Highest-scoring passages",
         found_in="Found in {count} places", and_more="and {count} more",
         occurrences="Occurrences",
+        distinct="distinct problems", occurrences_total="occurrences in total",
         source_at="Source: {path}:{line}",
         repo_coverage="Matched to the given repository: {matched}/{total} passages",
         mode={"text-web": "AI-text scan · website", "text-repo": "AI-text scan · repository",
@@ -140,6 +142,7 @@ _LABELS = {
         top_patterns="Уривки з найвищою оцінкою",
         found_in="Знайдено у {count} місцях", and_more="і ще {count}",
         occurrences="Повторів",
+        distinct="окремих проблем", occurrences_total="входжень усього",
         source_at="Джерело: {path}:{line}",
         repo_coverage="Знайдено в репозиторії: {matched}/{total} уривків",
         mode={"text-web": "Аналіз тексту · сайт", "text-repo": "Аналіз тексту · репозиторій",
@@ -188,6 +191,7 @@ _LABELS = {
         top_patterns="Passaggi con punteggio più alto",
         found_in="Trovato in {count} punti", and_more="e altri {count}",
         occurrences="Occorrenze",
+        distinct="problemi distinti", occurrences_total="occorrenze in totale",
         source_at="Origine: {path}:{line}",
         repo_coverage="Corrispondenza nel repository indicato: {matched}/{total} passaggi",
         mode={"text-web": "Analisi testo · sito", "text-repo": "Analisi testo · repository",
@@ -485,9 +489,17 @@ def _what_was_found(model: ReportModel, by_category: dict, labels: dict) -> str:
     to see which is which. What they must not have to do is find three tables
     in three places to compare them.
     """
+    # Every row says what its own number counts. The table holds two units
+    # at once and cannot stop doing so - a category is a count of distinct
+    # problems, a character tally is a count of occurrences - and while both
+    # were unlabelled the same word carried both: "Typography 5" in this
+    # table and in the chart beside it, "Typography ..." summing to 52 four
+    # rows below. One name, two numbers, no way to tell which was which.
+    # (P-36, XAnalyze.)
     rows = []
     for cat, count in sorted(by_category.items(), key=lambda kv: -kv[1]):
-        rows.append((_esc(labels["cat"].get(cat, cat)), "", count))
+        rows.append((_esc(labels["cat"].get(cat, cat)),
+                     _esc(labels["distinct"]), count))
 
     ai = model.ai_patterns or {}
     if ai.get("total", 0):
@@ -500,18 +512,40 @@ def _what_was_found(model: ReportModel, by_category: dict, labels: dict) -> str:
 
     typo = model.typography or {}
     if typo.get("total", 0):
+        # Filed under the category's own short name, not under the long
+        # "Typography issues (non-keyboard characters)". Two labels that
+        # both read as "typography" put one subject in two places in one
+        # table; one label plus the grouping below keeps its rows together,
+        # where the two numbers can be read against each other.
+        group = _esc(labels["cat"].get(CATEGORY_TYPOGRAPHY,
+                                       labels["typography"]))
+        rows.append((group, _esc(labels["occurrences_total"]),
+                     typo.get("total", 0)))
         characters = sorted((typo.get("by_character") or {}).items(),
                             key=lambda kv: -kv[1])
         for name, count in characters[:_CHAR_ROWS]:
-            rows.append((_esc(labels["typography"]), _esc(name), count))
+            rows.append((group, _esc(name), count))
         rest = sum(count for _n, count in characters[_CHAR_ROWS:])
         if rest:
-            rows.append((_esc(labels["typography"]),
+            rows.append((group,
                          _esc(labels["and_more"].format(
                              count=len(characters) - _CHAR_ROWS)), rest))
 
     if not rows:
         return ""
+    # Rows of one group sit together, strongest group first. Before this the
+    # category block was sorted by count and the tallies were appended after
+    # it, so "Typography, distinct problems: 5" and "Typography, occurrences
+    # in total: 52" could be a dozen rows apart - which is the whole reason
+    # the two numbers read as a contradiction rather than as two facts.
+    order: list = []
+    grouped: dict = {}
+    for group, detail, count in rows:
+        if group not in grouped:
+            grouped[group] = []
+            order.append(group)
+        grouped[group].append((group, detail, count))
+    rows = [row for group in order for row in grouped[group]]
     body = "".join(
         f'<tr><td>{group}</td><td class="detail">{detail}</td>'
         f'<td class="num">{count}</td></tr>'
