@@ -61,7 +61,7 @@ class WhatThePassActuallySends(unittest.TestCase):
         ]
         seen = {}
 
-        def _fake(urls, options, sizes, progress=None, markup=None):
+        def _fake(urls, options, sizes, on_page=None, markup=None):
             seen["urls"] = list(urls)
             return [_Audit(url) for url in urls]
 
@@ -84,7 +84,7 @@ class WhatThePassActuallySends(unittest.TestCase):
         result.documents = [page, headers, other]
         merged = []
 
-        def _fake(urls, options, sizes, progress=None, markup=None):
+        def _fake(urls, options, sizes, on_page=None, markup=None):
             return [_Audit(url) for url in urls]
 
         with mock.patch("audit.driver.available", return_value=(True, "")), \
@@ -103,9 +103,9 @@ class WhatThePassActuallySends(unittest.TestCase):
                             DocumentReport(source="https://x.test/page")]
         lines = []
 
-        def _fake(urls, options, sizes, progress=None, markup=None):
-            if progress:
-                progress(1, urls[0])
+        def _fake(urls, options, sizes, on_page=None, markup=None):
+            if on_page:
+                on_page(1, urls[0])
             return [_Audit(url) for url in urls]
 
         with mock.patch("audit.driver.available", return_value=(True, "")), \

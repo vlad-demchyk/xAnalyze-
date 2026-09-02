@@ -1036,7 +1036,14 @@ def _extract_locale_blocks(raw_text: str, file_path: str) -> list[CodeBlock]:
 #: A server-side template tag: PHP's `<?php ... ?>` and its short form
 #: `<?= ... ?>`, and the ASP/JSP family that shares the shape.
 _SERVER_TAG = re.compile(
-    r"<\?(?:php\b|=)?.*?\?>"        # PHP, long and short
+    # PHP, long and short. `(?:\?>|\Z)` and not `\?>`: a file that is *only*
+    # PHP conventionally has no closing tag at all - WordPress, PSR-12 and
+    # every linter say to omit it, because a stray newline after `?>` is
+    # output. Requiring it meant such a file was not masked at all, so its
+    # string literals - `echo '<div>' . $html . '</div>'` - were walked as
+    # markup and `' . $html . '` came back as copy. Measured 2026-09-02 on
+    # `palmanova_wp`: 83 blocks of "markup" from `.php`, most of them PHP.
+    r"<\?(?:php\b|=)?.*?(?:\?>|\Z)"
     r"|<%.*?%>"                      # ERB, EJS, JSP, ASP
     r"|\{%-?.*?-?%\}"                # Twig, Django, Jinja, Liquid, Nunjucks
     r"|@\{.*?\}",                    # Razor code block
@@ -1055,9 +1062,40 @@ _TEMPLATE_EXPR_RE = re.compile(
     r"|@[a-zA-Z]+(?:\s*\([^()\n]*\))?",  # @extends('…'), @endsection
     re.S)
 
-#: One regex for everything that interrupts copy in a server template.
+#: One regex for everything that interrupts copy in a server template. The
+#: third alternative is the filler `mask_server_tags` leaves behind: the runs
+#: are cut from the *masked* text, so what a server tag became is what
+#: separates the copy around it.
 _TEMPLATE_SPLIT_RE = re.compile(
-    "|".join((_SERVER_TAG.pattern, _TEMPLATE_EXPR_RE.pattern)), re.S)
+    "|".join((_SERVER_TAG.pattern, _TEMPLATE_EXPR_RE.pattern,
+              r"\$\{-*\}")), re.S)
+
+
+#: What a run of "copy" from a server template looks like when it is really
+#: a piece of that language. `mask_server_tags` cannot always find the end of
+#: a PHP block: `?>` occurs inside string literals, and a real one does -
+#: `'/<h2(\s[^>]*)?>([\s\S]*?)<\/h2>/i'` in `palmanova_wp`'s TOC builder
+#: closes the mask thirty lines early, and the rest of the file walks as
+#: markup. Short of a PHP lexer the mask cannot be made exact, so the runs it
+#: lets through are filtered on what they are: a passage that concatenates a
+#: variable is code, whatever the mask thought.
+_SERVER_CODE_RUN = re.compile(
+    r"^['\"]|['\"]$"                  # begins or ends mid-literal
+    r"|\$\w+\s*(?:\.|->|\[)"          # $var . / $var-> / $var[
+    r"|\.\s*\$\w+"                    # . $var
+    r"|<\?|\?>"                       # a tag boundary inside the run
+    r"|::",
+)
+
+
+def _looks_like_server_code(text: str) -> bool:
+    """Is this run a piece of the template's language rather than its copy?
+
+    Only asked of server templates, where the mask can end early. For markup
+    the question does not arise: a `.html` file has no `$var . ` in its text
+    nodes, and asking would cost a real passage that happens to quote one.
+    """
+    return bool(_SERVER_CODE_RUN.search(text))
 
 
 def mask_server_tags(raw_text: str) -> str:
@@ -1215,25 +1253,36 @@ def _extract_blocks(raw_text: str, file_path: str,
     # would carry the mask and fail the offset check below.
     server_template = suffix in _SERVER_TEMPLATE_EXTENSIONS
     if suffix not in BACKEND_EXTENSIONS or server_template:
-        # Blade's `{{ … }}` is masked too, but only for finding the tags -
-        # `mask_server_tags` deliberately leaves it alone because to the
-        # audit it is a page's visible text. Here it hides a `>`:
-        # `{{ $plan->name }}` inside an `<h1>` made the walk lose the
+        # Two derived texts, because the walk and the cut need different
+        # things.
+        #
+        # `cut_text` is what the runs are taken from: comments already
+        # blanked by `mask_code_comments`, server tags replaced by their
+        # filler. Cutting from the *raw* file instead put an HTML comment
+        # back into the copy - `<!-- /header-social-wrapper -->` came back as
+        # a passage to judge, measured on the `palmanova_wp` theme.
+        #
+        # `walk_text` is only used to find the tags, and masks Blade's
+        # `{{ … }}` on top. `mask_server_tags` deliberately leaves that alone
+        # - to the audit it is a page's visible text - but here it hides a
+        # `>`: `{{ $plan->name }}` inside an `<h1>` made the walk lose the
         # heading and everything after it on that line.
-        walk_text = masked
+        cut_text = walk_text = masked
         if server_template:
-            walk_text = _TEMPLATE_EXPR_RE.sub(_blank_but_newlines,
-                                              mask_server_tags(masked))
+            cut_text = mask_server_tags(masked)
+            walk_text = _TEMPLATE_EXPR_RE.sub(_blank_but_newlines, cut_text)
         splitter = _TEMPLATE_SPLIT_RE if server_template else None
         for gap in _TAG_GAP_RE.finditer(walk_text):
             if not _renders_text(gap.group("name")):
                 continue
             gap_start = gap.start("gap")
-            gap_text = (raw_text[gap_start:gap.end("gap")] if server_template
+            gap_text = (cut_text[gap_start:gap.end("gap")] if server_template
                         else gap.group("gap"))
             for start, end, text in _extract_literal_runs(gap_text, gap_start,
                                                           splitter):
                 if not _is_markup_run(text):
+                    continue
+                if server_template and _looks_like_server_code(text):
                     continue
                 if (start, end) in seen_spans:
                     continue

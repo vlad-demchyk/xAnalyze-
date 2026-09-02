@@ -34,7 +34,7 @@ def _chosen_breakpoints(args):
                  if name in wanted)
 
 
-def _audit_at_widths(urls, options, sizes, progress=None, markup=None) -> list:
+def _audit_at_widths(urls, options, sizes, on_page=None, markup=None) -> list:
     """One browser, every page, every width - skipping what has not changed.
 
     `markup` maps a url to the bytes the crawler already received for it.
@@ -100,8 +100,8 @@ def _audit_at_widths(urls, options, sizes, progress=None, markup=None) -> list:
                 if results[index] is not None or first_index.get(url) != index:
                     continue
                 done += 1
-                if progress:
-                    progress(done, url)
+                if on_page:
+                    on_page(done, url)
                 # No widths asked for is one pass at the engine's own
                 # viewport, which is what `audit` does without
                 # `--breakpoints`. Both shapes go through here so both are
@@ -219,7 +219,7 @@ def _run_browser_pass(result, suppressions, args=None) -> None:
     markup = {url: served[document.source]
               for document, url in zip(targets, urls)
               if document.source in served}
-    audits = _audit_at_widths(urls, options, sizes, progress=_show,
+    audits = _audit_at_widths(urls, options, sizes, on_page=_show,
                               markup=markup)
     by_url = {a.url: a for a in audits}
     #: Addresses whose browser findings have already been folded in. One

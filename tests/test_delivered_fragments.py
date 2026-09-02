@@ -378,7 +378,7 @@ class WhatTheBrowserPassDoesWhenScoped(unittest.TestCase):
         result.documents = [DocumentReport(source="https://x.test/")]
         seen = {}
 
-        def _fake(urls, options, sizes, progress=None, markup=None):
+        def _fake(urls, options, sizes, on_page=None, markup=None):
             seen["options"] = options
             return []
 
