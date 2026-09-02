@@ -54,8 +54,16 @@ class _Form(unittest.TestCase):
 
             class _Finished:
                 running = False
+                # `report_paths` is part of what a finished run answers -
+                # `ResultsScreen.__init__` calls it. Whether the screen gets
+                # built at all is a race with the poll timer, so a stub
+                # missing it fails only sometimes: it passed here for weeks
+                # and fell over on 2026-09-02 in a slower environment, with
+                # an `AttributeError` about the stub rather than about
+                # anything under test.
                 result = type("_R", (), {"error": None, "output": "",
-                                         "code": 0})()
+                                         "code": 0,
+                                         "report_paths": lambda self: []})()
 
                 def new_lines(self):
                     return []

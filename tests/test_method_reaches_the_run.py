@@ -224,6 +224,29 @@ class TheSlowStageSaysSomething(unittest.TestCase):
                           text=f"a passage from {url} number {i}")
                 for i in range(4)]
 
+    class _Judge:
+        """A judge that answers instantly and costs nothing.
+
+        These two tests are about the counter, not about a model. With a
+        real judge the answer depends on which account the machine happens
+        to have: measured 2026-09-02 on CI, where no Claude Code session and
+        no `ANTHROPIC_API_KEY` resolved to the API-key judge and the test
+        failed with `DetectorUnavailable` instead of saying anything about
+        progress. On a developer's machine the same line quietly spawned
+        real `claude -p` processes.
+
+        The name is load-bearing: `_cache_for` is what switches the counter
+        on, and it keys off `detector.name` being neither empty nor
+        `offline`.
+        """
+
+        name = "claude-code-llm-judge"
+        model = ""
+        effort = ""
+
+        def analyze_blocks(self, blocks):
+            return []
+
     def _run(self, detector):
         import argparse
         import contextlib
@@ -231,6 +254,7 @@ class TheSlowStageSaysSomething(unittest.TestCase):
         import os
         import tempfile
 
+        from cli_impl import fullscan
         from cli_impl.fullscan import _content_findings_from_pages
 
         args = argparse.Namespace(detector=detector, provider=None,
@@ -238,6 +262,12 @@ class TheSlowStageSaysSomething(unittest.TestCase):
                                   categories=None, no_unicode=False)
         pages = [self._Page(f"https://example.com/{i}") for i in range(3)]
         captured = io.StringIO()
+        real = fullscan._content_passes
+        # Only the judge half is faked. The offline case has to go through
+        # the real builder, because "the offline pass stays quiet" is a
+        # statement about the pass this function would actually construct.
+        if detector:
+            fullscan._content_passes = lambda _args: [self._Judge()]
         # An isolated cache. Without it the previous test run's answers come
         # back as this run's, and the detector is never called at all.
         with tempfile.TemporaryDirectory() as tmp:
@@ -246,6 +276,7 @@ class TheSlowStageSaysSomething(unittest.TestCase):
                 with contextlib.redirect_stderr(captured):
                     _content_findings_from_pages(pages, args)
             finally:
+                fullscan._content_passes = real
                 os.environ.pop("XANALYZE_JUDGMENT_CACHE", None)
         return captured.getvalue()
 
@@ -400,16 +431,56 @@ class ModelAndEffortAreSettable(unittest.TestCase):
     CLI, the TUI or the window.
     """
 
+    def setUp(self):
+        """A stub `claude` on `CLAUDE_CODE_BIN`.
+
+        `_argv` asks the provider for its binary and refuses without one, so
+        without this the test measures whether Claude Code is installed on
+        the machine running it - which on CI it is not. What is under test
+        is the argv the flags produce, and that does not need a real binary,
+        only a path that exists.
+        """
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        stub = Path(tmp.name) / "claude"
+        stub.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        stub.chmod(0o755)
+        patch = mock.patch.dict(os.environ, {"CLAUDE_CODE_BIN": str(stub)})
+        patch.start()
+        self.addCleanup(patch.stop)
+
     def _detector(self, model=None, effort=None):
         import argparse
 
         from cli_impl.scanning import _create_detector
 
+        # The provider is named, not left to the machine. `provider=None`
+        # asks `rewriter` which account is in play, so the class under test
+        # was whichever one this computer happens to be signed into: a
+        # Claude Code session gives `ClaudeCodeLLMJudgeDetector`, which has
+        # `_get_provider`, and a machine with neither session nor key gives
+        # `ClaudeLLMJudgeDetector`, which does not. Measured 2026-09-02 on
+        # CI, where all four tests failed with `AttributeError`. What is
+        # being tested is that a flag reaches a provider CLI's argv, so the
+        # provider is part of the case.
         return _create_detector(argparse.Namespace(
-            detector="ai", provider=None, model=model, effort=effort))
+            detector="ai", provider="claude-code", model=model, effort=effort))
 
     def _argv(self, detector):
-        provider = detector._get_provider()
+        # The provider the run would actually use, reached without the auth
+        # gate. There are two paths and both matter: with a flag set,
+        # `_create_detector` builds a configured provider and injects it -
+        # that injection *is* how a flag reaches the invocation - and with
+        # nothing set the judge builds its own from the settings.
+        # `_get_provider` returns the same object on both, and on the second
+        # one it first checks that the account is signed in. An account is
+        # not what this measures: on CI that check failed and the test
+        # reported nothing about `--model` at all.
+        provider = detector._provider or detector._build_provider()
         return provider._argv("system prompt")
 
     def test_nothing_asked_for_leaves_the_session_alone(self):

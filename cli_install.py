@@ -81,7 +81,18 @@ def _clear_quarantine(path: Path) -> None:
     build made locally rather than downloaded) — that case is not an error
     and must not be surfaced as one; any other failure is real and should
     stop the install rather than leave a binary Gatekeeper will still block.
+
+    Off macOS there is no quarantine flag and no `xattr`, so there is
+    nothing to strip and the call is skipped rather than attempted.
+    Measured 2026-09-02 on Linux CI: `subprocess.run(["xattr", ...])` raised
+    `FileNotFoundError` and took the whole install down with it. The check is
+    on the platform and not on the tool being findable, because on macOS
+    `xattr` is part of the system - a silent skip there would leave a binary
+    Gatekeeper still blocks, which is the one outcome this function exists
+    to prevent.
     """
+    if sys.platform != "darwin":
+        return
     result = subprocess.run(
         ["xattr", "-d", "com.apple.quarantine", str(path)],
         capture_output=True, text=True,
