@@ -12,6 +12,7 @@ import os
 import sys
 
 import duplicates
+import progress
 
 from detectors.factory import DetectorFactory
 from models import Confidence, score_to_confidence
@@ -84,10 +85,12 @@ def _crawl_for_agent(url: str, args):
     config = CrawlConfig(max_depth=getattr(args, "depth", 0) or 0,
                          max_pages=getattr(args, "max_pages", None) or 30,
                          render_mode=_render_mode(args))
-    print(f"# [crawl] {with_scheme(url)} depth={config.max_depth}",
-          file=sys.stderr, flush=True)
+    progress.stage("crawl", "begin",
+                   f"# [crawl] {with_scheme(url)} depth={config.max_depth}",
+                   depth=config.max_depth, target=with_scheme(url))
     pages = _crawl_maybe_rendering(with_scheme(url), config)
-    print(f"# [crawl done] {len(pages)} page(s)", file=sys.stderr, flush=True)
+    progress.stage("crawl", "end", f"# [crawl done] {len(pages)} page(s)",
+                   pages=len(pages))
     return pages
 
 
@@ -600,7 +603,6 @@ def _merge_hybrid(offline_spans, matcher: _OriginMatcher) -> list:
             replacement=span.replacement))
 
     # Agent-only findings (not overlapping with any offline span)
-    style_block_ids = {s.block_id for s in offline_spans if _is_style_span(s)}
     for af in agent_findings_list:
         block = matcher.find_block(af)
         if block is None:

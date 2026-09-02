@@ -11,6 +11,7 @@ import json
 import sys
 from pathlib import Path
 
+import progress
 from models import RepoAnalysisResult
 
 
@@ -47,7 +48,9 @@ def _write_styled_text_report(files, findings, args) -> None:
     model = from_text_analysis(result)
     model.meta.run = describe(_command_of(args), root, args, language=lang)
     write_styled_report(args.styled_report, model, lang)
-    print(f"# styled report: {args.styled_report}", file=sys.stderr)
+    progress.notice("report", f"styled report: {args.styled_report}",
+                    human=f"# styled report: {args.styled_report}",
+                    path=str(args.styled_report), kind_of="styled")
     if skipped:
         print(f"# {skipped} finding(s) came from the incremental cache and are "
               f"not in the styled report; run without --incremental for a "
@@ -124,7 +127,8 @@ def write_text_briefing(files, findings, args, path) -> None:
 
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     Path(path).write_text("\n".join(out), encoding="utf-8")
-    print(f"# report: {path}", file=sys.stderr)
+    progress.notice("report", f"report: {path}", human=f"# report: {path}",
+                    path=str(path), kind_of="briefing")
 
 
 #: How many findings a briefing lists before it stops informing.
@@ -358,7 +362,8 @@ def _write_report(result, args, lang: str, fix_outcome=None, ai_findings=None) -
     else:
         path.write_text(_report_markdown(payload, lang), encoding="utf-8")
     _write_history(result.root, result.mode, history + [entry])
-    print(f"# report: {path}", file=sys.stderr)
+    progress.notice("report", f"report: {path}", human=f"# report: {path}",
+                    path=str(path), kind_of="markdown")
     # Handed back so a caller that also writes a comparison document does
     # not have to recompute the grouping and re-read the history.
     return payload
@@ -520,7 +525,6 @@ def _problem_map(result, render, lang: str) -> list:
             "ready_fix": first.fix_snippet or "",
             "snippet": first.snippet,
             "selector": first.selector,
-            "confidence": getattr(first, "confidence", ""),
             "caveat": explanation.caveat,
             # How many independent engines found it. 1 unless the browser
             # pass ran and a second engine corroborated; see
@@ -1143,7 +1147,9 @@ def write_comparison_document(path, payload: dict) -> bool:
     ]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines), encoding="utf-8")
-    print(f"# comparison: {path}", file=sys.stderr)
+    progress.notice("report", f"comparison: {path}",
+                    human=f"# comparison: {path}",
+                    path=str(path), kind_of="comparison")
     return True
 
 

@@ -15,6 +15,7 @@ from pathlib import Path
 
 import devserver
 import duplicates
+import progress
 import suppression
 
 import detectors  # noqa: F401 - registers the detectors
@@ -162,15 +163,21 @@ def _content_passes(args) -> list:
         # be built (no account, an exhausted plan, a typo in a name) must not
         # cost the crawl that already happened - but it must never be silent
         # either, which is the whole defect this function exists to close.
-        print(f"# warning: --detector {name} could not be used ({exc}); "
-              f"the offline engine ran instead", file=sys.stderr, flush=True)
+        progress.notice(
+            "warning",
+            f"--detector {name} could not be used ({exc}); the offline "
+            f"engine ran instead",
+            human=f"# warning: --detector {name} could not be used ({exc}); "
+                  f"the offline engine ran instead",
+            about="detector", detector=name)
         return [offline]
     # The judge's own name, not the flag's. `ai` and `llm-judge` mean "ask a
     # model" without saying whose account pays, and which account it turned
     # out to be is the part worth printing - it is what the run will be
     # billed to.
-    print(f"# [stage] AI patterns: {getattr(judge, 'name', name)}",
-          file=sys.stderr, flush=True)
+    progress.stage("scan", "begin",
+                   f"# [stage] AI patterns: {getattr(judge, 'name', name)}",
+                   detector=getattr(judge, "name", name))
     return [offline, judge]
 
 
@@ -216,7 +223,8 @@ def _judge_distinct(groups, passes, args) -> dict:
             cache.save()
             note = cache.summary()
             if note:
-                print(f"# [AI patterns] {note}", file=sys.stderr, flush=True)
+                progress.notice("ai-patterns", note,
+                                human=f"# [AI patterns] {note}")
     return spans_by_id
 
 
@@ -258,8 +266,11 @@ def _run_detector(detector, blocks, *, talkative: bool) -> dict:
     for index in range(batches):
         chunk = blocks[index * size:(index + 1) * size]
         if talkative:
-            print(f"# [AI patterns {index + 1}/{batches} batches] "
-                  f"{len(chunk)} passage(s)", file=sys.stderr, flush=True)
+            progress.stage("scan", "progress",
+                           f"# [AI patterns {index + 1}/{batches} batches] "
+                           f"{len(chunk)} passage(s)",
+                           batch=index + 1, batches=batches,
+                           passages=len(chunk))
         for span in detector.analyze_blocks(chunk):
             out.setdefault(span.block_id, []).append(span)
     return out
@@ -309,7 +320,8 @@ def _note_weak_detector(args, blocks, stats_out) -> None:
     note = detector_advice.weak_language_note(name or "offline", blocks)
     if not note:
         return
-    print(f"# WARNING: {note}", file=sys.stderr, flush=True)
+    progress.notice("warning", note, human=f"# WARNING: {note}",
+                    about="detector")
     if stats_out is not None:
         stats_out["detector_note"] = note
 
@@ -473,9 +485,14 @@ def _scan_local_target(target, args, lang, agent_mode):
     # so the surface that writes the report was the quiet one.
     for root, walk in walked:
         if walk.truncated:
-            print(f"# [scan] {root}: stopped at the {walk.limit}-file limit - "
-                  f"everything past it was not examined. Raise it with "
-                  f"--max-files.", file=sys.stderr, flush=True)
+            progress.notice(
+                "scan",
+                f"{root}: stopped at the {walk.limit}-file limit - everything "
+                f"past it was not examined. Raise it with --max-files.",
+                human=f"# [scan] {root}: stopped at the {walk.limit}-file "
+                      f"limit - everything past it was not examined. Raise it "
+                      f"with --max-files.",
+                root=str(root), limit=walk.limit, truncated=True)
 
     if agent_mode:
         # Agent mode: run offline scan, collect candidates for LLM judgment
@@ -498,9 +515,13 @@ def _scan_local_target(target, args, lang, agent_mode):
             from cli_impl.scanning import _split_unchanged, _store_unchanged
 
             to_read, cached_findings, reused = _split_unchanged(files, scan_args)
-            print(f"# [scan] incremental: {reused} file(s) unchanged since the "
-                  f"last scan, {len(to_read)} re-read",
-                  file=sys.stderr, flush=True)
+            progress.notice(
+                "scan",
+                f"incremental: {reused} file(s) unchanged since the last "
+                f"scan, {len(to_read)} re-read",
+                human=f"# [scan] incremental: {reused} file(s) unchanged "
+                      f"since the last scan, {len(to_read)} re-read",
+                reused=reused, reread=len(to_read))
         scan_findings, _ = _analyze(to_read, scan_args)
         if getattr(scan_args, "incremental", False):
             from cli_impl.scanning import _store_unchanged
@@ -557,9 +578,12 @@ def _crawl_for_fullscan(target: str, args, no_browser: bool):
 
     session_host = apply_session(
         target, config, use_session=not getattr(args, "no_session", False))
-    print(f"# [stage crawl] depth={args.depth} "
-          f"max_pages={args.max_pages or 'unlimited'} render={render_mode}",
-          file=sys.stderr, flush=True)
+    progress.stage(
+        "crawl", "begin",
+        f"# [stage crawl] depth={args.depth} "
+        f"max_pages={args.max_pages or 'unlimited'} render={render_mode}",
+        depth=args.depth, max_pages=args.max_pages or None,
+        render=str(render_mode), target=target)
 
     crawled = 0
 
@@ -567,12 +591,13 @@ def _crawl_for_fullscan(target: str, args, no_browser: bool):
         nonlocal crawled
         crawled += 1
         limit = f"/{args.max_pages}" if args.max_pages else ""
-        print(f"# [crawl {crawled}{limit}] depth={depth} {url}",
-              file=sys.stderr, flush=True)
+        progress.page(crawled, args.max_pages or None, url, depth=depth,
+                      human=f"# [crawl {crawled}{limit}] depth={depth} {url}")
 
     pages = _crawl_maybe_rendering(target, config, progress_cb=_crawl_progress,
                                    session_host=session_host)
-    print(f"# [crawl done] {len(pages)} page(s)", file=sys.stderr, flush=True)
+    progress.stage("crawl", "end", f"# [crawl done] {len(pages)} page(s)",
+                   pages=len(pages))
     return pages, target
 
 
@@ -585,11 +610,24 @@ def _warn_about_spa(pages) -> None:
     rendered_pages = [p for p in pages
                       if "rendered" in (p.diagnostics.reasons or [])]
     if spa_pages and not rendered_pages:
-        print(f"# WARNING: {len(spa_pages)} SPA page(s) detected but browser rendering failed.", file=sys.stderr)
-        print("# Pages may appear empty. Install PySide6 + QtWebEngine "
-              "for full support.", file=sys.stderr)
+        progress.notice(
+            "spa",
+            f"{len(spa_pages)} SPA page(s) detected but browser rendering "
+            f"failed; pages may appear empty. Install PySide6 + QtWebEngine "
+            f"for full support.",
+            human=f"# WARNING: {len(spa_pages)} SPA page(s) detected but "
+                  f"browser rendering failed.\n"
+                  f"# Pages may appear empty. Install PySide6 + QtWebEngine "
+                  f"for full support.",
+            failed=len(spa_pages), rendered=0)
     elif spa_pages and rendered_pages:
-        print(f"# SPA: {len(rendered_pages)} page(s) rendered via browser, {len(spa_pages)} failed.", file=sys.stderr)
+        progress.notice(
+            "spa",
+            f"{len(rendered_pages)} page(s) rendered via browser, "
+            f"{len(spa_pages)} failed.",
+            human=f"# SPA: {len(rendered_pages)} page(s) rendered via "
+                  f"browser, {len(spa_pages)} failed.",
+            rendered=len(rendered_pages), failed=len(spa_pages))
 
 
 def _audit_fullscan_target(is_url: bool, is_page_file: bool, target: str,
@@ -629,8 +667,9 @@ def _audit_fullscan_target(is_url: bool, is_page_file: bool, target: str,
             # bury the crawl's own output on a site with a thousand of them.
             seen_images[0] += 1
             if seen_images[0] % 25 == 1:
-                print(f"# [images {seen_images[0]}] {url}", file=sys.stderr,
-                      flush=True)
+                progress.notice("images", url,
+                                human=f"# [images {seen_images[0]}] {url}",
+                                n=seen_images[0], url=url)
 
         from cli import _web_parts_for
 
@@ -745,9 +784,13 @@ def _issues_at_floor(audit_result, floor: str | None,
         document.issues = issues_in_view(document.issues, (), floor or "",
                                          unsettled=unsettled)
     if hidden:
-        print(f"# [audit] {hidden} check(s) could not be decided and are not "
-              f"listed; add --unsettled to see them",
-              file=sys.stderr, flush=True)
+        progress.notice(
+            "audit",
+            f"{hidden} check(s) could not be decided and are not listed; "
+            f"add --unsettled to see them",
+            human=f"# [audit] {hidden} check(s) could not be decided and are "
+                  f"not listed; add --unsettled to see them",
+            unsettled=hidden)
     return [issue for document in audit_result.documents
             for issue in document.issues]
 
@@ -911,9 +954,17 @@ def _populate_typography(model, typo_findings: list) -> None:
     }
 
 
-def _styled_report_model(audit_result, content_findings: list, lang: str,
-                         repo_stats: dict | None = None):
-    """Build the ReportModel behind --styled-report."""
+def _styled_report_model(args, audit_result, content_findings: list,
+                         lang: str, repo_stats: dict | None = None):
+    """Build the ReportModel behind --styled-report.
+
+    `args` is a parameter and not a closure: the run header needs the flags
+    the person typed, and reading them from a name this function never
+    received raised `NameError` inside the writer's own `try` - so every
+    `fullscan` said "styled report failed" and wrote no styled report at
+    all, on every run, while the suite stayed green. See
+    `tests/test_styled_report_written.py`.
+    """
     from report.model import from_accessibility, from_text_analysis
 
     model = None
@@ -956,18 +1007,21 @@ def _write_styled_report(args, audit_result, content_findings: list,
                          lang: str, repo_stats: dict | None = None) -> None:
     if not getattr(args, "styled_report", None):
         return
-    model = _styled_report_model(audit_result, content_findings, lang, repo_stats)
+    model = _styled_report_model(args, audit_result, content_findings, lang,
+                                 repo_stats)
     if model is None:
         return
     from report.export import write_styled_report
 
-    print("# [stage] writing reports...", file=sys.stderr, flush=True)
+    progress.stage("report", "begin", "# [stage] writing reports...")
     # The markdown path travels with it so that, if the PDF cannot be
     # printed, the one-page stand-in can name the report to read instead of
     # merely gesturing at the folder.
     write_styled_report(args.styled_report, model, lang,
                         markdown_path=getattr(args, "report", None))
-    print(f"# styled report: {args.styled_report}", file=sys.stderr)
+    progress.notice("report", f"styled report: {args.styled_report}",
+                    human=f"# styled report: {args.styled_report}",
+                    path=str(args.styled_report), kind_of="styled")
 
 
 def _markdown_briefing_input(agent_mode: bool, agent_candidates: list,
@@ -1064,10 +1118,11 @@ def _write_run_documents(folder, target: str, timings, payload, combined,
         wrote = write_comparison_document(folder.changes, payload)
         if not wrote:
             earlier = folder.previous_runs()
-            print("# first run of this target - nothing to compare against"
-                  if not earlier else
-                  "# no comparable previous run recorded for this target",
-                  file=sys.stderr)
+            text = ("first run of this target - nothing to compare against"
+                    if not earlier else
+                    "no comparable previous run recorded for this target")
+            progress.notice("report", text, human=f"# {text}",
+                            compared=False)
 
 
 def _stop_short(state, folder, target, timings, phase, reason, *,
@@ -1082,8 +1137,10 @@ def _stop_short(state, folder, target, timings, phase, reason, *,
     two-minute step raised.
     """
     if state is None:
-        print(f"# {'paused' if paused else 'stopped'}: {reason}",
-              file=sys.stderr, flush=True)
+        word = "paused" if paused else "stopped"
+        progress.notice("warning", f"{word}: {reason}",
+                        human=f"# {word}: {reason}",
+                        paused=paused, reason=reason)
         return EXIT_INCOMPLETE
     if not paused:
         state.fail(phase, reason)
@@ -1093,17 +1150,24 @@ def _stop_short(state, folder, target, timings, phase, reason, *,
             timings.write(folder.timings, target,
                           extra={"stopped in": phase, "reason": reason})
         except Exception as exc:  # noqa: BLE001 - the state file matters more
-            print(f"# warning: timings failed: {exc}", file=sys.stderr)
+            progress.notice("warning", f"timings failed: {exc}",
+                            human=f"# warning: timings failed: {exc}",
+                            about="timings")
     state.write_feedback()
     state.write_markdown()
     info = state.feedback()
-    print(f"# {'paused' if paused else 'stopped'} in {phase}: {reason}",
-          file=sys.stderr, flush=True)
-    if info["artifacts"]:
-        print(f"# kept {len(info['artifacts'])} artifact(s) in {state.run_dir}",
-              file=sys.stderr)
-    if info["resume_with"]:
-        print(f"# continue with: {info['resume_with']}", file=sys.stderr)
+    word = "paused" if paused else "stopped"
+    progress.notice("warning", f"{word} in {phase}: {reason}",
+                    human=f"# {word} in {phase}: {reason}",
+                    paused=paused, phase=phase, reason=reason,
+                    artifacts=len(info["artifacts"]) or None,
+                    resume_with=info["resume_with"] or None)
+    if not progress.enabled():
+        if info["artifacts"]:
+            print(f"# kept {len(info['artifacts'])} artifact(s) in "
+                  f"{state.run_dir}", file=sys.stderr)
+        if info["resume_with"]:
+            print(f"# continue with: {info['resume_with']}", file=sys.stderr)
     # The machine-readable half goes to stdout, where every other command
     # puts its JSON: an agent that ran this must be able to read the outcome
     # the same way it reads a success, and not have to scrape stderr.
@@ -1155,8 +1219,10 @@ def _maybe_start_devserver(args, repo_path: str):
         return repo_path, None, f"{stack.name}: {exc}"
 
     if plan.install_argv is not None:
-        print(f"# [devserver] {stack.name}: dependencies missing",
-              file=sys.stderr, flush=True)
+        progress.notice("devserver", f"{stack.name}: dependencies missing",
+                        human=f"# [devserver] {stack.name}: dependencies "
+                              f"missing",
+                        stack=stack.name)
         if not _confirm_install(stack.name, plan.install_argv, args):
             return repo_path, None, f"{stack.name}: dependencies missing, install declined"
         try:
@@ -1170,7 +1236,9 @@ def _maybe_start_devserver(args, repo_path: str):
     except devserver.DevServerNeverReady as exc:
         proc.stop()
         return repo_path, None, str(exc)
-    print(f"# [devserver] {stack.name} ready at {url}", file=sys.stderr, flush=True)
+    progress.notice("devserver", f"{stack.name} ready at {url}",
+                    human=f"# [devserver] {stack.name} ready at {url}",
+                    stack=stack.name, url=url)
     return url, proc, None
 
 
@@ -1214,7 +1282,8 @@ def cmd_fullscan(args) -> int:
     # Validated before the run folder is created: a typo must not leave an
     # empty folder behind on someone's Desktop.
     if not is_url and not is_page and not Path(target).exists():
-        print(f"path not found: {target}", file=sys.stderr)
+        progress.notice("error", f"path not found: {target}",
+                        human=f"path not found: {target}")
         return EXIT_ERROR
 
     # `--project`: one deliverable out of a folder that holds several. Done
@@ -1224,7 +1293,7 @@ def cmd_fullscan(args) -> int:
 
     target, refusal = _narrow_to_project(target, args)
     if refusal:
-        print(refusal, file=sys.stderr)
+        progress.notice("error", refusal, human=refusal)
         return EXIT_ERROR
 
     # Before any work: what this run is about to leave undone, and the one
@@ -1238,8 +1307,8 @@ def cmd_fullscan(args) -> int:
 
     repo_arg = getattr(args, "repo", None)
     if repo_arg and not Path(repo_arg).is_dir():
-        print(f"--repo path not found or not a directory: {repo_arg}",
-              file=sys.stderr)
+        text = f"--repo path not found or not a directory: {repo_arg}"
+        progress.notice("error", text, human=text)
         return EXIT_ERROR
 
     resumed = getattr(args, "_resume_state", None)
@@ -1303,10 +1372,16 @@ def _run_phases(args, state, folder, timings, target, lang, is_url, is_page,
         # but silence would mean nobody ever learns the flag exists.
         stack = devserver.detect_stack(Path(target))
         if stack is not None:
-            print(f"# [devserver] {stack.name} detected but not started - "
-                  f"scanning source only. Pass --devserver to read the "
-                  f"rendered site instead, or --url if one is already "
-                  f"running", file=sys.stderr, flush=True)
+            progress.notice(
+                "devserver",
+                f"{stack.name} detected but not started - scanning source "
+                f"only. Pass --devserver to read the rendered site instead, "
+                f"or --url if one is already running",
+                human=f"# [devserver] {stack.name} detected but not started - "
+                      f"scanning source only. Pass --devserver to read the "
+                      f"rendered site instead, or --url if one is already "
+                      f"running",
+                stack=stack.name, started=False)
     if (is_repo_target and getattr(args, "devserver", False)
             and not already("crawl")):
         guard("devserver")
@@ -1358,17 +1433,22 @@ def _run_phases_body(args, state, folder, timings, target, lang, is_url, is_page
             scan_findings, counts = checkpoint.load_scan(state.run_dir)
             scan_result = {"findings": scan_findings or [],
                            "counts": counts or {}}
-            print("# [resume] AI patterns scan reused", file=sys.stderr)
+            progress.notice("resume", "AI patterns scan reused",
+                            human="# [resume] AI patterns scan reused",
+                            phase="scan")
         else:
             timings.start("AI patterns scan")
             if state is not None:
                 state.start("scan")
+            progress.stage("scan", "begin", target=target)
             try:
                 scan_findings, scan_result, agent_candidates = \
                     _scan_local_target(target, args, lang, agent_mode)
             except Exception as exc:  # noqa: BLE001 - recorded, not swallowed
                 return _stop_short(state, folder, target, timings, "scan",
                                    f"the AI patterns scan failed: {exc}")
+            progress.stage("scan", "end",
+                           findings=len((scan_result or {}).get("findings", [])))
             if state is not None:
                 # The public form, not the raw findings: those carry `_span`
                 # and `_block` keys holding live detector objects, which are
@@ -1440,9 +1520,15 @@ def _run_phases_body(args, state, folder, timings, target, lang, is_url, is_page
                 # or a gap like `_I18N_CALLS` missing WordPress's `_e()`),
                 # and it belongs beside the other stage notes, not buried in
                 # the JSON only an agent will read.
-                print(f"# [AI patterns] matched to --repo: "
-                      f"{repo_stats['repo_matched']}/{repo_stats['repo_total']} "
-                      f"distinct passage(s)", file=sys.stderr, flush=True)
+                progress.notice(
+                    "ai-patterns",
+                    f"matched to --repo: {repo_stats['repo_matched']}/"
+                    f"{repo_stats['repo_total']} distinct passage(s)",
+                    human=f"# [AI patterns] matched to --repo: "
+                          f"{repo_stats['repo_matched']}/"
+                          f"{repo_stats['repo_total']} distinct passage(s)",
+                    matched=repo_stats["repo_matched"],
+                    total=repo_stats["repo_total"])
             scan_result = {
                 "findings": scan_findings,
                 "counts": counts,
@@ -1458,17 +1544,30 @@ def _run_phases_body(args, state, folder, timings, target, lang, is_url, is_page
         # the expensive part, is what this already saves.
         audit_result = checkpoint.load_audit(state.run_dir)
         if audit_result is not None:
-            print("# [resume] static audit reused", file=sys.stderr)
+            progress.notice("resume", "static audit reused",
+                            human="# [resume] static audit reused",
+                            phase="audit")
     if audit_result is None:
         timings.start("static audit")
         if state is not None:
             state.start("audit")
+        progress.stage("audit", "begin", target=target)
         try:
             audit_result = _audit_fullscan_target(
                 is_url, is_page and not is_url, target, args, pages)
         except Exception as exc:  # noqa: BLE001
             return _stop_short(state, folder, target, timings, "audit",
                                f"the static audit failed: {exc}")
+        # Both numbers, because they are different numbers and one name
+        # for them is how "4 documents" and "2 documents" ended up in the
+        # same stream: a page is audited as several documents (its own
+        # rules, its response headers, an image's provenance), and the
+        # count a reader recognises is the addresses.
+        progress.stage(
+            "audit", "end",
+            documents=len(audit_result.documents) if audit_result else 0,
+            sources=len({d.source for d in audit_result.documents})
+            if audit_result else 0)
         if state is not None:
             state.done("audit", artifacts=filter(
                 None, [checkpoint.save_audit(state.run_dir, audit_result)]))
@@ -1479,7 +1578,9 @@ def _run_phases_body(args, state, folder, timings, target, lang, is_url, is_page
             reloaded = checkpoint.load_audit(state.run_dir)
             if reloaded is not None:
                 audit_result = reloaded
-                print("# [resume] browser pass reused", file=sys.stderr)
+                progress.notice("resume", "browser pass reused",
+                                human="# [resume] browser pass reused",
+                                phase="browser")
         elif wants_browser:
             guard("browser")
             timings.start("browser pass")
@@ -1489,6 +1590,7 @@ def _run_phases_body(args, state, folder, timings, target, lang, is_url, is_page
                 _settings_for_ignore(args), _ignore_root(args))
             try:
                 _run_browser_pass(audit_result, suppressions, args)
+                progress.stage("browser", "end")
             except Exception as exc:  # noqa: BLE001
                 # The static findings are already checkpointed, so stopping
                 # here keeps them: a browser pass that dies half-way used to
@@ -1503,11 +1605,31 @@ def _run_phases_body(args, state, folder, timings, target, lang, is_url, is_page
     audit_issues.extend(
         _issues_at_floor(audit_result, getattr(args, "confidence", None),
                          unsettled=bool(getattr(args, "unsettled", False))))
+    # One event per finding, for a reader that asked for them
+    # (`--progress jsonl=findings`). Here rather than at the end: this is the
+    # first moment each one exists as a decided finding, and the reports
+    # below can take minutes. `progress.finding` returns immediately when the
+    # option is off, which is the ordinary case.
+    if progress.wants_findings():
+        # `kind` because the two halves answer different questions and
+        # their `rule` fields are not the same kind of name: a content
+        # finding names the detector that produced it, an audit finding
+        # names the rule that fired.
+        for finding in scan_findings:
+            progress.finding(finding.get("detector", "") or "",
+                             severity=finding.get("confidence", "") or "",
+                             source=finding.get("file", "") or "",
+                             line=finding.get("line"), kind="content")
+        for issue in audit_issues:
+            progress.finding(issue.rule_id, severity=issue.severity,
+                             source=issue.source, line=issue.line,
+                             category=issue.category, kind="audit")
     timings.finish()
 
     lang = _detect_report_language(
         lang, pages,
-        announce=lambda line: print(line, file=sys.stderr, flush=True))
+        announce=lambda line: progress.notice(
+            "report", line.removeprefix("# [report] "), human=line))
 
     # --- Phase 3: Build combined result ---
     clean_findings = scan_result["findings"] if scan_result else []
@@ -1554,7 +1676,9 @@ def _run_phases_body(args, state, folder, timings, target, lang, is_url, is_page
         if audit_result is None:
             return
         for note in saturated_rules(audit_result):
-            print(f"# warning: {note.message()}", file=sys.stderr, flush=True)
+            progress.notice("warning", note.message(),
+                            human=f"# warning: {note.message()}",
+                            about="saturation")
 
     for label, write in (
         ("saturation check", _say_saturation),
@@ -1568,8 +1692,9 @@ def _run_phases_body(args, state, folder, timings, target, lang, is_url, is_page
             write()
         except Exception as exc:  # noqa: BLE001 - keep shipping the rest
             report_failures.append(f"{label}: {exc}")
-            print(f"# warning: {label} failed: {exc}",
-                  file=sys.stderr, flush=True)
+            progress.notice("warning", f"{label} failed: {exc}",
+                            human=f"# warning: {label} failed: {exc}",
+                            about=label)
 
     if state is not None:
         produced = [p for p in (getattr(args, "report", None),
@@ -1608,11 +1733,14 @@ def _run_phases_body(args, state, folder, timings, target, lang, is_url, is_page
                 state.done("documents", artifacts=[
                     p for p in (folder.timings, folder.changes) if p.exists()])
         except Exception as exc:  # noqa: BLE001 - keep shipping the rest
-            print(f"# warning: run documents failed: {exc}",
-                  file=sys.stderr, flush=True)
+            progress.notice("warning", f"run documents failed: {exc}",
+                            human=f"# warning: run documents failed: {exc}",
+                            about="run documents")
             if state is not None:
                 state.fail("documents", str(exc))
-        print(f"# run folder: {folder.run}", file=sys.stderr)
+        progress.notice("run-folder", str(folder.run),
+                        human=f"# run folder: {folder.run}",
+                        path=str(folder.run))
 
     if state is not None:
         # Before `finish`, so a run that ends here carries its own headline
@@ -1626,6 +1754,16 @@ def _run_phases_body(args, state, folder, timings, target, lang, is_url, is_page
         state.write_markdown()
 
     # --- Phase 5: Output (always JSON for agent) ---
+    #
+    # The numbers `run.end` will carry, recorded here because this is where
+    # they exist: `cli.main` knows the exit code and nothing else about the
+    # run. See `progress.set_summary`.
+    progress.stage("report", "end")
+    progress.set_summary(
+        counts=combined.get("summary", {}),
+        documents=len(audit_result.documents) if audit_result else 0,
+        sources=len({d.source for d in audit_result.documents})
+        if audit_result else 0)
     print(json.dumps(combined, indent=2, ensure_ascii=False))
 
     if args.check:

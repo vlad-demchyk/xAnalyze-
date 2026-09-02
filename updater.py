@@ -30,6 +30,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 import config
+from cli_impl import EXIT_ERROR, EXIT_OK
 
 # ------------------------------------------------------------------ config
 
@@ -352,7 +353,10 @@ def do_update() -> int:
     Updates CLI if a frozen binary or symlink is found.
     Updates GUI if ``/Applications/XAnalyze.app`` exists.
 
-    Returns 0 on success, 1 on error.
+    Returns `EXIT_OK` on success and `EXIT_ERROR` when the release could not
+    be reached or read. Not 1: everywhere else in this CLI 1 means "something
+    was found", and an update that could not reach GitHub has found nothing.
+    See `cli_impl` for the whole list.
     """
     print(f"# XAnalyze updater — current version: {config.APP_VERSION}",
           file=sys.stderr)
@@ -362,19 +366,19 @@ def do_update() -> int:
         release = fetch_latest()
     except HTTPError as exc:
         print(f"error: GitHub API returned {exc.code}", file=sys.stderr)
-        return 1
+        return EXIT_ERROR
     except URLError as exc:
         print(f"error: could not reach GitHub: {exc.reason}", file=sys.stderr)
-        return 1
+        return EXIT_ERROR
     except Exception as exc:  # noqa: BLE001
         print(f"error: {exc}", file=sys.stderr)
-        return 1
+        return EXIT_ERROR
 
     print(f"# latest release: {release.tag}", file=sys.stderr)
 
     if not newer(release.version, config.APP_VERSION):
         print("Already up to date.")
-        return 0
+        return EXIT_OK
 
     updated = 0
 
@@ -430,9 +434,9 @@ def do_update() -> int:
     if updated == 0:
         print("Nothing to update. Download manually from:\n"
               f"  {release.html_url}", file=sys.stderr)
-        return 1
+        return EXIT_ERROR
 
     print(f"\nUpdated XAnalyze {config.APP_VERSION} → {release.version}")
     if release.body:
         print(f"\nRelease notes:\n{release.body[:500]}")
-    return 0
+    return EXIT_OK

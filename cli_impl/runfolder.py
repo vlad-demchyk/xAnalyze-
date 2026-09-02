@@ -23,10 +23,11 @@ no file, since it looks like the comparison failed.
 from __future__ import annotations
 
 import re
-import sys
 import time
 from datetime import datetime
 from pathlib import Path
+
+import progress
 
 #: The folder every project folder lives under. Named, not the bare Desktop:
 #: a tool that drops folders directly on someone's Desktop is a tool they
@@ -285,7 +286,9 @@ class Timings:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(self.as_markdown(target, extra), encoding="utf-8")
-        print(f"# timings: {path}", file=sys.stderr)
+        progress.notice("report", f"timings: {path}",
+                        human=f"# timings: {path}",
+                        path=str(path), kind_of="timings")
 
 
 def _duration(seconds: float) -> str:

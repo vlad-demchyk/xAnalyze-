@@ -343,7 +343,12 @@ PHRASE_SUGGESTIONS: dict = {
         "trasformativo": "", "scalabile": "",
         "senza soluzione di continuità": "", "ineguagliabile": "",
         "poliedrico": "vario", "onnicomprensivo": "completo",
-        "all'avanguardia": "", "consentendo di": "per",
+        # `all'avanguardia` is not repeated here. It is twenty rows up with
+        # the replacement it deserves ("aggiornato", mirroring the English
+        # `cutting-edge` -> `latest`), and a second entry mapping it to ""
+        # won - a dict keeps the last one - so the Italian advice for this
+        # phrase was "delete the word" from the day the row was added.
+        "consentendo di": "per",
         "permettendoti di": "per", "si distingue per": "",
         # Le voci aggiunte il 2026-08-27 come specchio di quelle inglesi.
         # Anche qui quasi tutto è posizionamento, non parole sostituibili.
@@ -398,9 +403,22 @@ def _compile(phrase: str) -> re.Pattern:
 #: that has to be rewritten into whatever the product actually does, and only a
 #: person or a model knows that. Recorded as a decision rather than an omission,
 #: so `missing_suggestions()` still catches a phrase nobody has thought about.
+#: Longest phrase first, and that ordering is load-bearing. `suggest` walks
+#: this list applying every pattern in turn, so a phrase that contains a
+#: shorter one only ever fires if it goes first. In dictionary order it did
+#: not, and two entries were dead on arrival (measured 2026-09-02):
+#:
+#:   "Підсумовуючи вищесказане, …"  ->  "Вищесказане, …"   (fragment left)
+#:   "soluzione all'avanguardia"    ->  "soluzione aggiornato"
+#:
+#: neither of which is what the table says should happen. Sorting here rather
+#: than asking every future editor to add long entries above short ones: that
+#: is a rule nobody can see being broken, and this is the same rule enforced
+#: where it applies.
 _COMPILED: dict = {
     lang: [(phrase, _compile(phrase), replacement)
-           for phrase, replacement in table.items()
+           for phrase, replacement in sorted(table.items(),
+                                             key=lambda kv: -len(kv[0]))
            if replacement is not None]
     for lang, table in PHRASE_SUGGESTIONS.items()
 }

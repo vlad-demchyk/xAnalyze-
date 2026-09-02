@@ -20,6 +20,7 @@ from pathlib import Path, PurePath
 from bs4 import BeautifulSoup
 
 import applog
+import progress
 from project_profile import looks_generated
 
 from . import medium
@@ -329,10 +330,13 @@ def analyze_document(markup: str, source: str, rules=None,
             # Said, not silently accepted: the selector that was typed is not
             # the one that matched, and the difference is a generated suffix
             # this run guessed past.
-            import sys as _sys
-
-            print(f"# [within] {within} matched by stem (the platform's "
-                  f"generated suffix was ignored)", file=_sys.stderr)
+            progress.notice(
+                "within",
+                f"{within} matched by stem (the platform's generated suffix "
+                f"was ignored)",
+                human=f"# [within] {within} matched by stem (the platform's "
+                      f"generated suffix was ignored)",
+                selector=within, matched_by="stem")
     try:
         document = BeautifulSoup(markup, "html.parser")
     except Exception as exc:  # noqa: BLE001 - malformed markup is a finding, not a crash

@@ -94,6 +94,7 @@ a single HTML file is read as the finished page it is.
 | `--within SELECTOR` | audit only this part of the page - a delivered widget or web part |
 | `--report PATH`, `--styled-report PATH` | agent briefing (`.md`/`.json`) and human report (`.pdf`/`.html`) |
 | `--json`, `--check` | machine-readable output; exit 1 on serious findings |
+| `--progress jsonl` | one JSON event per line on stderr *while* the run happens |
 | `--language uk\|it\|en` | report language; detected from the pages otherwise |
 | `--project NAME` | one project inside a folder that holds several, by folder name or path |
 | `--start-command CMD`, `--dev-server-port N` | what to run instead of the detected script, and the port to expect |
@@ -227,6 +228,50 @@ XAnalyze/example.com/2026-09-02-0930/
 Every document opens by naming the command and the parameters that changed
 what was measured. A repeated problem is listed once with its locations nested
 under it. `--json` keeps every finding, for CI.
+
+## Driving it from an agent
+
+`--json` answers when the run is over. On a thirty-page site that is minutes
+of silence, and whatever started the run cannot tell a slow crawl from a hung
+one. `--progress jsonl` writes one JSON object per line to **stderr** as the
+run happens, while stdout stays exactly what it was:
+
+```bash
+xanalyze fullscan https://example.com --progress jsonl
+```
+
+```json
+{"event":"run.start","ts":"…","command":"fullscan","target":"https://example.com","version":"0.63.0"}
+{"event":"stage","ts":"…","name":"crawl","state":"begin","depth":1,"max_pages":30}
+{"event":"page","ts":"…","n":3,"of":30,"url":"https://example.com/pricing","depth":1}
+{"event":"stage","ts":"…","name":"crawl","state":"end","pages":12}
+{"event":"notice","ts":"…","kind":"authwall","text":"2 address(es) answered with a login wall …"}
+{"event":"run.end","ts":"…","exit_code":0,"counts":{…},"documents":31,"sources":12}
+```
+
+| `event` | When | Fields |
+|---|---|---|
+| `run.start` | first line | `command`, `target`, `version` |
+| `stage` | a phase begins, reports its way through, or ends | `name` (`devserver`, `scan`, `crawl`, `audit`, `browser`, `report`), `state` (`begin`, `progress`, `end`) |
+| `page` | each page read | `n`, `of`, `url`, `depth` |
+| `file` | each file opened | `n`, `of`, `path` |
+| `notice` | anything the terminal would have said in prose | `kind`, `text`, plus the fields behind it |
+| `finding` | one per finding, with `--progress jsonl=findings` | `rule`, `severity`, `source`, `line`, `kind` |
+| `run.end` | last line | `exit_code`, `counts`, `documents`, `sources` |
+
+Without the flag nothing changes: the same human lines, no JSON. `finding` is
+off unless asked for, because a large site produces tens of thousands of them.
+A line that does not parse as JSON did not come from XAnalyze - Qt writes its
+own diagnostics to the same stream - so skip it rather than failing on it.
+
+**Exit codes** are the same for every command:
+
+| Code | Meaning |
+|---|---|
+| `0` | clean - the command ran and found nothing to report |
+| `1` | findings, and only with `--check`. `scan`/`fix`/`clean`: any finding. `audit`/`fullscan`: a critical or serious one |
+| `2` | error - the command could not run: a path that does not exist, a flag that does not apply, a detector that could not read the text |
+| `3` | incomplete - a run stopped part-way and its work is on disk; `xanalyze resume` continues it |
 
 ## Interfaces
 

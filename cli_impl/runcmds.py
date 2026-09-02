@@ -16,6 +16,8 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+
+import progress
 from datetime import datetime, timezone
 
 from cli_impl import EXIT_ERROR, EXIT_OK
@@ -194,8 +196,10 @@ def cmd_resume(args) -> int:
     # the same run folder, so the phases it skips are the ones this file says
     # are done rather than a fresh set in a new folder.
     resumed_args._resume_state = state
-    print(f"# [resume] {state.run_dir} from {state.next_phase()}",
-          file=sys.stderr)
+    progress.notice("resume", f"{state.run_dir} from {state.next_phase()}",
+                    human=f"# [resume] {state.run_dir} from "
+                          f"{state.next_phase()}",
+                    run=str(state.run_dir), phase=state.next_phase())
     return resumed_args.func(resumed_args)
 
 

@@ -97,6 +97,7 @@ conoscere:
 | `--within SELETTORE` | analizzare solo questa parte della pagina - un widget o una web part consegnata |
 | `--report PERCORSO`, `--styled-report PERCORSO` | briefing per un agente (`.md`/`.json`) e report per una persona (`.pdf`/`.html`) |
 | `--json`, `--check` | output leggibile da una macchina; codice 1 con risultati seri |
+| `--progress jsonl` | un evento JSON per riga su stderr **mentre** la scansione avviene |
 | `--language uk\|it\|en` | lingua del report; altrimenti dedotta dalle pagine |
 | `--project NOME` | un progetto dentro una cartella che ne contiene più d'uno, per nome o percorso |
 | `--start-command CMD`, `--dev-server-port N` | cosa eseguire al posto dello script rilevato, e la porta da attendere |
@@ -237,6 +238,51 @@ XAnalyze/example.com/2026-09-02-0930/
 Ogni documento si apre nominando il comando e i parametri che hanno cambiato ciò
 che è stato misurato. Un problema ripetuto è elencato una volta sola, con i suoi
 luoghi annidati sotto. `--json` conserva ogni risultato, per la CI.
+
+## Pilotarlo da un agente
+
+`--json` risponde a lavoro finito. Su un sito di trenta pagine sono minuti di
+silenzio, e chi ha avviato la scansione non distingue una scansione lenta da
+una bloccata. `--progress jsonl` scrive un oggetto JSON per riga su **stderr**
+mentre la scansione avviene, e stdout resta esattamente quello di prima:
+
+```bash
+xanalyze fullscan https://example.com --progress jsonl
+```
+
+```json
+{"event":"run.start","ts":"…","command":"fullscan","target":"https://example.com","version":"0.63.0"}
+{"event":"stage","ts":"…","name":"crawl","state":"begin","depth":1,"max_pages":30}
+{"event":"page","ts":"…","n":3,"of":30,"url":"https://example.com/pricing","depth":1}
+{"event":"stage","ts":"…","name":"crawl","state":"end","pages":12}
+{"event":"notice","ts":"…","kind":"authwall","text":"2 address(es) answered with a login wall …"}
+{"event":"run.end","ts":"…","exit_code":0,"counts":{…},"documents":31,"sources":12}
+```
+
+| `event` | Quando | Campi |
+|---|---|---|
+| `run.start` | prima riga | `command`, `target`, `version` |
+| `stage` | una fase inizia, riferisce l'avanzamento o finisce | `name` (`devserver`, `scan`, `crawl`, `audit`, `browser`, `report`), `state` (`begin`, `progress`, `end`) |
+| `page` | ogni pagina letta | `n`, `of`, `url`, `depth` |
+| `file` | ogni file aperto | `n`, `of`, `path` |
+| `notice` | tutto ciò che il terminale avrebbe detto a parole | `kind`, `text` e i campi dell'evento |
+| `finding` | uno per risultato, con `--progress jsonl=findings` | `rule`, `severity`, `source`, `line`, `kind` |
+| `run.end` | ultima riga | `exit_code`, `counts`, `documents`, `sources` |
+
+Senza il flag non cambia nulla: le stesse righe leggibili, nessun JSON.
+`finding` è spento finché non lo si chiede, perché su un sito grande sono
+decine di migliaia di eventi. Una riga che non si legge come JSON non l'ha
+scritta XAnalyze - Qt scrive la propria diagnostica sullo stesso flusso -
+quindi va saltata, non trattata come un errore.
+
+**I codici di uscita** sono gli stessi per ogni comando:
+
+| Codice | Significato |
+|---|---|
+| `0` | pulito - il comando ha fatto il suo lavoro e non ha nulla da segnalare |
+| `1` | risultati, e solo con `--check`. `scan`/`fix`/`clean`: qualsiasi risultato. `audit`/`fullscan`: uno critico o serio |
+| `2` | errore - il comando non poteva essere eseguito: un percorso inesistente, un flag non applicabile, un rilevatore che non ha potuto leggere il testo |
+| `3` | incompleto - una scansione si è fermata a metà e il suo lavoro è su disco; `xanalyze resume` la continua |
 
 ## Interfacce
 

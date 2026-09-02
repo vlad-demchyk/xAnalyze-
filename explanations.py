@@ -75,7 +75,6 @@ def _character_explanation(span, details: dict, lang: str) -> Explanation:
     if codepoints:
         reasons.append(t("why_char_codepoints", lang, codepoints=codepoints))
 
-    original = span.details.get("original", "")
     if span.replacement is None:
         suggestion, note = None, t("suggest_none_rule", lang)
     elif span.replacement == "":

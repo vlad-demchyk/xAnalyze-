@@ -1140,6 +1140,47 @@ class TableScope(AccessibilityRule):
         return issues
 
 
+#: The languages a switcher is looked for in. Not every ISO code: this is a
+#: hint about a page, and a longer list buys nothing but more ways to match
+#: a word that happens to start with two letters.
+_SWITCHER_LANGUAGES = ("en", "uk", "it", "de", "fr", "es", "pl")
+
+#: What a language link calls itself, in its own language and in English.
+#: A bare code counts only when the whole text is the code - "EN" is a
+#: switcher, "ENTERPRISE" is not.
+_LANGUAGE_NAMES = {
+    "english", "українська", "українською", "ukrainian", "italiano",
+    "italian", "deutsch", "german", "français", "francais", "french",
+    "español", "espanol", "spanish", "polski", "polish",
+}
+
+
+def _switches_language(href: str) -> bool:
+    """Is one *segment* of this path a language code?
+
+    Segments, not substrings. `/en/pricing`, `/pricing/en` and `/en` are
+    switchers; `/enterprise` and `/energy` are not, and telling their owner
+    to add hreflang is a finding about a word.
+    """
+    from urllib.parse import urlparse
+
+    path = urlparse(href).path if "//" in href else href
+    segments = [s for s in path.split("/") if s]
+    return any(s in _SWITCHER_LANGUAGES for s in segments)
+
+
+def _names_a_language(text: str) -> bool:
+    """Does the link call itself a language?
+
+    The other half of a switcher, and the reason a flag-only or
+    `?lang=` switcher is still found: the href says nothing, the text does.
+    """
+    label = (text or "").strip().lower()
+    if not label:
+        return False
+    return label in _LANGUAGE_NAMES or label in _SWITCHER_LANGUAGES
+
+
 class HreflangLinks(AccessibilityRule):
     """Multilingual pages should declare language alternatives.
 
@@ -1166,18 +1207,25 @@ class HreflangLinks(AccessibilityRule):
                           if "alternate" in (l.get("rel") or []) and l.get("hreflang")]
         if links or alternate_links:
             return []
-        # Only suggest if the page content suggests multilingual site
-        # (e.g., has language switcher patterns)
+        # Only suggest it when the page really does offer another language.
+        # `"/en" in href` was the test, and it is true of `/enterprise`,
+        # `/energy` and `/end-of-life`: a one-language site with an
+        # "Enterprise" link in its menu was told to add hreflang. Measured
+        # 2026-09-02 on a page whose only links were those two.
+        #
+        # A language switcher is recognisable by two things, and this asks
+        # for either: a path *segment* that is exactly a language code, or a
+        # link whose own text names a language. The second is what the
+        # discarded `text` variable was for - the comment below it always
+        # said "language switcher patterns", and nothing ever read it.
         for tag in document.find_all("a", href=True):
             href = (tag.get("href") or "").lower()
-            text = _text_of(tag).lower()
-            if any(f"/{lc}/" in href or f"/{lc}" in href
-                   for lc in ("en", "uk", "it", "de", "fr", "es", "pl")):
+            if _switches_language(href) or _names_a_language(_text_of(tag)):
                 return [Issue(
                     rule_id=self.id, severity=self.severity, source=context.source,
                     snippet="<head>…</head>",
                     details={"lang": lang},
-                    fix_snippet=f'<link rel="alternate" hreflang="en" href="https://example.com/en/" />',
+                    fix_snippet='<link rel="alternate" hreflang="en" href="https://example.com/en/" />',
                 )]
         return []
 

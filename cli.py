@@ -26,6 +26,7 @@ from dataclasses import asdict, is_dataclass
 from pathlib import Path
 
 import detectors  # noqa: F401 - registers the detectors
+import progress
 import suppression
 import unicode_rules
 import config
@@ -88,6 +89,32 @@ from cli_impl import (  # noqa: F401 - re-exported for `import cli`
 )
 
 
+#: The exit codes, in the one place a person or an agent will look for them:
+#: `xanalyze --help`. They were always the same four values, but the list
+#: existed only as constants in `cli_impl`, which is not a contract anybody
+#: outside this repository can read - and a caller that cannot tell 1
+#: ("found something") from 2 ("the command was wrong") has to parse prose to
+#: find out whether its scan worked.
+#:
+#: What `--check` counts differs per command, and that is deliberate rather
+#: than an oversight: a text scan reports any finding, an audit reports the
+#: two severities that mean the page is broken for somebody. Said here,
+#: because a difference nobody documented is indistinguishable from a bug.
+EXIT_CODE_HELP = """exit codes:
+  0  clean - the command did what it was asked and found nothing to report
+  1  findings - only with --check. `scan`/`fix`/`clean`: any finding.
+     `audit`/`fullscan`: a critical or serious one
+  2  error - the command could not run: a path that does not exist, a flag
+     that does not apply, a detector that could not read the text
+  3  incomplete - a run stopped part-way and its work is on disk;
+     `xanalyze resume` continues it
+
+progress protocol:
+  --progress jsonl writes one JSON object per line to stderr while the run
+  happens (events: run.start, stage, page, file, notice, finding, run.end).
+  Add =findings for one object per finding. See progress.py."""
+
+
 # ---------------------------------------------------------------- commands
 
 def cmd_scan(args) -> int:
@@ -114,10 +141,17 @@ def cmd_scan(args) -> int:
     to_read = files
     if incremental:
         to_read, cached_findings, reused = _split_unchanged(files, args)
-        print(f"# incremental: {reused} file(s) unchanged since the last scan, "
-              f"{len(to_read)} re-read", file=sys.stderr)
+        progress.notice(
+            "scan",
+            f"incremental: {reused} file(s) unchanged since the last scan, "
+            f"{len(to_read)} re-read",
+            human=f"# incremental: {reused} file(s) unchanged since the last "
+                  f"scan, {len(to_read)} re-read",
+            reused=reused, reread=len(to_read))
 
+    progress.stage("scan", "begin", files=len(to_read))
     findings, _ = _analyze(to_read, args, unjudged_out=unjudged)
+    progress.stage("scan", "end", findings=len(findings))
     if incremental:
         _store_unchanged(to_read, findings, args)
         # Cached rows have no `TextSpan` behind them - it does not survive
@@ -126,6 +160,7 @@ def cmd_scan(args) -> int:
         # `_write_styled_text_report`.
         findings = findings + cached_findings
         findings.sort(key=lambda f: (f.get("file", ""), f.get("offset", 0)))
+    progress.set_summary(counts=_counts(findings))
     if args.json:
         _print_json(findings, walked=walked)
     else:
@@ -138,20 +173,31 @@ def cmd_scan(args) -> int:
     if getattr(args, "styled_report", None):
         _write_styled_text_report(files, findings, args)
     if folder is not None:
-        print(f"# run folder: {folder.run}", file=sys.stderr)
+        progress.notice("run-folder", str(folder.run),
+                        human=f"# run folder: {folder.run}",
+                        path=str(folder.run))
     if missing:
         # Said again at the end: the warning above scrolls past a long report,
         # and "nothing found" plus exit 0 is indistinguishable from success.
-        print(f"# {len(missing)} path(s) did not exist; nothing was read from them",
-              file=sys.stderr)
+        progress.notice(
+            "warning",
+            f"{len(missing)} path(s) did not exist; nothing was read from "
+            f"them",
+            human=f"# {len(missing)} path(s) did not exist; nothing was read "
+                  f"from them",
+            missing=len(missing))
         return EXIT_ERROR
     if unjudged:
         # Same rule, one step further in: a detector that was asked and could
         # not answer leaves the text unread, and exit 0 would report that as
         # clean to whatever runs this in a pipeline.
-        print("# the requested detector could not read the text; "
-              "the result above is not a clean bill of health",
-              file=sys.stderr)
+        progress.notice(
+            "warning",
+            "the requested detector could not read the text; the result "
+            "above is not a clean bill of health",
+            human="# the requested detector could not read the text; "
+                  "the result above is not a clean bill of health",
+            unjudged=len(unjudged))
         return EXIT_ERROR
     if args.check and findings:
         return EXIT_FINDINGS
@@ -327,20 +373,33 @@ def _web_parts_for(args) -> list:
         return []
     repo = getattr(args, "repo", None)
     if not repo:
-        print("# --web-parts needs --repo: the parts are read from the "
-              "solution that ships them", file=sys.stderr)
+        progress.notice(
+            "web-parts",
+            "--web-parts needs --repo: the parts are read from the solution "
+            "that ships them",
+            human="# --web-parts needs --repo: the parts are read from the "
+                  "solution that ships them")
         return []
     from audit import spfx
 
     found = spfx.web_parts(repo)
     if not found:
-        print(f"# --web-parts: no web part manifest under {repo} - nothing "
-              f"to confine the audit to, so the whole page is read",
-              file=sys.stderr)
+        progress.notice(
+            "web-parts",
+            f"no web part manifest under {repo} - nothing to confine the "
+            f"audit to, so the whole page is read",
+            human=f"# --web-parts: no web part manifest under {repo} - "
+                  f"nothing to confine the audit to, so the whole page is "
+                  f"read",
+            repo=str(repo), parts=0)
         return []
-    print(f"# [web-parts] {len(found)} part(s) from {repo}: "
-          f"{', '.join(p.alias for p in found[:6])}"
-          f"{'…' if len(found) > 6 else ''}", file=sys.stderr)
+    aliases = [p.alias for p in found]
+    progress.notice(
+        "web-parts", f"{len(found)} part(s) from {repo}: "
+                     f"{', '.join(aliases[:6])}",
+        human=f"# [web-parts] {len(found)} part(s) from {repo}: "
+              f"{', '.join(aliases[:6])}{'…' if len(found) > 6 else ''}",
+        repo=str(repo), parts=len(found), aliases=aliases)
     return found
 
 
@@ -362,8 +421,12 @@ def _narrow_to_project(target: str, args):
                     f"{target} is not one")
     chosen = run_profile.choose_project(plan, wanted)
     if chosen:
-        print(f"# [profile] auditing {wanted} on its own, not the whole folder",
-              file=sys.stderr)
+        progress.notice(
+            "profile",
+            f"auditing {wanted} on its own, not the whole folder",
+            human=f"# [profile] auditing {wanted} on its own, not the whole "
+                  f"folder",
+            project=wanted)
         return chosen, ""
     choices = ", ".join(plan.choices()) or "none - nothing under it proved a stack"
     return "", f"--project {wanted}: no such project here. Found: {choices}"
@@ -388,7 +451,8 @@ def cmd_audit(args) -> int:
         from audit.ai_review import AIAccessibilityReview
 
         name, provider = _provider_for(args)
-        print(f"# AI pass via {name}", file=sys.stderr)
+        progress.notice("ai-patterns", f"AI pass via {name}",
+                        human=f"# AI pass via {name}", provider=name)
         reviewer = AIAccessibilityReview(provider=provider)
 
     # As a terminal or a file manager hands it over: quoted, escaped, or
@@ -405,7 +469,8 @@ def cmd_audit(args) -> int:
     # and exit 0 - which in a pipeline is a pass, so a mistyped path read as a
     # clean bill of health.
     if not is_url and not Path(target).exists():
-        print(f"path not found: {target}", file=sys.stderr)
+        progress.notice("error", f"path not found: {target}",
+                        human=f"path not found: {target}")
         return EXIT_ERROR
 
     # `--project`: one deliverable out of a folder that holds several. Done
@@ -413,7 +478,7 @@ def cmd_audit(args) -> int:
     # was audited.
     narrowed, refusal = _narrow_to_project(target, args)
     if refusal:
-        print(refusal, file=sys.stderr)
+        progress.notice("error", refusal, human=refusal)
         return EXIT_ERROR
     target = narrowed
 
@@ -461,23 +526,41 @@ def cmd_audit(args) -> int:
             nonlocal crawled
             crawled += 1
             limit = f"/{args.max_pages}" if args.max_pages else ""
-            print(f"# [crawl {crawled}{limit}] depth={depth} {url}",
-                  file=sys.stderr, flush=True)
+            progress.page(crawled, args.max_pages or None, url, depth=depth,
+                          human=f"# [crawl {crawled}{limit}] depth={depth} "
+                                f"{url}")
 
         pages = _crawl_maybe_rendering(target, config,
                                        progress_cb=_crawl_progress,
                                        session_host=session_host)
-        print(f"# [crawl done] {len(pages)} page(s)", file=sys.stderr, flush=True)
+        progress.stage("crawl", "end",
+                       f"# [crawl done] {len(pages)} page(s)",
+                       pages=len(pages))
         
         # Check if SPA pages were detected but not rendered
         spa_pages = [p for p in pages if EMPTY_JS_RENDERED in (p.diagnostics.reasons or [])]
         rendered_pages = [p for p in pages if "rendered" in (p.diagnostics.reasons or [])]
         if spa_pages and not rendered_pages:
-            print(f"# WARNING: {len(spa_pages)} SPA page(s) detected but browser rendering failed.", file=sys.stderr)
-            print(f"# Install PySide6 + QtWebEngine for SPA support, or use --no-browser to skip rendering.", file=sys.stderr)
+            progress.notice(
+                "spa",
+                f"{len(spa_pages)} SPA page(s) detected but browser "
+                f"rendering failed. Install PySide6 + QtWebEngine for SPA "
+                f"support, or use --no-browser to skip rendering.",
+                human=f"# WARNING: {len(spa_pages)} SPA page(s) detected but "
+                      f"browser rendering failed.\n"
+                      f"# Install PySide6 + QtWebEngine for SPA support, or "
+                      f"use --no-browser to skip rendering.",
+                failed=len(spa_pages), rendered=0)
         elif spa_pages and rendered_pages:
-            print(f"# SPA: {len(rendered_pages)} page(s) rendered via browser, {len(spa_pages)} failed.", file=sys.stderr)
+            progress.notice(
+                "spa",
+                f"{len(rendered_pages)} page(s) rendered via browser, "
+                f"{len(spa_pages)} failed.",
+                human=f"# SPA: {len(rendered_pages)} page(s) rendered via "
+                      f"browser, {len(spa_pages)} failed.",
+                rendered=len(rendered_pages), failed=len(spa_pages))
         
+        progress.stage("audit", "begin", target=target)
         result = audit.analyze_pages(
             pages, target, ai_review=reviewer,
             site_controls=getattr(args, "site_controls", False),
@@ -486,9 +569,13 @@ def cmd_audit(args) -> int:
     else:
         from repo_scanner import scan_repo
 
+        progress.stage("audit", "begin", target=target)
         files = scan_repo(target, _build_scan_config(args, target=target))
         result = audit.analyze_files(files, target, ai_review=reviewer,
                                      force_medium=getattr(args, "medium", None))
+    progress.stage("audit", "end",
+                   documents=len(result.documents),
+                   sources=len({d.source for d in result.documents}))
 
     # The same suppression list governs both analyses: a user thinking "not
     # this part of the site" means it for the whole tool, not per subsystem.
@@ -521,8 +608,13 @@ def cmd_audit(args) -> int:
         document.issues = issues_in_view(document.issues, wanted, floor,
                                          unsettled=unsettled)
     if hidden:
-        print(f"# {hidden} check(s) could not be decided and are not listed; "
-              f"add --unsettled to see them", file=sys.stderr)
+        progress.notice(
+            "audit",
+            f"{hidden} check(s) could not be decided and are not listed; "
+            f"add --unsettled to see them",
+            human=f"# {hidden} check(s) could not be decided and are not "
+                  f"listed; add --unsettled to see them",
+            unsettled=hidden)
     _announce_auth_walls(result, session_host=session_host)
 
     from i18n.translations import report_language
@@ -555,10 +647,19 @@ def cmd_audit(args) -> int:
         model.meta.run = describe(_command_of(args), result.root, args,
                                   language=lang)
         write_styled_report(args.styled_report, model, lang)
-        print(f"# styled report: {args.styled_report}", file=sys.stderr)
+        progress.notice("report", f"styled report: {args.styled_report}",
+                        human=f"# styled report: {args.styled_report}",
+                        path=str(args.styled_report), kind_of="styled")
     if folder is not None:
-        print(f"# run folder: {folder.run}", file=sys.stderr)
+        progress.notice("run-folder", str(folder.run),
+                        human=f"# run folder: {folder.run}",
+                        path=str(folder.run))
 
+    # What `run.end` reports, recorded where the counts exist. See
+    # `progress.set_summary`.
+    progress.set_summary(counts=result.counts(),
+                         documents=len(result.documents),
+                         sources=len({d.source for d in result.documents}))
     if args.json:
         print(json.dumps({
             "root": result.root,
@@ -650,10 +751,10 @@ def cmd_login(args) -> int:
         hosts = site_session.known_hosts()
         if not hosts:
             print("no stored sessions")
-            return 0
+            return EXIT_OK
         for host in hosts:
             print(host)
-        return 0
+        return EXIT_OK
 
     target = (getattr(args, "url", "") or "").strip()
     host = site_session.host_of(target)
@@ -661,23 +762,26 @@ def cmd_login(args) -> int:
         if not host:
             removed = site_session.forget_all()
             print(f"forgot {removed} session(s)")
-            return 0
+            return EXIT_OK
         print(f"forgot the session for {host}" if site_session.forget(host)
               else f"no stored session for {host}")
-        return 0
+        return EXIT_OK
 
     if not host:
         print("login needs a URL: xanalyze login https://example.com/admin",
               file=sys.stderr)
-        return 2
+        return EXIT_ERROR
 
     try:
         from PySide6.QtWidgets import QApplication
 
         from ui.site_sign_in import SiteSignInDialog
     except Exception as exc:  # noqa: BLE001 - a build without Qt says so
-        print(f"signing in needs the desktop components: {exc}", file=sys.stderr)
-        return 1
+        print(f"signing in needs the desktop components: {exc}",
+              file=sys.stderr)
+        # `EXIT_ERROR`, not 1: 1 means "something was found" everywhere else
+        # in this CLI, and a build with no Qt in it has found nothing.
+        return EXIT_ERROR
 
     address = target if "://" in target else f"https://{target}"
     app = QApplication.instance() or QApplication([])
@@ -688,13 +792,13 @@ def cmd_login(args) -> int:
     dialog.exec()
     if not dialog.saved:
         print("nothing saved", file=sys.stderr)
-        return 1
+        return EXIT_ERROR
     # The count and the host, and nothing else. A terminal keeps scrollback
     # and scrollback gets pasted into issues.
     print(f"session stored for {host}; runs against that host will use it. "
           f"Remove it with: xanalyze login --forget {host}")
     del app
-    return 0
+    return EXIT_OK
 
 
 def cmd_logs(args) -> int:
@@ -803,12 +907,23 @@ def _announce_auth_walls(result, session_host: str = "") -> None:
         if len(walls) > 3:
             addresses += f", +{len(walls) - 3}"
         detail = walls[0].detail
-        print(f"# [authwall] {len(walls)} address(es) answered with a login "
-              f"wall ({signal}: {detail}): {addresses}", file=sys.stderr)
+        progress.notice(
+            "authwall",
+            f"{len(walls)} address(es) answered with a login wall "
+            f"({signal}: {detail}): {addresses}",
+            human=f"# [authwall] {len(walls)} address(es) answered with a "
+                  f"login wall ({signal}: {detail}): {addresses}",
+            signal=signal, detail=detail, addresses=len(walls))
     if report.whole_site:
-        print("# [authwall] every page this run read was a login wall, so "
-              "nothing behind it was audited. Sign in first, or point the "
-              "run at a page that is public.", file=sys.stderr)
+        progress.notice(
+            "authwall",
+            "every page this run read was a login wall, so nothing behind it "
+            "was audited. Sign in first, or point the run at a page that is "
+            "public.",
+            human="# [authwall] every page this run read was a login wall, "
+                  "so nothing behind it was audited. Sign in first, or point "
+                  "the run at a page that is public.",
+            whole_site=True)
     # The case worth naming separately: this run *was* signed in and still
     # met a door. That is an expired session, and reporting it as "the site
     # has a login" would send somebody to sign in again without saying why
@@ -819,9 +934,15 @@ def _announce_auth_walls(result, session_host: str = "") -> None:
     # advice about a thing it deliberately did not do - which is how a
     # correct message becomes a wrong one.
     if session_host:
-        print(f"# [session] the stored session for {session_host} did not get "
-              f"past the login - it has most likely expired. Sign in again "
-              f"with: xanalyze login {session_host}", file=sys.stderr)
+        progress.notice(
+            "session",
+            f"the stored session for {session_host} did not get past the "
+            f"login - it has most likely expired. Sign in again with: "
+            f"xanalyze login {session_host}",
+            human=f"# [session] the stored session for {session_host} did "
+                  f"not get past the login - it has most likely expired. "
+                  f"Sign in again with: xanalyze login {session_host}",
+            host=session_host, expired=True)
 
 
 def _apply_fixes(result, args, lang: str):
@@ -939,10 +1060,19 @@ def build_parser() -> argparse.ArgumentParser:
         description="Find and fix characters no keyboard produces (and optionally "
                     "flag AI-sounding copy) in web pages' source files. "
                     "Designed to run after an LLM coding agent.",
+        epilog=EXIT_CODE_HELP,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--no-update-check", action="store_true", default=False,
         help="skip the automatic daily check for a newer version")
+    parser.add_argument(
+        "--progress", default="human", metavar="FORMAT",
+        choices=("human", "jsonl", "jsonl=findings"),
+        help="how the run reports itself on stderr: human (the default, "
+             "unchanged) | jsonl (one JSON object per line, an event per "
+             "step) | jsonl=findings (the same plus one object per finding). "
+             "See progress.py for the event list")
     parser.add_argument(
         "--version", action="version",
         version=f"xanalyze {config.APP_VERSION}")
@@ -1470,6 +1600,8 @@ def build_parser() -> argparse.ArgumentParser:
     # --no-update-check` is what people type - the flag reads as belonging to
     # the command, not to the program - and argparse answered it with
     # "unrecognized arguments", which is a wrong answer to a correct request.
+    # `--progress` is here for the same reason and one more: an agent writes
+    # `xanalyze fullscan URL --progress jsonl`, never the other order.
     #
     # `default=SUPPRESS` is what makes the two copies co-operate rather than
     # fight: without it the subparser's own default would write `False` over
@@ -1498,6 +1630,10 @@ def _accept_global_flags_everywhere(subparsers, seen: set | None = None) -> None
             "--no-update-check", action="store_true",
             default=argparse.SUPPRESS,
             help="skip the automatic daily check for a newer version")
+        subparser.add_argument(
+            "--progress", default=argparse.SUPPRESS, metavar="FORMAT",
+            choices=("human", "jsonl", "jsonl=findings"),
+            help="human (default) | jsonl | jsonl=findings")
         for action in subparser._subparsers._group_actions if \
                 subparser._subparsers else ():
             if hasattr(action, "choices") and action.choices:
@@ -1536,6 +1672,11 @@ def main(argv=None) -> int:
     # own defaults.
     args._explicit = _explicit_options(sys.argv[1:] if argv is None else argv)
 
+    # Before the first line of output of any kind, including the update
+    # hint below: a stream that starts with prose an agent cannot parse is
+    # not a stream it can read from the first byte.
+    progress.configure(getattr(args, "progress", None))
+
     # No subcommand → launch interactive TUI
     if args.command is None:
         from tui.app import run_tui
@@ -1564,12 +1705,25 @@ def main(argv=None) -> int:
         applog.info("command.start", command=args.command,
                     target=getattr(args, "target", "") or "",
                     version=APP_VERSION)
+    # The bracket around the whole command, so a reader of the stream never
+    # has to decide whether a run that stopped producing events finished or
+    # died: `run.end` carries the exit code, and its absence means the
+    # process was killed.
+    # `target` for the commands that take one, the first path for the ones
+    # that take a list: `scan ./src` reported an empty target, which is the
+    # one field a reader uses to tell two concurrent runs apart.
+    named = getattr(args, "target", "") or ""
+    if not named:
+        paths = getattr(args, "paths", None) or []
+        named = str(paths[0]) if paths else ""
+    progress.run_start(args.command, str(named), APP_VERSION)
     started = time.monotonic()
     try:
         code = args.func(args)
         if not quiet:
             applog.info("command.done", command=args.command, exit=code,
                         seconds=round(time.monotonic() - started, 2))
+        progress.run_end(code)
         return code
     except SystemExit:
         raise
@@ -1578,7 +1732,9 @@ def main(argv=None) -> int:
             applog.error("command.failed", command=args.command,
                          error=f"{type(exc).__name__}: {exc}",
                          seconds=round(time.monotonic() - started, 2))
-        print(f"error: {exc}", file=sys.stderr)
+        progress.notice("error", f"{type(exc).__name__}: {exc}",
+                        human=f"error: {exc}")
+        progress.run_end(EXIT_ERROR)
         return EXIT_ERROR
 
 

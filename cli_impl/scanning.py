@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 import config
+import progress
 import suppression
 import unicode_rules
 from detectors.factory import DetectorFactory
@@ -101,17 +102,34 @@ def _collect_files(paths: list[str], args, missing_out=None,
     #: report a clean scan of nothing. A mistyped path is a pipeline pass
     #: otherwise, which is the worst kind of wrong answer.
     missing: list = []
+    # One `file` event per file opened, and only when something is reading
+    # them: the walk already takes a per-file callback for the window's
+    # progress bar, so this costs a function call per file and only when the
+    # machine-readable stream is on. The total is not known while walking -
+    # that is what the walk is finding out - so `of` is the cap, not a
+    # count, and is left out when there is none.
+    read_so_far = [0]
+
+    def _opened(rel: str) -> None:
+        read_so_far[0] += 1
+        progress.file_read(read_so_far[0], cfg.max_files or None, rel)
+
+    watcher = _opened if progress.enabled() else None
     for raw in paths:
         p = Path(raw)
         if p.is_dir():
             walk = ScanDiagnostics()
-            results.extend(scan_repo(str(p), cfg, diagnostics=walk))
+            results.extend(scan_repo(str(p), cfg, progress_cb=watcher,
+                                     diagnostics=walk))
             if diagnostics_out is not None:
                 diagnostics_out.append((str(p), walk))
         elif p.exists():
+            if watcher is not None:
+                watcher(str(p))
             results.append(scan_file(str(p), scope))
         else:
-            print(f"path not found: {raw}", file=sys.stderr)
+            progress.notice("error", f"path not found: {raw}",
+                            human=f"path not found: {raw}")
             missing.append(raw)
     if missing_out is not None:
         missing_out.extend(missing)

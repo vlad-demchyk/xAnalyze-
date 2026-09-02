@@ -24,6 +24,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import progress
+
 #: Prefix every line carries, so an agent driving the CLI can find them
 #: without parsing prose. One code per kind of missed depth.
 PREFIX = "# [hint]"
@@ -129,7 +131,12 @@ def announce(command: str, target: str, args, *, is_url: bool, out) -> list:
     """Print the hints and hand them back, for a caller that also logs them."""
     lines = hints(command, target, args, is_url=is_url)
     for line in lines:
-        print(line, file=out, flush=True)
+        # `kind` is the word after the prefix (`repo`, `devserver`, …): the
+        # line already carries it for a person, and an agent should not have
+        # to re-derive it from prose.
+        body = line.removeprefix(PREFIX + " ")
+        progress.notice("hint", body, human=line,
+                        code=body.split(":", 1)[0], stream=out)
     return lines
 
 
@@ -172,23 +179,32 @@ def profile(command: str, target: str, args, *, is_url: bool, out) -> list:
         flag = "--" + item.option.replace("_", "-")
         on = item in applied
         verb = "on" if on else "consider"
-        print(f"{PROFILE_PREFIX} {verb} {flag}={item.value}: "
-              f"{run_profile.explain(item, lang, enabled=on)}",
-              file=out, flush=True)
+        why = run_profile.explain(item, lang, enabled=on)
+        progress.notice("profile", f"{verb} {flag}={item.value}: {why}",
+                        human=f"{PROFILE_PREFIX} {verb} {flag}={item.value}: "
+                              f"{why}",
+                        option=item.option, value=item.value, applied=on,
+                        stream=out)
     for prompt in plan.prompts:
-        print(f"{PROFILE_PREFIX} ask {prompt.field}: "
-              f"{run_profile.explain(prompt, lang)}", file=out, flush=True)
+        why = run_profile.explain(prompt, lang)
+        progress.notice("profile", f"ask {prompt.field}: {why}",
+                        human=f"{PROFILE_PREFIX} ask {prompt.field}: {why}",
+                        ask=prompt.field, stream=out)
     if plan.ambiguous():
         names = ", ".join(plan.choices()[:6])
         more = ", …" if len(plan.projects) > 6 else ""
-        print(f"{PROFILE_PREFIX} {len(plan.projects)} projects under this "
-              f"folder ({names}{more}); auditing all of them as one. "
-              f"`--project NAME` audits one on its own.", file=out, flush=True)
+        text = (f"{len(plan.projects)} projects under this folder "
+                f"({names}{more}); auditing all of them as one. "
+                f"`--project NAME` audits one on its own.")
+        progress.notice("profile", text, human=f"{PROFILE_PREFIX} {text}",
+                        projects=len(plan.projects),
+                        choices=plan.choices()[:6], stream=out)
     shared = plan.shared_server()
     if shared is not None and plan.project_servers():
-        print(f"{PROFILE_PREFIX} this is a workspace root: its own dev server "
-              f"is what --devserver starts, and "
-              f"{len(plan.project_servers())} project(s) under it have one "
-              f"of their own. `--project NAME` starts that project's.",
-              file=out, flush=True)
+        text = (f"this is a workspace root: its own dev server is what "
+                f"--devserver starts, and {len(plan.project_servers())} "
+                f"project(s) under it have one of their own. "
+                f"`--project NAME` starts that project's.")
+        progress.notice("profile", text, human=f"{PROFILE_PREFIX} {text}",
+                        project_servers=len(plan.project_servers()), stream=out)
     return applied

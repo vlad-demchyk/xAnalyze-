@@ -5,9 +5,9 @@ with fullscan - when to render, how to turn a source into a URL.
 """
 from __future__ import annotations
 
-import sys
 
 import applog
+import progress
 
 
 #: `--breakpoints` with no value means all of them.
@@ -130,9 +130,7 @@ def _audit_at_widths(urls, options, sizes, progress=None, markup=None) -> list:
         cache.save()
         note = cache.summary()
         if note:
-            import sys
-
-            print(f"# [browser] {note}", file=sys.stderr, flush=True)
+            progress.notice("browser", note, human=f"# [browser] {note}")
     return results
 
 
@@ -157,7 +155,9 @@ def _run_browser_pass(result, suppressions, args=None) -> None:
     usable, reason = driver.available()
     if not usable:
         applog.warning("browser.skipped", reason=str(reason))
-        print(f"# browser pass skipped: {reason}", file=sys.stderr)
+        progress.notice("browser", f"browser pass skipped: {reason}",
+                        human=f"# browser pass skipped: {reason}",
+                        skipped=True, reason=str(reason))
         return
 
     targets = [d for d in result.documents
@@ -183,9 +183,15 @@ def _run_browser_pass(result, suppressions, args=None) -> None:
         run_measurements=not within,
     )
     if within:
-        print(f"# [within] browser pass: axe only, confined to {within}. "
-              f"HTML_CodeSniffer, the state pass and the measurements read "
-              f"the whole document and are skipped.", file=sys.stderr)
+        progress.notice(
+            "within",
+            f"browser pass: axe only, confined to {within}. "
+            f"HTML_CodeSniffer, the state pass and the measurements read the "
+            f"whole document and are skipped.",
+            human=f"# [within] browser pass: axe only, confined to {within}. "
+                  f"HTML_CodeSniffer, the state pass and the measurements "
+                  f"read the whole document and are skipped.",
+            selector=within)
     sizes = _chosen_breakpoints(args) if args is not None else ()
     where = (f" at {len(sizes)} widths" if sizes else "")
     # The document is still keyed by its own source (a path, in file mode), so
@@ -197,12 +203,14 @@ def _run_browser_pass(result, suppressions, args=None) -> None:
     # reader a four-page site was nine loads and then stopped at "4/9",
     # which reads as a crawl that gave up.
     total = len(dict.fromkeys(urls))
-    print(f"# browser pass over {total} page(s){where}", file=sys.stderr)
+    progress.stage("browser", "begin",
+                   f"# browser pass over {total} page(s){where}",
+                   pages=total, widths=len(sizes) or None)
 
     def _show(page_no: int, url: str) -> None:
         widths = f" at {len(sizes)} width(s)" if sizes else ""
-        print(f"# [browser {page_no}/{total}{widths}] {url}",
-              file=sys.stderr, flush=True)
+        progress.page(page_no, total, url,
+                      human=f"# [browser {page_no}/{total}{widths}] {url}")
 
     # The markup the crawl already received, keyed by the browser url the
     # pass will use. It is what makes the cache honest: the same bytes get
@@ -227,12 +235,19 @@ def _run_browser_pass(result, suppressions, args=None) -> None:
         if page_audit is None or url in merged_urls:
             continue
         if page_audit.error:
-            print(f"# {document.source}: {page_audit.error}", file=sys.stderr)
+            progress.notice(
+                "browser", f"{document.source}: {page_audit.error}",
+                human=f"# {document.source}: {page_audit.error}",
+                source=str(document.source), error=str(page_audit.error))
             continue
         for name, message in page_audit.engine_errors.items():
             applog.error("browser.engine_error", engine=name,
                          source=document.source, message=str(message)[:300])
-            print(f"# {document.source}: {name} {message}", file=sys.stderr)
+            progress.notice(
+                "browser", f"{document.source}: {name} {message}",
+                human=f"# {document.source}: {name} {message}",
+                source=str(document.source), engine=name,
+                error=str(message))
         # One function, shared with the window: axe and our own rule both
         # report a missing `alt` and a `--browser` run must not double every
         # such row, and a static finding the browser disproved must not reach
@@ -421,9 +436,13 @@ def apply_session(target: str, config, use_session: bool = True) -> str:
     host, count = site_session.apply_to(config, target)
     if not host:
         return ""
-    print(f"# [session] signed in as the stored session for {host} "
-          f"({count} value(s); pass --no-session to run as a stranger)",
-          file=sys.stderr, flush=True)
+    progress.notice(
+        "session",
+        f"signed in as the stored session for {host} ({count} value(s); "
+        f"pass --no-session to run as a stranger)",
+        human=f"# [session] signed in as the stored session for {host} "
+              f"({count} value(s); pass --no-session to run as a stranger)",
+        host=host, values=count)
     return host
 
 
@@ -439,9 +458,15 @@ def _crawl_maybe_rendering(target: str, config, progress_cb=None,
 
     usable, reason = driver.available()
     if not usable:
-        print(f"# Browser rendering unavailable: {reason}", file=sys.stderr)
-        print(f"# SPA/React/Vue pages may return empty results.", file=sys.stderr)
-        print(f"# Install PySide6 and QtWebEngine for full SPA support.", file=sys.stderr)
+        progress.notice(
+            "browser",
+            f"browser rendering unavailable: {reason}. SPA/React/Vue pages "
+            f"may return empty results; install PySide6 and QtWebEngine for "
+            f"full SPA support.",
+            human=f"# Browser rendering unavailable: {reason}\n"
+                  f"# SPA/React/Vue pages may return empty results.\n"
+                  f"# Install PySide6 and QtWebEngine for full SPA support.",
+            available=False, reason=str(reason))
         return crawl(target, config, progress_cb=progress_cb)
     with driver.html_renderer(session_host=session_host) as render:
         return crawl(target, config, render=render, progress_cb=progress_cb)
