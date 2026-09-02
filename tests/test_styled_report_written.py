@@ -26,6 +26,22 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 TARGET = ROOT / "simulations" / "mixed-problems"
 
+#: A `.pdf` styled report is printed by QtWebEngine, so this half of the file
+#: needs a browser engine and not merely Qt. Without one the run still writes
+#: a one-page notice and says so - correct behaviour, and not what this test
+#: is about. Measured 2026-09-02 on CI, where PySide6 installs and
+#: `libEGL.so.1` does not.
+try:
+    from audit.driver import available
+
+    # The codebase's own answer to "is there a browser engine", rather than
+    # a second probe that could disagree with it. Importing `report.pdf` is
+    # not that answer: every `PySide6` import in it is inside a function, so
+    # the module imports cleanly on a machine that cannot print at all.
+    _CAN_PRINT = bool(available()[0])
+except Exception:  # noqa: BLE001 - no engine here is a skip, not a failure
+    _CAN_PRINT = False
+
 
 def _fullscan(*extra):
     return subprocess.run(
@@ -36,6 +52,7 @@ def _fullscan(*extra):
 
 class StyledReportIsWritten(unittest.TestCase):
 
+    @unittest.skipIf(not _CAN_PRINT, "no browser engine to print a PDF")
     def test_the_named_styled_report_exists_afterwards(self):
         with tempfile.TemporaryDirectory() as tmp:
             pdf = Path(tmp) / "report.pdf"

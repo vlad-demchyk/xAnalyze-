@@ -23,7 +23,7 @@ try:
     import config
     import main
 except Exception:  # noqa: BLE001 - no Qt here is a skip, not a failure
-    QApplication = None
+    QApplication = QMessageBox = None
 
 
 class _Box:
@@ -34,7 +34,12 @@ class _Box:
     """
 
     accepted = True
-    ButtonRole = QMessageBox.ButtonRole
+    #: `getattr`, not `QMessageBox.ButtonRole`. A class body runs at *import*
+    #: time, so on a machine without Qt this line raised `NameError` before
+    #: the `skipIf` below ever got the chance to fire, and the whole file
+    #: failed to collect - which stops the entire suite, not one test.
+    #: Measured 2026-09-02 on CI, where `libEGL.so.1` is absent.
+    ButtonRole = getattr(QMessageBox, "ButtonRole", None)
     warning = staticmethod(lambda *a, **k: None)
     information = staticmethod(lambda *a, **k: None)
 

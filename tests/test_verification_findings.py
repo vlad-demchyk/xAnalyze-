@@ -31,6 +31,7 @@ from __future__ import annotations
 import inspect
 import os
 import unittest
+from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -101,9 +102,21 @@ class TheFrozenEntryPointSurvivesAChildProcess(unittest.TestCase):
 
 class TheVersionFlagPrintsAndExits(unittest.TestCase):
     def test_main_answers_version_without_building_a_window(self):
-        import main
+        # Parsed from the file rather than imported: `import main` builds
+        # nothing, but it does `from PySide6.QtWidgets import QApplication`
+        # at the top, so on a machine with no working Qt this assertion -
+        # which is entirely about text - failed with an `ImportError`. That
+        # is the opposite of what it checks. Scoped to `main()` because the
+        # order it asserts is only meaningful inside that function: the file
+        # imports `QApplication` at line 21, long before any argument.
+        import ast
 
-        source = inspect.getsource(main.main)
+        text = (Path(__file__).resolve().parent.parent
+                / "main.py").read_text(encoding="utf-8")
+        tree = ast.parse(text)
+        fn = next(node for node in tree.body
+                  if isinstance(node, ast.FunctionDef) and node.name == "main")
+        source = ast.get_source_segment(text, fn)
         self.assertIn('"--version" in sys.argv', source)
         self.assertLess(source.index("--version"), source.index("QApplication"))
 

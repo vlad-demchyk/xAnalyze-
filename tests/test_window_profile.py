@@ -19,11 +19,19 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication
+try:
+    from PySide6.QtWidgets import QApplication
+except Exception:  # noqa: BLE001 - no Qt here is a skip, not a failure
+    # A bare import raises at *collection*, which stops the whole suite
+    # rather than this file: measured 2026-09-02 on CI, where PySide6 is
+    # installed but `libEGL.so.1` is not, and 2562 collected tests never
+    # ran because of two modules.
+    QApplication = None
 
 from analysis_modes import SOURCE_REPO, SOURCE_SITE
 
 
+@unittest.skipIf(QApplication is None, "PySide6 not available")
 class _Window(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

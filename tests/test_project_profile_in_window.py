@@ -38,7 +38,7 @@ try:
     from ui.tokens import palettes
     from ui.worker import audit_worker_for
 except Exception:  # noqa: BLE001 - no Qt here is a skip, not a failure
-    QApplication = None
+    QApplication = AppState = None
 
 
 def _wordpress(root: Path) -> None:
@@ -47,7 +47,13 @@ def _wordpress(root: Path) -> None:
 
 
 class TheProfileDecidesWhatIsNotYours(unittest.TestCase):
-    """No Qt needed: the derivation is on `AppState` and `Profile`."""
+    """Mostly no Qt needed: the derivation is pure.
+
+    Mostly, because `AppState` is the class the derivation lives on and it
+    is a Qt object, so the half that compares the window against the CLI
+    still needs Qt to be importable. The half that only asks `Profile` does
+    not, and stays runnable on a machine without it.
+    """
 
     def test_a_profile_adds_its_exclusions_without_repeating_any(self):
         with TemporaryDirectory() as folder:
@@ -59,6 +65,7 @@ class TheProfileDecidesWhatIsNotYours(unittest.TestCase):
         self.assertEqual(len(merged), len(set(merged)))
         self.assertIn("wp-includes/", merged)
 
+    @unittest.skipIf(QApplication is None, "PySide6 not available")
     def test_the_cli_and_the_state_derive_the_same_list(self):
         """One function, called from both, because two copies of an ignore
         list is how one surface scans a directory the other skips."""
@@ -86,8 +93,13 @@ class _State:
         self._project = profile
         self._project_excludes_lifted = lifted
 
-    ignore_patterns_with_project = AppState.ignore_patterns_with_project \
-        if QApplication is not None else None
+    # `getattr`, not `AppState.x if QApplication is not None else None`.
+    # Both are safe, but the conditional is safe only because the two names
+    # happen to fail together, and this line runs at import time - where a
+    # `NameError` is a collection error, which stops the whole suite rather
+    # than this file. See `tests/test_collection_survives_without_qt.py`.
+    ignore_patterns_with_project = getattr(
+        AppState, "ignore_patterns_with_project", None)
 
 
 @unittest.skipIf(QApplication is None, "PySide6 not available")

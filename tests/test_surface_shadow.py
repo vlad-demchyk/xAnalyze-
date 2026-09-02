@@ -328,6 +328,7 @@ class EveryBundleCarriesWhatTheCodeReads(unittest.TestCase):
                 self.assertTrue(Path(theme._check_mark(palette)).is_file())
 
 
+@unittest.skipIf(QApplication is None, "PySide6 not available")
 class TheWindowDrawsItsOwnControls(unittest.TestCase):
     """Left to the platform style, an indicator is drawn from the *system*
     palette rather than from this design's - which on the dark sheet gave a

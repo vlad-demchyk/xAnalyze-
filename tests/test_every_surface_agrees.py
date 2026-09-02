@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import os
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -156,11 +157,13 @@ class TheWindowShowsIt(unittest.TestCase):
     """Already true when this file was written; pinned so it stays true."""
 
     def test_the_detail_panel_has_a_row_for_the_caveat(self):
-        import inspect
-
-        from ui.window_parts import audit_panel
-
-        source = inspect.getsource(audit_panel)
+        # Read, not imported. The assertion is about a line of source, and
+        # importing `ui.window_parts.audit_panel` to reach it drags in Qt -
+        # so on a machine with no working PySide6 a text check failed as if
+        # the row had been removed. The file is the evidence either way.
+        source = (Path(__file__).resolve().parent.parent
+                  / "ui" / "window_parts" / "audit_panel.py"
+                  ).read_text(encoding="utf-8")
         self.assertIn('("audit_caveat", explanation.caveat)', source)
 
     def test_the_terminal_prints_it(self):
