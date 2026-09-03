@@ -118,7 +118,7 @@ ciascuno correggibile sul posto.
 
 **Regole del sito**, per categoria, con il numero che la suite verifica:
 
-`accessibility` (36), `best-practices` (13), `geo` (2), `performance` (8), `security` (10), `seo` (8)
+`accessibility` (37), `best-practices` (13), `geo` (2), `performance` (8), `security` (10), `seo` (8)
 
 Una regola gira dove significa qualcosa e da nessun'altra parte, e a deciderlo
 è una prova: la sintassi del file (le regole JSX solo in `.jsx`/`.tsx`), a cosa

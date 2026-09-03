@@ -114,7 +114,7 @@ fixable in place.
 
 **Website rules**, by category, with the count the test suite enforces:
 
-`accessibility` (36), `best-practices` (13), `geo` (2), `performance` (8), `security` (10), `seo` (8)
+`accessibility` (37), `best-practices` (13), `geo` (2), `performance` (8), `security` (10), `seo` (8)
 
 A rule runs where it means something and nowhere else, decided on evidence:
 the file's syntax (JSX rules only in `.jsx`/`.tsx`), what the document is for

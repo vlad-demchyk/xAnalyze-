@@ -94,6 +94,10 @@ class WhatAnEmailIsNotAskedFor(unittest.TestCase):
                     "seo-meta-description", "seo-title-length", "seo-noindex",
                     "geo-article-schema", "geo-article-provenance",
                     "skip-link", "landmark-regions", "hreflang-links",
+                    # Reads the address, `og:locale` and the hreflang set:
+                    # none of the three exists in a mail client, so the rule
+                    # has nothing to compare there.
+                    "html-lang-contradicts-address",
                     "perf-preconnect", "perf-render-blocking",
                     "perf-font-display", "image-modern-format"}
         marked = {r.id for r in RuleRegistry.all_rules()

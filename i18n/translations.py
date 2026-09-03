@@ -3556,6 +3556,86 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Sostituisci l'URL con la pagina attuale, ripristina la destinazione o configura un reindirizzamento. Non mascherare il problema con un link alla home se non è una sostituzione pertinente.",
         "en": "Replace the URL with the current page, restore the destination or configure a redirect. Do not mask the problem with a home-page link when it is not a relevant replacement.",
     },
+    "a11y_i18n_composite_admin_text_title": {
+        "uk": "Складене значення віддане на переклад цілком",
+        "it": "Un valore composito è dato in traduzione per intero",
+        "en": "A composite value is handed over for translation whole",
+    },
+    "a11y_i18n_composite_admin_text_found": {
+        "uk": 'Ключ "{key}" оголошений у <admin-texts>, але код розбирає це значення на частини ({call} у {where}), тобто в ньому зберігається запис, а не рядок.',
+        "it": 'La chiave "{key}" è dichiarata in <admin-texts>, ma il codice scompone quel valore ({call} in {where}): dentro c\'è un record, non una stringa.',
+        "en": 'The key "{key}" is declared in <admin-texts>, yet the code takes that value apart ({call} in {where}): what it holds is a record, not a string.',
+    },
+    "a11y_i18n_composite_admin_text_why": {
+        "uk": "Оголошення в <admin-texts> означає «перекладай це значення». Якщо значення є записом - рядки виду «підпис|URL» або JSON - перекладачеві віддають ще й роздільники, URL і саму структуру. Один загублений роздільник прибирає елемент зі сторінки без жодної помилки, а зміна порядку елементів зсуває всі переклади. Крім того, URL стають редагованими з екрана перекладу, де їх ніхто не чекає.",
+        "it": "Dichiarare una chiave in <admin-texts> significa «traduci questo valore». Se il valore è un record - righe tipo «etichetta|URL» oppure JSON - al traduttore si consegnano anche i separatori, gli URL e la struttura stessa. Un separatore perso rimuove l'elemento dalla pagina senza alcun errore, e riordinare gli elementi disallinea tutte le traduzioni. In più gli URL diventano modificabili dalla schermata di traduzione, dove nessuno se li aspetta.",
+        "en": "Declaring a key in <admin-texts> says 'translate this value'. When the value is a record - lines like 'label|URL', or JSON - the translator is handed the separators, the URLs and the structure as well. One lost separator removes the item from the page with no error at all, and reordering the items shifts every translation. The URLs also become editable from the translation screen, where nobody expects them.",
+    },
+    "a11y_i18n_composite_admin_text_fix": {
+        "uk": "Приберіть цей ключ із <admin-texts> і реєструйте на переклад окремі частини запису, по одному рядку на підпис, лишивши URL і технічні поля поза перекладом. Якщо запис за природою є списком посилань, розгляньте штатне меню замість поля з опціями: меню перекладається власним потоком і не має цієї крихкості.",
+        "it": "Togli questa chiave da <admin-texts> e registra per la traduzione le singole parti del record, una stringa per etichetta, lasciando fuori URL e campi tecnici. Se il record è per natura un elenco di link, valuta un menu invece di un campo opzione: un menu si traduce con il proprio flusso e non ha questa fragilità.",
+        "en": "Remove this key from <admin-texts> and register the parts of the record instead, one string per label, leaving URLs and technical fields out of translation. If the record is really a list of links, consider a menu rather than an option field: a menu is translated by its own flow and does not carry this fragility.",
+    },
+    "a11y_i18n_taxonomy_not_declared_title": {
+        "uk": "Таксономія не оголошена перекладною",
+        "it": "La tassonomia non è dichiarata traducibile",
+        "en": "The taxonomy is not declared translatable",
+    },
+    "a11y_i18n_taxonomy_not_declared_found": {
+        "uk": 'Код проєкту використовує таксономію "{taxonomy}" ({where}), але вона не оголошена в <taxonomies> у wpml-config.xml.',
+        "it": 'Il codice del progetto usa la tassonomia "{taxonomy}" ({where}), ma non è dichiarata in <taxonomies> in wpml-config.xml.',
+        "en": 'The project code uses the "{taxonomy}" taxonomy ({where}) but does not declare it in <taxonomies> in wpml-config.xml.',
+    },
+    "a11y_i18n_taxonomy_not_declared_why": {
+        "uk": "Без оголошення WPML лишає таксономію в режимі за замовчуванням «не перекладати», і це не половинчастий переклад, а повна його відсутність: get_terms() віддає терміни мовою оригіналу в усіх мовах, на кожній сторінці, де вони перелічені. Помітити це в розмітці неможливо, і жоден обсяг перекладу в адмінці цього не змінює, поки не змінено саме налаштування.",
+        "it": "Senza la dichiarazione WPML lascia la tassonomia nella modalità predefinita «non tradurre», e non è una traduzione a metà ma la sua assenza completa: get_terms() restituisce i termini nella lingua di origine in tutte le lingue, su ogni pagina che li elenca. Nel markup non si vede, e nessuna quantità di traduzione fatta in admin lo cambia finché non si cambia l'impostazione.",
+        "en": "Without the declaration WPML leaves the taxonomy on its default «do not translate», and that is not a half-translation but the absence of one: get_terms() returns source-language terms in every language, on every page that lists them. Nothing in the markup shows it, and no amount of translating in the admin changes it until the setting itself changes.",
+    },
+    "a11y_i18n_taxonomy_not_declared_fix": {
+        "uk": "Додайте <taxonomy translate=\"1\">{taxonomy}</taxonomy> у блок <taxonomies> у wpml-config.xml, а для службової таксономії, невидимої користувачеві, поставте translate=\"0\" явно. Оголошення лише дозволяє переклад: самі терміни після цього треба перекласти й привʼязати до перекладених записів.",
+        "it": "Aggiungi <taxonomy translate=\"1\">{taxonomy}</taxonomy> nel blocco <taxonomies> di wpml-config.xml; per una tassonomia di servizio, mai esposta all'utente, metti translate=\"0\" in modo esplicito. La dichiarazione abilita soltanto la traduzione: i termini vanno poi tradotti e associati ai contenuti tradotti.",
+        "en": "Add <taxonomy translate=\"1\">{taxonomy}</taxonomy> to the <taxonomies> block in wpml-config.xml, and for a service taxonomy never shown to a reader set translate=\"0\" explicitly. The declaration only enables translation: the terms themselves still have to be translated and attached to the translated content.",
+    },
+    "a11y_seo_untranslated_content_title": {
+        "uk": "Текст лишився мовою іншої версії",
+        "it": "Il testo è rimasto nella lingua di un'altra versione",
+        "en": "The text stayed in another version's language",
+    },
+    "a11y_seo_untranslated_content_found": {
+        "uk": 'На цій сторінці «{text}» дослівно збігається з версією "{language}", хоча решта сторінки перекладена: {translated} інших відповідних місць відрізняються. Місце: {where}.',
+        "it": 'Su questa pagina «{text}» coincide alla lettera con la versione "{language}", benché il resto della pagina sia tradotto: {translated} altri punti corrispondenti differiscono. Posizione: {where}.',
+        "en": 'On this page "{text}" matches the "{language}" version word for word, although the rest of the page is translated: {translated} other matching places differ. Position: {where}.',
+    },
+    "a11y_seo_untranslated_content_why": {
+        "uk": "Однаковий рядок сам по собі нічого не означає: сторінка могла бути ідентичною цілком. Тут інакше - навколо нього все перекладено, тому саме цей фрагмент лишився позаду. Такі місця зазвичай приходять не з контенту, а з коду: підпис, узятий не з системи перекладу, або значення, скопійоване з оригіналу без прив'язки до мови. Читач бачить чужу мову посеред своєї, а пошук отримує сторінку, яка частково дублює іншу мовну версію.",
+        "it": "Una stringa identica di per sé non significa nulla: la pagina poteva essere identica per intero. Qui è diverso: tutto intorno è tradotto, quindi è proprio questo frammento a essere rimasto indietro. Questi punti di solito non vengono dai contenuti ma dal codice: un'etichetta che non passa dal sistema di traduzione, o un valore copiato dall'originale senza legame con la lingua. Il lettore vede un'altra lingua in mezzo alla propria e i motori ricevono una pagina che duplica in parte un'altra versione linguistica.",
+        "en": "An identical string means nothing on its own: the page could have been identical throughout. Here it is different - everything around it is translated, so this fragment is the one left behind. Such places usually come from the code rather than the content: a label that does not pass through the translation system, or a value copied from the original with no tie to the language. A reader sees another language in the middle of their own, and search engines get a page that partly duplicates another language version.",
+    },
+    "a11y_seo_untranslated_content_fix": {
+        "uk": "Знайдіть, звідки береться цей рядок. Якщо він приходить із коду, проведіть його через ту саму систему перекладу, що й решту інтерфейсу; якщо з контенту, допишіть переклад у цій мовній версії. Виняток, який тут очікуваний: власні назви, назви організацій і адреси лишаються мовою оригіналу навмисно, і такі знахідки треба просто закрити.",
+        "it": "Trova da dove arriva questa stringa. Se viene dal codice, falla passare dallo stesso sistema di traduzione del resto dell'interfaccia; se viene dai contenuti, inserisci la traduzione in questa versione linguistica. L'eccezione attesa: nomi propri, denominazioni di enti e indirizzi restano di proposito nella lingua originale, e queste segnalazioni vanno semplicemente chiuse.",
+        "en": "Find where this string comes from. If it comes from the code, route it through the same translation system as the rest of the interface; if it comes from the content, add the translation in this language version. The expected exception: proper nouns, organisation names and addresses stay in the source language on purpose, and those findings should simply be closed.",
+    },
+    "a11y_seo_slug_not_translated_title": {
+        "uk": "Адреса лишилась мовою оригіналу",
+        "it": "L'indirizzo è rimasto nella lingua originale",
+        "en": "The address stayed in the original language",
+    },
+    "a11y_seo_slug_not_translated_found": {
+        "uk": 'Шлях цієї сторінки збігається з версією "{language}" ({target}), хоча сайт перекладає адреси: {translated} інших пар мовних версій мають різні шляхи.',
+        "it": 'Il percorso di questa pagina coincide con la versione "{language}" ({target}), benché il sito traduca gli indirizzi: {translated} altre coppie di versioni linguistiche hanno percorsi diversi.',
+        "en": 'This page shares its path with the "{language}" version ({target}), although the site does translate addresses: {translated} other pairs of language versions have different paths.',
+    },
+    "a11y_seo_slug_not_translated_why": {
+        "uk": "Однакові адреси в різних мовах самі по собі не є дефектом: чимало сайтів свідомо тримають один набір слагів. Дефект тут інший - сайт перекладає адреси, але не всі, тому частина сторінок віддає користувачеві й пошуку шлях чужою мовою. Це також розходиться з рештою сайту, тобто виглядає як забута сторінка, а не як рішення.",
+        "it": "Indirizzi identici in lingue diverse non sono di per sé un difetto: molti siti mantengono di proposito un solo set di slug. Il difetto qui è un altro: il sito traduce gli indirizzi, ma non tutti, quindi alcune pagine mostrano all'utente e ai motori un percorso in un'altra lingua. È anche incoerente con il resto del sito, quindi sembra una pagina dimenticata e non una scelta.",
+        "en": "Identical addresses across languages are not a defect in themselves: plenty of sites keep one set of slugs on purpose. The defect here is different - the site does translate addresses but not all of them, so some pages hand the reader and the search engine a path in another language. It is also inconsistent with the rest of the site, which makes it look like a page that was missed rather than a decision.",
+    },
+    "a11y_seo_slug_not_translated_fix": {
+        "uk": "Перекладіть слаг цієї сторінки так само, як зроблено для решти, і поставте 301 зі старої адреси, якщо сторінка вже проіндексована. Якщо ж рішення протилежне і слаги мають лишатись однаковими, приведіть до цього весь сайт: непослідовність гірша за будь-який із двох варіантів.",
+        "it": "Traduci lo slug di questa pagina come è stato fatto per le altre e imposta un 301 dal vecchio indirizzo se la pagina è già indicizzata. Se invece la scelta è opposta e gli slug devono restare uguali, applicala a tutto il sito: l'incoerenza è peggiore di entrambe le opzioni.",
+        "en": "Translate this page's slug the way the others were done, and add a 301 from the old address if the page is already indexed. If the decision is the opposite one and slugs are meant to stay identical, apply that across the site: the inconsistency is worse than either choice.",
+    },
     "a11y_seo_hreflang_not_reciprocal_title": {
         "uk": "Crawled hreflang-версія не посилається у відповідь",
         "it": "La versione hreflang scansionata non rimanda indietro",
@@ -5505,6 +5585,26 @@ _STRINGS: dict[str, dict[str, str]] = {
         "uk": "Кожна сторінка має вказувати canonical на власну адресу. Один спільний canonical правильний лише для справжніх дублів - фільтрів, сортувань, UTM-міток.",
         "it": "Ogni pagina deve indicare come canonical il proprio indirizzo. Un canonical condiviso è corretto solo per duplicati veri: filtri, ordinamenti, parametri UTM.",
         "en": "Each page should name its own address as canonical. A shared canonical is right only for genuine duplicates - filters, sort orders, UTM parameters.",
+    },
+    "a11y_html_lang_contradicts_address_title": {
+        "uk": "Оголошена мова суперечить самому сайту",
+        "it": "La lingua dichiarata contraddice il sito stesso",
+        "en": "The declared language contradicts the site itself",
+    },
+    "a11y_html_lang_contradicts_address_found": {
+        "uk": 'Сторінка оголошує lang="{declared}", а сайт називає її мовою "{expected}" у двох незалежних місцях: {signals}.',
+        "it": 'La pagina dichiara lang="{declared}", ma il sito la indica come "{expected}" in due punti indipendenti: {signals}.',
+        "en": 'The page declares lang="{declared}" while the site names it "{expected}" in two independent places: {signals}.',
+    },
+    "a11y_html_lang_contradicts_address_why": {
+        "uk": "Це не здогад про мову тексту, а розбіжність між тим, що сайт знає про сторінку, і тим, що вона декларує. Зазвичай означає атрибут, забутий в одному місці шаблону: адреса й og:locale уже правильні, а <html lang> лишився мовою за замовчуванням. Читач екрана довіряє атрибуту повністю, тому читає текст чужою фонетикою, а пошук отримує суперечливі сигнали про мовні версії.",
+        "it": "Non è un'ipotesi sulla lingua del testo, ma una contraddizione fra ciò che il sito sa della pagina e ciò che la pagina dichiara. Di solito significa un attributo dimenticato in un punto solo del template: indirizzo e og:locale sono già corretti, mentre <html lang> è rimasto sulla lingua predefinita. Lo screen reader si fida completamente dell'attributo e legge il testo con la fonetica sbagliata, e i motori ricevono segnali contraddittori sulle versioni linguistiche.",
+        "en": "This is not a guess about the language of the text but a contradiction between what the site knows about the page and what the page declares. It usually means an attribute forgotten in one place in the template: the address and og:locale are already right while <html lang> stayed on the default language. A screen reader trusts the attribute completely and reads the text with the wrong phonetics, and search engines get contradictory signals about the language versions.",
+    },
+    "a11y_html_lang_contradicts_address_fix": {
+        "uk": 'Зробіть так, щоб <html lang> ішов за мовою запиту, а не був сталим: lang="{expected}" на цій сторінці. Якщо сайт багатомовний, атрибут має братись із того самого джерела, що й адреса та og:locale, тобто з поточної мови, а не бути записаним у шаблоні.',
+        "it": 'Fai in modo che <html lang> segua la lingua della richiesta invece di restare fisso: lang="{expected}" su questa pagina. Se il sito è multilingue, l\'attributo deve venire dalla stessa fonte di indirizzo e og:locale, cioè dalla lingua corrente, e non essere scritto nel template.',
+        "en": 'Make <html lang> follow the language of the request instead of staying fixed: lang="{expected}" on this page. On a multilingual site the attribute should come from the same source as the address and og:locale - the current language - rather than being written into the template.',
     },
     "a11y_html_lang_mismatch_title": {
         "uk": "Оголошена мова не збігається з текстом",

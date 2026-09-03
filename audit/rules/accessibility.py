@@ -338,6 +338,193 @@ class DocumentLanguageMismatch(AccessibilityRule):
         )]
 
 
+#: A language subtag as BCP 47 writes it: two or three letters, optionally
+#: followed by a script or region. Kept permissive on purpose - the rule
+#: never acts on one signal alone, so a false read of a single path segment
+#: cannot produce a finding by itself.
+_LANGUAGE_TAG_RE = re.compile(r"^([a-z]{2,3})(?:[-_][a-z0-9]{2,8})*$", re.I)
+#: Query parameters that carry a language, in the spellings actually used by
+#: CMSes and by Google's own tooling.
+_LANGUAGE_QUERY_KEYS = ("lang", "language", "hl", "locale", "l")
+
+
+def _primary_subtag(value) -> str:
+    """`de-DE`, `de_DE`, `DE` -> `de`; anything not a language tag -> ``.
+
+    Comparing whole tags would call `de-AT` a contradiction of `de-DE`, which
+    is a regional variant and not a wrong language.
+    """
+    text = (value or "").strip()
+    if not text:
+        return ""
+    match = _LANGUAGE_TAG_RE.match(text)
+    return match.group(1).lower() if match else ""
+
+
+def _language_from_address(url: str) -> dict:
+    """Language codes the address itself names, by where they were found.
+
+    Three layouts are in use and a site may combine them, so all three are
+    read: `example.com/de/page`, `de.example.com/page`, `example.com/page?lang=de`.
+    """
+    from urllib.parse import parse_qs, urlsplit
+
+    found: dict = {}
+    if not url or "://" not in url:
+        return found  # a repository path, not an address
+    parts = urlsplit(url)
+
+    segments = [seg for seg in (parts.path or "").split("/") if seg]
+    if segments:
+        code = _primary_subtag(segments[0])
+        if code:
+            found["path prefix"] = code
+
+    host_labels = (parts.hostname or "").split(".")
+    if len(host_labels) > 2:
+        code = _primary_subtag(host_labels[0])
+        if code:
+            found["subdomain"] = code
+
+    query = parse_qs(parts.query or "")
+    for key in _LANGUAGE_QUERY_KEYS:
+        for spelling in (key, key.upper()):
+            values = query.get(spelling)
+            if values:
+                code = _primary_subtag(values[0])
+                if code:
+                    found["query parameter"] = code
+                break
+        if "query parameter" in found:
+            break
+    return found
+
+
+def _language_from_open_graph(document) -> str:
+    """`<meta property="og:locale" content="de_DE">` -> `de`."""
+    for tag in document.find_all("meta"):
+        key = (tag.get("property") or tag.get("name") or "").strip().lower()
+        if key == "og:locale":
+            return _primary_subtag(tag.get("content"))
+    return ""
+
+
+def _language_from_self_hreflang(document, url: str) -> str:
+    """The language the page's own `hreflang` set gives to this address.
+
+    A correct `hreflang` set includes the page itself. That self-entry is a
+    statement by the site about this page and nothing else, which makes it a
+    signal independent of the address.
+    """
+    if not url:
+        return ""
+    from urllib.parse import urljoin, urlsplit
+
+    def shape(value: str) -> tuple:
+        parsed = urlsplit(value)
+        path = (parsed.path or "/").rstrip("/") or "/"
+        return (parsed.netloc.lower(), path)
+
+    here = shape(url)
+    for tag in document.find_all("link", href=True):
+        rels = tag.get("rel") or []
+        if isinstance(rels, str):
+            rels = [rels]
+        if "alternate" not in [str(r).lower() for r in rels]:
+            continue
+        language = (tag.get("hreflang") or "").strip().lower()
+        if not language or language == "x-default":
+            continue
+        if shape(urljoin(url, tag["href"])) == here:
+            return _primary_subtag(language)
+    return ""
+
+
+def _language_signals(document, url: str) -> dict:
+    """Every independent statement about this page's language, by source."""
+    signals = _language_from_address(url)
+    # The address can name the same language twice (a `/de/` path under a
+    # `de.` subdomain). That is one statement wearing two hats, not two
+    # witnesses, so the corroboration count collapses them.
+    if len(set(signals.values())) == 1 and len(signals) > 1:
+        signals = {"address": next(iter(signals.values()))}
+
+    open_graph = _language_from_open_graph(document)
+    if open_graph:
+        signals["og:locale"] = open_graph
+    self_hreflang = _language_from_self_hreflang(document, url)
+    if self_hreflang:
+        signals["hreflang self-entry"] = self_hreflang
+    return signals
+
+
+class DeclaredLanguageContradictsAddress(AccessibilityRule):
+    """The page declares one language while the site says it is another.
+
+    `html-lang-mismatch` asks the text. That answer needs a detector, and a
+    detector only knows the languages it was taught: `lang_detect` returns
+    `uk`, `it`, `en` or `other`, so a German page comes back `other` and the
+    rule stays silent by design. A whole site can therefore serve every page
+    with the wrong `lang` and no rule notices - which is exactly what a real
+    audit found: sixty-five pages of a three-language site all declaring
+    `lang="it"`, the German ones included.
+
+    This rule asks the site instead of the text, so it holds for any
+    language, including ones no detector here knows. Three independent
+    places already name the language of a page:
+
+    * the address - a path prefix (`/de/…`), a subdomain (`de.example.com`)
+      or a query parameter (`?lang=de`);
+    * `og:locale`;
+    * the page's own entry in its `hreflang` set.
+
+    **Two of them must agree before this speaks.** One alone is not
+    evidence: `/de/` can be a Spanish preposition in a path, and a single
+    stray `og:locale` is a typo rather than a policy. Two independent
+    sources naming the same language, against a third that says something
+    else, is the shape of a forgotten attribute - and the same corroboration
+    the sibling rule asks of one detector on two samples.
+    """
+    id = "html-lang-contradicts-address"
+    page_level = True
+    web_only = True
+    severity = SERIOUS
+    wcag = ("3.1.1",)
+
+    #: Enough agreement to speak. See the class docstring.
+    MIN_AGREEING_SIGNALS = 2
+
+    def check(self, document, context) -> list:
+        html = document.find("html")
+        if html is None:
+            return []
+        declared = _primary_subtag(html.get("lang"))
+        if not declared:
+            return []  # `html-lang` already reports the absence
+
+        signals = _language_signals(document, context.source)
+        if not signals:
+            return []
+        agreed = {code for code in signals.values() if code}
+        if len(agreed) != 1:
+            return []  # the sources disagree: this rule has no verdict
+        expected = agreed.pop()
+        if expected == declared:
+            return []
+        naming = sorted(name for name, code in signals.items() if code == expected)
+        if len(naming) < self.MIN_AGREEING_SIGNALS:
+            return []
+
+        selector, line = context.locate(html)
+        return [Issue(
+            rule_id=self.id, severity=self.severity, selector=selector, line=line,
+            snippet=snippet_of(html), source=context.source,
+            details={"declared": declared, "expected": expected,
+                     "signals": ", ".join(naming)},
+            fix_snippet=f'<html lang="{expected}">',
+        )]
+
+
 class DocumentTitle(AccessibilityRule):
     id = "document-title"
     page_level = True
@@ -1530,7 +1717,7 @@ class AbbreviationExpansion(AccessibilityRule):
 
 for _rule in (
     ImageAlt, ImageAltIsFilename, ControlName, VagueLinkText, DocumentLanguage,
-    DocumentLanguageMismatch,
+    DocumentLanguageMismatch, DeclaredLanguageContradictsAddress,
     DocumentTitle, HeadingOrder, MissingH1, PositiveTabindex, DuplicateIds,
     BrokenAriaReference, ButtonWithoutType, MediaWithoutCaptions, AutoplayingMedia,
     TableStructure, ViewportZoomBlocked, InlineContrast,

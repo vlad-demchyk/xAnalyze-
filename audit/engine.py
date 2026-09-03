@@ -836,6 +836,12 @@ def analyze_files(file_results, root: str, rules=None, ai_review=None,
         # the file list in the window - already works in documents.
         result.documents.extend(
             media_pass.as_documents(media_pass.scan_media(root)))
+    # Declarations a multilingual project makes about itself, against what
+    # its code uses. Reads the project rather than any one file, so it sits
+    # with the other whole-repository passes rather than in `audit.rules`.
+    from audit import i18n_wpml as i18n_pass
+
+    result.documents.extend(i18n_pass.as_documents(root))
     if repo_facts:
         from audit import repo_facts as facts_pass
 
