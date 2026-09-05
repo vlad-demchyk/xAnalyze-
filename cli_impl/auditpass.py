@@ -34,7 +34,8 @@ def _chosen_breakpoints(args):
                  if name in wanted)
 
 
-def _audit_at_widths(urls, options, sizes, on_page=None, markup=None) -> list:
+def _audit_at_widths(urls, options, sizes, on_page=None, markup=None,
+                     profile=None, cancelled=None) -> list:
     """One browser, every page, every width - skipping what has not changed.
 
     `markup` maps a url to the bytes the crawler already received for it.
@@ -93,7 +94,11 @@ def _audit_at_widths(urls, options, sizes, on_page=None, markup=None) -> list:
         driver.ensure_headless_application()
         first = (replace(options, viewport=(sizes[0][1], sizes[0][2]))
                  if sizes else options)
-        runner = driver.BrowserAuditRunner(first)
+        if profile is None and cancelled is None:
+            runner = driver.BrowserAuditRunner(first)
+        else:
+            runner = driver.BrowserAuditRunner(first, profile=profile,
+                                               cancelled=cancelled)
         try:
             done = 0
             for index, url in enumerate(urls):
@@ -219,8 +224,13 @@ def _run_browser_pass(result, suppressions, args=None) -> None:
     markup = {url: served[document.source]
               for document, url in zip(targets, urls)
               if document.source in served}
-    audits = _audit_at_widths(urls, options, sizes, on_page=_show,
-                              markup=markup)
+    profile = None
+    if not (args is not None and getattr(args, "no_session", False)):
+        profile = driver.session_profile(result.root)
+    audit_kwargs = {"on_page": _show, "markup": markup}
+    if profile is not None:
+        audit_kwargs["profile"] = profile
+    audits = _audit_at_widths(urls, options, sizes, **audit_kwargs)
     by_url = {a.url: a for a in audits}
     #: Addresses whose browser findings have already been folded in. One
     #: page is several documents, and merging the same audit into each of
@@ -230,10 +240,13 @@ def _run_browser_pass(result, suppressions, args=None) -> None:
     #: The first document for an address is the page's own, which is where a
     #: reader expects the browser's answer to land.
     merged_urls = set()
+    processed_urls = set()
     for document, url in zip(targets, urls):
         page_audit = by_url.get(url)
-        if page_audit is None or url in merged_urls:
+        if page_audit is None or url in processed_urls:
             continue
+        processed_urls.add(url)
+        merged = browser_mod.merge_page_audit(result, document, page_audit)
         if page_audit.error:
             progress.notice(
                 "browser", f"{document.source}: {page_audit.error}",
@@ -248,12 +261,8 @@ def _run_browser_pass(result, suppressions, args=None) -> None:
                 human=f"# {document.source}: {name} {message}",
                 source=str(document.source), engine=name,
                 error=str(message))
-        # One function, shared with the window: axe and our own rule both
-        # report a missing `alt` and a `--browser` run must not double every
-        # such row, and a static finding the browser disproved must not reach
-        # the merge at all. See `browser.merge_into_document`.
-        browser_mod.merge_into_document(document, page_audit)
-        merged_urls.add(url)
+        if merged:
+            merged_urls.add(url)
     # Again, because the findings the browser brought arrived after the crawl
     # attributed the ones it had. A second engine's finding is owned by
     # whoever emitted the element, exactly as the first engine's is.

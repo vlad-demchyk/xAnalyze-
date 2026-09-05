@@ -673,6 +673,19 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "non controllate: {unchecked}",
         "en": "not checked: {unchecked}",
     },
+    "diagnosis_browser_incomplete_title": {
+        "uk": "Браузерний прохід завершився не повністю",
+        "it": "Il passaggio nel browser non e completo",
+        "en": "The browser pass is incomplete",
+    },
+    "diagnosis_browser_incomplete_body": {
+        "uk": "Не завершилось перевірок: {count}. Статичний результат лишається "
+              "чинним, але чистим результатом повного аудиту це не є.",
+        "it": "Controlli non completati: {count}. Il risultato statico resta "
+              "valido, ma non rappresenta un audit completo e pulito.",
+        "en": "Checks that did not finish: {count}. The static result remains "
+              "valid, but this is not a complete clean audit.",
+    },
     "diagnosis_unknown_failure_title": {
         "uk": "Прогін зупинився", "it": "L'esecuzione si e fermata",
         "en": "The run stopped",

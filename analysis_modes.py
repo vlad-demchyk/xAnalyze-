@@ -20,7 +20,10 @@ to change the question is the slowest possible way to answer it.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from threading import Event
+from time import time
+from uuid import uuid4
 
 SOURCE_SITE = "site"
 SOURCE_REPO = "repo"
@@ -172,3 +175,81 @@ class AnalysisRequest:
         # A browser pass reads more than a fetch does, so a run that only
         # fetched cannot answer one that wants the rendered page.
         return set(self.readers).issubset(set(previous.readers))
+
+
+class CancellationToken:
+    """One cooperative stop signal shared by every stage of a run."""
+
+    def __init__(self) -> None:
+        self._event = Event()
+
+    def cancel(self) -> None:
+        self._event.set()
+
+    @property
+    def cancelled(self) -> bool:
+        return self._event.is_set()
+
+    def __call__(self) -> bool:
+        return self.cancelled
+
+
+@dataclass(frozen=True)
+class ExtractionSnapshot:
+    """Documents and provenance acquired once for one run.
+
+    Tuples make the container immutable. The page and diagnostics models are
+    deliberately not copied: they are already the evidence the crawler
+    produced, and replacing them with fresh empty diagnostics is the defect
+    this object prevents.
+    """
+
+    request: AnalysisRequest
+    pages: tuple = ()
+    files: tuple = ()
+    crawl: object | None = None
+    scan: object | None = None
+    scope: str | None = None
+    session_host: str = ""
+    session_values: int = 0
+    snapshot_id: str = field(default_factory=lambda: uuid4().hex)
+    created_at: float = field(default_factory=time)
+
+    def reusable_for(self, request: AnalysisRequest, *,
+                     scope: str | None = None) -> bool:
+        if not request.reuses_extraction(self.request):
+            return False
+        if self.files and scope != self.scope:
+            return False
+        return True
+
+    def pages_for(self, request: AnalysisRequest) -> list:
+        """The pages this request may see, including the requested depth only."""
+        if not self.reusable_for(request):
+            return []
+        return [page for page in self.pages
+                if int(getattr(page, "depth", 0)) <= request.depth]
+
+    def updated(self, **changes) -> "ExtractionSnapshot":
+        """Return a new snapshot revision without mutating acquired evidence."""
+        for name in ("pages", "files"):
+            if name in changes and changes[name] is not None:
+                changes[name] = tuple(changes[name])
+        return replace(self, **changes)
+
+
+@dataclass
+class RunContext:
+    """Identity, cancellation and acquired evidence for one Analyze action."""
+
+    request: AnalysisRequest
+    cancellation: CancellationToken = field(default_factory=CancellationToken)
+    snapshot: ExtractionSnapshot | None = None
+    run_id: str = field(default_factory=lambda: uuid4().hex)
+
+    def remember(self, **evidence) -> ExtractionSnapshot:
+        if self.snapshot is None:
+            self.snapshot = ExtractionSnapshot(request=self.request).updated(**evidence)
+        else:
+            self.snapshot = self.snapshot.updated(**evidence)
+        return self.snapshot

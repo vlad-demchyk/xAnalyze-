@@ -93,7 +93,8 @@ class AnalysisWorker(_PairingMixin, QThread):
                  unicode_categories: tuple | None = None, settings=None,
                  pages: list | None = None, paired_repo: str = "",
                  no_session: bool = False,
-                 paired_ignore=None, parent=None):
+                 paired_ignore=None, crawl=None, session_host: str = "",
+                 session_values: int = 0, cancellation=None, parent=None):
         super().__init__(parent)
         self.settings = settings
         #: `--repo`: the checkout that serves this site. Given one, every
@@ -114,8 +115,8 @@ class AnalysisWorker(_PairingMixin, QThread):
         #: Which host's stored session this run used, and how many values it
         #: carried. The count is for the status line; the values never leave
         #: `site_session`.
-        self.session_host = ""
-        self.session_values = 0
+        self.session_host = session_host or ""
+        self.session_values = int(session_values or 0)
         self.ignore_root = None  # a URL has no folder to hold an ignore file
         #: Pages already fetched by an earlier run over the same target. Given
         #: them, this worker never touches the network: the expensive half of a
@@ -128,10 +129,21 @@ class AnalysisWorker(_PairingMixin, QThread):
         self.detector_config = detector_config
         self.max_pages = max_pages
         self.unicode_categories = unicode_categories
+        self.crawl = crawl
+        self.cancellation = cancellation
+        self.acquired_pages = None
+        self.acquired_files = None
+        self.scan_diagnostics = None
         self._cancelled = False
 
     def cancel(self) -> None:
         self._cancelled = True
+        if self.cancellation is not None:
+            self.cancellation.cancel()
+
+    def _is_cancelled(self) -> bool:
+        return self._cancelled or bool(
+            self.cancellation and self.cancellation.cancelled)
 
     def run(self) -> None:
         try:
@@ -139,7 +151,7 @@ class AnalysisWorker(_PairingMixin, QThread):
                 self.crawling.emit(url, depth)
 
             from models import CrawlDiagnostics
-            walk = CrawlDiagnostics()
+            walk = self.crawl or CrawlDiagnostics()
             if self.pages is not None:
                 pages: list[PageResult] = self.pages
             else:
@@ -153,8 +165,8 @@ class AnalysisWorker(_PairingMixin, QThread):
                     self.session_host, self.session_values = \
                         site_session.apply_to(config, self.root_url)
                 pages = crawl(self.root_url, config, progress_cb=progress_cb,
-                              walk=walk)
-            if self._cancelled:
+                              walk=walk, cancelled=self._is_cancelled)
+            if self._is_cancelled():
                 return
 
             try:
@@ -181,7 +193,7 @@ class AnalysisWorker(_PairingMixin, QThread):
             if self.paired_repo:
                 self._pair_with_repo(all_blocks)
 
-            if self._cancelled:
+            if self._is_cancelled():
                 return
             self.finished_ok.emit(result)
         except Exception as exc:  # noqa: BLE001 - surface any unexpected failure to the UI
@@ -226,7 +238,8 @@ class RepoAnalysisWorker(QThread):
     def __init__(self, root_dir: str, ignore_patterns: list[str], detector_name: str,
                  detector_config: dict, unicode_categories: tuple | None = None,
                  scope: str = "content", settings=None,
-                 files: list | None = None, parent=None):
+                 files: list | None = None, diagnostics=None,
+                 cancellation=None, parent=None):
         super().__init__(parent)
         self.settings = settings
         #: Files already read by an earlier run, for the same reason
@@ -241,10 +254,18 @@ class RepoAnalysisWorker(QThread):
         self.detector_name = detector_name
         self.detector_config = detector_config
         self.unicode_categories = unicode_categories
+        self.diagnostics = diagnostics
+        self.cancellation = cancellation
         self._cancelled = False
 
     def cancel(self) -> None:
         self._cancelled = True
+        if self.cancellation is not None:
+            self.cancellation.cancel()
+
+    def _is_cancelled(self) -> bool:
+        return self._cancelled or bool(
+            self.cancellation and self.cancellation.cancelled)
 
     def run(self) -> None:
         try:
@@ -253,7 +274,7 @@ class RepoAnalysisWorker(QThread):
 
             from pathlib import Path
 
-            walk = ScanDiagnostics()
+            walk = self.diagnostics or ScanDiagnostics()
             if self.files is not None:
                 files: list[FileResult] = self.files
             elif Path(self.root_dir).is_file():
@@ -277,8 +298,8 @@ class RepoAnalysisWorker(QThread):
                 # used to do the second while showing the first.
                 walk = ScanDiagnostics()
                 files = scan_repo(self.root_dir, config, progress_cb=progress_cb,
-                                  diagnostics=walk)
-            if self._cancelled:
+                                  diagnostics=walk, cancelled=self._is_cancelled)
+            if self._is_cancelled():
                 return
 
             try:
@@ -302,7 +323,7 @@ class RepoAnalysisWorker(QThread):
             )
             result.spans = _apply_suppressions(result, self.settings, self.ignore_root)
 
-            if self._cancelled:
+            if self._is_cancelled():
                 return
             self.finished_ok.emit(result)
         except Exception as exc:  # noqa: BLE001
@@ -333,7 +354,8 @@ class AuditWorker(QThread):
                  settings=None, pages: list | None = None,
                  site_controls: bool = False, medium: str = "",
                  within: str = "", web_parts=(), no_session: bool = False,
-                 parent=None):
+                 crawl=None, session_host: str = "", session_values: int = 0,
+                 cancellation=None, parent=None):
         super().__init__(parent)
         #: `--within`: confine the reading to one subtree. The document is
         #: then a *fragment* by construction, so the page-level rules stop
@@ -342,8 +364,8 @@ class AuditWorker(QThread):
         #: nothing comes back as an error on that document rather than as a
         #: clean result.
         self.within = (within or "").strip()
-        self.session_host = ""
-        self.session_values = 0
+        self.session_host = session_host or ""
+        self.session_values = int(session_values or 0)
         #: `--medium`: "web", "email", or empty for "read it off each file".
         #: Only the folder branch reads it - a crawled site is a site, and a
         #: single page file is autodetected the same way the CLI does it.
@@ -372,10 +394,18 @@ class AuditWorker(QThread):
         self.ignore_patterns = list(ignore_patterns or [])
         self.max_files = max_files
         self.settings = settings
+        self.crawl = crawl
+        self.cancellation = cancellation
         self._cancelled = False
 
     def cancel(self) -> None:
         self._cancelled = True
+        if self.cancellation is not None:
+            self.cancellation.cancel()
+
+    def _is_cancelled(self) -> bool:
+        return self._cancelled or bool(
+            self.cancellation and self.cancellation.cancelled)
 
     def run(self) -> None:
         try:
@@ -390,10 +420,15 @@ class AuditWorker(QThread):
                                                  web_parts=self.web_parts)
                 ignore_root = None
             elif self.is_repo:
+                walk = ScanDiagnostics()
                 files = scan_repo(self.target,
                                   ScanConfig(ignore_patterns=self.ignore_patterns,
-                                             max_files=self.max_files))
-                if self._cancelled:
+                                             max_files=self.max_files),
+                                  diagnostics=walk,
+                                  cancelled=self._is_cancelled)
+                self.acquired_files = files
+                self.scan_diagnostics = walk
+                if self._is_cancelled():
                     return
                 self.auditing.emit(self.target)
                 result = audit.analyze_files(files, self.target,
@@ -406,13 +441,20 @@ class AuditWorker(QThread):
                 if self.pages is not None:
                     pages = self.pages
                 else:
+                    from models import CrawlDiagnostics
+
+                    walk = self.crawl or CrawlDiagnostics()
                     config = CrawlConfig(max_depth=self.depth,
                                          max_pages=self.max_pages)
                     if not self.no_session:
                         self.session_host, self.session_values = \
                             site_session.apply_to(config, self.target)
-                    pages = crawl(self.target, config, progress_cb=progress_cb)
-                if self._cancelled:
+                    pages = crawl(self.target, config, progress_cb=progress_cb,
+                                  walk=walk,
+                                  cancelled=self._is_cancelled)
+                    self.crawl = walk
+                self.acquired_pages = pages
+                if self._is_cancelled():
                     return
                 self.auditing.emit(self.target)
                 result = audit.analyze_pages(pages, self.target,
@@ -428,7 +470,7 @@ class AuditWorker(QThread):
                 for document in result.documents:
                     document.issues = suppression.filter_issues(document.issues, suppressions)
 
-            if self._cancelled:
+            if self._is_cancelled():
                 return
             self.finished_ok.emit(result)
         except Exception as exc:  # noqa: BLE001 - surface any unexpected failure to the UI
@@ -439,7 +481,9 @@ def audit_worker_for(source: str, *, target: str, depth: int, max_pages: int,
                      pages=None, ignore_patterns=None, max_files: int = 5000,
                      settings=None, site_controls: bool = False,
                      medium: str = "", within: str = "", web_parts=(),
-                     no_session: bool = False, parent=None):
+                     no_session: bool = False, crawl=None,
+                     session_host: str = "", session_values: int = 0,
+                     cancellation=None, parent=None):
     """The right `AuditWorker` for the source, or `(None, message)` on refusal.
 
     One place, because there were two: the window and the view model each
@@ -466,12 +510,13 @@ def audit_worker_for(source: str, *, target: str, depth: int, max_pages: int,
         return AuditWorker(target=target, depth=0, max_pages=max_pages,
                            is_repo=True, ignore_patterns=ignore_patterns,
                            max_files=max_files, settings=settings,
-                           medium=medium, parent=parent), ""
+                           medium=medium, cancellation=cancellation,
+                           parent=parent), ""
     if source == SOURCE_FILE:
         return AuditWorker(target=target, depth=0, max_pages=max_pages,
                            is_page_file=True, settings=settings,
                            within=within, web_parts=web_parts,
-                           parent=parent), ""
+                           cancellation=cancellation, parent=parent), ""
 
     # A site. `example.com` is accepted here exactly as the CLI accepts it,
     # rather than only `https://example.com`.
@@ -482,6 +527,9 @@ def audit_worker_for(source: str, *, target: str, depth: int, max_pages: int,
                        max_pages=max_pages, settings=settings,
                        site_controls=site_controls, within=within,
                        web_parts=web_parts, no_session=no_session,
+                       crawl=crawl, session_host=session_host,
+                       session_values=session_values,
+                       cancellation=cancellation,
                        parent=parent), ""
 
 

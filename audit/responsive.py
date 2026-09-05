@@ -131,9 +131,15 @@ def audit_responsive(url: str, breakpoints=None,
             replace(options, viewport=(sizes[0][1], sizes[0][2])))
     try:
         results = {}
-        for name, width, height in sizes:
+        responsive_options = replace(options, run_htmlcs=False,
+                                     capture_html=False)
+        for index, (name, width, height) in enumerate(sizes):
             runner.set_viewport(width, height)
-            results[name] = runner.audit(url)
+            # One navigation, several layouts. HTML_CodeSniffer and the DOM
+            # capture are invariant for this snapshot, so subsequent widths
+            # run only probes that may change with the viewport.
+            results[name] = (runner.audit(url) if index == 0
+                             else runner.audit_loaded(url, responsive_options))
         return merge(results)
     finally:
         if own_runner:

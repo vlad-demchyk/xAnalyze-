@@ -26,7 +26,10 @@ class TheBrowserMergeHasOneOwner(unittest.TestCase):
         for module in (auditpass, main_window):
             source = inspect.getsource(module)
             with self.subTest(module=module.__name__):
-                self.assertIn("merge_into_document", source)
+                self.assertIn("merge_page_audit", source)
+                # The lower-level merge and partial-failure bookkeeping now
+                # live behind the same public owner for both surfaces.
+                self.assertNotIn("merge_into_document(", source)
                 # Not the two calls open-coded a second time.
                 self.assertNotIn("settle_image_loading(", source)
 

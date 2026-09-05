@@ -523,6 +523,33 @@ def merge_into_document(document, page_audit) -> None:
         markup=getattr(page_audit, "html", "") or "")
 
 
+def merge_page_audit(result, document, page_audit) -> bool:
+    """Record browser failures and merge a complete answer in one place.
+
+    Returns true when findings were merged. A page failure leaves the static
+    findings intact but is recorded as partial evidence on the whole result;
+    an engine failure records the same fact while preserving the engines that
+    did answer.
+    """
+    errors = getattr(result, "browser_errors", None)
+    if errors is None:
+        errors = []
+        result.browser_errors = errors
+    if page_audit.error:
+        item = {"source": document.source, "engine": "browser",
+                "error": str(page_audit.error)}
+        if item not in errors:
+            errors.append(item)
+        return False
+    for engine, message in page_audit.engine_errors.items():
+        item = {"source": document.source, "engine": str(engine),
+                "error": str(message)}
+        if item not in errors:
+            errors.append(item)
+    merge_into_document(document, page_audit)
+    return True
+
+
 def settle_image_loading(issues: list, measurements: dict) -> list:
     """Drop `perf-image-loading` findings the browser shows to be visible.
 

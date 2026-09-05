@@ -40,6 +40,7 @@ UNREACHABLE = "unreachable"
 RENDER_FAILED = "render_failed"
 TRUNCATED = "truncated"
 MEDIA_UNCHECKED = "media_unchecked"
+BROWSER_INCOMPLETE = "browser_incomplete"
 #: What was audited was the door, not the site. Not a failure of the run and
 #: not a finding about the page: it is the reason the findings in the report
 #: are about a login form. See `audit.authwall`.
@@ -195,15 +196,29 @@ def diagnose_audit(result) -> list:
     checks must not do: the value of a provenance reader is entirely in the
     difference between "looked and found nothing" and "did not look".
     """
+    out = []
     scan = getattr(result, "media", None)
-    if scan is None or not getattr(scan, "unchecked", 0):
-        return []
-    return [Diagnosis(
-        MEDIA_UNCHECKED,
-        fields={"unchecked": scan.unchecked, "checked": scan.checked,
-                "found": scan.found},
-        evidence_key="diagnosis_media_unchecked_evidence",
-        actions=())]
+    if scan is not None and getattr(scan, "unchecked", 0):
+        out.append(Diagnosis(
+            MEDIA_UNCHECKED,
+            fields={"unchecked": scan.unchecked, "checked": scan.checked,
+                    "found": scan.found},
+            evidence_key="diagnosis_media_unchecked_evidence",
+            actions=()))
+
+    failures = list(getattr(result, "browser_errors", ()) or ())
+    if failures:
+        named = failures[:_NAMED]
+        evidence = "; ".join(
+            f"{item.get('source', '?')} · {item.get('engine', 'browser')}: "
+            f"{item.get('error', '?')}" for item in named)
+        if len(failures) > len(named):
+            evidence += f"; +{len(failures) - len(named)}"
+        out.append(Diagnosis(
+            BROWSER_INCOMPLETE,
+            fields={"count": len(failures)}, evidence=evidence,
+            actions=(RETRY,)))
+    return out
 
 
 def diagnose_auth_wall(result) -> list:

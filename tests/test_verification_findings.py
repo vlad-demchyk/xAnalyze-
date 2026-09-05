@@ -128,7 +128,7 @@ class TheBrowserPassRepaints(unittest.TestCase):
         """The merge happens after the list was built. Without a repaint the
         window shows the static pass and calls it the audit."""
         source = inspect.getsource(MainWindow._run_browser_pass)
-        merge = source.index("merge_into_document")
+        merge = source.index("merge_page_audit")
         for call in ("_populate_audit_list()", "_refresh_summary()"):
             with self.subTest(call=call):
                 self.assertIn(call, source)

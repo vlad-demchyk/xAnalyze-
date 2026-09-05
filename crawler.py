@@ -417,7 +417,7 @@ def page_from_html(html: str, url: str, depth: int = 0) -> PageResult:
 
 
 def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
-          render=None, walk=None) -> list[PageResult]:
+          render=None, walk=None, cancelled=None) -> list[PageResult]:
     """Breadth-first crawl starting at root_url up to config.max_depth hops.
 
     progress_cb, if given, is called as progress_cb(url, depth) right before
@@ -442,6 +442,11 @@ def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
     a parameter of that name is shadowed by the first iteration. It was, and
     the end-of-crawl numbers went onto the last page's diagnostics instead -
     silently, because both objects take an attribute assignment happily.
+
+    cancelled, when supplied, is a zero-argument callable checked between
+    pages, network responses and browser renders. It cannot interrupt a
+    socket inside `requests`, but it prevents the next expensive unit from
+    starting and gives every UI surface one cooperative stop contract.
     """
     config = config or CrawlConfig()
     root_url = _normalize(root_url)
@@ -469,7 +474,8 @@ def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
     #: ceiling. 0 (unlimited pages) keeps no ceiling either.
     fetch_ceiling = config.max_pages * 3 if config.max_pages else 0
 
-    while queue and (config.max_pages == 0 or pages_read < config.max_pages) \
+    while queue and not (cancelled and cancelled()) \
+            and (config.max_pages == 0 or pages_read < config.max_pages) \
             and (fetch_ceiling == 0 or len(results) < fetch_ceiling):
         url, depth = queue.popleft()
         if url in visited:
@@ -482,6 +488,8 @@ def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
         diagnostics = PageDiagnostics()
         try:
             resp = session.get(url, timeout=config.timeout)
+            if cancelled and cancelled():
+                break
             diagnostics.status_code = resp.status_code
             diagnostics.final_url = resp.url
             diagnostics.content_type = resp.headers.get("Content-Type", "")
@@ -533,7 +541,8 @@ def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
         # The page was read as it arrived. If that reading is empty because the
         # copy is written by JavaScript, the browser is the only reader that can
         # answer - and the fetch already said so.
-        if render is not None and _should_render(config.render_mode, diagnostics):
+        if (render is not None and not (cancelled and cancelled())
+                and _should_render(config.render_mode, diagnostics)):
             rendered = ""
             try:
                 import signal
@@ -558,6 +567,9 @@ def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
                 diagnostics.reasons = [RENDERED]
                 blocks = _extract_text_blocks(html, url, diagnostics)
                 _diagnose(diagnostics, url, html, blocks)
+
+        if cancelled and cancelled():
+            break
 
         # Read once, at every depth. This used to happen only below the
         # depth ceiling, because the walk was the only reader; the audit now

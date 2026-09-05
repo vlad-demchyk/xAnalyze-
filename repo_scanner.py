@@ -1329,7 +1329,8 @@ def scan_file(path: str, scope: str = SCOPE_CONTENT) -> FileResult:
 
 
 def scan_repo(root_dir: str, config: ScanConfig | None = None, progress_cb=None,
-              diagnostics: ScanDiagnostics | None = None) -> list[FileResult]:
+              diagnostics: ScanDiagnostics | None = None,
+              cancelled=None) -> list[FileResult]:
     """Walk root_dir, skip anything matched by config.ignore_patterns, and
     extract tag-embedded text from every file with a matching extension.
 
@@ -1354,6 +1355,8 @@ def scan_repo(root_dir: str, config: ScanConfig | None = None, progress_cb=None,
         diagnostics.skipped_ignored += 1
 
     for path in iter_unignored_paths(root, matcher, count_ignored):
+        if cancelled and cancelled():
+            break
         if len(results) >= config.max_files:
             # Recorded, then stopped. A bare `break` here is what made a
             # partial answer look like a complete one.

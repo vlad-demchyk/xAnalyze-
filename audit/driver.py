@@ -180,7 +180,7 @@ class BrowserAuditRunner:
     """
 
     def __init__(self, options: browser.BrowserAuditOptions | None = None,
-                 profile=None):
+                 profile=None, cancelled=None):
         self.options = options or browser.BrowserAuditOptions()
         self._profile = profile
         self._page = None
@@ -191,6 +191,7 @@ class BrowserAuditRunner:
         #: three identical mobile-shaped answers and look like it worked.
         self._view = None
         self._viewport = self.options.viewport
+        self._cancelled = cancelled or (lambda: False)
 
     # ------------------------------------------------------------- lifecycle
 
@@ -293,6 +294,23 @@ class BrowserAuditRunner:
 
     def audit(self, url: str) -> PageAudit:
         """Load one page, run every enabled pass, and return the findings."""
+        return self._audit(url, load=True, options=self.options)
+
+    def audit_loaded(self, url: str,
+                     options: browser.BrowserAuditOptions | None = None) -> PageAudit:
+        """Audit the page already loaded after a viewport change.
+
+        Responsive checks need a new layout, not a new navigation. Keeping
+        those two operations separate is what makes four widths one browser
+        snapshot rather than four unrelated responses from a dynamic site.
+        """
+        if self._page is None:
+            return PageAudit(url=url, error="no page is loaded")
+        return self._audit(url, load=False, options=options or self.options)
+
+    def _audit(self, url: str, *, load: bool,
+               options: browser.BrowserAuditOptions) -> PageAudit:
+        """Run one browser probe, navigating only when `load` is true."""
         from PySide6.QtCore import QEventLoop, QTimer, QUrl
 
         usable, reason = available()
@@ -302,7 +320,7 @@ class BrowserAuditRunner:
         page = self._get_page()
         result = PageAudit(url=url)
         loop = QEventLoop()
-        state = {"loaded": None, "finished": False}
+        state = {"loaded": None if load else True, "finished": False}
 
         def finish():
             if not state["finished"]:
@@ -317,21 +335,23 @@ class BrowserAuditRunner:
                 return
             # The settle wait is the difference between auditing the site and
             # auditing its loading skeleton.
-            QTimer.singleShot(self.options.settle_ms, run_scripts)
+            QTimer.singleShot(options.settle_ms, run_scripts)
 
         payloads: dict = {}
         #: Active `_Slot`s, kept alive against garbage collection. See
         #: `next_script` below for why this cannot be a local in the loop.
         live: list = []
         pending = [name for name, enabled in (
-            ("axe", self.options.run_axe and browser.engines_available()["axe"]),
-            ("htmlcs", self.options.run_htmlcs and browser.engines_available()["htmlcs"]),
-            ("measurements", self.options.run_measurements),
-            ("states", self.options.run_states),
-            ("html", self.options.capture_html),
+            ("axe", options.run_axe and browser.engines_available()["axe"]),
+            ("htmlcs", options.run_htmlcs and browser.engines_available()["htmlcs"]),
+            ("measurements", options.run_measurements),
+            ("states", options.run_states),
+            ("html", options.capture_html),
         ) if enabled]
 
         def on_script_done(name: str, value):
+            if state["finished"]:
+                return
             if value is None:
                 result.engine_errors[name] = f"timed out after {SCRIPT_TIMEOUT_MS // 1000}s"
             else:
@@ -346,7 +366,7 @@ class BrowserAuditRunner:
                 finish()
                 return
             scripts = {
-                "axe": lambda: browser.axe_script(self.options),
+                "axe": lambda: browser.axe_script(options),
                 "htmlcs": browser.htmlcs_script,
                 "measurements": lambda: browser.MEASUREMENT_SCRIPT,
                 "states": states.state_script,
@@ -358,7 +378,7 @@ class BrowserAuditRunner:
             queue = list(pending)
 
             def next_script(*_args):
-                if not queue:
+                if state["finished"] or not queue:
                     return
                 name = queue.pop(0)
                 slot = _Slot(page, name, scripts[name](),
@@ -374,25 +394,46 @@ class BrowserAuditRunner:
 
             next_script()
 
-        page.loadFinished.connect(on_load)
-        QTimer.singleShot(LOAD_TIMEOUT_MS, lambda: (
-            result.error or setattr(result, "error", "the page did not finish loading in time"),
-            finish(),
-        ) if state["loaded"] is None else None)
+        cancel_timer = QTimer()
+        cancel_timer.setInterval(50)
 
-        page.setUrl(QUrl(url))
+        def stop_if_cancelled():
+            if not self._cancelled():
+                return
+            result.error = "cancelled"
+            try:
+                page.triggerAction(page.WebAction.Stop)
+            except (AttributeError, RuntimeError):
+                pass
+            finish()
+
+        cancel_timer.timeout.connect(stop_if_cancelled)
+        cancel_timer.start()
+
+        if load:
+            page.loadFinished.connect(on_load)
+            QTimer.singleShot(LOAD_TIMEOUT_MS, lambda: (
+                result.error or setattr(
+                    result, "error", "the page did not finish loading in time"),
+                finish(),
+            ) if state["loaded"] is None else None)
+            page.setUrl(QUrl(url))
+        else:
+            QTimer.singleShot(options.settle_ms, run_scripts)
         loop.exec()
-        try:
-            page.loadFinished.disconnect(on_load)
-        except (RuntimeError, TypeError):
-            pass
+        cancel_timer.stop()
+        if load:
+            try:
+                page.loadFinished.disconnect(on_load)
+            except (RuntimeError, TypeError):
+                pass
 
         if result.error:
             return result
 
         issues = []
         if "axe" in payloads:
-            issues += browser.issues_from_axe(payloads["axe"], url, self.options.disabled_rules)
+            issues += browser.issues_from_axe(payloads["axe"], url, options.disabled_rules)
         if "htmlcs" in payloads:
             issues += browser.issues_from_htmlcs(payloads["htmlcs"], url)
         if "measurements" in payloads:

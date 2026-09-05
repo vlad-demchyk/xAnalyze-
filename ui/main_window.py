@@ -872,8 +872,23 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         if first is not None:
             address = _browser_url(first.source)
             self.current_preview_url = address
-            self.site_view.setUrl(QUrl(address))
-            self.mirror_preview_to_comparison(QUrl(address))
+            # The run already owns this revision. Loading its URL again just
+            # to paint the preview made an honest two-pass analysis issue a
+            # third page request, and the preview could then show a newer
+            # revision than the findings beside it. Use the captured
+            # extraction when it fits Qt's setHtml limit; very large pages
+            # retain the normal navigation fallback.
+            snapshot = self.view_model._snapshot
+            preview = next(
+                (page.raw_html for page in (snapshot.pages if snapshot else ())
+                 if page.url in (first.source, address) and page.raw_html), "")
+            if preview and len(preview.encode("utf-8")) < 1_800_000:
+                self.site_view.setHtml(preview, QUrl(address))
+                self.mirror_preview_to_comparison(html=preview,
+                                                  base=QUrl(address))
+            else:
+                self.site_view.setUrl(QUrl(address))
+                self.mirror_preview_to_comparison(QUrl(address))
         self._update_audit_buttons_enabled()
         self.diagnose_finished_run()
         self._refresh_summary()
@@ -3322,12 +3337,33 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         from audit import browser as browser_mod
         from audit import driver
 
+        result = self.view_model.audit_result
+        if result is None:
+            return
+
         usable, reason = driver.available()
         if not usable:
             QMessageBox.information(self, t("browser_pass_label", self.lang), reason)
             return
 
-        targets = [d for d in self.audit_result.documents if not d.error]
+        from cli_impl.auditpass import _is_renderable
+
+        targets = []
+        seen_sources = set()
+        snapshot = self.view_model._snapshot
+        acquired_sources = {
+            getattr(page, "url", "")
+            for page in (snapshot.pages if snapshot else ())
+            if getattr(page, "url", "")
+        }
+        for document in result.documents:
+            if (document.error or document.source in seen_sources
+                    or not _is_renderable(document.source)
+                    or (self.source == SOURCE_SITE and acquired_sources
+                        and document.source not in acquired_sources)):
+                continue
+            targets.append(document)
+            seen_sources.add(document.source)
         if not targets:
             return
 
@@ -3338,6 +3374,11 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             # Only a file the user picked themselves may read its neighbours
             # on disk; a page off the network never may.
             allow_local_files=self.mode == MODE_FILE,
+            # The browser reader and audit are one Chromium pass. Its first
+            # viewport returns the rendered DOM for our own rules and, when
+            # requested, copy analysis. The remaining viewports only rerun
+            # responsive probes; serialising the DOM does not navigate again.
+            capture_html=True,
         )
         # Every width, not just the one this screen happens to be: the point
         # of asking a browser at all is to see what a visitor sees, and a
@@ -3356,10 +3397,16 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         # of an unchanged page, with identical findings.
         import browser_cache
 
-        served = getattr(self.audit_result, "markup_by_source", None) or {}
+        served = getattr(result, "markup_by_source", None) or {}
         cache = browser_cache.BrowserCache(options, sizes) if served else None
+        profile = (driver.session_profile(self.view_model.session_host)
+                   if not self.app_state.no_session else None)
         runner = driver.BrowserAuditRunner(
-            replace(options, viewport=(sizes[0][1], sizes[0][2])))
+            replace(options, viewport=(sizes[0][1], sizes[0][2])),
+            profile=profile,
+            cancelled=lambda: self.view_model.cancellation_requested)
+        rendered_by_source = {}
+        page_audits = []
         try:
             for document in targets:
                 self.status_bar.showMessage(t("status_browser_pass_widths",
@@ -3372,19 +3419,29 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
                     page_audit = responsive.audit_responsive(
                         _browser_url(document.source), sizes, options,
                         runner=runner)
-                    if cache is not None and markup and not page_audit.error:
+                    if (cache is not None and markup and not page_audit.error
+                            and not page_audit.engine_errors):
                         cache.put(markup, page_audit)
-                if page_audit.error:
-                    continue
-                # The same merge the CLI uses, not a second copy of it.
-                # The copy that used to be here did not settle
-                # `perf-image-loading`, so a page audited from the window
-                # kept a finding the browser had disproved.
-                browser_mod.merge_into_document(document, page_audit)
+                page_audits.append((document.source, page_audit))
+                if page_audit.html:
+                    rendered_by_source[document.source] = page_audit.html
+                if self.view_model.cancellation_requested:
+                    break
         finally:
             runner.close()
             if cache is not None:
                 cache.save()
+
+        self.view_model.remember_browser_html(rendered_by_source)
+        # Refreshing the static result must happen first. Browser measurements
+        # can disprove a static loading warning, and merging before the
+        # refresh would let that warning be created again afterwards.
+        for source, page_audit in page_audits:
+            document = next(
+                (item for item in result.documents
+                 if item.source == source and not item.error), None)
+            if document is not None:
+                browser_mod.merge_page_audit(result, document, page_audit)
 
         # Repaint, or the pass was invisible. The findings are merged into
         # the documents above and the list on screen was built before that,
@@ -3393,10 +3450,15 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         # result - axe, HTML_CodeSniffer, the state pass and every load
         # measurement, all present and none of them displayed. The CLI never
         # had it because it prints after the merge.
-        self._populate_audit_list()
-        self._refresh_summary()
-        self._update_audit_buttons_enabled()
-        self.status_bar.showMessage(t("status_idle", self.lang))
+        # The ViewModel emits the completed audit after this synchronous
+        # continuation returns. Direct legacy callers already own the result
+        # on the window and still need an immediate repaint.
+        if self.audit_result is result:
+            self._populate_audit_list()
+            self._refresh_summary()
+            self._update_audit_buttons_enabled()
+            self.diagnose_finished_run()
+            self.status_bar.showMessage(t("status_idle", self.lang))
 
 
     def _repo_scope(self) -> str:

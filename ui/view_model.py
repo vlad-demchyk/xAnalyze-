@@ -19,17 +19,12 @@ from PySide6.QtCore import QObject, Signal
 import config
 import suppression
 from analysis_modes import (
-    CHECK_ACCESSIBILITY,
-    CHECK_AI_PATTERNS,
-    METHOD_AI,
-    METHOD_EMBEDDING,
-    METHOD_LOCAL,
-    READER_BROWSER,
-    READER_CODE,
     SOURCE_FILE,
     SOURCE_REPO,
     SOURCE_SITE,
     AnalysisRequest,
+    ExtractionSnapshot,
+    RunContext,
 )
 from detectors.factory import DetectorFactory
 from detectors.judges import judge_for_provider
@@ -37,10 +32,8 @@ from models import AnalysisResult, RepoAnalysisResult, TextSpan
 from ui.app_state import AppState
 from ui.worker import (
     AnalysisWorker,
-    AuditWorker,
     RepoAnalysisWorker,
     RewriteAllWorker,
-    SingleBlockWorker,
     SingleRewriteWorker,
 )
 
@@ -104,12 +97,14 @@ class MainViewModel(QObject):
         self._rewrite_worker: RewriteAllWorker | None = None
         self._active_workers: list = []
 
-        # Extraction cache
+        # One run, one acquisition snapshot. Compatibility properties below
+        # expose the old cache names to the window while this is the owner.
         self._last_request: AnalysisRequest | None = None
-        self._extraction_request: AnalysisRequest | None = None
-        self._cached_pages = None
-        self._cached_files = None
-        self._cached_scope = None
+        self._run_context: RunContext | None = None
+        self._snapshot: ExtractionSnapshot | None = None
+        self._acquired_crawl = None
+        self._acquired_session_host = ""
+        self._acquired_session_values = 0
 
         # Repo config. The person's own list; what the *run* uses is
         # `effective_ignore_patterns`, which adds what the detected stack
@@ -131,6 +126,30 @@ class MainViewModel(QObject):
     @property
     def mode(self) -> str:
         return self.state.mode
+
+    @property
+    def _extraction_request(self):
+        return self._snapshot.request if self._snapshot is not None else None
+
+    @property
+    def _cached_pages(self):
+        return list(self._snapshot.pages) if self._snapshot and self._snapshot.pages else None
+
+    @property
+    def _cached_files(self):
+        return list(self._snapshot.files) if self._snapshot and self._snapshot.files else None
+
+    @property
+    def _cached_scope(self):
+        return self._snapshot.scope if self._snapshot is not None else None
+
+    @property
+    def cancellation_requested(self) -> bool:
+        return bool(self._run_context and self._run_context.cancellation.cancelled)
+
+    @property
+    def session_host(self) -> str:
+        return self._snapshot.session_host if self._snapshot is not None else ""
 
     # -- request building --------------------------------------------------
     def current_request(self) -> AnalysisRequest:
@@ -164,34 +183,57 @@ class MainViewModel(QObject):
         self.state.set_ai_available(self._ai_available())
 
     # -- extraction cache --------------------------------------------------
+    def _reusable_snapshot(self, *, scope: str | None = None):
+        request = self.current_request()
+        snapshot = self._snapshot
+        if snapshot and snapshot.reusable_for(request, scope=scope):
+            return snapshot
+        return None
+
     def _reusable_pages(self):
         request = self.current_request()
-        if self._cached_pages and request.reuses_extraction(self._extraction_request):
-            return self._cached_pages
+        snapshot = self._reusable_snapshot()
+        if snapshot is not None and snapshot.pages:
+            return snapshot.pages_for(request)
         return None
 
     def _reusable_files(self):
-        request = self.current_request()
         scope = self._repo_scope()
-        if (self._cached_files
-                and self._cached_scope == scope
-                and request.reuses_extraction(self._extraction_request)):
-            return self._cached_files
+        snapshot = self._reusable_snapshot(scope=scope)
+        if snapshot is not None and snapshot.files:
+            return list(snapshot.files)
         return None
 
-    def _remember_extraction(self, request, *, pages=None, files=None, scope=None):
-        self._extraction_request = request
-        if pages is not None:
-            self._cached_pages = pages
-        if files is not None:
-            self._cached_files = files
-            self._cached_scope = scope
+    def _remember_extraction(self, request, *, pages=None, files=None, scope=None,
+                             crawl=None, scan=None, session_host=None,
+                             session_values=None):
+        if request is None:
+            return None
+        if self._run_context is None or self._run_context.request != request:
+            self._run_context = RunContext(request=request)
+        evidence = {}
+        for name, value in (("pages", pages), ("files", files),
+                            ("scope", scope), ("crawl", crawl), ("scan", scan),
+                            ("session_host", session_host),
+                            ("session_values", session_values)):
+            if value is not None:
+                evidence[name] = value
+        self._snapshot = self._run_context.remember(**evidence)
+        return self._snapshot
 
     def forget_extraction(self):
-        self._extraction_request = None
-        self._cached_pages = None
-        self._cached_files = None
-        self._cached_scope = None
+        self._snapshot = None
+        if self._run_context is not None:
+            self._run_context.snapshot = None
+
+    def _begin_run(self, request: AnalysisRequest) -> RunContext:
+        """Start a fresh user run; reuse is only inside this context."""
+        self._run_context = RunContext(request=request)
+        self._snapshot = None
+        self._acquired_crawl = None
+        self._acquired_session_host = ""
+        self._acquired_session_values = 0
+        return self._run_context
 
     def _repo_scope(self) -> str:
         return self.state.scope
@@ -250,18 +292,19 @@ class MainViewModel(QObject):
             self.status_message.emit(self._note_message(note))
 
         self._last_request = request
+        self._begin_run(request)
 
-        # Browser reading must happen on the main thread
-        if request.wants_browser and self._reusable_pages() is None:
-            pages = self._render_for_request(request)
-            if request.source in (SOURCE_SITE, SOURCE_FILE):
-                if pages is None:
-                    return "browser_failed"
-                self._remember_extraction(request, pages=pages)
-
-        self._pending_copy_pass = (request.wants_accessibility
-                                   and request.wants_ai_patterns)
-        if request.wants_accessibility:
+        # A browser reader still starts with the static acquisition worker.
+        # Network I/O must not happen on the GUI thread, and the later
+        # browser audit already loads each page in Chromium. That one load
+        # captures the rendered DOM for the copy pass, so there is no hidden
+        # pre-render crawl and no third reading of the same revision.
+        browser_copy = (request.wants_browser and request.wants_ai_patterns
+                        and request.source in (SOURCE_SITE, SOURCE_FILE))
+        self._pending_copy_pass = (request.wants_ai_patterns
+                                   and (request.wants_accessibility
+                                        or browser_copy))
+        if request.wants_accessibility or browser_copy:
             self._start_audit()
         else:
             self._start_copy_pass()
@@ -288,7 +331,6 @@ class MainViewModel(QObject):
     def _render_for_request(self, request: AnalysisRequest):
         """Browser rendering - must be called from the main thread."""
         from audit import driver
-        from crawler import RENDER_AUTO, CrawlConfig, crawl, page_from_html
 
         usable, reason = driver.available()
         if not usable:
@@ -302,8 +344,10 @@ class MainViewModel(QObject):
         return None
 
     def _render_crawl(self, url: str):
+        import site_session
         from audit import driver
         from crawler import RENDER_AUTO, CrawlConfig, crawl
+        from models import CrawlDiagnostics
 
         usable, reason = driver.available()
         if not usable:
@@ -313,6 +357,12 @@ class MainViewModel(QObject):
         cfg = CrawlConfig(max_depth=self.state.depth,
                           max_pages=self.settings.max_pages,
                           render_mode=RENDER_AUTO)
+        walk = CrawlDiagnostics()
+        session_host, session_values = "", 0
+        if not self.state.no_session:
+            session_host, session_values = site_session.apply_to(cfg, url)
+        self._acquired_session_host = session_host
+        self._acquired_session_values = session_values
 
         def progress(page_url: str, _depth: int) -> None:
             from i18n.translations import t
@@ -320,8 +370,13 @@ class MainViewModel(QObject):
                 t("status_browser_pass", self.settings.ui_language, url=page_url))
 
         try:
-            with driver.html_renderer() as render:
-                return crawl(url, cfg, progress_cb=progress, render=render)
+            with driver.html_renderer(session_host=session_host) as render:
+                pages = crawl(url, cfg, progress_cb=progress, render=render,
+                              walk=walk,
+                              cancelled=self._run_context.cancellation
+                              if self._run_context else None)
+                self._acquired_crawl = walk
+                return pages
         except Exception as exc:
             self.error.emit(str(exc))
             return None
@@ -342,8 +397,16 @@ class MainViewModel(QObject):
         from i18n.translations import t
         self.status_message.emit(
             t("status_browser_pass", self.settings.ui_language, url=address))
+        session_host, session_values = "", 0
+        if not self.state.no_session:
+            import site_session
+            from crawler import CrawlConfig
+            cfg = CrawlConfig(max_depth=0, max_pages=1)
+            session_host, session_values = site_session.apply_to(cfg, address)
+        self._acquired_session_host = session_host
+        self._acquired_session_values = session_values
         try:
-            with driver.html_renderer() as render:
+            with driver.html_renderer(session_host=session_host) as render:
                 html = render(address) or ""
         except Exception as exc:
             self.error.emit(str(exc))
@@ -376,6 +439,7 @@ class MainViewModel(QObject):
 
         detector_name, detector_config = self._detector_for_request()
         reused = self._reusable_pages()
+        snapshot = self._reusable_snapshot()
         if reused is not None:
             from i18n.translations import t
             self.status_message.emit(
@@ -396,6 +460,10 @@ class MainViewModel(QObject):
             paired_repo=self.state.paired_repo,
             paired_ignore=self.effective_ignore_patterns,
             no_session=self.state.no_session,
+            crawl=snapshot.crawl if snapshot is not None else None,
+            session_host=snapshot.session_host if snapshot is not None else "",
+            session_values=snapshot.session_values if snapshot is not None else 0,
+            cancellation=self._run_context.cancellation if self._run_context else None,
         )
         self._wire_worker(self._worker,
                           on_finished=self._on_web_finished)
@@ -422,6 +490,8 @@ class MainViewModel(QObject):
             unicode_categories=self._active_unicode_categories(),
             scope=self._repo_scope(),
             settings=self.settings,
+            diagnostics=(self._snapshot.scan if self._snapshot is not None else None),
+            cancellation=self._run_context.cancellation if self._run_context else None,
         )
         self._wire_worker(self._worker,
                           on_finished=self._on_repo_finished)
@@ -460,6 +530,12 @@ class MainViewModel(QObject):
             within=self.state.within,
             web_parts=self._web_parts_for_run(),
             no_session=self.state.no_session,
+            crawl=(self._snapshot.crawl if self._snapshot is not None else None),
+            session_host=(self._snapshot.session_host
+                          if self._snapshot is not None else ""),
+            session_values=(self._snapshot.session_values
+                            if self._snapshot is not None else 0),
+            cancellation=self._run_context.cancellation if self._run_context else None,
         )
         if worker is None:
             self.error.emit(self._missing_target_message() if refusal == "no_target"
@@ -492,7 +568,11 @@ class MainViewModel(QObject):
             return ()
 
     def cancel(self):
+        if self._run_context is not None:
+            self._run_context.cancellation.cancel()
         if self._worker is not None:
+            if hasattr(self._worker, "cancel"):
+                self._worker.cancel()
             self._worker.requestInterruption()
 
     # -- worker management -------------------------------------------------
@@ -507,10 +587,23 @@ class MainViewModel(QObject):
             worker.auditing.connect(self.auditing)
         worker.finished_ok.connect(on_finished)
         worker.failed.connect(self._on_failed)
-        worker.finished.connect(self._on_worker_finished)
+        worker.finished.connect(
+            lambda finished_worker=worker:
+                self._on_worker_finished(finished_worker))
         self._active_workers.append(worker)
 
-    def _on_worker_finished(self):
+    def _on_worker_finished(self, finished_worker=None):
+        """Release only the worker that actually ended.
+
+        A two-pass run starts the copy worker from the audit worker's result
+        callback. Qt emits the old worker's `finished` afterwards; clearing
+        `self._worker` there discarded the new worker, made Cancel miss it and
+        told the window the run was idle halfway through.
+        """
+        if finished_worker in self._active_workers:
+            self._active_workers.remove(finished_worker)
+        if finished_worker is not None and self._worker is not finished_worker:
+            return
         self._worker = None
         self.busy_changed.emit(False)
         self.buttons_changed.emit()
@@ -528,7 +621,9 @@ class MainViewModel(QObject):
         else:
             self.result = result
             self._remember_extraction(self._last_request,
-                                      pages=result.pages)
+                                      pages=result.pages, crawl=result.crawl,
+                                      session_host=getattr(self._worker, "session_host", ""),
+                                      session_values=getattr(self._worker, "session_values", 0))
             self.web_result_ready.emit(result)
 
     def _report_session(self, worker=None) -> None:
@@ -572,7 +667,8 @@ class MainViewModel(QObject):
         self.result = result
         self._remember_extraction(self._last_request,
                                   files=result.files,
-                                  scope=self._repo_scope())
+                                  scope=self._repo_scope(),
+                                  scan=result.diagnostics)
         if self._file_both_passes:
             # Code analysis done, now run browser analysis on the rendered DOM
             self._file_both_passes = False
@@ -582,13 +678,169 @@ class MainViewModel(QObject):
 
     def _on_audit_finished(self, result):
         self._report_session()
+        worker = self._worker
+        if self.state.source == SOURCE_SITE:
+            pages = getattr(worker, "acquired_pages", None)
+            if pages is not None:
+                self._remember_extraction(
+                    self._last_request, pages=pages,
+                    crawl=getattr(worker, "crawl", None),
+                    session_host=getattr(worker, "session_host", ""),
+                    session_values=getattr(worker, "session_values", 0))
+        elif self.state.source == SOURCE_REPO:
+            files = getattr(worker, "acquired_files", None)
+            if files is not None:
+                self._remember_extraction(
+                    self._last_request, files=files, scope=self._repo_scope(),
+                    scan=getattr(worker, "scan_diagnostics", None))
         self.audit_result = result
-        self.audit_result_ready.emit(result)
         if self._last_request and self._last_request.wants_browser:
             self.browser_pass_needed.emit()
+        if self.cancellation_requested:
+            self._pending_copy_pass = False
+            return
+        # The browser signal is a direct main-thread continuation. Emit the
+        # public result only after it has merged the browser answer, so the
+        # window never paints a knowingly incomplete intermediate report.
+        if self._last_request and self._last_request.wants_accessibility:
+            self.audit_result_ready.emit(result)
         if self._pending_copy_pass:
             self._pending_copy_pass = False
             self._start_copy_pass()
+
+    def remember_browser_html(self, rendered_by_source: dict[str, str]) -> None:
+        """Make the one Chromium load the run's authoritative DOM snapshot.
+
+        Copy analysis and the static rule registry receive the DOM produced
+        from that same run, with the original crawl depths and HTTP evidence
+        retained. Neither consumer touches the network again.
+        """
+        if not rendered_by_source or self._last_request is None:
+            return
+        from dataclasses import replace
+
+        from crawler import page_from_html
+
+        old_pages = list(self._snapshot.pages) if self._snapshot else []
+        old_by_source = {page.url: page for page in old_pages}
+        replacements = {}
+        for source, html in rendered_by_source.items():
+            if not html:
+                continue
+            address = _browser_url(source)
+            old = old_by_source.get(source, old_by_source.get(address))
+            page = page_from_html(html, address, old.depth if old else 0)
+            if old is not None:
+                # Rendering changes the DOM evidence, not what the HTTP
+                # response said. Headers, status and redirect provenance are
+                # still needed by security, crawlability and auth-wall rules.
+                previous = old.diagnostics
+                page.diagnostics = replace(
+                    page.diagnostics,
+                    status_code=previous.status_code,
+                    content_type=previous.content_type,
+                    final_url=previous.final_url or address,
+                    render_error=previous.render_error,
+                    headers=dict(previous.headers or {}),
+                )
+            replacements[source] = page
+            replacements[address] = page
+
+        # A browser failure on one page must not make that page disappear
+        # from the snapshot. Replace only pages for which Chromium returned a
+        # DOM, keeping crawl order and every untouched error/result.
+        pages = []
+        used = set()
+        for old in old_pages:
+            page = replacements.get(old.url, old)
+            pages.append(page)
+            used.add(id(page))
+        for page in replacements.values():
+            if id(page) not in used:
+                pages.append(page)
+                used.add(id(page))
+        if pages:
+            self._remember_extraction(self._last_request, pages=pages)
+            self._refresh_site_audit_from_snapshot()
+
+    def _refresh_site_audit_from_snapshot(self) -> None:
+        """Re-run network-free audit stages against the rendered DOM.
+
+        The acquisition worker first audits the server response so it can
+        hand the browser a bounded target list. Once Chromium has returned
+        the actual DOM, that DOM supersedes the response shell for our own
+        rules. HTTP diagnostics, media bytes and explicitly requested
+        robots/sitemap evidence are carried forward rather than fetched a
+        second time.
+        """
+        if (self.state.source != SOURCE_SITE or self.audit_result is None
+                or self._snapshot is None or not self._snapshot.pages):
+            return
+
+        import audit
+        from audit import browser as browser_mod
+        from audit.engine import DocumentReport, attribute_ownership
+
+        result = self.audit_result
+        browser_issues = [
+            issue for document in result.documents for issue in document.issues
+            if issue.engine in {"axe", "htmlcs", "browser"}
+        ]
+        external_issues = [
+            issue for document in result.documents for issue in document.issues
+            if issue.engine in {"robots.txt", "sitemap"}
+        ]
+
+        refreshed = audit.analyze_pages(
+            list(self._snapshot.pages), result.root,
+            media=False, site_controls=False,
+            within=self.state.within,
+            web_parts=self._web_parts_for_run(),
+        )
+
+        # Media already consumed its bounded network budget in the worker.
+        # Rebuild only its report objects from the retained scan result.
+        refreshed.media = result.media
+        if result.media is not None:
+            from audit import media as media_pass
+
+            refreshed.documents.extend(media_pass.as_web_documents(result.media))
+
+        if external_issues:
+            by_source = {}
+            for issue in external_issues:
+                by_source.setdefault(issue.source, []).append(issue)
+            refreshed.documents.extend(
+                DocumentReport(source=source, issues=issues,
+                               elements_checked=1)
+                for source, issues in by_source.items()
+            )
+
+        suppressions = suppression.Suppressions.load(self.settings, None)
+        for document in refreshed.documents:
+            document.issues = suppression.filter_issues(
+                document.issues, suppressions)
+
+        # Browser engines have already inspected this exact DOM. Put their
+        # evidence back onto the newly built primary page report and collapse
+        # agreements using the rendered markup as element identity evidence.
+        markup = refreshed.markup_by_source
+        for issue in browser_issues:
+            document = next(
+                (item for item in refreshed.documents
+                 if item.source == issue.source and not item.error), None)
+            if document is None:
+                document = DocumentReport(source=issue.source)
+                refreshed.documents.append(document)
+            document.issues = browser_mod.deduplicate(
+                [*document.issues, issue], markup.get(issue.source, ""))
+
+        refreshed.browser_errors = list(result.browser_errors)
+        attribute_ownership(refreshed)
+        for name in (
+                "root", "mode", "documents", "rules_run", "media", "repo",
+                "auth", "markup_sample", "markup_by_source", "browser_errors"):
+            setattr(result, name, getattr(refreshed, name))
 
     # -- rewrite actions ---------------------------------------------------
     def rewrite_all(self):
@@ -845,7 +1097,11 @@ class MainViewModel(QObject):
 
     # -- shutdown ----------------------------------------------------------
     def shutdown(self):
+        if self._run_context is not None:
+            self._run_context.cancellation.cancel()
         for w in self._active_workers:
             if w.isRunning():
+                if hasattr(w, "cancel"):
+                    w.cancel()
                 w.requestInterruption()
                 w.wait(2000)

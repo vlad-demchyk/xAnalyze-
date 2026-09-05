@@ -62,7 +62,7 @@ class _Form(unittest.TestCase):
                 # an `AttributeError` about the stub rather than about
                 # anything under test.
                 result = type("_R", (), {"error": None, "output": "",
-                                         "code": 0,
+                                         "code": 0, "exit_code": 0,
                                          "report_paths": lambda self: []})()
 
                 def new_lines(self):

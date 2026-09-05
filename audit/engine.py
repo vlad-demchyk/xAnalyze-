@@ -82,6 +82,10 @@ class AccessibilityResult:
     #: - a page changes - so the cache is keyed on the bytes rather than on
     #: the address. Dropped from every report and never serialised.
     markup_by_source: dict = field(default_factory=dict)
+    #: Browser pages or individual engines that did not complete. Kept on
+    #: the result so every surface can say the audit is partial instead of
+    #: silently presenting the static half as the whole answer.
+    browser_errors: list = field(default_factory=list)
 
     def issues(self) -> list:
         out = []
