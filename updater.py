@@ -16,9 +16,12 @@ so the check still runs but the update command says so and exits.
 """
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import sys
 import tarfile
@@ -27,16 +30,33 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.parse import urlparse
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 import config
 from cli_impl import EXIT_ERROR, EXIT_OK
+from update_trust import UPDATE_SIGNING_PUBLIC_KEYS
 
 # ------------------------------------------------------------------ config
 
 GITHUB_OWNER = "vlad-demchyk"
 GITHUB_REPO = "xAnalyze-"
 API_URL = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
+MANIFEST_ASSET = "xanalyze-update-manifest.json"
+SIGNATURE_ASSET = f"{MANIFEST_ASSET}.sig"
+
+# Exact hosts used by the GitHub API and release-asset redirects. A suffix
+# check would accept attacker-controlled names such as github.com.example.
+_TRUSTED_UPDATE_HOSTS = frozenset({
+    "api.github.com",
+    "github.com",
+    "objects.githubusercontent.com",
+    "release-assets.githubusercontent.com",
+})
+_MAX_MANIFEST_BYTES = 1024 * 1024
+_MAX_SIGNATURE_BYTES = 4096
+_MAX_ASSET_BYTES = 2 * 1024 * 1024 * 1024
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 
 #: How often the background check fires.  The timestamp lives in the
 #: config directory so it survives restarts but not manual deletion.
@@ -67,6 +87,20 @@ class ReleaseInfo:
     html_url: str
 
 
+@dataclass(frozen=True)
+class AssetIntegrity:
+    name: str
+    size: int
+    sha256: str
+
+
+@dataclass(frozen=True)
+class UpdateManifest:
+    release: str
+    assets: dict[str, AssetIntegrity]
+    signature_verified: bool
+
+
 # -------------------------------------------------------------- versioning
 
 def parse_version(v: str) -> tuple[int, ...]:
@@ -89,17 +123,55 @@ def newer(remote: str, local: str) -> bool:
 # ----------------------------------------------------------- GitHub fetch
 
 def _gh_headers() -> dict:
-    headers = {"Accept": "application/vnd.github+json"}
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2026-03-10",
+    }
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     if token:
         headers["Authorization"] = f"Bearer {token}"
     return headers
 
 
+def _require_trusted_url(url: str) -> str:
+    """Accept only the exact HTTPS origins used for GitHub releases."""
+    try:
+        parsed = urlparse(url)
+        port = parsed.port
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("invalid update URL") from exc
+    if (parsed.scheme.lower() != "https"
+            or parsed.username is not None or parsed.password is not None
+            or (parsed.hostname or "").lower() not in _TRUSTED_UPDATE_HOSTS
+            or port not in {None, 443}):
+        raise RuntimeError("untrusted update URL")
+    return url
+
+
+class _TrustedRedirectHandler(HTTPRedirectHandler):
+    """Reject a redirect before urllib connects to its target."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        _require_trusted_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _open_trusted(url: str, *, timeout: int):
+    _require_trusted_url(url)
+    request = Request(url, headers=_gh_headers())
+    response = build_opener(_TrustedRedirectHandler()).open(
+        request, timeout=timeout)
+    try:
+        _require_trusted_url(response.geturl())
+    except Exception:
+        response.close()
+        raise
+    return response
+
+
 def fetch_latest() -> ReleaseInfo:
     """GET the latest release from GitHub.  Raises on network / HTTP errors."""
-    req = Request(API_URL, headers=_gh_headers())
-    with urlopen(req, timeout=15) as resp:
+    with _open_trusted(API_URL, timeout=15) as resp:
         data = json.loads(resp.read())
     return ReleaseInfo(
         tag=data["tag_name"],
@@ -147,6 +219,121 @@ def find_gui_asset(release: ReleaseInfo) -> dict | None:
         if "app" in asset["name"].lower() and asset["name"].endswith(".zip"):
             return asset
     return None
+
+
+def _asset_named(release: ReleaseInfo, name: str) -> dict | None:
+    for asset in release.assets:
+        if asset.get("name") == name:
+            return asset
+    return None
+
+
+def _read_remote_asset(asset: dict, *, limit: int) -> bytes:
+    """Read a small release asset under a hard size and origin limit."""
+    url = asset.get("browser_download_url", "")
+    with _open_trusted(url, timeout=30) as response:
+        raw_length = response.headers.get("Content-Length")
+        try:
+            declared = int(raw_length) if raw_length is not None else None
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("invalid update Content-Length") from exc
+        if declared is not None and (declared < 0 or declared > limit):
+            raise RuntimeError("update metadata is too large")
+        payload = response.read(limit + 1)
+    if len(payload) > limit:
+        raise RuntimeError("update metadata is too large")
+    if declared is not None and len(payload) != declared:
+        raise RuntimeError("incomplete update metadata")
+    return payload
+
+
+def _verify_manifest_signature(payload: bytes, encoded_signature: bytes) -> bool:
+    """Verify Ed25519 when configured, otherwise select the visible fallback."""
+    public_keys = tuple(key.strip() for key in UPDATE_SIGNING_PUBLIC_KEYS
+                        if key.strip())
+    if not public_keys:
+        return False
+    if not encoded_signature.strip():
+        raise RuntimeError("update manifest signature is missing")
+
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+    try:
+        signature = base64.b64decode(encoded_signature.strip(), validate=True)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("update manifest signature is invalid") from exc
+    last_error = None
+    for public_text in public_keys:
+        try:
+            public_bytes = base64.b64decode(public_text, validate=True)
+            public_key = Ed25519PublicKey.from_public_bytes(public_bytes)
+            public_key.verify(signature, payload)
+            return True
+        except (InvalidSignature, TypeError, ValueError) as exc:
+            last_error = exc
+    raise RuntimeError("update manifest signature is invalid") from last_error
+
+
+def _parse_update_manifest(payload: bytes, release: ReleaseInfo,
+                           *, signature_verified: bool) -> UpdateManifest:
+    try:
+        data = json.loads(payload)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("update manifest is not valid JSON") from exc
+    if (not isinstance(data, dict) or data.get("version") != 1
+            or data.get("release") != release.tag
+            or not isinstance(data.get("assets"), dict)):
+        raise RuntimeError("update manifest does not match this release")
+
+    assets: dict[str, AssetIntegrity] = {}
+    for name, record in data["assets"].items():
+        if (not isinstance(name, str) or Path(name).name != name
+                or not isinstance(record, dict)):
+            raise RuntimeError("update manifest contains an invalid asset")
+        size = record.get("size")
+        digest = record.get("sha256")
+        if (not isinstance(size, int) or isinstance(size, bool)
+                or size <= 0 or size > _MAX_ASSET_BYTES
+                or not isinstance(digest, str)
+                or _SHA256.fullmatch(digest.lower()) is None):
+            raise RuntimeError("update manifest contains invalid integrity data")
+        assets[name] = AssetIntegrity(name, size, digest.lower())
+    if not assets:
+        raise RuntimeError("update manifest contains no assets")
+    return UpdateManifest(release.tag, assets, signature_verified)
+
+
+def fetch_update_manifest(release: ReleaseInfo) -> UpdateManifest:
+    """Fetch, authenticate and parse the integrity manifest for a release."""
+    manifest_asset = _asset_named(release, MANIFEST_ASSET)
+    if manifest_asset is None:
+        raise RuntimeError("release has no update manifest")
+    payload = _read_remote_asset(manifest_asset, limit=_MAX_MANIFEST_BYTES)
+
+    signature_asset = _asset_named(release, SIGNATURE_ASSET)
+    signature = (b"" if signature_asset is None else
+                 _read_remote_asset(signature_asset,
+                                    limit=_MAX_SIGNATURE_BYTES))
+    verified = _verify_manifest_signature(payload, signature)
+    return _parse_update_manifest(
+        payload, release, signature_verified=verified)
+
+
+def _asset_integrity(asset: dict, manifest: UpdateManifest) -> AssetIntegrity:
+    name = asset.get("name")
+    integrity = manifest.assets.get(name)
+    if integrity is None:
+        raise RuntimeError(f"asset is absent from update manifest: {name}")
+    size = asset.get("size")
+    if not isinstance(size, int) or isinstance(size, bool) or size != integrity.size:
+        raise RuntimeError(f"asset size disagrees with update manifest: {name}")
+    api_digest = asset.get("digest")
+    if (api_digest is not None
+            and api_digest != f"sha256:{integrity.sha256}"):
+        raise RuntimeError(f"asset digest disagrees with update manifest: {name}")
+    _require_trusted_url(asset.get("browser_download_url", ""))
+    return integrity
 
 
 # ------------------------------------------------------------- check cache
@@ -241,20 +428,30 @@ def _gui_app_path() -> Path | None:
 
 # --------------------------------------------------------- download+replace
 
-def _download(url: str, dest: Path) -> None:
-    """Stream *url* to *dest*, printing progress to stderr."""
-    req = Request(url, headers=_gh_headers())
-    with urlopen(req, timeout=30) as resp:
-        total = int(resp.headers.get("Content-Length", 0))
+def _download(url: str, dest: Path, integrity: AssetIntegrity) -> None:
+    """Stream one trusted asset and prove its size and SHA-256."""
+    with _open_trusted(url, timeout=30) as resp:
+        raw_total = resp.headers.get("Content-Length")
+        try:
+            total = int(raw_total) if raw_total is not None else 0
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("invalid asset Content-Length") from exc
+        if total and total != integrity.size:
+            raise RuntimeError("asset Content-Length disagrees with manifest")
         downloaded = 0
+        digest = hashlib.sha256()
         chunk_size = 1024 * 256  # 256 KB
         with open(dest, "wb") as f:
             while True:
-                chunk = resp.read(chunk_size)
+                remaining = integrity.size - downloaded
+                chunk = resp.read(min(chunk_size, remaining + 1))
                 if not chunk:
                     break
-                f.write(chunk)
                 downloaded += len(chunk)
+                if downloaded > integrity.size:
+                    raise RuntimeError("downloaded asset exceeds manifest size")
+                digest.update(chunk)
+                f.write(chunk)
                 if total:
                     pct = downloaded * 100 // total
                     mb = downloaded // (1024 * 1024)
@@ -263,6 +460,10 @@ def _download(url: str, dest: Path) -> None:
                           end="", file=sys.stderr, flush=True)
         if total:
             print(file=sys.stderr)
+    if downloaded != integrity.size:
+        raise RuntimeError("downloaded asset size does not match manifest")
+    if digest.hexdigest() != integrity.sha256:
+        raise RuntimeError("downloaded asset checksum does not match manifest")
 
 
 def _extract_cli_binary(archive: Path) -> Path:
@@ -380,6 +581,15 @@ def do_update() -> int:
         print("Already up to date.")
         return EXIT_OK
 
+    try:
+        manifest = fetch_update_manifest(release)
+    except Exception as exc:  # noqa: BLE001
+        print(f"error: release integrity check failed: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    if not manifest.signature_verified:
+        print("# warning: update signing key is not configured; "
+              "using HTTPS, size and SHA-256 fallback", file=sys.stderr)
+
     updated = 0
 
     # 2. Update CLI
@@ -393,7 +603,9 @@ def do_update() -> int:
         tmp_dir = Path(tempfile.mkdtemp(prefix="xanalyze-update-"))
         archive_path = tmp_dir / cli_asset["name"]
         try:
-            _download(cli_asset["browser_download_url"], archive_path)
+            integrity = _asset_integrity(cli_asset, manifest)
+            _download(cli_asset["browser_download_url"], archive_path,
+                      integrity)
             extracted = _extract_cli_binary(archive_path)
             _replace_binary(cli_binary, extracted)
             updated += 1
@@ -416,7 +628,9 @@ def do_update() -> int:
         tmp_dir = Path(tempfile.mkdtemp(prefix="xanalyze-update-gui-"))
         archive_path = tmp_dir / gui_asset["name"]
         try:
-            _download(gui_asset["browser_download_url"], archive_path)
+            integrity = _asset_integrity(gui_asset, manifest)
+            _download(gui_asset["browser_download_url"], archive_path,
+                      integrity)
             extracted = _extract_gui_app(archive_path)
             # Replace: remove old .app, move new one in
             if gui_app.exists():

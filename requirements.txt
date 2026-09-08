@@ -13,6 +13,11 @@ textual>=8.0,<9
 # in the OS keychain instead of a local file. See llm/credentials.py.
 keyring>=25.0
 
+# Verifies the Ed25519 signature on self-update manifests. This is a runtime
+# dependency even while UPDATE_SIGNING_PUBLIC_KEYS is empty: every build must
+# contain the verifier before its pinned trust root enables signed releases.
+cryptography>=44
+
 # Reading what a media file says about how it was made (`audit/media.py`).
 # Declared because it was not: the module shipped depending on Pillow being
 # present transitively, which it was on the old interpreter and is not on a
@@ -20,15 +25,15 @@ keyring>=25.0
 # install.
 Pillow>=10
 
-# Optional, and deliberately not pinned here: verifying a signed C2PA
-# manifest needs `c2pa-python` and `cryptography`, both of which carry a
-# native component. Without them XAnalyze still reports that a file carries
+# Optional, and deliberately not pinned here: reading a signed C2PA manifest
+# needs `c2pa-python`. Without it XAnalyze still reports that a file carries
 # Content Credentials and says it could not read them - which is true and
 # useful - so this stays a choice rather than a cost every install pays.
-#   pip install c2pa-python cryptography
-# Both are also what `tests/test_media_provenance.ARealSignedFile` needs to
-# run at all: it signs its own sample, because reading a real signed file is
-# the only thing that catches a reader wired up wrongly.
+#   pip install c2pa-python
+# It and the mandatory `cryptography` package are also what
+# `tests/test_media_provenance.ARealSignedFile` needs to run at all: it signs
+# its own sample, because reading a real signed file is the only thing that
+# catches a reader wired up wrongly.
 
 # Build tool, not a runtime dependency: `venv/bin/pyinstaller packaging/*.spec`
 # produces the CLI and window bundles. Listed because it is not obvious from

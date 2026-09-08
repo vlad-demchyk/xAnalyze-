@@ -142,6 +142,17 @@ jobs:
           cd dist
           zip -r XAnalyze.app.zip XAnalyze.app/
 
+      - name: Build update integrity manifest
+        if: steps.tag_check.outputs.exists == 'false'
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          python scripts/update_manifest.py \
+            --release "v${{ steps.version.outputs.version }}" \
+            --output dist/xanalyze-update-manifest.json \
+            dist/xanalyze-cli-macos-arm64.tar.gz \
+            dist/XAnalyze.app.zip
+
       - name: Create tag and release
         if: steps.tag_check.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
@@ -154,6 +165,8 @@ jobs:
           files: |
             dist/xanalyze-cli-macos-arm64.tar.gz
             dist/XAnalyze.app.zip
+            dist/xanalyze-update-manifest.json
+            dist/xanalyze-update-manifest.json.sig
 
       - name: Skip (version already released)
         if: steps.tag_check.outputs.exists == 'true'

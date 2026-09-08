@@ -79,6 +79,7 @@ hiddenimports = [
     *collect_submodules("llm"),
     *collect_submodules("tui"),
     *collect_submodules("textual"),
+    *collect_submodules("cryptography"),
     "keyring.backends.macOS",
     "keyring.backends.fail",
     *_C2PA_IMPORTS,

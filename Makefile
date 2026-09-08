@@ -74,9 +74,14 @@ package: check-cli check-app
 	rm -f "$(CLI_ARCHIVE)" "$(APP_ARCHIVE)"
 	cd dist && tar czf "$(notdir $(CLI_ARCHIVE))" "$(notdir $(CLI_DIR))"
 	cd dist && ditto -c -k --sequesterRsrc --keepParent "$(notdir $(APP_DIR))" "$(notdir $(APP_ARCHIVE))"
+	$(PY) scripts/update_manifest.py \
+		--release "v$(SOURCE_VERSION)" \
+		--output dist/xanalyze-update-manifest.json \
+		"$(CLI_ARCHIVE)" "$(APP_ARCHIVE)"
 	@echo "Wrote:"
 	@ls -lh "$(CLI_ARCHIVE)" "$(APP_ARCHIVE)" | awk '{print "  " $$9 "  " $$5}'
 	@echo "These are the two asset names that 'xanalyze update' looks for."
+	@echo "The update manifest is unsigned unless UPDATE_SIGNING_KEY is set."
 	@echo "Unsigned: a first launch of the app needs Control-click > Open until it is notarised."
 
 
