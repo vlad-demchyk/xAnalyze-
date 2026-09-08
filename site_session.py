@@ -27,6 +27,9 @@ survives is what the site chose to give that browser.
 """
 from __future__ import annotations
 
+import hashlib
+import ipaddress
+import json
 import os
 import re
 import shutil
@@ -41,10 +44,54 @@ import config
 #: be a thing that can be committed by accident.
 _DIRNAME = "sessions"
 
-#: What a host may look like as a directory name. A hostname is already
-#: restricted, but it arrives from a URL a person typed and this builds a
-#: filesystem path out of it - so it is rewritten rather than trusted.
+#: The pre-hash directory-name rule, retained only to discover old profiles.
 _SAFE = re.compile(r"[^a-z0-9._-]+")
+_PROFILE = "profile.json"
+_PROFILE_VERSION = 1
+_PROFILE_PREFIX = "profile-"
+
+
+def _canonical_host(value: str) -> str:
+    """Return one canonical hostname with its optional explicit port."""
+    text = (value or "").strip()
+    # A bare host may have a path, but filesystem-looking control inputs must
+    # never be interpreted as one.
+    if (not text or text in {".", ".."}
+            or text.startswith(("./", "../", "/"))):
+        raise ValueError("invalid session host")
+    if "://" not in text:
+        text = "https://" + text
+    parsed = urlparse(text)
+    if parsed.scheme.lower() not in {"http", "https"}:
+        raise ValueError("invalid session host")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("invalid session host")
+    try:
+        hostname = (parsed.hostname or "").rstrip(".").lower()
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("invalid session host") from exc
+    if not hostname or "/" in hostname or "\\" in hostname:
+        raise ValueError("invalid session host")
+
+    try:
+        canonical_name = ipaddress.ip_address(hostname).compressed.lower()
+    except ValueError:
+        try:
+            canonical_name = hostname.encode("idna").decode("ascii")
+        except UnicodeError as exc:
+            raise ValueError("invalid session host") from exc
+        labels = canonical_name.split(".")
+        if (len(canonical_name) > 253
+                or any(not label or len(label) > 63
+                       or label.startswith("-") or label.endswith("-")
+                       or not re.fullmatch(r"[a-z0-9-]+", label)
+                       for label in labels)):
+            raise ValueError("invalid session host")
+
+    display_name = (f"[{canonical_name}]" if ":" in canonical_name
+                    else canonical_name)
+    return f"{display_name}:{port}" if port is not None else display_name
 
 
 def host_of(url: str) -> str:
@@ -53,39 +100,22 @@ def host_of(url: str) -> str:
     The port is part of it: `localhost:3000` and `localhost:8080` are two
     different applications on nearly every developer's machine.
     """
-    text = (url or "").strip()
-    if not text:
-        return ""
-    if "://" not in text:
-        text = "https://" + text
-    parsed = urlparse(text)
-    host = (parsed.netloc or "").lower()
     try:
-        _profile_name(host)
+        return _canonical_host(url)
     except ValueError:
         return ""
-    return host
 
 
 def _slug(host: str) -> str:
+    """The legacy, lossy profile name used before hashed identities."""
     return _SAFE.sub("-", (host or "").lower()).strip("-")
 
 
 def _profile_name(host: str) -> str:
-    """A filesystem-safe, non-special name for one host profile.
-
-    Rewriting separators is not enough here: ``.`` and ``..`` survive the
-    slugger unchanged, while an empty result names the sessions directory
-    itself. Those are control paths, not host names, and no caller may turn
-    them into a profile.
-    """
-    raw = (host or "").strip().lower()
-    if not raw or raw in {".", ".."} or "/" in raw or "\\" in raw:
-        raise ValueError("invalid session host")
-    name = _slug(raw)
-    if name in {"", ".", ".."}:
-        raise ValueError("invalid session host")
-    return name
+    """A collision-resistant profile name for a canonical host and port."""
+    canonical = _canonical_host(host)
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return f"{_PROFILE_PREFIX}{digest}"
 
 
 def sessions_root() -> Path:
@@ -102,22 +132,102 @@ def sessions_root() -> Path:
     return root
 
 
-def profile_dir(host: str, create: bool = False) -> Path:
-    """Where this host's browser profile lives."""
-    name = _profile_name(host)
-    root = sessions_root().resolve()
+def _direct_child(root: Path, name: str) -> Path:
+    """Resolve one profile child without ever following it outside root."""
     candidate = root / name
     path = candidate.resolve(strict=False)
-    # A profile is exactly one directory below the sessions root. Resolving
-    # also catches a pre-existing symlink that points elsewhere.
     if path == root or path.parent != root or candidate.is_symlink():
         raise ValueError("session profile escapes the sessions directory")
+    return path
+
+
+def _profile_has_data(path: Path) -> bool:
+    try:
+        return (not path.is_symlink() and path.is_dir()
+                and any(entry.name != _PROFILE for entry in path.iterdir()))
+    except OSError:
+        return False
+
+
+def _read_profile_host(path: Path) -> str:
+    """Return the proven owner of a profile, or ``""`` if it is unknown."""
+    try:
+        with open(path / _PROFILE, encoding="utf-8") as handle:
+            data = json.load(handle)
+        if (not isinstance(data, Mapping)
+                or data.get("version") != _PROFILE_VERSION):
+            return ""
+        return _canonical_host(data.get("host", ""))
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        pass
+
+    # Cookie-store v2 originally had no profile metadata. A top-level owner
+    # added by this version is authoritative. An exact host-only cookie also
+    # proves an old no-port profile, but a cookie domain cannot prove a port.
+    try:
+        with open(path / _COOKIES, encoding="utf-8") as handle:
+            data = json.load(handle)
+        if isinstance(data, Mapping) and isinstance(data.get("host"), str):
+            return _canonical_host(data["host"])
+        records = data.get("cookies") if isinstance(data, Mapping) else None
+        owners = {
+            str(record.get("domain", "")).lstrip(".").lower()
+            for record in records or []
+            if isinstance(record, Mapping) and record.get("host_only") is True
+        }
+        if len(owners) == 1:
+            owner = owners.pop()
+            canonical = _canonical_host(owner)
+            if ":" not in canonical:
+                return canonical
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        pass
+    return ""
+
+
+def _write_profile_metadata(path: Path, host: str) -> None:
+    metadata = path / _PROFILE
+    descriptor = os.open(metadata, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        json.dump({"version": _PROFILE_VERSION, "host": host}, handle)
+
+
+def _legacy_profile(root: Path, host: str) -> Path | None:
+    name = _slug(host)
+    if name in {"", ".", ".."}:
+        return None
+    try:
+        return _direct_child(root, name)
+    except ValueError:
+        return None
+
+
+def profile_dir(host: str, create: bool = False) -> Path:
+    """Where this host's browser profile lives."""
+    canonical = _canonical_host(host)
+    name = _profile_name(canonical)
+    root = sessions_root().resolve()
+    path = _direct_child(root, name)
+
+    if path.is_dir():
+        owner = _read_profile_host(path)
+        if owner and owner != canonical:
+            raise ValueError("session profile belongs to another host")
+    else:
+        legacy = _legacy_profile(root, canonical)
+        if (legacy is not None and legacy.is_dir()
+                and _read_profile_host(legacy) == canonical):
+            _write_profile_metadata(legacy, canonical)
+            legacy.rename(path)
+
     if create:
         path.mkdir(parents=True, exist_ok=True)
         try:
             path.chmod(0o700)
         except OSError:
             pass
+        if not (path / _PROFILE).is_file():
+            _write_profile_metadata(path, canonical)
     return path
 
 
@@ -134,7 +244,7 @@ def has_session(host: str) -> bool:
         return False
     if not path.is_dir():
         return False
-    return any(path.iterdir())
+    return _profile_has_data(path)
 
 
 def known_hosts() -> list:
@@ -142,8 +252,26 @@ def known_hosts() -> list:
     root = sessions_root()
     if not root.is_dir():
         return []
-    return sorted(entry.name for entry in root.iterdir()
-                  if entry.is_dir() and any(entry.iterdir()))
+    hosts = []
+    for entry in list(root.iterdir()):
+        if entry.is_symlink():
+            hosts.append(f"legacy:{entry.name}")
+            continue
+        if not _profile_has_data(entry):
+            continue
+        owner = _read_profile_host(entry)
+        if owner and entry.name == _profile_name(owner):
+            hosts.append(owner)
+        elif owner:
+            # Reading the owner proved this legacy directory can be migrated.
+            migrated = profile_dir(owner)
+            if _profile_has_data(migrated):
+                hosts.append(owner)
+        else:
+            # It remains visible and removable, but is never attached to a
+            # guessed host because the old slug may represent several inputs.
+            hosts.append(f"legacy:{entry.name}")
+    return sorted(set(hosts))
 
 
 def forget(host: str) -> bool:
@@ -160,10 +288,16 @@ def forget(host: str) -> bool:
 
 def forget_all() -> int:
     """Delete every stored session, and say how many there were."""
-    hosts = known_hosts()
-    for host in hosts:
-        forget(host)
-    return len(hosts)
+    root = sessions_root().resolve()
+    entries = list(root.iterdir())
+    count = sum(_profile_has_data(entry) or entry.is_symlink()
+                for entry in entries)
+    for entry in entries:
+        if entry.is_symlink():
+            entry.unlink(missing_ok=True)
+        elif entry.is_dir():
+            shutil.rmtree(entry, ignore_errors=True)
+    return count
 
 
 #: The cookies a fetch needs, written beside the browser profile.
@@ -251,8 +385,7 @@ def _cookie_records(host: str, cookies) -> list[dict]:
 
 def save_cookies(host: str, cookies) -> None:
     """Write the fetcher's copy of the session, readable only by its owner."""
-    import json
-
+    canonical = _canonical_host(host)
     path = profile_dir(host, create=True) / _COOKIES
     # Created with the mode set, not chmod'ed after: between the write and
     # the chmod the file is world-readable, and the window in between is
@@ -261,6 +394,7 @@ def save_cookies(host: str, cookies) -> None:
     with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
         json.dump({
             "version": _COOKIE_STORE_VERSION,
+            "host": canonical,
             "cookies": _cookie_records(host, cookies),
         }, handle)
 
@@ -273,8 +407,6 @@ def load_cookies(host: str) -> list[dict]:
 
     A session that cannot be
     read is a run without one, not a failed run."""
-    import json
-
     path = cookies_path(host)
     try:
         with open(path, encoding="utf-8") as handle:

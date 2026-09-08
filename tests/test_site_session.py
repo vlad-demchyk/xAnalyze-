@@ -59,6 +59,16 @@ class WhichSessionBelongsToWhom(_Isolated):
         self.assertNotEqual(ss.host_of("http://localhost:3000/"),
                             ss.host_of("http://localhost:8080/"))
 
+    def test_equivalent_hosts_have_one_canonical_identity(self):
+        import site_session as ss
+
+        self.assertEqual(ss.host_of("HTTPS://Example.COM./account"),
+                         "example.com")
+        self.assertEqual(ss.host_of("https://Example.COM.:443/account"),
+                         "example.com:443")
+        self.assertEqual(ss.host_of("https://bücher.example/"),
+                         "xn--bcher-kva.example")
+
     def test_a_bare_hostname_is_read_as_one(self):
         import site_session as ss
 
@@ -91,10 +101,15 @@ class WhichSessionBelongsToWhom(_Isolated):
 
         outside = Path(self._tmp.name) / "outside"
         outside.mkdir()
-        (ss.sessions_root() / "a.example").symlink_to(
+        (ss.sessions_root() / ss._profile_name("a.example")).symlink_to(
             outside, target_is_directory=True)
         with self.assertRaises(ValueError):
             ss.profile_dir("a.example")
+
+        self.assertEqual(ss.known_hosts(),
+                         [f"legacy:{ss._profile_name('a.example')}"])
+        self.assertEqual(ss.forget_all(), 1)
+        self.assertTrue(outside.exists())
 
     def test_a_session_for_one_host_is_not_a_session_for_another(self):
         import site_session as ss
@@ -103,6 +118,28 @@ class WhichSessionBelongsToWhom(_Isolated):
         self.assertTrue(ss.has_session("staging.example.com"))
         self.assertFalse(ss.has_session("example.com"))
         self.assertEqual(ss.load_cookies("example.com"), [])
+
+    def test_hosts_that_used_to_share_a_slug_have_distinct_profiles(self):
+        import hashlib
+        import site_session as ss
+
+        first = "example.com:3000"
+        second = "example.com-3000"
+        self.assertEqual(ss._slug(first), ss._slug(second))
+        first_path = ss.profile_dir(first)
+        second_path = ss.profile_dir(second)
+        self.assertNotEqual(first_path, second_path)
+        self.assertEqual(
+            first_path.name,
+            "profile-" + hashlib.sha256(first.encode("utf-8")).hexdigest(),
+        )
+
+        ss.save_cookies(first, {"sid": "first"})
+        ss.save_cookies(second, {"sid": "second"})
+
+        self.assertEqual(ss.load_cookies(first)[0]["value"], "first")
+        self.assertEqual(ss.load_cookies(second)[0]["value"], "second")
+        self.assertEqual(ss.known_hosts(), sorted([first, second]))
 
     def test_an_empty_directory_is_not_a_session(self):
         """The profile directory is created when the sign-in window opens.
@@ -160,6 +197,61 @@ class ItCanBeSeenAndRemoved(_Isolated):
         marker.write_text("keep", encoding="utf-8")
         self.assertFalse(ss.forget(".."))
         self.assertEqual(marker.read_text(encoding="utf-8"), "keep")
+
+    def test_a_proven_legacy_profile_is_migrated_to_its_hash(self):
+        import json
+        import site_session as ss
+
+        host = "old.example"
+        legacy = ss.sessions_root() / ss._slug(host)
+        legacy.mkdir()
+        (legacy / "cookies.json").write_text(json.dumps({
+            "version": 2,
+            "host": host,
+            "cookies": [_cookie(domain=host)],
+        }), encoding="utf-8")
+
+        current = ss.profile_dir(host)
+
+        self.assertFalse(legacy.exists())
+        self.assertTrue(current.is_dir())
+        self.assertEqual(ss.load_cookies(host)[0]["value"], "x")
+
+    def test_an_ambiguous_legacy_profile_is_never_given_to_a_host(self):
+        import json
+        import site_session as ss
+
+        host = "example.com:3000"
+        legacy = ss.sessions_root() / ss._slug(host)
+        legacy.mkdir()
+        (legacy / "cookies.json").write_text(json.dumps({"sid": "secret"}),
+                                               encoding="utf-8")
+
+        self.assertFalse(ss.has_session(host))
+        self.assertEqual(ss.load_cookies(host), [])
+        self.assertEqual(ss.known_hosts(), [f"legacy:{ss._slug(host)}"])
+        self.assertEqual(ss.forget_all(), 1)
+        self.assertFalse(legacy.exists())
+
+    def test_a_colliding_legacy_profile_moves_only_to_its_proven_owner(self):
+        import json
+        import site_session as ss
+
+        owner = "example.com:3000"
+        collision = "example.com-3000"
+        legacy = ss.sessions_root() / ss._slug(owner)
+        self.assertEqual(legacy.name, ss._slug(collision))
+        legacy.mkdir()
+        (legacy / "cookies.json").write_text(json.dumps({
+            "version": 2,
+            "host": owner,
+            "cookies": [_cookie(value="owner", domain="example.com")],
+        }), encoding="utf-8")
+
+        self.assertEqual(ss.load_cookies(collision), [])
+        self.assertTrue(legacy.exists())
+        self.assertEqual(ss.load_cookies(owner)[0]["value"], "owner")
+        self.assertFalse(legacy.exists())
 
 
 class NothingLeaksOut(_Isolated):
