@@ -760,10 +760,13 @@ def cmd_login(args) -> int:
     target = (getattr(args, "url", "") or "").strip()
     host = site_session.host_of(target)
     if getattr(args, "forget", False):
-        if not host:
+        if not target:
             removed = site_session.forget_all()
             print(f"forgot {removed} session(s)")
             return EXIT_OK
+        if not host:
+            print("forget needs a valid site URL", file=sys.stderr)
+            return EXIT_ERROR
         print(f"forgot the session for {host}" if site_session.forget(host)
               else f"no stored session for {host}")
         return EXIT_OK

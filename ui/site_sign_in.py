@@ -47,7 +47,7 @@ class SiteSignInDialog(QDialog):
         self.saved = False
         #: Collected as the site sets them, because `allCookies()` is not a
         #: question a cookie store answers synchronously.
-        self._cookies: dict = {}
+        self._cookies: dict[tuple[str, str, str], dict] = {}
         self._page = None
 
         self.setWindowTitle(t("sign_in_site_title", lang, host=self.host))
@@ -98,13 +98,38 @@ class SiteSignInDialog(QDialog):
         store.cookieRemoved.connect(self._on_cookie_removed)
 
     # ------------------------------------------------------------- cookies
+    @staticmethod
+    def _cookie_record(cookie) -> dict:
+        domain = (cookie.domain() or "").lower()
+        expires = None
+        if not cookie.isSessionCookie():
+            expiration = cookie.expirationDate()
+            if expiration.isValid():
+                expires = int(expiration.toSecsSinceEpoch())
+        policy = cookie.sameSitePolicy()
+        return {
+            "name": bytes(cookie.name()).decode("utf-8", "replace"),
+            "value": bytes(cookie.value()).decode("utf-8", "replace"),
+            "domain": domain,
+            "path": cookie.path() or "/",
+            "secure": cookie.isSecure(),
+            "http_only": cookie.isHttpOnly(),
+            "same_site": getattr(policy, "name", "Default"),
+            "expires": expires,
+            "host_only": not domain.startswith("."),
+        }
+
+    @staticmethod
+    def _cookie_key(record: dict) -> tuple[str, str, str]:
+        return record["name"], record["domain"], record["path"]
+
     def _on_cookie(self, cookie) -> None:
-        name = bytes(cookie.name()).decode("utf-8", "replace")
-        value = bytes(cookie.value()).decode("utf-8", "replace")
-        self._cookies[name] = value
+        record = self._cookie_record(cookie)
+        self._cookies[self._cookie_key(record)] = record
 
     def _on_cookie_removed(self, cookie) -> None:
-        self._cookies.pop(bytes(cookie.name()).decode("utf-8", "replace"), None)
+        record = self._cookie_record(cookie)
+        self._cookies.pop(self._cookie_key(record), None)
 
     # ------------------------------------------------------------- actions
     def _on_done(self) -> None:
@@ -115,7 +140,7 @@ class SiteSignInDialog(QDialog):
         whoever is looking at the screen, and to whoever reads the
         screenshot afterwards.
         """
-        site_session.save_cookies(self.host, self._cookies)
+        site_session.save_cookies(self.host, list(self._cookies.values()))
         self.saved = True
         self.status.setText(t("sign_in_site_saved", self.lang,
                               host=self.host, count=len(self._cookies)))
@@ -139,7 +164,7 @@ class SiteSignInDialog(QDialog):
         """
         if self.saved or not self._cookies:
             return
-        site_session.save_cookies(self.host, self._cookies)
+        site_session.save_cookies(self.host, list(self._cookies.values()))
         self.saved = True
 
     def reject(self) -> None:  # noqa: D102 - Qt's name; see the helper above

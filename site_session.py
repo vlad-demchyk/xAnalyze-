@@ -30,6 +30,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+from collections.abc import Mapping
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -59,11 +60,32 @@ def host_of(url: str) -> str:
         text = "https://" + text
     parsed = urlparse(text)
     host = (parsed.netloc or "").lower()
+    try:
+        _profile_name(host)
+    except ValueError:
+        return ""
     return host
 
 
 def _slug(host: str) -> str:
     return _SAFE.sub("-", (host or "").lower()).strip("-")
+
+
+def _profile_name(host: str) -> str:
+    """A filesystem-safe, non-special name for one host profile.
+
+    Rewriting separators is not enough here: ``.`` and ``..`` survive the
+    slugger unchanged, while an empty result names the sessions directory
+    itself. Those are control paths, not host names, and no caller may turn
+    them into a profile.
+    """
+    raw = (host or "").strip().lower()
+    if not raw or raw in {".", ".."} or "/" in raw or "\\" in raw:
+        raise ValueError("invalid session host")
+    name = _slug(raw)
+    if name in {"", ".", ".."}:
+        raise ValueError("invalid session host")
+    return name
 
 
 def sessions_root() -> Path:
@@ -82,7 +104,14 @@ def sessions_root() -> Path:
 
 def profile_dir(host: str, create: bool = False) -> Path:
     """Where this host's browser profile lives."""
-    path = sessions_root() / _slug(host)
+    name = _profile_name(host)
+    root = sessions_root().resolve()
+    candidate = root / name
+    path = candidate.resolve(strict=False)
+    # A profile is exactly one directory below the sessions root. Resolving
+    # also catches a pre-existing symlink that points elsewhere.
+    if path == root or path.parent != root or candidate.is_symlink():
+        raise ValueError("session profile escapes the sessions directory")
     if create:
         path.mkdir(parents=True, exist_ok=True)
         try:
@@ -99,7 +128,10 @@ def has_session(host: str) -> bool:
     is created when the sign-in window opens, and a person who closed that
     window without signing in must not be told they are signed in.
     """
-    path = profile_dir(host)
+    try:
+        path = profile_dir(host)
+    except ValueError:
+        return False
     if not path.is_dir():
         return False
     return any(path.iterdir())
@@ -116,7 +148,10 @@ def known_hosts() -> list:
 
 def forget(host: str) -> bool:
     """Delete this host's profile. `True` if there was one to delete."""
-    path = profile_dir(host)
+    try:
+        path = profile_dir(host)
+    except ValueError:
+        return False
     if not path.is_dir():
         return False
     shutil.rmtree(path, ignore_errors=True)
@@ -141,13 +176,80 @@ def forget_all() -> int:
 #: 0600, beside the profile, never logged, never in a report, and deleted by
 #: `forget()` along with everything else for that host.
 _COOKIES = "cookies.json"
+_COOKIE_STORE_VERSION = 2
+_SAME_SITE_VALUES = {"Default", "None_", "Lax", "Strict"}
 
 
 def cookies_path(host: str) -> Path:
     return profile_dir(host) / _COOKIES
 
 
-def save_cookies(host: str, cookies: dict) -> None:
+def _cookie_domain(host: str) -> str:
+    """Hostname without a port, suitable for a cookie scope."""
+    parsed = urlparse(host if "://" in host else f"https://{host}")
+    return (parsed.hostname or "").lower()
+
+
+def _cookie_records(host: str, cookies) -> list[dict]:
+    """Normalize the current store and the old ``{name: value}`` format."""
+    fallback_domain = _cookie_domain(host)
+    if isinstance(cookies, Mapping):
+        stored = cookies.get("cookies")
+        if isinstance(stored, list):
+            values = stored
+        else:
+            values = [
+                {
+                    "name": name,
+                    "value": value,
+                    "domain": fallback_domain,
+                    "path": "/",
+                    "host_only": True,
+                }
+                for name, value in cookies.items()
+            ]
+    elif isinstance(cookies, (list, tuple)):
+        values = cookies
+    else:
+        return []
+
+    records: list[dict] = []
+    for value in values:
+        if not isinstance(value, Mapping):
+            continue
+        name = str(value.get("name") or "")
+        if not name:
+            continue
+        domain = str(value.get("domain") or fallback_domain).strip().lower()
+        if not domain:
+            continue
+        path = str(value.get("path") or "/")
+        if not path.startswith("/"):
+            path = "/"
+        same_site = str(value.get("same_site") or "Default")
+        if same_site not in _SAME_SITE_VALUES:
+            same_site = "Default"
+        expires = value.get("expires")
+        try:
+            expires = int(expires) if expires is not None else None
+        except (TypeError, ValueError):
+            expires = None
+        records.append({
+            "name": name,
+            "value": str(value.get("value") or ""),
+            "domain": domain,
+            "path": path,
+            "secure": bool(value.get("secure", False)),
+            "http_only": bool(value.get("http_only", False)),
+            "same_site": same_site,
+            "expires": expires,
+            "host_only": bool(value.get(
+                "host_only", not domain.startswith("."))),
+        })
+    return records
+
+
+def save_cookies(host: str, cookies) -> None:
     """Write the fetcher's copy of the session, readable only by its owner."""
     import json
 
@@ -157,11 +259,19 @@ def save_cookies(host: str, cookies: dict) -> None:
     # exactly when another process on a shared machine would read it.
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-        json.dump(dict(cookies or {}), handle)
+        json.dump({
+            "version": _COOKIE_STORE_VERSION,
+            "cookies": _cookie_records(host, cookies),
+        }, handle)
 
 
-def load_cookies(host: str) -> dict:
-    """The fetcher's copy, or `{}`. Never raises: a session that cannot be
+def load_cookies(host: str) -> list[dict]:
+    """The fetcher's scoped cookie records, or ``[]``. Never raises.
+
+    Version 1 stored only ``{name: value}``. It is read as host-only cookies
+    for this profile rather than as Requests' domainless supercookies.
+
+    A session that cannot be
     read is a run without one, not a failed run."""
     import json
 
@@ -170,8 +280,8 @@ def load_cookies(host: str) -> dict:
         with open(path, encoding="utf-8") as handle:
             data = json.load(handle)
     except Exception:  # noqa: BLE001 - see the docstring
-        return {}
-    return {str(k): str(v) for k, v in data.items()} if isinstance(data, dict) else {}
+        return []
+    return _cookie_records(host, data)
 
 
 def apply_to(config, target: str) -> tuple:
@@ -192,7 +302,7 @@ def apply_to(config, target: str) -> tuple:
         return "", 0
     cookies = load_cookies(host)
     if cookies:
-        config.cookies = dict(cookies)
+        config.cookies = list(cookies)
     return host, len(cookies)
 
 

@@ -16,6 +16,22 @@ import unittest
 from pathlib import Path
 
 
+def _cookie(name="sid", value="x", domain="a.example", path="/",
+            secure=False, http_only=False, same_site="Default",
+            expires=None, host_only=True):
+    return {
+        "name": name,
+        "value": value,
+        "domain": domain,
+        "path": path,
+        "secure": secure,
+        "http_only": http_only,
+        "same_site": same_site,
+        "expires": expires,
+        "host_only": host_only,
+    }
+
+
 class _Isolated(unittest.TestCase):
     """Every case runs against its own config directory, never the
     developer's - a test that writes a session into the real one is a test
@@ -55,13 +71,38 @@ class WhichSessionBelongsToWhom(_Isolated):
         self.assertEqual(ss.host_of(""), "")
         self.assertEqual(ss.host_of("   "), "")
 
+    def test_filesystem_control_paths_are_not_hosts(self):
+        import site_session as ss
+
+        for target in (".", "..", "../other", r"..\other"):
+            with self.subTest(target=target):
+                self.assertEqual(ss.host_of(target), "")
+
+    def test_a_profile_is_always_a_child_of_the_sessions_directory(self):
+        import site_session as ss
+
+        for host in ("", ".", "..", "/", r"..\other"):
+            with self.subTest(host=host):
+                with self.assertRaises(ValueError):
+                    ss.profile_dir(host)
+
+    def test_a_profile_symlink_cannot_escape_the_sessions_directory(self):
+        import site_session as ss
+
+        outside = Path(self._tmp.name) / "outside"
+        outside.mkdir()
+        (ss.sessions_root() / "a.example").symlink_to(
+            outside, target_is_directory=True)
+        with self.assertRaises(ValueError):
+            ss.profile_dir("a.example")
+
     def test_a_session_for_one_host_is_not_a_session_for_another(self):
         import site_session as ss
 
         ss.save_cookies("staging.example.com", {"sid": "x"})
         self.assertTrue(ss.has_session("staging.example.com"))
         self.assertFalse(ss.has_session("example.com"))
-        self.assertEqual(ss.load_cookies("example.com"), {})
+        self.assertEqual(ss.load_cookies("example.com"), [])
 
     def test_an_empty_directory_is_not_a_session(self):
         """The profile directory is created when the sign-in window opens.
@@ -96,7 +137,7 @@ class ItCanBeSeenAndRemoved(_Isolated):
         path = ss.cookies_path("a.example")
         ss.forget("a.example")
         self.assertFalse(path.exists())
-        self.assertEqual(ss.load_cookies("a.example"), {})
+        self.assertEqual(ss.load_cookies("a.example"), [])
 
     def test_forgetting_everything_reports_how_much_there_was(self):
         import site_session as ss
@@ -111,6 +152,15 @@ class ItCanBeSeenAndRemoved(_Isolated):
 
         self.assertFalse(ss.forget("nobody.example"))
 
+    def test_forgetting_a_control_path_never_touches_the_config_root(self):
+        import config
+        import site_session as ss
+
+        marker = config.config_file()
+        marker.write_text("keep", encoding="utf-8")
+        self.assertFalse(ss.forget(".."))
+        self.assertEqual(marker.read_text(encoding="utf-8"), "keep")
+
 
 class NothingLeaksOut(_Isolated):
     def test_the_cookie_file_is_readable_by_its_owner_only(self):
@@ -119,6 +169,29 @@ class NothingLeaksOut(_Isolated):
         ss.save_cookies("a.example", {"sid": "secret"})
         mode = stat.S_IMODE(ss.cookies_path("a.example").stat().st_mode)
         self.assertEqual(mode, 0o600)
+
+    def test_cookie_scope_and_security_attributes_survive_storage(self):
+        import site_session as ss
+
+        records = [
+            _cookie(path="/private", secure=True, http_only=True,
+                    same_site="Strict", expires=2_000_000_000),
+            _cookie(value="other", path="/account"),
+        ]
+        ss.save_cookies("a.example", records)
+        self.assertEqual(ss.load_cookies("a.example"), records)
+
+    def test_the_old_name_value_store_migrates_to_host_only_scope(self):
+        import json
+
+        import site_session as ss
+
+        path = ss.profile_dir("a.example", create=True) / "cookies.json"
+        path.write_text(json.dumps({"sid": "old"}), encoding="utf-8")
+        self.assertEqual(
+            ss.load_cookies("a.example"),
+            [_cookie(value="old")],
+        )
 
     def test_the_description_carries_the_fact_and_not_the_session(self):
         import site_session as ss
@@ -142,7 +215,7 @@ class NothingLeaksOut(_Isolated):
 
         path = ss.profile_dir("a.example", create=True) / "cookies.json"
         path.write_text("{ this is not json", encoding="utf-8")
-        self.assertEqual(ss.load_cookies("a.example"), {})
+        self.assertEqual(ss.load_cookies("a.example"), [])
 
 
 class BothClientsOrNeither(_Isolated):
@@ -162,14 +235,19 @@ class BothClientsOrNeither(_Isolated):
         config = self.config()
         host, count = ss.apply_to(config, "https://a.example/admin")
         self.assertEqual((host, count), ("a.example", 2))
-        self.assertEqual(config.cookies, {"sid": "x", "csrf": "y"})
+        self.assertEqual(
+            {(cookie["name"], cookie["value"]) for cookie in config.cookies},
+            {("sid", "x"), ("csrf", "y")},
+        )
+        self.assertTrue(all(cookie["domain"] == "a.example"
+                            for cookie in config.cookies))
 
     def test_no_session_changes_nothing(self):
         import site_session as ss
 
         config = self.config()
         self.assertEqual(ss.apply_to(config, "https://a.example/"), ("", 0))
-        self.assertEqual(config.cookies, {})
+        self.assertEqual(config.cookies, [])
 
     def test_the_crawler_sends_what_it_was_given(self):
         """Set on the session rather than as a header, so redirects and the
@@ -183,8 +261,8 @@ class BothClientsOrNeither(_Isolated):
                 self.headers = {}
                 self.cookies = self
 
-            def set(self, name, value):
-                captured[name] = value
+            def set(self, name, value, **scope):
+                captured[name] = (value, scope)
 
             def get(self, *_args, **_kwargs):
                 raise RuntimeError("stop here")
@@ -199,7 +277,134 @@ class BothClientsOrNeither(_Isolated):
             pass
         finally:
             crawler.requests.Session = original
-        self.assertEqual(captured, {"sid": "x"})
+        value, scope = captured["sid"]
+        self.assertEqual(value, "x")
+        self.assertEqual(scope["domain"], "a.example")
+        self.assertEqual(scope["path"], "/")
+
+    def test_every_redirect_target_rechecks_cookie_scope(self):
+        import requests
+
+        import crawler
+
+        config = crawler.CrawlConfig(cookies=[_cookie(
+            path="/private", secure=True, http_only=True,
+            same_site="Strict")])
+        session = crawler._http_session(config, "https://a.example/private")
+
+        def header(url):
+            request = requests.Request("GET", url)
+            return session.prepare_request(request).headers.get("Cookie", "")
+
+        self.assertEqual(header("https://a.example/private/page"), "sid=x")
+        self.assertEqual(header("https://sub.a.example/private/page"), "")
+        self.assertEqual(header("https://b.example/private/page"), "")
+        self.assertEqual(header("http://a.example/private/page"), "")
+        self.assertEqual(header("https://a.example/public"), "")
+        stored = next(iter(session.cookies))
+        self.assertEqual(stored._rest["HttpOnly"], True)
+        self.assertEqual(stored._rest["SameSite"], "Strict")
+
+        domain_session = crawler._http_session(
+            crawler.CrawlConfig(cookies=[_cookie(
+                domain=".a.example", host_only=False)]),
+            "https://a.example/",
+        )
+        request = requests.Request("GET", "https://sub.a.example/")
+        prepared = domain_session.prepare_request(request)
+        self.assertEqual(prepared.headers.get("Cookie"), "sid=x")
+
+    def test_requests_rechecks_scope_while_following_a_redirect(self):
+        import requests
+        from requests.adapters import BaseAdapter
+
+        import crawler
+
+        class _Redirect(BaseAdapter):
+            def __init__(self, destination):
+                self.destination = destination
+                self.sent = []
+
+            def send(self, request, **_kwargs):
+                self.sent.append((request.url, request.headers.get("Cookie", "")))
+                response = requests.Response()
+                response.request = request
+                response.url = request.url
+                response._content = b""
+                if len(self.sent) == 1:
+                    response.status_code = 302
+                    response.headers["Location"] = self.destination
+                else:
+                    response.status_code = 200
+                return response
+
+            def close(self):
+                pass
+
+        session = crawler._http_session(
+            crawler.CrawlConfig(cookies=[_cookie(
+                path="/private", secure=True)]),
+            "https://a.example/private",
+        )
+        adapter = _Redirect("https://sub.a.example/private")
+        session.mount("https://", adapter)
+        session.get("https://a.example/private")
+        self.assertEqual(adapter.sent, [
+            ("https://a.example/private", "sid=x"),
+            ("https://sub.a.example/private", ""),
+        ])
+
+    def test_qt_cookie_attributes_are_copied_without_flattening(self):
+        from ui.site_sign_in import SiteSignInDialog
+
+        class _Expiration:
+            def isValid(self):
+                return True
+
+            def toSecsSinceEpoch(self):
+                return 2_000_000_000
+
+        class _Policy:
+            name = "Lax"
+
+        class _QtCookie:
+            def name(self):
+                return b"sid"
+
+            def value(self):
+                return b"secret"
+
+            def domain(self):
+                return ".a.example"
+
+            def path(self):
+                return "/private"
+
+            def isSecure(self):
+                return True
+
+            def isHttpOnly(self):
+                return True
+
+            def isSessionCookie(self):
+                return False
+
+            def expirationDate(self):
+                return _Expiration()
+
+            def sameSitePolicy(self):
+                return _Policy()
+
+        dialog = SiteSignInDialog.__new__(SiteSignInDialog)
+        dialog._cookies = {}
+        cookie = _QtCookie()
+        dialog._on_cookie(cookie)
+        self.assertEqual(list(dialog._cookies.values()), [_cookie(
+            value="secret", domain=".a.example", path="/private",
+            secure=True, http_only=True, same_site="Lax",
+            expires=2_000_000_000, host_only=False)])
+        dialog._on_cookie_removed(cookie)
+        self.assertEqual(dialog._cookies, {})
 
 
 class ClosingTheWindow(_Isolated):
@@ -225,10 +430,11 @@ class ClosingTheWindow(_Isolated):
         dialog = SiteSignInDialog.__new__(SiteSignInDialog)
         dialog.host = "a.example"
         dialog.saved = False
-        dialog._cookies = {"sid": "x"}
+        record = _cookie()
+        dialog._cookies = {("sid", "a.example", "/"): record}
         dialog._keep_what_the_browser_has()
         self.assertTrue(dialog.saved)
-        self.assertEqual(ss.load_cookies("a.example"), {"sid": "x"})
+        self.assertEqual(ss.load_cookies("a.example"), [record])
 
     def test_a_dialog_that_collected_nothing_stores_nothing(self):
         import site_session as ss
@@ -269,6 +475,16 @@ class TheCommandLine(_Isolated):
                               "url": "https://a.example/x"})()
         cli.cmd_login(args)
         self.assertEqual(ss.known_hosts(), ["b.example"])
+
+    def test_an_invalid_forget_target_does_not_forget_everything(self):
+        import cli
+        import site_session as ss
+
+        ss.save_cookies("a.example", {"s": "1"})
+        args = type("A", (), {"list": False, "forget": True,
+                              "url": ".."})()
+        self.assertEqual(cli.cmd_login(args), 2)
+        self.assertEqual(ss.known_hosts(), ["a.example"])
 
     def test_signing_in_needs_an_address(self):
         import cli

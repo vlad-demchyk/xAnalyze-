@@ -49,7 +49,9 @@ from __future__ import annotations
 import re
 import uuid
 from collections import deque
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from http.cookiejar import DefaultCookiePolicy, eff_request_host
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -126,14 +128,103 @@ class CrawlConfig:
     render_timeout: float = 30.0
     same_domain_only: bool = True
     render_mode: str = RENDER_NEVER
-    #: Cookies from a session the person signed in themselves, `{name: value}`.
+    #: Scoped cookie records from a session the person signed in themselves.
     #:
     #: Two clients read one site: this fetcher and, when rendering, a browser.
     #: They share no storage, so a sign-in performed in the browser leaves
     #: this half looking at the login form - the two halves of one run
     #: disagreeing about who is asking. See `site_session`; the values are
     #: never logged and never reach a report.
-    cookies: dict = field(default_factory=dict)
+    cookies: list = field(default_factory=list)
+
+
+def _session_cookie_records(cookies, root_url: str) -> list[dict]:
+    """Normalize scoped records and the former ``{name: value}`` API."""
+    root_host = (urlparse(root_url).hostname or "").lower()
+    if isinstance(cookies, Mapping):
+        values = ({
+            "name": name,
+            "value": value,
+            "domain": root_host,
+            "path": "/",
+            "host_only": True,
+        } for name, value in cookies.items())
+    else:
+        values = cookies or ()
+    records = []
+    for value in values:
+        if not isinstance(value, Mapping):
+            continue
+        name = str(value.get("name") or "")
+        domain = str(value.get("domain") or root_host).strip().lower()
+        if not name or not domain:
+            continue
+        records.append({
+            "name": name,
+            "value": str(value.get("value") or ""),
+            "domain": domain,
+            "path": str(value.get("path") or "/"),
+            "secure": bool(value.get("secure", False)),
+            "expires": value.get("expires"),
+            "host_only": bool(value.get(
+                "host_only", not domain.startswith("."))),
+            "rest": {
+                "HttpOnly": bool(value.get("http_only", False)),
+                "SameSite": str(value.get("same_site") or "Default"),
+            },
+        })
+    return records
+
+
+class _BrowserCookiePolicy(DefaultCookiePolicy):
+    """CookieJar policy with RFC 6265 host-only semantics.
+
+    Python's legacy Netscape policy accepts a non-domain cookie for child
+    hosts. Browsers do not: a host-only cookie for ``example.com`` must not
+    be sent to ``sub.example.com``.
+    """
+
+    def return_ok_domain(self, cookie, request) -> bool:
+        _request_host, effective_host = eff_request_host(request)
+        if (not cookie.domain_specified
+                and cookie.domain.lower() != effective_host.lower()):
+            return False
+        return super().return_ok_domain(cookie, request)
+
+
+def _http_session(config: CrawlConfig, root_url: str):
+    """A Requests session whose signed-in cookies keep their browser scope."""
+    session = requests.Session()
+    session.headers.update({"User-Agent": USER_AGENT})
+    jar = getattr(session, "cookies", None)
+    if hasattr(jar, "set_policy"):
+        jar.set_policy(_BrowserCookiePolicy())
+        original_prepare = session.prepare_request
+
+        def prepare_request(request):
+            prepared = original_prepare(request)
+            # Requests builds a fresh jar with the default policy here.
+            # Restore the browser policy before generating the header. The
+            # jar is copied into redirected requests, so every hop repeats it.
+            prepared._cookies.set_policy(jar.get_policy())
+            prepared.headers.pop("Cookie", None)
+            prepared.prepare_cookies(prepared._cookies)
+            return prepared
+
+        session.prepare_request = prepare_request
+    for record in _session_cookie_records(config.cookies, root_url):
+        if jar is None:
+            continue
+        cookie = jar.set(
+            record["name"], record["value"], domain=record["domain"],
+            path=record["path"], secure=record["secure"],
+            expires=record["expires"], rest=record["rest"])
+        if cookie is not None and record["host_only"]:
+            # ``RequestsCookieJar.set(domain=...)`` otherwise turns a
+            # host-only browser cookie into a domain cookie.
+            cookie.domain_specified = False
+            cookie.domain_initial_dot = False
+    return session
 
 
 def _normalize(url: str) -> str:
@@ -454,12 +545,7 @@ def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
     visited: set[str] = set()
     queue: deque[tuple[str, int]] = deque([(root_url, 0)])
     results: list[PageResult] = []
-    session = requests.Session()
-    session.headers.update({"User-Agent": USER_AGENT})
-    for name, value in (config.cookies or {}).items():
-        # Set on the session rather than sent as a header, so redirects and
-        # the site's own `Set-Cookie` behave as they do in a browser.
-        session.cookies.set(name, value)
+    session = _http_session(config, root_url)
 
     #: Pages actually read as HTML. The budget counts these rather than
     #: `len(results)`, because a result is also recorded for an address that
