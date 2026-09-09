@@ -520,6 +520,12 @@ class DeclaredLanguageContradictsAddress(AccessibilityRule):
             rule_id=self.id, severity=self.severity, selector=selector, line=line,
             snippet=snippet_of(html), source=context.source,
             details={"declared": declared, "expected": expected,
+                     # The sentence names how many witnesses there are. Two
+                     # is the minimum, not the number: a page can carry a
+                     # path prefix, an `og:locale` and a self-`hreflang` at
+                     # once, and a report that says "two" while listing
+                     # three is wrong about its own evidence.
+                     "count": len(naming),
                      "signals": ", ".join(naming)},
             fix_snippet=f'<html lang="{expected}">',
         )]

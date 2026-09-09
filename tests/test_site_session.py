@@ -233,6 +233,51 @@ class ItCanBeSeenAndRemoved(_Isolated):
         self.assertEqual(ss.forget_all(), 1)
         self.assertFalse(legacy.exists())
 
+    def test_a_listed_legacy_profile_can_be_removed_by_the_name_shown(self):
+        """`known_hosts()` prints it, so `forget()` has to take it back.
+
+        The token is not a host and never resolves to one, so the ordinary
+        path refused it - leaving an entry a person could see in the list
+        and had no way to remove except `forget_all()`.
+        """
+        import json
+        import site_session as ss
+
+        host = "example.com:3000"
+        legacy = ss.sessions_root() / ss._slug(host)
+        legacy.mkdir()
+        (legacy / "cookies.json").write_text(json.dumps({"sid": "secret"}),
+                                               encoding="utf-8")
+
+        listed = ss.known_hosts()
+        self.assertEqual(listed, [f"legacy:{ss._slug(host)}"])
+        self.assertTrue(ss.forget(listed[0]))
+        self.assertFalse(legacy.exists())
+        self.assertEqual(ss.known_hosts(), [])
+        self.assertFalse(ss.forget(listed[0]))
+
+    def test_a_legacy_symlink_is_unlinked_and_its_target_is_left_alone(self):
+        import site_session as ss
+
+        outside = Path(self._tmp.name) / "not-a-session"
+        outside.mkdir()
+        (outside / "keep.txt").write_text("keep", encoding="utf-8")
+        link = ss.sessions_root() / "old-profile"
+        link.symlink_to(outside, target_is_directory=True)
+
+        self.assertEqual(ss.known_hosts(), ["legacy:old-profile"])
+        self.assertTrue(ss.forget("legacy:old-profile"))
+        self.assertFalse(link.exists())
+        self.assertFalse(link.is_symlink())
+        self.assertTrue((outside / "keep.txt").is_file())
+
+    def test_a_legacy_token_never_reaches_outside_the_sessions_directory(self):
+        import site_session as ss
+
+        for name in ("", ".", "..", "../escape", "a/b", "\\"):
+            with self.subTest(name=name):
+                self.assertFalse(ss.forget(f"legacy:{name}"))
+
     def test_a_colliding_legacy_profile_moves_only_to_its_proven_owner(self):
         import json
         import site_session as ss

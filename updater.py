@@ -148,12 +148,32 @@ def _require_trusted_url(url: str) -> str:
     return url
 
 
+def _host_of(url: str) -> str:
+    try:
+        return (urlparse(url).hostname or "").lower()
+    except ValueError:
+        return ""
+
+
 class _TrustedRedirectHandler(HTTPRedirectHandler):
-    """Reject a redirect before urllib connects to its target."""
+    """Reject a redirect before urllib connects to its target.
+
+    And drop the credential when the host changes. `urllib` copies every
+    header except `content-length` and `content-type` onto the redirected
+    request, so `Authorization: Bearer $GITHUB_TOKEN` followed the release
+    asset from `api.github.com` to the download host. The asset URL is
+    already signed and needs no token; sending one hands a personal access
+    token to a host that never asked for it.
+    """
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         _require_trusted_url(newurl)
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
+        request = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if request is not None and _host_of(newurl) != _host_of(req.full_url):
+            request.headers = {name: value
+                               for name, value in request.headers.items()
+                               if name.lower() != "authorization"}
+        return request
 
 
 def _open_trusted(url: str, *, timeout: int):

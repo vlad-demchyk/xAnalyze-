@@ -90,6 +90,41 @@ def _alternates(markup: str, base_url: str) -> list[dict]:
     return links
 
 
+class _PageFacts:
+    """One parse of each page, shared by every comparison in this module.
+
+    Both cross-language rules ask the same two questions of the *other* page
+    inside their inner loop - what does it declare as an alternate, and what
+    does it call `x-default` - and each question re-ran BeautifulSoup over
+    the whole document. On a crawl of `n` pages declaring `k` languages that
+    is `n * k` parses of markup that has not changed since the first one.
+    """
+
+    def __init__(self):
+        self._alternates: dict = {}
+        self._x_default: dict = {}
+
+    @staticmethod
+    def _key(page):
+        # The object, not the address: two `PageResult`s can share a final
+        # URL, and the markup belongs to the object that was read.
+        return id(page)
+
+    def alternates(self, page) -> list[dict]:
+        key = self._key(page)
+        if key not in self._alternates:
+            self._alternates[key] = _alternates(
+                getattr(page, "raw_html", "") or "", page.url)
+        return self._alternates[key]
+
+    def x_default(self, page) -> str:
+        key = self._key(page)
+        if key not in self._x_default:
+            self._x_default[key] = _x_default_url(
+                getattr(page, "raw_html", "") or "", page.url)
+        return self._x_default[key]
+
+
 #: field -> (rule, severity). The canonical is the serious one: two pages
 #: naming the same canonical are telling a search engine that one of them
 #: does not exist, which is a request to be dropped rather than a missed
@@ -107,6 +142,7 @@ def issues_for(pages) -> list:
                 if getattr(p, "raw_html", "") and not getattr(p, "error", None)]
     if len(readable) < _MIN_PAGES:
         return []
+    parsed = _PageFacts()
 
     seen: dict = {field: {} for field in _FIELDS}
     for page in readable:
@@ -140,11 +176,11 @@ def issues_for(pages) -> list:
     reported = set()
     for page in readable:
         source_url = _normal(page.url)
-        for alternate in _alternates(page.raw_html, page.url):
+        for alternate in parsed.alternates(page):
             target = by_url.get(alternate["url"])
             if target is None or target is page:
                 continue
-            target_links = _alternates(target.raw_html, target.url)
+            target_links = parsed.alternates(target)
             if any(link["url"] == source_url for link in target_links):
                 continue
             key = (source_url, alternate["url"], alternate["language"])
@@ -156,8 +192,8 @@ def issues_for(pages) -> list:
                 category=SEO, confidence=EXACT, source=page.url,
                 details={"language": alternate["language"],
                          "target": alternate["url"]}, engine="crawl"))
-    issues.extend(untranslated_slug_issues(pages))
-    issues.extend(untranslated_content_issues(pages))
+    issues.extend(untranslated_slug_issues(pages, parsed=parsed))
+    issues.extend(untranslated_content_issues(pages, parsed=parsed))
     return issues
 
 
@@ -192,7 +228,7 @@ def _x_default_url(markup: str, base_url: str) -> str:
     return ""
 
 
-def _translation_of_the_pair(first, second):
+def _translation_of_the_pair(first, second, parsed=None):
     """Which of the two addresses is the translation, and which the source.
 
     The finding belongs on the translation: that is the page that was meant
@@ -213,8 +249,8 @@ def _translation_of_the_pair(first, second):
 
     :return: `(translation, source)`, or `None` when it cannot be told.
     """
-    default = (_x_default_url(first.raw_html, first.url)
-               or _x_default_url(second.raw_html, second.url))
+    parsed = parsed or _PageFacts()
+    default = parsed.x_default(first) or parsed.x_default(second)
     if default:
         if _normal(second.url) == default:
             return first, second
@@ -256,7 +292,7 @@ def _path_without_language(url: str) -> str:
     return "/" + "/".join(segments)
 
 
-def untranslated_slug_issues(pages) -> list:
+def untranslated_slug_issues(pages, parsed=None) -> list:
     """Addresses left in the source language on a site that translates them.
 
     An identical path across two languages is not a defect by itself: plenty
@@ -274,12 +310,13 @@ def untranslated_slug_issues(pages) -> list:
     if len(readable) < _MIN_PAGES:
         return []
 
+    parsed = parsed or _PageFacts()
     by_url = {_normal(p.url): p for p in readable}
     translated = 0
     untranslated: dict = {}
     for page in readable:
         here = _normal(page.url)
-        for alternate in _alternates(page.raw_html, page.url):
+        for alternate in parsed.alternates(page):
             target = by_url.get(alternate["url"])
             if target is None or target is page:
                 continue
@@ -290,11 +327,19 @@ def untranslated_slug_issues(pages) -> list:
             if _path_without_language(page.url) != _path_without_language(alternate["url"]):
                 translated += 1
                 continue
+            # The home page has no slug to leave untranslated. `/` and
+            # `/en/` reduce to the same empty path by construction, not
+            # because an editor forgot one, so every site that spells its
+            # languages as a path prefix produced this finding on its own
+            # front door - measured on a two-language site, where it was
+            # this rule's only false positive.
+            if _path_without_language(page.url) == "/":
+                continue
             # The finding belongs on the version that failed to translate,
             # not on whichever of the two sorts first. The default language
             # is the one served without a prefix, so the prefixed address is
             # the translation - and the one still carrying the other's slug.
-            decided = _translation_of_the_pair(page, target)
+            decided = _translation_of_the_pair(page, target, parsed)
             if decided is None:
                 continue
             subject, other = decided
@@ -383,7 +428,7 @@ def _comparable_strings(markup: str) -> dict:
     return found
 
 
-def untranslated_content_issues(pages) -> list:
+def untranslated_content_issues(pages, parsed=None) -> list:
     """Text that stayed the same on a page whose other text was translated.
 
     The comparison is exact - two strings are identical or they are not -
@@ -403,13 +448,14 @@ def untranslated_content_issues(pages) -> list:
     if len(readable) < _MIN_PAGES:
         return []
 
+    parsed = parsed or _PageFacts()
     by_url = {_normal(p.url): p for p in readable}
     texts: dict = {}
     issues = []
     seen = set()
     for page in readable:
         here = _normal(page.url)
-        for alternate in _alternates(page.raw_html, page.url):
+        for alternate in parsed.alternates(page):
             target = by_url.get(alternate["url"])
             if target is None or target is page:
                 continue
@@ -430,7 +476,7 @@ def untranslated_content_issues(pages) -> list:
                 continue
             # The finding belongs on the translation, i.e. the address that
             # carries a language prefix, for the same reason as the slug rule.
-            decided = _translation_of_the_pair(page, target)
+            decided = _translation_of_the_pair(page, target, parsed)
             if decided is None:
                 continue
             subject, other = decided

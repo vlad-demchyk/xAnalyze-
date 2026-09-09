@@ -396,6 +396,13 @@ class AuditWorker(QThread):
         self.settings = settings
         self.crawl = crawl
         self.cancellation = cancellation
+        #: What this run actually read, handed to the view model so a
+        #: second pass reuses it instead of fetching again. Declared here
+        #: rather than only in `run`, so a branch that reads nothing - a
+        #: single page file - still answers the question.
+        self.acquired_pages = None
+        self.acquired_files = None
+        self.scan_diagnostics = None
         self._cancelled = False
 
     def cancel(self) -> None:

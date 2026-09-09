@@ -228,6 +228,15 @@ _COUNT_NOUNS = {
         "it": dict(one="dominio esterno", few="domini esterni"),
         "en": dict(one="external host", few="external hosts"),
     },
+    # Locative, governed by "у": the rule speaks at two witnesses and can
+    # have three, so the number is counted rather than written into the
+    # sentence. See `DeclaredLanguageContradictsAddress`.
+    "html_lang_contradicts_address": {
+        "uk": dict(one="незалежному місці", few="незалежних місцях",
+                   many="незалежних місцях"),
+        "it": dict(one="punto indipendente", few="punti indipendenti"),
+        "en": dict(one="independent place", few="independent places"),
+    },
 }
 
 
@@ -240,7 +249,8 @@ def _add_count_noun(stem: str, fields: dict, lang: str) -> None:
         return
     forms = forms_by_lang.get(lang, forms_by_lang["en"])
     noun_key = {"perf_render_blocking": "files_noun",
-               "perf_preconnect": "domains_noun"}[stem]
+               "perf_preconnect": "domains_noun",
+               "html_lang_contradicts_address": "places_noun"}[stem]
     fields[noun_key] = plural(count, lang, **forms)
 
 

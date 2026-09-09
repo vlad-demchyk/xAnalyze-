@@ -85,6 +85,30 @@ class WhereItMustStaySilent(unittest.TestCase):
         self.assertEqual(rules_for(pair("/x/", "/x/")[:1]), [])
 
 
+class TheHomePageHasNoSlug(unittest.TestCase):
+    """`/` and `/en/` reduce to the same empty path by construction.
+
+    Every site that spells its languages as a path prefix has this pair, so
+    the rule reported the front door of each of them. Measured on a live
+    two-language site, it was this rule's only false positive.
+    """
+
+    def test_the_front_door_is_not_an_untranslated_address(self):
+        pages = (pair("/", "/")
+                 + pair("/eventi/", "/veranstaltungen/")
+                 + pair("/esperienze/", "/erlebnisse/"))
+        self.assertEqual(rules_for(pages), [])
+
+    def test_a_real_missed_slug_beside_it_is_still_reported(self):
+        pages = (pair("/", "/")
+                 + pair("/eventi/", "/veranstaltungen/")
+                 + pair("/esperienze/", "/erlebnisse/")
+                 + pair("/passeggiate/", "/passeggiate/"))
+        found = rules_for(pages)
+        self.assertEqual([i.source for i in found],
+                         ["https://example.com/de/passeggiate"])
+
+
 class TheLanguagePrefixIsNotPartOfTheSlug(unittest.TestCase):
     """`/de/eventi/` against `/eventi/` differs only by the prefix, and that
     difference is the site's routing rather than a translated address."""

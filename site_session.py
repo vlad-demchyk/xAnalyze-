@@ -47,6 +47,9 @@ _DIRNAME = "sessions"
 #: The pre-hash directory-name rule, retained only to discover old profiles.
 _SAFE = re.compile(r"[^a-z0-9._-]+")
 _PROFILE = "profile.json"
+#: How `known_hosts()` names a profile whose owner it could not prove. It is
+#: not a host and never resolves to one, but `forget()` takes it back.
+_LEGACY_PREFIX = "legacy:"
 _PROFILE_VERSION = 1
 _PROFILE_PREFIX = "profile-"
 
@@ -255,7 +258,7 @@ def known_hosts() -> list:
     hosts = []
     for entry in list(root.iterdir()):
         if entry.is_symlink():
-            hosts.append(f"legacy:{entry.name}")
+            hosts.append(_LEGACY_PREFIX + entry.name)
             continue
         if not _profile_has_data(entry):
             continue
@@ -270,12 +273,45 @@ def known_hosts() -> list:
         else:
             # It remains visible and removable, but is never attached to a
             # guessed host because the old slug may represent several inputs.
-            hosts.append(f"legacy:{entry.name}")
+            hosts.append(_LEGACY_PREFIX + entry.name)
     return sorted(set(hosts))
 
 
+def _forget_legacy(name: str) -> bool:
+    """Remove one entry `known_hosts()` listed without being able to name it.
+
+    Such an entry has no host to resolve, so the ordinary path cannot reach
+    it - and an entry a person can see in the list but cannot remove is the
+    one thing this whole feature promises not to be.
+    """
+    if not name or "/" in name or "\\" in name or name in {".", ".."}:
+        return False
+    root = sessions_root().resolve()
+    candidate = root / name
+    if candidate.is_symlink():
+        # A symlink is what `_direct_child` refuses and what `known_hosts()`
+        # lists as legacy. Remove the link, never what it points at.
+        candidate.unlink(missing_ok=True)
+        return True
+    try:
+        path = _direct_child(root, name)
+    except ValueError:
+        return False
+    if not path.is_dir():
+        return False
+    shutil.rmtree(path, ignore_errors=True)
+    return not path.exists()
+
+
 def forget(host: str) -> bool:
-    """Delete this host's profile. `True` if there was one to delete."""
+    """Delete this host's profile. `True` if there was one to delete.
+
+    Also accepts a `legacy:` token exactly as `known_hosts()` printed it,
+    because that list is what a person reads before deciding what to remove.
+    """
+    text = (host or "").strip()
+    if text.startswith(_LEGACY_PREFIX):
+        return _forget_legacy(text[len(_LEGACY_PREFIX):])
     try:
         path = profile_dir(host)
     except ValueError:

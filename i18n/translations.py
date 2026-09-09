@@ -5605,9 +5605,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "The declared language contradicts the site itself",
     },
     "a11y_html_lang_contradicts_address_found": {
-        "uk": 'Сторінка оголошує lang="{declared}", а сайт називає її мовою "{expected}" у двох незалежних місцях: {signals}.',
-        "it": 'La pagina dichiara lang="{declared}", ma il sito la indica come "{expected}" in due punti indipendenti: {signals}.',
-        "en": 'The page declares lang="{declared}" while the site names it "{expected}" in two independent places: {signals}.',
+        "uk": 'Сторінка оголошує lang="{declared}", а сайт називає її мовою "{expected}" у {count} {places_noun}: {signals}.',
+        "it": 'La pagina dichiara lang="{declared}", ma il sito la indica come "{expected}" in {count} {places_noun}: {signals}.',
+        "en": 'The page declares lang="{declared}" while the site names it "{expected}" in {count} {places_noun}: {signals}.',
     },
     "a11y_html_lang_contradicts_address_why": {
         "uk": "Це не здогад про мову тексту, а розбіжність між тим, що сайт знає про сторінку, і тим, що вона декларує. Зазвичай означає атрибут, забутий в одному місці шаблону: адреса й og:locale уже правильні, а <html lang> лишився мовою за замовчуванням. Читач екрана довіряє атрибуту повністю, тому читає текст чужою фонетикою, а пошук отримує суперечливі сигнали про мовні версії.",

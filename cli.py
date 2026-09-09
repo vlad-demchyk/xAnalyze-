@@ -764,6 +764,14 @@ def cmd_login(args) -> int:
             removed = site_session.forget_all()
             print(f"forgot {removed} session(s)")
             return EXIT_OK
+        # `--list` prints old profiles as `legacy:<name>`, and that name is
+        # not a URL and never resolves to one. It is still what a person
+        # reads before deciding what to remove, so it is accepted verbatim.
+        if target.startswith("legacy:"):
+            print(f"forgot the session for {target}"
+                  if site_session.forget(target)
+                  else f"no stored session for {target}")
+            return EXIT_OK
         if not host:
             print("forget needs a valid site URL", file=sys.stderr)
             return EXIT_ERROR

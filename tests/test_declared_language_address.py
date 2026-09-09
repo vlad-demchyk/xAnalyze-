@@ -110,6 +110,58 @@ class SilentWhereItHasNoVerdict(unittest.TestCase):
             page("it", head), "https://example.com/de/eventi/"))
 
 
+class TheSentenceCountsItsOwnWitnesses(unittest.TestCase):
+    """Two is the rule's minimum, not the number it found.
+
+    The rendered sentence used to say "two independent places" whatever it
+    listed, and on a live run it listed three - a report wrong about its own
+    evidence in all three languages.
+    """
+
+    SELF_DE = ('<link rel="alternate" hreflang="de" '
+               'href="https://example.com/de/eventi/">')
+
+    def issue_for(self, head: str, source: str):
+        found = [i for i in analyze_document(page("it", head), source).issues
+                 if i.rule_id == RULE]
+        self.assertEqual(len(found), 1)
+        return found[0]
+
+    def test_two_witnesses_are_counted_as_two(self):
+        issue = self.issue_for(OG_DE, "https://example.com/de/eventi/")
+        self.assertEqual(issue.details["count"], 2)
+
+    def test_three_witnesses_are_counted_as_three(self):
+        issue = self.issue_for(OG_DE + self.SELF_DE,
+                               "https://example.com/de/eventi/")
+        self.assertEqual(issue.details["count"], 3)
+        self.assertEqual(issue.details["signals"],
+                         "hreflang self-entry, og:locale, path prefix")
+
+    def test_the_sentence_names_the_number_it_listed(self):
+        from audit.explanations import render
+
+        issue = self.issue_for(OG_DE + self.SELF_DE,
+                               "https://example.com/de/eventi/")
+        for lang, expected in (("en", "3 independent places"),
+                               ("uk", "3 незалежних місцях"),
+                               ("it", "3 punti indipendenti")):
+            with self.subTest(lang=lang):
+                found = render(issue, lang).found
+                self.assertIn(expected, found)
+                self.assertNotIn("two independent", found)
+
+    def test_two_witnesses_still_read_as_two(self):
+        from audit.explanations import render
+
+        issue = self.issue_for(OG_DE, "https://example.com/de/eventi/")
+        for lang, expected in (("en", "2 independent places"),
+                               ("uk", "2 незалежних місцях"),
+                               ("it", "2 punti indipendenti")):
+            with self.subTest(lang=lang):
+                self.assertIn(expected, render(issue, lang).found)
+
+
 class PathSegmentsThatAreNotLanguages(unittest.TestCase):
     """The permissive tag pattern must not turn ordinary paths into signals."""
 

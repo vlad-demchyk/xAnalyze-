@@ -232,21 +232,20 @@ def _run_browser_pass(result, suppressions, args=None) -> None:
         audit_kwargs["profile"] = profile
     audits = _audit_at_widths(urls, options, sizes, **audit_kwargs)
     by_url = {a.url: a for a in audits}
-    #: Addresses whose browser findings have already been folded in. One
-    #: page is several documents, and merging the same audit into each of
-    #: them counted every browser finding two or three times: measured on a
-    #: live site, `perf-page-weight` for the home page appeared three times
-    #: in one report, and the run's total was inflated by the same factor.
-    #: The first document for an address is the page's own, which is where a
-    #: reader expects the browser's answer to land.
-    merged_urls = set()
+    #: Addresses already handled. One page is several documents, and
+    #: merging the same audit into each of them counted every browser
+    #: finding two or three times: measured on a live site, `perf-page-weight`
+    #: for the home page appeared three times in one report, and the run's
+    #: total was inflated by the same factor. The first document for an
+    #: address is the page's own, which is where a reader expects the
+    #: browser's answer to land.
     processed_urls = set()
     for document, url in zip(targets, urls):
         page_audit = by_url.get(url)
         if page_audit is None or url in processed_urls:
             continue
         processed_urls.add(url)
-        merged = browser_mod.merge_page_audit(result, document, page_audit)
+        browser_mod.merge_page_audit(result, document, page_audit)
         if page_audit.error:
             progress.notice(
                 "browser", f"{document.source}: {page_audit.error}",
@@ -261,8 +260,6 @@ def _run_browser_pass(result, suppressions, args=None) -> None:
                 human=f"# {document.source}: {name} {message}",
                 source=str(document.source), engine=name,
                 error=str(message))
-        if merged:
-            merged_urls.add(url)
     # Again, because the findings the browser brought arrived after the crawl
     # attributed the ones it had. A second engine's finding is owned by
     # whoever emitted the element, exactly as the first engine's is.

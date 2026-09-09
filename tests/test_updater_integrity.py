@@ -91,6 +91,44 @@ class OnlyGitHubMayDeliverAnUpdate(unittest.TestCase):
             )
 
 
+class TheApiTokenStaysOnTheApiHost(unittest.TestCase):
+    """`urllib` copies every header but content-length and content-type onto
+    a redirected request, so a personal access token followed the release
+    asset from `api.github.com` to the download host that never asked for
+    it. The signed asset URL needs no credential."""
+
+    def redirected(self, from_url: str, to_url: str):
+        from urllib.request import Request
+
+        request = Request(from_url, headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": "Bearer ghp_secret",
+        })
+        return updater._TrustedRedirectHandler().redirect_request(
+            request, None, 302, "Found", {}, to_url)
+
+    def test_the_credential_is_dropped_when_the_host_changes(self):
+        followed = self.redirected(
+            updater.API_URL,
+            "https://objects.githubusercontent.com/XAnalyze-cli.tar.gz")
+        names = {name.lower() for name in followed.headers}
+        self.assertNotIn("authorization", names)
+        self.assertIn("accept", names)
+
+    def test_the_credential_survives_a_redirect_on_the_same_host(self):
+        followed = self.redirected(
+            "https://api.github.com/repos/o/r/releases/latest",
+            "https://api.github.com/repos/o/r/releases/9")
+        values = {name.lower(): value
+                  for name, value in followed.headers.items()}
+        self.assertEqual(values.get("authorization"), "Bearer ghp_secret")
+
+    def test_a_redirect_off_the_allowlist_is_still_refused(self):
+        with self.assertRaisesRegex(RuntimeError, "untrusted update URL"):
+            self.redirected(updater.API_URL,
+                            "https://downloads.evil.example/x.zip")
+
+
 class TheManifestIsTheReleaseContract(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
