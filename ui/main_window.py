@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from PySide6.QtCore import QPoint, QSize, QUrl, Qt
@@ -7,7 +8,7 @@ from PySide6.QtGui import QColor, QIcon, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QHBoxLayout,
-    QFrame, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
+    QFormLayout, QFrame, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
     QMessageBox,
     QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy, QSpinBox, QSplitter,
     QStackedWidget, QStatusBar, QTextEdit, QVBoxLayout, QWidget,
@@ -519,6 +520,13 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
     def _sync_source_from_state(self) -> None:
         """Keep the legacy self.source in sync during the transition."""
         self.source = self.app_state.source
+        index = self.mode_combo.findData(self.source)
+        if index >= 0 and index != self.mode_combo.currentIndex():
+            blocked = self.mode_combo.blockSignals(True)
+            try:
+                self.mode_combo.setCurrentIndex(index)
+            finally:
+                self.mode_combo.blockSignals(blocked)
         # Switching *to* a folder with a path already typed is the other way
         # a folder becomes current, and the path itself did not change.
         self._detect_project()
@@ -1110,6 +1118,10 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self.depth_spin.setValue(self.settings.crawl_depth)
         for w in (self.url_label, self.url_edit, self.depth_label, self.depth_spin):
             web_layout.addWidget(w)
+        # The URL is the only flexible control in this row. Without an
+        # explicit stretch, a recalculation after other setup controls change
+        # can leave a large blank gap before Analyze and clip the address.
+        web_layout.setStretch(web_layout.indexOf(self.url_edit), 1)
         self.url_error = muted()
         self.url_error.setProperty("class", "field-error")
         self.url_error.setVisible(False)
@@ -1446,7 +1458,6 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self.body_stack = QStackedWidget()
         self.setup_screen = SetupScreen(self.app_state, self.palette_tokens,
                                         self.lang)
-        self.setup_screen.analyze_requested.connect(self._on_analyze_clicked)
         # The screen asks for a file; the picker and the field it fills stay
         # here, so there is still one place a chosen path can be wrong in.
         self.setup_screen.choose_file_requested.connect(
@@ -1826,8 +1837,8 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self.depth_label.setToolTip(t("depth_label_full", lang))
         self.repo_path_edit.setPlaceholderText(t("repo_path_placeholder", lang))
         self.browse_btn.setText(t("browse_button", lang))
-        self.exclusions_btn.setText(t("exclusions_button", lang))
-        self.exclusions_btn.setToolTip(t("exclusions_button_full", lang))
+        self.exclusions_btn.setText(t("scan_options_button", lang))
+        self.exclusions_btn.setToolTip(t("scan_options_button_full", lang))
         self.auto_devserver_check.setText(t("auto_devserver_check", lang))
         self.paired_repo_edit.setPlaceholderText(t("paired_repo_placeholder", lang))
         self.paired_repo_edit.setToolTip(t("paired_repo_full", lang))
@@ -1883,9 +1894,17 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self.method_label.setText(t("method_label", lang))
         self.method_combo.set_label(t("method_label", lang))
         self.method_label.setToolTip(t("method_label_full", lang))
-        self.analyze_btn.setText(t("analyze_button", lang))
-        self.cancel_btn.setText(t("cancel_button", lang))
-        self.settings_btn.setText(t("settings_button", lang))
+        for button, label_key, mnemonic_key in (
+            (self.analyze_btn, "analyze_button", "analyze_button_mnemonic"),
+            (self.cancel_btn, "cancel_button", "cancel_button_mnemonic"),
+            (self.settings_btn, "settings_button", "settings_button_mnemonic"),
+        ):
+            label = t(label_key, lang)
+            button.setText(t(mnemonic_key, lang))
+            # The marker is Qt syntax. Give assistive technology the plain
+            # translated action name rather than relying on button text.
+            button.setAccessibleName(label)
+            button.setAccessibleDescription(label)
         # The button that opens the run history. The panel's own heading is
         # "Runs:", with the colon that introduces a list under it - on a
         # button the colon is a promise of something that is not there, so
@@ -2549,7 +2568,12 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             else:
                 page.setSizePolicy(QSizePolicy.Policy.Ignored,
                                    QSizePolicy.Policy.Ignored)
-        stack.adjustSize()
+        # This screen borrows the stack as a stretched field in its target
+        # row. `adjustSize()` resizes it to its small content hint and the
+        # parent layout does not necessarily run again after a category or
+        # check change, leaving empty space before Analyze. Invalidate the
+        # hint so the parent can preserve the row's stretch allocation.
+        stack.updateGeometry()
 
     def _apply_mode_visibility(self) -> None:
         is_repo = self.source == SOURCE_REPO
@@ -3087,7 +3111,8 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self._reset_scan_ui()
 
         self.worker = RepoAnalysisWorker(
-            files=self._reusable_files(),
+            files=(self._reusable_files()
+                   if self.app_state.incremental else None),
             root_dir=path,
             ignore_patterns=self.effective_ignore_patterns,
             detector_name=detector_name,
@@ -3095,6 +3120,8 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             unicode_categories=self._active_unicode_categories(),
             scope=self._repo_scope(),
             settings=self.settings,
+            extensions=self.app_state.extensions or None,
+            incremental=self.app_state.incremental,
         )
         self.worker.scanning.connect(self._on_scanning_repo)
         self.worker.detecting.connect(self._on_detecting)
@@ -3203,6 +3230,12 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             max_pages=self.settings.max_pages,
             pages=self._reusable_pages() if self.source == SOURCE_SITE else None,
             ignore_patterns=self.effective_ignore_patterns,
+            max_files=self.settings.max_files,
+            extensions=self.app_state.extensions or None,
+            files=(self._reusable_files()
+                   if self.source == SOURCE_REPO
+                   and self.app_state.incremental else None),
+            incremental=self.app_state.incremental,
             settings=self.settings,
             site_controls=self.app_state.site_controls,
             medium=self.app_state.medium,
@@ -3608,17 +3641,60 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
 
     def _on_exclusions_clicked(self) -> None:
         dlg = QDialog(self)
-        dlg.setWindowTitle(t("exclusions_dialog_title", self.lang))
+        dlg.setWindowTitle(t("scan_options_title", self.lang))
         layout = QVBoxLayout(dlg)
+        incremental = QCheckBox(t("incremental_check", self.lang))
+        incremental.setObjectName("scan-incremental")
+        incremental.setChecked(self.app_state.incremental)
+        incremental.setToolTip(t("incremental_check_full", self.lang))
+        incremental.setAccessibleDescription(
+            t("incremental_check_full", self.lang))
+        layout.addWidget(incremental)
+        form = QFormLayout()
+        form.setVerticalSpacing(10)
+        max_files = QSpinBox()
+        max_files.setObjectName("scan-max-files")
+        max_files.setRange(100, 200000)
+        max_files.setValue(max(100, int(self.settings.max_files or 5000)))
+        extensions = QLineEdit()
+        extensions.setObjectName("scan-extensions")
+        extensions.setText(", ".join(self.app_state.extensions))
+        extensions.setPlaceholderText(t("scan_extensions_placeholder", self.lang))
+        form.addRow(t("scan_max_files", self.lang), max_files)
+        form.addRow(t("scan_extensions", self.lang), extensions)
+        layout.addLayout(form)
+
+        layout.addWidget(QLabel(t("scan_exclusions", self.lang)))
         editor = QPlainTextEdit()
+        editor.setObjectName("scan-exclusions")
         editor.setPlainText("\n".join(self.repo_ignore_patterns))
+        editor.setMinimumHeight(120)
         layout.addWidget(editor)
+        note = QLabel(t("scan_extensions_hint", self.lang))
+        note.setWordWrap(True)
+        note.setProperty("class", "muted")
+        layout.addWidget(note)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(dlg.accept)
         buttons.rejected.connect(dlg.reject)
         layout.addWidget(buttons)
-        dlg.resize(520, 420)
+        dlg.resize(560, 460)
         if dlg.exec() == QDialog.DialogCode.Accepted:
+            raw_extensions = [part for part in re.split(
+                r"[,;\s]+", extensions.text().strip()) if part]
+            normalized_extensions = tuple(
+                part.lower() if part.startswith(".") else f".{part.lower()}"
+                for part in raw_extensions
+            )
+            if any(not re.fullmatch(r"\.[a-z0-9_-]+", item)
+                   for item in normalized_extensions):
+                QMessageBox.warning(
+                    self, "", t("scan_extensions_invalid", self.lang))
+                return
+            self.settings.max_files = max_files.value()
+            self.settings.save()
+            self.app_state.set_incremental(incremental.isChecked())
+            self.app_state.set_extensions(normalized_extensions)
             self.repo_ignore_patterns = _parse_ignore_text(editor.toPlainText())
             # The view model holds the same list, and held it by *reference*:
             # rebinding here left it pointing at the pre-edit one, so an

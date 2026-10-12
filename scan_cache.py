@@ -6,10 +6,11 @@ hasn't changed, the cached result is returned instead of re-scanning.
 from __future__ import annotations
 
 import hashlib
+from copy import deepcopy
 import json
-import os
 from pathlib import Path
 from typing import Any
+from cache_store import merge_cache
 
 
 # Default cache location
@@ -19,16 +20,14 @@ CACHE_FILE = CACHE_DIR / "scan_cache.json"
 
 def _content_hash(text: str) -> str:
     """Fast hash of file content."""
-    return hashlib.md5(text.encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _file_hash(path: str) -> str:
-    """Hash of file path + modification time."""
+    """Hash the same decoded text that the scanner reads."""
     try:
-        stat = os.stat(path)
-        key = f"{path}:{stat.st_mtime}:{stat.st_size}"
-        return hashlib.md5(key.encode("utf-8")).hexdigest()[:16]
-    except OSError:
+        return _content_hash(Path(path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError):
         return ""
 
 
@@ -39,6 +38,8 @@ class ScanCache:
         self.cache_path = cache_path or CACHE_FILE
         self._cache: dict[str, Any] = {}
         self._load()
+        self._baseline = deepcopy(self._cache)
+        self._clear_pending = False
     
     def _load(self) -> None:
         """Load cache from disk."""
@@ -46,6 +47,8 @@ class ScanCache:
             try:
                 with open(self.cache_path) as f:
                     self._cache = json.load(f)
+                    if not isinstance(self._cache, dict):
+                        self._cache = {}
             except (json.JSONDecodeError, OSError):
                 self._cache = {}
     
@@ -60,15 +63,14 @@ class ScanCache:
         this runs on, so a concurrent reader sees either the old file or the
         new one.
         """
-        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-        temp = self.cache_path.with_suffix(".tmp")
-        with open(temp, "w") as handle:
-            json.dump(self._cache, handle, indent=2, ensure_ascii=False)
-        temp.replace(self.cache_path)
+        self._cache = merge_cache(self.cache_path, self._cache, self._baseline,
+                                  clear=self._clear_pending)
+        self._baseline = deepcopy(self._cache)
+        self._clear_pending = False
     
-    def get(self, file_path: str) -> dict | None:
+    def get(self, file_path: str, *, content: str | None = None) -> dict | None:
         """Get cached result for a file, or None if not cached / changed."""
-        file_key = _file_hash(file_path)
+        file_key = _content_hash(content) if content is not None else _file_hash(file_path)
         if not file_key:
             return None
         
@@ -81,7 +83,8 @@ class ScanCache:
         
         return cached.get("result")
     
-    def put(self, file_path: str, result: dict, *, save: bool = True) -> None:
+    def put(self, file_path: str, result: dict, *, save: bool = True,
+            content: str | None = None) -> None:
         """Cache a scan result for a file.
 
         `save=False` keeps the entry in memory only, for a caller writing
@@ -90,7 +93,7 @@ class ScanCache:
         of it. Such a caller must call `save()` when it is done - see
         `cli_impl.scanning._store_unchanged`.
         """
-        file_key = _file_hash(file_path)
+        file_key = _content_hash(content) if content is not None else _file_hash(file_path)
         if not file_key:
             return
 
@@ -113,6 +116,7 @@ class ScanCache:
     def clear(self) -> None:
         """Clear the entire cache."""
         self._cache = {}
+        self._clear_pending = True
         self._save()
     
     def stats(self) -> dict:

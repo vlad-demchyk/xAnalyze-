@@ -8,6 +8,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -17,6 +18,7 @@ try:
     import replacements
     from file_writer import ReplacementPlan, apply_replacements
     from ui.window_parts.action_dialogs import (DecisionDialog,
+                                                LogViewerDialog,
                                                 WriteConfirmDialog,
                                                 WriteOutcomeDialog)
 except Exception:  # noqa: BLE001 - no Qt here is a skip, not a failure
@@ -217,3 +219,19 @@ class Progressing(unittest.TestCase):
         self.assertEqual(stopped, [True])
         self.assertFalse(dialog.stop_btn.isEnabled())
         self.assertIn("paid", dialog.log.text())
+
+
+@unittest.skipIf(QApplication is None, "PySide6 not available")
+class LogViewer(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_the_log_uses_an_installed_fixed_width_font(self):
+        from ui import theme
+
+        with patch("applog.read_records", return_value=[]):
+            dialog = LogViewerDialog(lang="uk")
+        self.assertEqual(dialog.font().family(), theme.current_palette().font)
+        self.assertEqual(dialog.view.font().family(),
+                         theme.current_palette().font_mono)

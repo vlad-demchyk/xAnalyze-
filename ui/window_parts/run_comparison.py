@@ -260,9 +260,16 @@ class RunComparisonPanel(QWidget):
             note=t("comparison_oldest_first", lang) if unchanged["rules"] else "")
 
         measured = view.get("measurements") or []
+        measurement_names = []
+        for row in measured:
+            rule = row["rule"]
+            key = f"a11y_{rule.replace('-', '_')}_title"
+            name = t(key, lang)
+            measurement_names.append(
+                name if name != key else t("comparison_measurement_unknown", lang))
         self.measurements.setText(
             t("comparison_measurements", lang,
-              rules=", ".join(row["rule"] for row in measured)) if measured else "")
+              rules=", ".join(measurement_names)) if measured else "")
         self.measurements.setVisible(bool(measured))
 
     # -- actions ---------------------------------------------------------

@@ -28,7 +28,7 @@ import unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 try:
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication, QSizePolicy
     from analysis_modes import (
         CHECK_ACCESSIBILITY, CHECK_AI_PATTERNS, METHOD_AI, METHOD_LOCAL,
         SOURCE_FILE, SOURCE_REPO, SOURCE_SITE,
@@ -344,6 +344,44 @@ class TheSetupScreen(unittest.TestCase):
         self.assertEqual(self.window.body_stack.currentIndex(), 0)
         self.assertFalse(self.window.inline_strip.isVisible())
 
+    def test_new_run_has_one_analyze_action(self):
+        """The target row owns the action; the setup body must not repeat it."""
+        self.assertGreaterEqual(
+            self.window.setup_screen.target_layout.indexOf(self.window.analyze_btn), 0)
+        self.assertFalse(hasattr(self.window.setup_screen, "analyze_btn"))
+
+    def test_category_filters_are_spaced_clickable_chips(self):
+        boxes = list(self.window.setup_screen.category_boxes.values())
+        self.assertEqual(len(boxes), 6)
+        self.assertTrue(all(box.property("class") == "filter-chip" for box in boxes))
+        self.assertTrue(all(box.minimumHeight() >= 32 for box in boxes))
+        self.assertGreaterEqual(boxes[0].parentWidget().layout().spacing(), 8)
+        sheet = theme.build_qss(theme.current_palette("light"))
+        self.assertIn("QCheckBox[class=\"filter-chip\"]:checked", sheet)
+        self.assertIn("QWidget[view=\"setup\"] QLabel[class=\"muted\"]", sheet)
+        chip = sheet.split('QCheckBox[class="filter-chip"] {', 1)[1].split("}", 1)[0]
+        self.assertIn("spacing: 9px;", chip)
+        self.assertIn("padding: 4px 10px;", chip)
+        checked = sheet.split('QCheckBox[class="filter-chip"]:checked {', 1)[1].split("}", 1)[0]
+        self.assertIn("border-color:", checked)
+        indicator = sheet.split("QCheckBox::indicator {", 1)[1].split("}", 1)[0]
+        self.assertIn("width: 18px;", indicator)
+        self.assertIn("height: 18px;", indicator)
+
+    def test_url_field_takes_the_remaining_width_in_its_row(self):
+        web_layout = self.window.url_edit.parentWidget().layout()
+        self.assertEqual(web_layout.stretch(web_layout.indexOf(self.window.url_edit)), 1)
+        self.assertEqual(
+            self.window.setup_screen.target_row.sizePolicy().horizontalPolicy(),
+            QSizePolicy.Policy.Expanding,
+        )
+
+    def test_filter_change_does_not_collapse_the_url_field(self):
+        self.assertGreaterEqual(self.window.url_edit.width(), 300)
+        next(iter(self.window.setup_screen.category_boxes.values())).click()
+        self.app.processEvents()
+        self.assertGreaterEqual(self.window.url_edit.width(), 300)
+
     def test_the_target_fields_move_there_and_come_back(self):
         """One set of fields, lent to whichever surface is asking. A second
         address field on the setup screen would be a second place for the
@@ -373,7 +411,11 @@ class TheSetupScreen(unittest.TestCase):
         screen = self.window.setup_screen
         screen.source_buttons[SOURCE_REPO][0].setChecked(True)
         self.assertEqual(self.window.app_state.source, SOURCE_REPO)
+        self.assertEqual(self.window.mode_combo.currentData(), SOURCE_REPO)
+        screen.source_buttons[SOURCE_FILE][0].setChecked(True)
+        self.assertEqual(self.window.mode_combo.currentData(), SOURCE_FILE)
         self.window.app_state.set_source(SOURCE_SITE)
+        self.assertEqual(self.window.mode_combo.currentData(), SOURCE_SITE)
         self.assertTrue(screen.source_buttons[SOURCE_SITE][0].isChecked())
 
     def test_it_does_not_put_a_floor_under_the_window(self):

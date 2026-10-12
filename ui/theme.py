@@ -39,6 +39,7 @@ instead of two disagreeing ones.
 """
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import re
@@ -220,6 +221,7 @@ def _check_mark(p: Palette) -> str:
 
 
 def build_qss(p: Palette) -> str:
+    p = _palette_with_installed_fonts(p)
     c = qss_color
     # Selection colours: the accent at full strength is too loud behind body
     # text, so selections use the muted brand fill the web app uses for the
@@ -349,6 +351,11 @@ QLabel[class="{CLASS_HEADING}"] {{
 QLabel[class="{CLASS_MUTED}"] {{
     color: {c(p.text_muted)};
     font-size: {p.font_size_sm}px;
+}}
+
+QWidget[view="setup"] QLabel[class="{CLASS_MUTED}"] {{
+    color: {c(p.text)};
+    font-size: {p.font_size_sm + 1}px;
 }}
 
 QLabel[class="{CLASS_EMPTY}"] {{
@@ -508,6 +515,11 @@ QWidget[class="{CLASS_PANEL_HEAD}"] {{
     border-bottom: 1px solid {c(p.border)};
     border-top-left-radius: {p.radius}px;
     border-top-right-radius: {p.radius}px;
+}}
+
+QWidget[class="settings-rule"] {{
+    background-color: {c(p.rule)};
+    border: none;
 }}
 
 QFrame[class="{CLASS_DIVIDER}"] {{
@@ -798,6 +810,40 @@ QProgressBar::chunk {{
 
 QCheckBox {{
     spacing: {p.space_sm}px;
+    min-height: 28px;
+    padding: 2px 0;
+}}
+
+/* Category filters are independent choices, so give each one a clear target
+   and a visible selected state. The extra padding belongs to the whole
+   control, not just its tiny indicator. */
+QCheckBox[class="filter-chip"] {{
+    spacing: 9px;
+    min-height: 32px;
+    padding: 4px 10px;
+    border: 1px solid {c(p.border)};
+    border-radius: {p.radius_lg}px;
+    background-color: {c(p.bg_card)};
+    color: {c(p.text)};
+    font-weight: 500;
+}}
+
+QCheckBox[class="filter-chip"]:hover {{
+    background-color: {c(p.bg_hover)};
+    border-color: {c(p.accent)};
+}}
+
+QCheckBox[class="filter-chip"]:checked {{
+    background-color: {c(p.bg_hover)};
+    border-color: {c(p.accent)};
+    color: {c(p.text)};
+    font-weight: 600;
+}}
+
+QCheckBox[class="filter-chip"]:disabled {{
+    background-color: {c(p.bg_muted)};
+    border-color: {c(p.border)};
+    color: {c(p.text_subtle)};
 }}
 
 /* The same reasoning as the radio below, and the same defect: left to the
@@ -808,15 +854,18 @@ QCheckBox {{
    fill is `--primary`, which inverts with the sheet, and the tick is
    `--on-primary` baked into the two SVGs above. */
 QCheckBox::indicator {{
-    width: 14px;
-    height: 14px;
-    border-radius: 4px;
-    border: 1px solid {c(p.border_strong)};
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+    /* The unchecked box is the only visible state cue at rest. A decorative
+       surface border is too faint here, so use the muted ink that clears
+       the control-boundary contrast threshold in both themes. */
+    border: 1px solid {c(p.text_muted)};
     background-color: {c(p.bg)};
 }}
 
 QCheckBox::indicator:hover {{
-    border-color: {c(p.text_subtle)};
+    border-color: {c(p.text)};
 }}
 
 QCheckBox::indicator:checked {{
@@ -840,15 +889,16 @@ QCheckBox:disabled {{
    identical white discs and no way to see which one was selected. */
 QRadioButton {{
     spacing: {p.space_sm}px;
+    min-height: 28px;
 }}
 
 /* The radius has to match the *outer* box, which is the content plus both
    borders: a 12px indicator with a 4px border is 20px across, and a radius
    of 7 there draws a rounded square rather than a dot. */
 QRadioButton::indicator {{
-    width: 12px;
-    height: 12px;
-    border-radius: 6px;
+    width: 14px;
+    height: 14px;
+    border-radius: 7px;
     border: none;
     background-color: {c(p.divider)};
 }}
@@ -859,7 +909,7 @@ QRadioButton::indicator:hover {{
 
 QRadioButton::indicator:checked {{
     border: 4px solid {c(p.accent)};
-    border-radius: 10px;
+    border-radius: 11px;
     background-color: {c(p.bg)};
 }}
 
@@ -944,8 +994,55 @@ def resolve_mode(mode: str) -> str:
         return "light"
 
 
+def _palette_with_installed_fonts(palette: Palette) -> Palette:
+    """Use concrete installed families in QSS instead of CSS generic aliases.
+
+    Qt's QSS font-family property logs a warning for generic names such as
+    ``Sans Serif`` and ``monospace`` on macOS, even though QFont can resolve
+    them. Ask Qt for the system family and select a fixed-width family from
+    its installed list so a clean install never requests Geist or an alias
+    QSS cannot resolve.
+    """
+    try:
+        from PySide6.QtGui import QFontDatabase, QGuiApplication
+
+        # QFontDatabase.families() aborts the process on some Qt/macOS builds
+        # when no GUI application exists yet. Headless callers keep the
+        # generic palette; the live window resolves concrete installed fonts.
+        if QGuiApplication.instance() is None:
+            return palette
+
+        installed = {name.casefold(): name for name in QFontDatabase.families()}
+        if not installed:
+            return palette
+
+        system = QFontDatabase.systemFont(
+            QFontDatabase.SystemFont.GeneralFont).family()
+        general = installed.get(system.casefold())
+        if general is None:
+            general = next((installed[name.casefold()] for name in (
+                "Helvetica Neue", "Arial", "Segoe UI", "Noto Sans",
+                "Liberation Sans", "DejaVu Sans",
+            ) if name.casefold() in installed), next(iter(installed.values())))
+
+        fixed_names = (
+            "Menlo", "SF Mono", "Cascadia Code", "Consolas", "Monaco",
+            "DejaVu Sans Mono", "Liberation Mono", "Noto Sans Mono",
+            "Courier New",
+        )
+        fixed = next((installed[name.casefold()] for name in fixed_names
+                      if name.casefold() in installed), None)
+        if fixed is None:
+            fixed = next((name for name in installed.values()
+                          if "mono" in name.casefold()
+                          or "courier" in name.casefold()), general)
+        return replace(palette, font=general, font_mono=fixed)
+    except Exception:  # noqa: BLE001 - preserve the palette if Qt font data is unavailable
+        return palette
+
+
 def current_palette(mode: str = "auto") -> Palette:
-    return palettes()[resolve_mode(mode)]
+    return _palette_with_installed_fonts(palettes()[resolve_mode(mode)])
 
 
 def apply_theme(app, mode: str = "auto") -> Palette:
@@ -953,5 +1050,10 @@ def apply_theme(app, mode: str = "auto") -> Palette:
     callers can paint the few things QSS can't reach (web-preview HTML, a
     syntax highlighter's colours) with the same values."""
     palette = current_palette(mode)
+    from PySide6.QtGui import QFont
+
+    app_font = QFont(app.font())
+    app_font.setFamily(palette.font)
+    app.setFont(app_font)
     app.setStyleSheet(build_qss(palette))
     return palette

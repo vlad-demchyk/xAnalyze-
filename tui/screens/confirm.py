@@ -41,19 +41,25 @@ class ConfirmModal(ModalScreen[bool]):
     def action_answer_no(self) -> None:
         self.dismiss(False)
 
-    def __init__(self, question: str, *, yes_label: str = "Yes",
-                no_label: str = "No") -> None:
+    def __init__(self, question: str, *, yes_label: str | None = None,
+                no_label: str | None = None) -> None:
         super().__init__()
         self._question = question
         self._yes_label = yes_label
         self._no_label = no_label
 
     def compose(self) -> ComposeResult:
+        from i18n.translations import t
+
+        lang = getattr(self.app, "lang", "uk")
         with Vertical(id="confirm-modal"):
             yield Static(self._question, id="confirm-question")
             with Horizontal():
-                yield Button(self._yes_label, id="confirm-yes", variant="primary")
-                yield Button(self._no_label, id="confirm-no")
+                yield Button(self._yes_label if self._yes_label is not None
+                             else t("tui_yes", lang), id="confirm-yes",
+                             variant="primary")
+                yield Button(self._no_label if self._no_label is not None
+                             else t("tui_no", lang), id="confirm-no")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         self.dismiss(event.button.id == "confirm-yes")

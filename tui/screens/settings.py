@@ -24,32 +24,32 @@ CHOICES = (
     ("ui_language", "ui_language_label_full",
      (("Українська", "uk"), ("English", "en"), ("Italiano", "it"))),
     ("theme", "theme_label",
-     (("auto — follow the system", "auto"), ("light", "light"),
-      ("dark", "dark"))),
+     (("theme_auto", "auto"), ("theme_light", "light"),
+      ("theme_dark", "dark"))),
     ("repo_scope", "tui_set_scope",
-     (("content — copy that ships", "content"),
-      ("technical — comments & docstrings", "technical"),
-      ("both", "both"))),
+     (("scope_content", "content"), ("scope_technical", "technical"),
+      ("scope_both", "both"))),
     ("default_method", "tui_set_method",
-     (("local — offline only", "local"), ("ai — model only", "ai"),
-      ("local+ai — hybrid", "local+ai"))),
+     (("method_local", "local"), ("method_ai", "ai"),
+      ("method_both", "local+ai"))),
     ("llm_provider", "tui_set_account",
-     (("anthropic — your own API key", "anthropic"),
-      ("xformat — subscription", "xformat"),
-      ("claude-code — the signed-in CLI", "claude-code"))),
+     (("provider_anthropic", "anthropic"),
+      ("provider_xformat", "xformat"),
+      ("provider_claude-code", "claude-code"))),
     # The AI pass runs over every block on a site, so what it costs is a
     # setting and not a detail. `sonnet` at `low` is enough for the job: the
     # pass classifies short passages against a fixed rubric.
     ("claude_code_model", "tui_set_cc_model",
-     (("the session's own setting", ""), ("sonnet", "sonnet"),
-      ("opus", "opus"), ("haiku", "haiku"))),
+     (("tui_session_default", ""), ("tui_model_sonnet", "sonnet"),
+      ("tui_model_opus", "opus"), ("tui_model_haiku", "haiku"))),
     ("claude_code_effort", "tui_set_cc_effort",
-     (("the session's own setting", ""), ("low", "low"),
-      ("medium", "medium"), ("high", "high"))),
+     (("tui_session_default", ""), ("tui_effort_low", "low"),
+      ("tui_effort_medium", "medium"), ("tui_effort_high", "high"))),
     ("crawl_depth", "tui_set_depth",
      (("0", "0"), ("1", "1"), ("2", "2"), ("3", "3"))),
     ("max_pages", "tui_set_max_pages",
-     (("10", "10"), ("30", "30"), ("100", "100"), ("unlimited", "0"))),
+     (("10", "10"), ("30", "30"), ("100", "100"),
+      ("tui_unlimited", "0"))),
 )
 
 #: Editable booleans: attribute, label.
@@ -90,7 +90,9 @@ class SettingsScreen(XScreen):
             with VerticalScroll():
                 for attribute, label, options in CHOICES:
                     yield Label(self.tr(label).rstrip(":") + ":")
-                    yield Select(list(options), value=self._current(attribute),
+                    yield Select([(self.tr(option_label), value)
+                                  for option_label, value in options],
+                                 value=self._current(attribute),
                                  id=f"set-{attribute}", allow_blank=False)
                 for attribute, label in FLAGS:
                     yield Checkbox(self.tr(label),

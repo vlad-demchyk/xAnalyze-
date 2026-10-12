@@ -60,6 +60,12 @@ VIEWPORT_SETTLE_MS = 200
 #: than the caller doing this by hand.
 HEADLESS_CHROMIUM_FLAGS = "--disable-gpu --disable-software-rasterizer --no-sandbox"
 
+# Keep the Python wrapper alive for as long as QtWebEngine can use the
+# application. A CLI render may be the first caller and has no window or test
+# class holding the wrapper; letting it fall out of scope tears QApplication
+# down underneath Chromium's browser thread.
+_HEADLESS_APPLICATION = None
+
 
 @dataclass
 class PageAudit:
@@ -89,21 +95,41 @@ def ensure_headless_application():
     window's own application is reused rather than a second one created (Qt
     permits exactly one).
     """
-    # QtWebEngine must be imported before the QApplication exists: it sets the
-    # shared-OpenGL-context attribute at import time, and creating the
-    # application first makes the first page load hang instead of failing (cost
-    # one debugging session to find).
-    from PySide6 import QtWebEngineCore  # noqa: F401
+    global _HEADLESS_APPLICATION
+
+    # Tests and callers that already own an offscreen QApplication still need
+    # Chromium's headless flags before the first profile starts its browser
+    # process. Returning the existing app before setting them made first-use
+    # behaviour depend on which GUI test had created it.
+    if os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+        flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
+        additions = [flag for flag in HEADLESS_CHROMIUM_FLAGS.split()
+                     if flag not in flags.split()]
+        if additions:
+            os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (
+                f"{flags} {' '.join(additions)}").strip()
+
+    from PySide6.QtCore import QCoreApplication, Qt
     from PySide6.QtWidgets import QApplication
 
     existing = QApplication.instance()
     if existing is not None:
+        _HEADLESS_APPLICATION = existing
+        from PySide6 import QtWebEngineCore  # noqa: F401
         return existing
+
+    QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
+    from PySide6 import QtWebEngineCore  # noqa: F401
 
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
-    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = f"{flags} {HEADLESS_CHROMIUM_FLAGS}".strip()
-    return QApplication([])
+    additions = [flag for flag in HEADLESS_CHROMIUM_FLAGS.split()
+                 if flag not in flags.split()]
+    if additions:
+        os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (
+            f"{flags} {' '.join(additions)}").strip()
+    _HEADLESS_APPLICATION = QApplication([])
+    return _HEADLESS_APPLICATION
 
 
 def available() -> tuple:

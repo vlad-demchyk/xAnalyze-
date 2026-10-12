@@ -110,7 +110,26 @@ def enumerate_items() -> list[UninstallItem]:
     return items
 
 
-def remaining_notes() -> list[str]:
+def display_item(item: UninstallItem, lang: str = "en") -> str:
+    """A translated label for an uninstall item, with its path intact."""
+    from i18n.translations import t
+
+    path = str(item.path) if item.path is not None else ""
+    if item.kind == "symlink":
+        return t("tui_uninstall_item_command", lang, path=path)
+    if item.kind == "bundle":
+        return t("tui_uninstall_item_app", lang, path=path)
+    if item.key == "config":
+        return t("tui_uninstall_item_config", lang, path=path)
+    if item.key == "legacy-config":
+        return t("tui_uninstall_item_legacy_config", lang, path=path)
+    if item.kind == "keychain":
+        return t("tui_uninstall_item_keychain", lang, service=item.service,
+                 account=item.account)
+    return item.label
+
+
+def remaining_notes(lang: str | None = None) -> list[str]:
     """Things uninstall does not remove, so the summary says so plainly."""
     notes = []
     # The archive of run folders, wherever it currently is. `migrate=False`:
@@ -121,7 +140,13 @@ def remaining_notes() -> list[str]:
     root = runfolder.default_root(migrate=False)
     if root.is_dir():
         runs = [p for p in root.iterdir() if p.is_dir()]
-        notes.append(f"{len(runs)} report folder(s) left in {root}")
+        if lang is None:
+            notes.append(f"{len(runs)} report folder(s) left in {root}")
+        else:
+            from i18n.translations import t
+
+            notes.append(t("tui_uninstall_reports_left", lang,
+                           n=len(runs), path=str(root)))
     # Loose files from before run folders existed. Still named, because they
     # are still on people's Desktops.
     desktop = Path.home() / "Desktop"
@@ -129,9 +154,20 @@ def remaining_notes() -> list[str]:
                                          "xanalyze-*.md")
                        for p in desktop.glob(pattern)]
     if desktop_reports:
-        notes.append(f"{len(desktop_reports)} older report(s) left on ~/Desktop")
-    notes.append(".xanalyze/ history folders and .xanalyze-ignore files "
-                 "inside your repositories are left untouched")
+        if lang is None:
+            notes.append(f"{len(desktop_reports)} older report(s) left on ~/Desktop")
+        else:
+            from i18n.translations import t
+
+            notes.append(t("tui_uninstall_old_reports_left", lang,
+                           n=len(desktop_reports)))
+    if lang is None:
+        notes.append(".xanalyze/ history folders and .xanalyze-ignore files "
+                     "inside your repositories are left untouched")
+    else:
+        from i18n.translations import t
+
+        notes.append(t("tui_uninstall_history_kept", lang))
     return notes
 
 

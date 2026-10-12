@@ -14,22 +14,84 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
+import threading
+from contextlib import contextmanager
 from pathlib import Path
-
-import config
 
 SERVICE_NAME = "xanalyze"
 # Pre-rename service/dir name. `load_secret` falls back to this so a token
 # saved before the rename doesn't become invisible; see its docstring.
 OLD_SERVICE_NAME = "ai-content-scanner"
+_file_mutex = threading.Lock()
 
 
 def _fallback_path() -> Path:
     base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
     d = Path(base) / SERVICE_NAME
-    d.mkdir(parents=True, exist_ok=True)
-    config.migrate_legacy_file(Path(base) / OLD_SERVICE_NAME, d, "credentials.json")
+    d.mkdir(mode=0o700, parents=True, exist_ok=True)
+    d.chmod(0o700)
     return d / "credentials.json"
+
+
+@contextmanager
+def _locked_file():
+    with _file_mutex:
+        path = _fallback_path()
+        fd = os.open(path.with_suffix(".lock"), os.O_RDWR | os.O_CREAT
+                     | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        with os.fdopen(fd, "r+b") as lock:
+            if os.name != "nt":
+                os.fchmod(lock.fileno(), 0o600)
+            if os.name == "nt":
+                import msvcrt
+                if os.fstat(lock.fileno()).st_size == 0:
+                    lock.write(b"\0")
+                    lock.flush()
+                lock.seek(0)
+                msvcrt.locking(lock.fileno(), msvcrt.LK_LOCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            try:
+                if not path.exists():
+                    legacy = path.parent.parent / OLD_SERVICE_NAME / path.name
+                    if legacy.exists():
+                        _write_file(path, _read_file(legacy))
+                yield path
+            finally:
+                if os.name == "nt":
+                    lock.seek(0)
+                    msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+
+def _read_file(path):
+    try:
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except FileNotFoundError:
+        return {}
+    with os.fdopen(fd, "r", encoding="utf-8") as stream:
+        if os.name != "nt":
+            os.fchmod(stream.fileno(), 0o600)
+        data = json.load(stream)
+    if not isinstance(data, dict):
+        raise ValueError("invalid credential store")
+    return data
+
+
+def _write_file(path, data):
+    fd, name = tempfile.mkstemp(prefix=".credentials-", dir=path.parent)
+    temporary = Path(name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(data, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _keyring():
@@ -63,28 +125,17 @@ def using_keyring() -> bool:
 
 
 def _file_save(account: str, value: str) -> None:
-    path = _fallback_path()
-    data = {}
-    if path.exists():
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            data = {}
-    data[account] = value
-    path.write_text(json.dumps(data), encoding="utf-8")
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
+    with _locked_file() as path:
+        data = _read_file(path)
+        data[account] = value
+        _write_file(path, data)
 
 
 def _file_load(account: str) -> str | None:
-    path = _fallback_path()
-    if not path.exists():
-        return None
     try:
-        return json.loads(path.read_text(encoding="utf-8")).get(account)
-    except (json.JSONDecodeError, OSError):
+        with _locked_file() as path:
+            return _read_file(path).get(account)
+    except (ValueError, OSError):
         return None
 
 
@@ -149,12 +200,10 @@ def delete_secret(account: str) -> None:
         except Exception:  # noqa: BLE001 - already absent is fine
             pass
     # Always clear the file copy too, so signing out really removes it.
-    path = _fallback_path()
-    if not path.exists():
-        return
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        data.pop(account, None)
-        path.write_text(json.dumps(data), encoding="utf-8")
-    except (json.JSONDecodeError, OSError):
+        with _locked_file() as path:
+            data = _read_file(path)
+            data.pop(account, None)
+            _write_file(path, data)
+    except (ValueError, OSError):
         pass

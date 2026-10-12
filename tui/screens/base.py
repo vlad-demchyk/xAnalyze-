@@ -138,6 +138,11 @@ class RunScreen(XScreen):
     a second press used to start a second, interleaved scan.
     """
 
+    # A focused target field scrolls the form just far enough to hide its
+    # title on short terminals. Keep the top of the form visible; Tab and the
+    # arrow bindings still move focus into the controls.
+    AUTO_FOCUS = ""
+
     # Every run screen answers the same three keys, declared once here
     # rather than three times below. Before this, `scan`, `audit` and
     # `fullscan` - the three screens where work is actually started - had no

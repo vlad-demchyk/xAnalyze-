@@ -28,10 +28,156 @@ new location itself.
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
+
+import pytest
 
 #: Kept alive for the process, not cleaned per test. The directory is the
 #: shared "user config" the whole run sees, and removing it between tests
 #: would make settings vanish mid-suite for no reason a test could explain.
 _CONFIG_HOME = tempfile.TemporaryDirectory(prefix="xanalyze-tests-config-")
 os.environ["XDG_CONFIG_HOME"] = _CONFIG_HOME.name
+
+# Set this before pytest imports test modules, several of which create a
+# QApplication directly instead of going through audit.driver's helper.
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+_CHROMIUM_FLAGS = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
+_HEADLESS_FLAGS = ("--disable-gpu", "--disable-software-rasterizer", "--no-sandbox")
+_MISSING_HEADLESS_FLAGS = [flag for flag in _HEADLESS_FLAGS
+                           if flag not in _CHROMIUM_FLAGS.split()]
+if _MISSING_HEADLESS_FLAGS:
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (
+        f"{_CHROMIUM_FLAGS} {' '.join(_MISSING_HEADLESS_FLAGS)}").strip()
+
+try:
+    from PySide6.QtCore import QCoreApplication, Qt
+
+    # QtWebEngine's browser and compositor share OpenGL contexts. This must be
+    # set before any test creates QApplication; importing QtWebEngine alone
+    # did not reliably set it for PySide6 on macOS.
+    QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
+except ImportError:
+    pass
+
+
+_PROFILE_RELEASE_WARNING = (
+    "Release of profile requested but WebEnginePage still not deleted")
+_PROFILE_RELEASE_WARNINGS: list[str] = []
+_PREVIOUS_QT_MESSAGE_HANDLER = None
+_TEST_QAPPLICATION = None
+
+
+def pytest_sessionstart(session):
+    """Turn the WebEngine profile lifetime warning into a suite failure."""
+    global _PREVIOUS_QT_MESSAGE_HANDLER
+
+    try:
+        from PySide6.QtCore import qInstallMessageHandler
+    except ImportError:
+        return
+
+    def handle_qt_message(mode, context, message):
+        rendered = str(message)
+        if _PROFILE_RELEASE_WARNING in rendered:
+            _PROFILE_RELEASE_WARNINGS.append(rendered)
+        if _PREVIOUS_QT_MESSAGE_HANDLER is not None:
+            _PREVIOUS_QT_MESSAGE_HANDLER(mode, context, message)
+        else:
+            print(rendered, file=sys.stderr)
+
+    _PREVIOUS_QT_MESSAGE_HANDLER = qInstallMessageHandler(handle_qt_message)
+
+
+def _drain_qt_webengine_widgets() -> None:
+    """Close test-created WebEngine pages before their profiles/application."""
+    global _TEST_QAPPLICATION
+
+    widgets_module = sys.modules.get("PySide6.QtWidgets")
+    app_type = getattr(widgets_module, "QApplication", None)
+    app = app_type.instance() if app_type is not None else None
+    if app is None:
+        return
+    # unittest classes sometimes own the only Python reference to QApplication.
+    # Keep the singleton alive across later modules and Chromium callbacks.
+    _TEST_QAPPLICATION = app
+
+    try:
+        from PySide6.QtCore import QCoreApplication, QEvent
+        from PySide6.QtWebEngineWidgets import QWebEngineView
+    except ImportError:
+        return
+
+    # The test process keeps this QApplication for later modules. Closing the
+    # last offscreen window must not request that shared event loop to quit.
+    app.setQuitOnLastWindowClosed(False)
+
+    views = [widget for widget in app.allWidgets()
+             if isinstance(widget, QWebEngineView)]
+    windows = list(app.topLevelWidgets())
+
+    for view in views:
+        try:
+            view.stop()
+        except RuntimeError:
+            pass
+    for window in windows:
+        try:
+            window.close()
+        except RuntimeError:
+            pass
+
+    # A QWebEngineView creates a page it owns, while callers may also install
+    # a separately owned page. Detach first, then ask any still-live wrapper
+    # to delete later. The wrapper is already invalid for the owned-page case.
+    for view in views:
+        try:
+            page = view.page()
+            view.setPage(None)
+        except RuntimeError:
+            continue
+        if page is not None:
+            try:
+                page.deleteLater()
+            except RuntimeError:
+                pass
+        try:
+            view.deleteLater()
+        except RuntimeError:
+            pass
+
+    for window in windows:
+        try:
+            window.deleteLater()
+        except RuntimeError:
+            pass
+
+    for _ in range(3):
+        QCoreApplication.sendPostedEvents(
+            None, QEvent.Type.DeferredDelete.value)
+        app.processEvents()
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _release_webengine_after_module():
+    """Bound GUI-test page lifetime to one module and fail on Qt's warning."""
+    warning_start = len(_PROFILE_RELEASE_WARNINGS)
+    yield
+    _drain_qt_webengine_widgets()
+    new_warnings = _PROFILE_RELEASE_WARNINGS[warning_start:]
+    if new_warnings:
+        pytest.fail(
+            "QtWebEngine released a profile before its page was deleted: "
+            f"{new_warnings[0]}", pytrace=False)
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Catch delayed warnings that arrive after the last module fixture."""
+    _drain_qt_webengine_widgets()
+    if not _PROFILE_RELEASE_WARNINGS:
+        return
+    reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+    if reporter is not None:
+        reporter.write_sep(
+            "!", f"{len(_PROFILE_RELEASE_WARNINGS)} QtWebEngine profile lifetime warning(s)")
+    session.exitstatus = pytest.ExitCode.TESTS_FAILED

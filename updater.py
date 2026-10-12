@@ -21,6 +21,7 @@ import hashlib
 import json
 import os
 import platform
+import plistlib
 import re
 import shutil
 import sys
@@ -56,6 +57,7 @@ _TRUSTED_UPDATE_HOSTS = frozenset({
 _MAX_MANIFEST_BYTES = 1024 * 1024
 _MAX_SIGNATURE_BYTES = 4096
 _MAX_ASSET_BYTES = 2 * 1024 * 1024 * 1024
+EXIT_UPDATE_PARTIAL = 3
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
 #: How often the background check fires.  The timestamp lives in the
@@ -568,14 +570,52 @@ def _replace_binary(old: Path, new: Path) -> None:
                 pass
 
 
+def _replace_gui_app(old: Path, new: Path) -> None:
+    """Stage beside the installed app, then rename with a recoverable backup."""
+    transaction = Path(tempfile.mkdtemp(prefix=".xanalyze-update-", dir=old.parent))
+    staged = transaction / "XAnalyze.app"
+    backup = transaction / "previous.app"
+    committed = False
+    try:
+        shutil.copytree(new, staged, symlinks=True)
+        with (staged / "Contents/Info.plist").open("rb") as stream:
+            info = plistlib.load(stream)
+        executable = info.get("CFBundleExecutable")
+        if (info.get("CFBundlePackageType") != "APPL"
+                or not isinstance(executable, str) or not executable
+                or Path(executable).name != executable or executable in (".", "..")):
+            raise RuntimeError("invalid application bundle metadata")
+        binary = staged / "Contents/MacOS" / executable
+        if not binary.is_file() or not binary.resolve().is_relative_to(staged.resolve()):
+            raise RuntimeError("application bundle executable is missing or unsafe")
+        # ZIP extraction does not preserve the executable mode.
+        binary.chmod(binary.stat().st_mode | 0o111)
+        old.rename(backup)
+        try:
+            staged.rename(old)
+            committed = True
+        except Exception:
+            try:
+                backup.rename(old)
+            except Exception as rollback_error:
+                raise RuntimeError(
+                    f"update and rollback failed; previous app preserved at {backup}"
+                ) from rollback_error
+            raise
+    finally:
+        # Never delete the only remaining copy after a failed rollback.
+        if not backup.exists() or committed:
+            shutil.rmtree(transaction, ignore_errors=True)
+
+
 def do_update() -> int:
     """Full update flow: check → download → replace.
 
     Updates CLI if a frozen binary or symlink is found.
     Updates GUI if ``/Applications/XAnalyze.app`` exists.
 
-    Returns `EXIT_OK` on success and `EXIT_ERROR` when the release could not
-    be reached or read. Not 1: everywhere else in this CLI 1 means "something
+    Returns `EXIT_OK` when all installed components succeed, 3 on partial
+    update, and `EXIT_ERROR` on failure. Not 1: elsewhere 1 means "something
     was found", and an update that could not reach GitHub has found nothing.
     See `cli_impl` for the whole list.
     """
@@ -611,6 +651,7 @@ def do_update() -> int:
               "using HTTPS, size and SHA-256 fallback", file=sys.stderr)
 
     updated = 0
+    failed = []
 
     # 2. Update CLI
     cli_binary = _cli_binary_path()
@@ -631,11 +672,14 @@ def do_update() -> int:
             updated += 1
             print(f"# CLI updated: {cli_binary}", file=sys.stderr)
         except Exception as exc:  # noqa: BLE001
+            failed.append("CLI")
             print(f"# CLI update failed: {exc}", file=sys.stderr)
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
     elif cli_asset is None:
         print("# no CLI asset found in release", file=sys.stderr)
+        if cli_binary:
+            failed.append("CLI (missing asset)")
 
     # 3. Update GUI
     gui_app = _gui_app_path()
@@ -652,18 +696,23 @@ def do_update() -> int:
             _download(gui_asset["browser_download_url"], archive_path,
                       integrity)
             extracted = _extract_gui_app(archive_path)
-            # Replace: remove old .app, move new one in
-            if gui_app.exists():
-                shutil.rmtree(gui_app)
-            shutil.move(str(extracted), str(gui_app))
+            _replace_gui_app(gui_app, extracted)
             updated += 1
             print(f"# GUI updated: {gui_app}", file=sys.stderr)
         except Exception as exc:  # noqa: BLE001
+            failed.append("GUI")
             print(f"# GUI update failed: {exc}", file=sys.stderr)
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
     elif gui_asset is None:
         print("# no GUI asset found in release", file=sys.stderr)
+        if gui_app:
+            failed.append("GUI (missing asset)")
+
+    if failed:
+        print(f"Update {'partially completed' if updated else 'failed'}; "
+              f"not updated: {', '.join(failed)}", file=sys.stderr)
+        return EXIT_UPDATE_PARTIAL if updated else EXIT_ERROR
 
     if updated == 0:
         print("Nothing to update. Download manually from:\n"

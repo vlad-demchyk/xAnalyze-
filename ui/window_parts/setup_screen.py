@@ -27,7 +27,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QButtonGroup, QCheckBox, QComboBox, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QRadioButton, QSpinBox, QVBoxLayout, QWidget,
+    QPushButton, QRadioButton, QSizePolicy, QSpinBox, QVBoxLayout, QWidget,
 )
 
 from analysis_modes import (
@@ -129,7 +129,6 @@ class SetupCard(QWidget):
 class SetupScreen(QWidget):
     """Everything a run is, before it is one."""
 
-    analyze_requested = Signal()
     #: The screen asks; the window owns the picker and the field it fills.
     choose_file_requested = Signal()
 
@@ -139,6 +138,7 @@ class SetupScreen(QWidget):
         self.palette_ = palette
         self.lang = lang
         self.setProperty("class", theme.CLASS_PANEL)
+        self.setProperty("view", "setup")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         outer = QVBoxLayout(self)
@@ -177,6 +177,8 @@ class SetupScreen(QWidget):
         # thing on this screen that is typed into, and it should look like a
         # sentence rather than like the width of the window.
         self.target_row.setMaximumWidth(720)
+        self.target_row.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.target_layout = QHBoxLayout(self.target_row)
         self.target_layout.setContentsMargins(10, 6, 6, 6)
         self.target_layout.setSpacing(8)
@@ -190,7 +192,7 @@ class SetupScreen(QWidget):
         column.addWidget(self.drop_zone)
 
         cards = QHBoxLayout()
-        cards.setSpacing(8)
+        cards.setSpacing(12)
         cards.addWidget(self._build_source_card(), stretch=1)
         cards.addWidget(self._build_reading_card(), stretch=1)
         cards.addWidget(self._build_question_card(), stretch=1)
@@ -214,10 +216,6 @@ class SetupScreen(QWidget):
         self.summary.setWordWrap(True)
         self.summary.setTextFormat(Qt.TextFormat.RichText)
         bottom.addWidget(self.summary, stretch=1)
-        self.analyze_btn = QPushButton()
-        self.analyze_btn.setProperty("class", theme.CLASS_PRIMARY)
-        self.analyze_btn.clicked.connect(self.analyze_requested)
-        bottom.addWidget(self.analyze_btn)
         column.addLayout(bottom)
 
         # No footer strip. The design draws one ("Готово до роботи · ⌘K …")
@@ -701,10 +699,12 @@ class SetupScreen(QWidget):
         # avoid (`test_window_shell`, the 1271px floor). At 900px the chips
         # take a second line and the window still opens at 900px.
         chip_holder = QWidget()
-        chips = FlowLayout(chip_holder, margin=0, spacing=10)
+        chips = FlowLayout(chip_holder, margin=0, spacing=8)
         chips.setContentsMargins(0, 0, 0, 0)
         for value in CATEGORIES:
             box = QCheckBox(t(f"audit_category_{value}", self.lang))
+            box.setProperty("class", "filter-chip")
+            box.setMinimumHeight(34)
             box.toggled.connect(self._on_categories_toggled)
             self.category_boxes[value] = box
             chips.addWidget(box)
@@ -797,7 +797,6 @@ class SetupScreen(QWidget):
         self.title.setText(t("setup_title", lang))
         self.subtitle.setText(t("setup_subtitle", lang))
         self.reading_note.setText(t("setup_reading_note", lang))
-        self.analyze_btn.setText(t("analyze_button", lang))
         self.drop_title.setText(t("setup_drop_title", lang))
         self.drop_note.setText(t("setup_drop_note", lang))
         self.drop_choose_btn.setText(t("setup_drop_choose", lang))
@@ -929,4 +928,3 @@ class SetupScreen(QWidget):
             checks=strong(checks),
             method=strong(t(method_key, self.lang).lower()),
         ))
-

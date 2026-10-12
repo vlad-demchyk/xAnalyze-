@@ -29,8 +29,9 @@ from __future__ import annotations
 import json
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QButtonGroup, QComboBox, QDialog, QFormLayout, QGroupBox, QHBoxLayout,
+    QApplication, QButtonGroup, QComboBox, QDialog, QFormLayout, QGroupBox, QHBoxLayout,
     QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton, QRadioButton,
     QScrollArea,
     QSpinBox, QStackedWidget, QVBoxLayout, QWidget,
@@ -85,6 +86,12 @@ class SettingsDialog(QDialog):
         # here: the status colours (success/error are semantic, not literal
         # hex codes chosen to match one theme) and one indent.
         self._palette = theme.current_palette(settings.theme)
+        # The application may still carry Qt's unresolved "Sans Serif"
+        # default. Dialog children inherit this concrete installed family.
+        self.setFont(QFont(self._palette.font))
+        self._original_palette = getattr(parent, "palette_tokens", self._palette)
+        self._original_stylesheet = QApplication.instance().styleSheet()
+        self._theme_previewed = False
 
         self.setWindowTitle(t("settings_title", lang))
         self.resize(820, 560)
@@ -139,10 +146,13 @@ class SettingsDialog(QDialog):
         column.addLayout(self._rail_host)
         column.addStretch(1)
 
-        # Said out loud, because "where does this end up" is a question this
-        # screen answers for every row on it, and the answer is one file.
-        where = muted(str(config.config_file()))
-        where.setWordWrap(True)
+        # The full path is available on hover, while the rail shows only the
+        # filename. Long home-directory paths wrap into a second paragraph
+        # here and steal attention from the setting sections.
+        config_path = config.config_file()
+        where = muted(config_path.name)
+        where.setToolTip(str(config_path))
+        where.setWordWrap(False)
         where.setProperty("class", theme.CLASS_CODE)
         column.addWidget(where)
 
@@ -229,7 +239,7 @@ class SettingsDialog(QDialog):
         # `rule`, not `divider`: the artboards draw the line between two rows
         # inside a panel as #eeebe5, which is lighter than the tick between
         # two inline values in a filled strip.
-        rule.setStyleSheet(f"background-color: {self._palette.rule};")
+        rule.setProperty("class", "settings-rule")
         return rule
 
     def _section(self, column, title: str, note: str = "") -> None:
@@ -314,6 +324,7 @@ class SettingsDialog(QDialog):
         app = QApplication.instance()
         if app is None:
             return
+        self._theme_previewed = True
         palette = theme.apply_theme(app, self.theme_seg.current_data() or "auto")
         self._palette = palette
         # Two things paint themselves rather than being styled, and both have
@@ -324,6 +335,18 @@ class SettingsDialog(QDialog):
         window = self.parent()
         if window is not None and hasattr(window, "apply_palette"):
             window.apply_palette(palette)
+
+    def done(self, result: int) -> None:
+        if result == QDialog.DialogCode.Rejected and self._theme_previewed:
+            QApplication.instance().setStyleSheet(self._original_stylesheet)
+            self._palette = self._original_palette
+            for switch in self.findChildren(Switch):
+                switch.set_palette(self._original_palette)
+            window = self.parent()
+            if window is not None and hasattr(window, "apply_palette"):
+                window.apply_palette(self._original_palette)
+            self._theme_previewed = False
+        super().done(result)
 
     def _build_unicode_tab(self) -> QWidget:
         """Artboard 3q: one row per category, with what it actually catches.
@@ -627,12 +650,11 @@ class SettingsDialog(QDialog):
         layout.addWidget(note)
 
         self.endpoints_edit = QPlainTextEdit()
+        self.endpoints_edit.setProperty("class", theme.CLASS_CODE)
         self.endpoints_edit.setPlainText(
             json.dumps(self.settings.xformat_endpoints or {}, indent=2, ensure_ascii=False)
         )
-        mono = self.endpoints_edit.font()
-        mono.setFamily("monospace")
-        self.endpoints_edit.setFont(mono)
+        self.endpoints_edit.setFont(QFont(self._palette.font_mono))
         layout.addWidget(self.endpoints_edit, stretch=1)
 
         defaults_btn = QPushButton(t("settings_show_defaults", self.lang))
@@ -825,8 +847,9 @@ class SettingsDialog(QDialog):
                                     t("settings_uninstall_nothing", self.lang))
             return
         lines = [t("settings_uninstall_confirm", self.lang), ""]
-        lines += [f"  · {item.label}" for item in present]
-        notes = uninstaller.remaining_notes()
+        lines += [f"  · {uninstaller.display_item(item, self.lang)}"
+                  for item in present]
+        notes = uninstaller.remaining_notes(self.lang)
         if notes:
             lines += ["", t("settings_uninstall_kept", self.lang)]
             lines += [f"  · {note}" for note in notes]
@@ -834,10 +857,12 @@ class SettingsDialog(QDialog):
                                       "\n".join(lines))
         if answer != QMessageBox.StandardButton.Yes:
             return
-        removed, problems = uninstaller.remove_all(present)
+        removed, _problems = uninstaller.remove_all(present)
         message = t("settings_uninstall_done", self.lang, n=len(removed))
-        if problems:
-            message += "\n\n" + "\n".join(problems)
+        failures = [f"{uninstaller.display_item(item, self.lang)}: {item.error}"
+                    for item in present if item.error]
+        if failures:
+            message += "\n\n" + "\n".join(failures)
         QMessageBox.information(self, t("settings_uninstall", self.lang), message)
 
     # ---------------------------------------------------------- behaviour

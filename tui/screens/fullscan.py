@@ -37,6 +37,7 @@ class FullscanScreen(RunScreen):
     FIELD_OPTIONS = {
         "depth": "depth",
         "breakpoints": "breakpoints",
+        "medium": "medium",
         "confidence": "confidence",
         "within": "within",
         "no-session": "no_session",
@@ -120,12 +121,12 @@ class FullscanScreen(RunScreen):
                 # finds WCAG 1.4.10 overflow was unreachable from here.
                 yield Select(
                     [
-                        ("desktop", "desktop"),
-                        ("all", "all"),
-                        ("desktop + mobile", "desktop,mobile"),
-                        ("tablet", "tablet"),
-                        ("mobile", "mobile"),
-                        ("reflow (320 px)", "reflow"),
+                        (self.tr("breakpoint_desktop"), "desktop"),
+                        (self.tr("breakpoint_all"), "all"),
+                        (self.tr("breakpoint_desktop_mobile"), "desktop,mobile"),
+                        (self.tr("breakpoint_tablet"), "tablet"),
+                        (self.tr("breakpoint_mobile"), "mobile"),
+                        (self.tr("breakpoint_reflow"), "reflow"),
                     ],
                     value="desktop",
                     id="breakpoints",
@@ -140,6 +141,20 @@ class FullscanScreen(RunScreen):
                        for value in CONFIDENCE_ORDER],
                     value="",
                     id="confidence",
+                    compact=True,
+                    classes="inline-select",
+                )
+
+            with Horizontal(classes="sentence"):
+                yield Static(self.tr("tui_medium_label"), classes="inline-label")
+                yield Select(
+                    [
+                        (self.tr("tui_medium_auto"), ""),
+                        (self.tr("setup_medium_web"), "web"),
+                        (self.tr("setup_medium_email"), "email"),
+                    ],
+                    value="",
+                    id="medium",
                     compact=True,
                     classes="inline-select",
                 )
@@ -255,7 +270,7 @@ class FullscanScreen(RunScreen):
             within=self.query_one("#within", Input).value.strip(),
             no_session=self.query_one("#no-session", Checkbox).value,
             incremental=self.query_one("#incremental", Checkbox).value,
-            medium=None,
+            medium=self.query_one("#medium", Select).value or None,
             no_hints=True,
         )
 

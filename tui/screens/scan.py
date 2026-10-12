@@ -32,11 +32,11 @@ class ScanScreen(RunScreen):
                 yield Static(self.tr("tui_label_detector"), classes="inline-label")
                 yield Select(
                     [
-                        ("offline — heuristic, free", "offline"),
-                        ("embedding — semantic, free", "embedding"),
-                        ("hybrid — offline + AI", "hybrid"),
-                        ("llm-judge — AI only, paid", "llm-judge"),
-                        ("none — characters only", "none"),
+                        (self.tr("tui_detector_offline"), "offline"),
+                        (self.tr("tui_detector_embedding"), "embedding"),
+                        (self.tr("tui_detector_hybrid"), "hybrid"),
+                        (self.tr("tui_detector_judge"), "llm-judge"),
+                        (self.tr("tui_detector_none"), "none"),
                     ],
                     value="offline",
                     id="detector",
@@ -47,9 +47,9 @@ class ScanScreen(RunScreen):
                 yield Static(self.tr("tui_label_scope"), classes="inline-label")
                 yield Select(
                     [
-                        ("content", "content"),
-                        ("technical", "technical"),
-                        ("both", "both"),
+                        (self.tr("scope_content"), "content"),
+                        (self.tr("scope_technical"), "technical"),
+                        (self.tr("scope_both"), "both"),
                     ],
                     value="content",
                     id="scope",

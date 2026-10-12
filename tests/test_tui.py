@@ -159,6 +159,21 @@ class ArrowNavigation(unittest.TestCase):
 
 
 class MenuNavigation(unittest.TestCase):
+    def test_narrow_menu_scrolls_to_the_last_action(self):
+        async def body():
+            app = XAnalyzeApp()
+            async with app.run_test(size=(80, 24)) as pilot:
+                await pilot.pause()
+                menu = app.screen.query_one("#main-menu")
+                for _ in range(8):
+                    await pilot.press("down")
+                await pilot.pause()
+                return app.focused.id, menu.scroll_y
+
+        focused_id, scroll_y = run(body())
+        self.assertEqual(focused_id, "account")
+        self.assertGreater(scroll_y, 0)
+
     def test_number_shortcut_opens_the_screen(self):
         async def body():
             app = XAnalyzeApp()
@@ -320,6 +335,7 @@ class ResultsScreenShowsTheResult(unittest.TestCase):
         set is not a missing colour.
         """
         from tui.screens.results import ResultsScreen, SEVERITIES
+        from i18n.translations import t
 
         result = RunResult(
             0,
@@ -338,9 +354,10 @@ class ResultsScreenShowsTheResult(unittest.TestCase):
                 styles = {}
                 for row_key, _ in table.rows.items():
                     cell = table.get_cell(row_key, table.ordered_columns[0].key)
-                    last_word = str(cell).rsplit(" ", 1)[-1]
-                    if last_word in SEVERITIES:
-                        styles[last_word] = cell.style
+                    for severity in SEVERITIES:
+                        translated = t(f"tui_sum_{severity}", app.lang)
+                        if str(cell).endswith(translated):
+                            styles[severity] = cell.style
                 return styles
 
         styles = run(body())
@@ -927,13 +944,42 @@ class InterfaceLanguage(unittest.TestCase):
                 await pilot.pause()
                 app.set_language("uk")
                 await pilot.pause()
-                return app.lang, [button.label.plain
-                                  for button in app.screen.query(Button)]
+                return app.lang, app.sub_title, [button.label.plain
+                                                 for button in app.screen.query(Button)]
 
-        lang, labels = run(body())
+        lang, subtitle, labels = run(body())
         self.assertEqual(lang, "uk")
+        from i18n.translations import t
+        import config
+        self.assertEqual(subtitle, t("tui_subtitle", "uk",
+                                     version=config.APP_VERSION))
         self.assertTrue(any(t("tui_save", "uk") == text for text in labels),
                         labels)
+
+    def test_confirmation_buttons_follow_the_interface_language(self):
+        from i18n.translations import LANGUAGES, t
+        from tui.screens.confirm import ConfirmModal
+
+        async def body():
+            result = {}
+            for lang in LANGUAGES:
+                app = XAnalyzeApp()
+                app.lang = lang
+                async with app.run_test(size=(80, 24)) as pilot:
+                    await pilot.pause()
+                    app.push_screen(ConfirmModal("Question"))
+                    await pilot.pause()
+                    result[lang] = (
+                        app.screen.query_one("#confirm-yes", Button).label.plain,
+                        app.screen.query_one("#confirm-no", Button).label.plain,
+                    )
+            return result
+
+        labels = run(body())
+        for lang in LANGUAGES:
+            with self.subTest(lang=lang):
+                self.assertEqual(labels[lang],
+                                 (t("tui_yes", lang), t("tui_no", lang)))
 
     def test_the_language_it_starts_in_is_the_saved_one(self):
         import config

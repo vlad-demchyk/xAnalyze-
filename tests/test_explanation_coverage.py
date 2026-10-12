@@ -69,6 +69,32 @@ class NoRawKeysTests(unittest.TestCase):
             for rule_id, details in cases:
                 self.assert_readable(rendered(rule_id, details, lang), rule_id)
 
+    def test_every_browser_measurement_has_a_translated_explanation(self):
+        from audit.browser import DEFAULT_BUDGETS
+
+        for lang in ("uk", "it", "en"):
+            for _metric, (_limit, _severity, rule_id) in DEFAULT_BUDGETS.items():
+                with self.subTest(lang=lang, rule_id=rule_id):
+                    explanation = rendered(rule_id, {"value": 2400,
+                                                     "budget": 1800}, lang)
+                    self.assert_readable(explanation, rule_id)
+                    self.assertTrue(explanation.title)
+                    self.assertTrue(explanation.found)
+                    self.assertTrue(explanation.why)
+                    self.assertTrue(explanation.fix)
+
+    def test_browser_engine_errors_have_localized_framing(self):
+        for lang in ("uk", "it", "en"):
+            for engine in ("axe", "htmlcs"):
+                issue = Issue(rule_id=engine, severity=MODERATE,
+                              category=ACCESSIBILITY, source="x", engine=engine,
+                              details={"engine_error": "browser process stopped"})
+                explanation = render(issue, lang)
+                with self.subTest(lang=lang, engine=engine):
+                    self.assertNotEqual(explanation.title, f"a11y_{engine}_title")
+                    self.assertIn("browser process stopped", explanation.why)
+                    self.assertTrue(explanation.fix)
+
     def test_an_axe_rule_we_have_never_seen_still_reads(self):
         """axe and HTML_CodeSniffer ship hundreds of rules between them, and
         new ones arrive with every release. None of them can be allowed to

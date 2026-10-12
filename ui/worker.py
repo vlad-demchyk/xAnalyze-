@@ -239,14 +239,16 @@ class RepoAnalysisWorker(QThread):
                  detector_config: dict, unicode_categories: tuple | None = None,
                  scope: str = "content", settings=None,
                  files: list | None = None, diagnostics=None,
-                 cancellation=None, parent=None):
+                 cancellation=None, extensions: tuple[str, ...] | None = None,
+                 incremental: bool = False, parent=None):
         super().__init__(parent)
         self.settings = settings
-        #: Files already read by an earlier run, for the same reason
-        #: `AnalysisWorker.pages` exists. A changed scope is not reusable,
-        #: though - the scope decides what gets extracted in the first place -
-        #: so the window only passes this when the scope is unchanged.
+        #: Files extracted by an earlier run. They are only consulted when
+        #: incremental mode is on, and `scan_repo` compares their complete
+        #: source text before reusing blocks.
         self.files = files
+        self.incremental = bool(incremental)
+        self.extensions = extensions
         self.ignore_root = root_dir
         self.root_dir = root_dir
         self.ignore_patterns = ignore_patterns
@@ -275,9 +277,7 @@ class RepoAnalysisWorker(QThread):
             from pathlib import Path
 
             walk = self.diagnostics or ScanDiagnostics()
-            if self.files is not None:
-                files: list[FileResult] = self.files
-            elif Path(self.root_dir).is_file():
+            if Path(self.root_dir).is_file():
                 # One named file, which is what the HTML-file source asks for.
                 # Naming a file is an instruction to read it, so neither the
                 # extension list nor the exclusions apply - the same rule the
@@ -286,6 +286,7 @@ class RepoAnalysisWorker(QThread):
                 files = [scan_file(self.root_dir, self.scope)]
             else:
                 config = ScanConfig(ignore_patterns=self.ignore_patterns,
+                                    extensions=self.extensions,
                                     scope=self.scope,
                                     # The window's own ceiling, which it now
                                     # has: `Settings.max_files`, the same
@@ -298,7 +299,9 @@ class RepoAnalysisWorker(QThread):
                 # used to do the second while showing the first.
                 walk = ScanDiagnostics()
                 files = scan_repo(self.root_dir, config, progress_cb=progress_cb,
-                                  diagnostics=walk, cancelled=self._is_cancelled)
+                                  diagnostics=walk, cancelled=self._is_cancelled,
+                                  reusable_files=(self.files
+                                                  if self.incremental else None))
             if self._is_cancelled():
                 return
 
@@ -355,7 +358,9 @@ class AuditWorker(QThread):
                  site_controls: bool = False, medium: str = "",
                  within: str = "", web_parts=(), no_session: bool = False,
                  crawl=None, session_host: str = "", session_values: int = 0,
-                 cancellation=None, parent=None):
+                 cancellation=None, extensions: tuple[str, ...] | None = None,
+                 files: list | None = None, incremental: bool = False,
+                 parent=None):
         super().__init__(parent)
         #: `--within`: confine the reading to one subtree. The document is
         #: then a *fragment* by construction, so the page-level rules stop
@@ -393,6 +398,9 @@ class AuditWorker(QThread):
         self.is_page_file = is_page_file
         self.ignore_patterns = list(ignore_patterns or [])
         self.max_files = max_files
+        self.extensions = extensions
+        self.files = files
+        self.incremental = bool(incremental)
         self.settings = settings
         self.crawl = crawl
         self.cancellation = cancellation
@@ -430,9 +438,12 @@ class AuditWorker(QThread):
                 walk = ScanDiagnostics()
                 files = scan_repo(self.target,
                                   ScanConfig(ignore_patterns=self.ignore_patterns,
+                                             extensions=self.extensions,
                                              max_files=self.max_files),
                                   diagnostics=walk,
-                                  cancelled=self._is_cancelled)
+                                  cancelled=self._is_cancelled,
+                                  reusable_files=(self.files
+                                                  if self.incremental else None))
                 self.acquired_files = files
                 self.scan_diagnostics = walk
                 if self._is_cancelled():
@@ -490,7 +501,9 @@ def audit_worker_for(source: str, *, target: str, depth: int, max_pages: int,
                      medium: str = "", within: str = "", web_parts=(),
                      no_session: bool = False, crawl=None,
                      session_host: str = "", session_values: int = 0,
-                     cancellation=None, parent=None):
+                     cancellation=None, extensions: tuple[str, ...] | None = None,
+                     files: list | None = None, incremental: bool = False,
+                     parent=None):
     """The right `AuditWorker` for the source, or `(None, message)` on refusal.
 
     One place, because there were two: the window and the view model each
@@ -518,6 +531,8 @@ def audit_worker_for(source: str, *, target: str, depth: int, max_pages: int,
                            is_repo=True, ignore_patterns=ignore_patterns,
                            max_files=max_files, settings=settings,
                            medium=medium, cancellation=cancellation,
+                           extensions=extensions, files=files,
+                           incremental=incremental,
                            parent=parent), ""
     if source == SOURCE_FILE:
         return AuditWorker(target=target, depth=0, max_pages=max_pages,

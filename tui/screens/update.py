@@ -23,6 +23,15 @@ class UpdateScreen(XScreen):
         super().__init__()
         self._release = None
         self._busy = False
+        self._install_armed = False
+        self._run = None
+        self._timer = None
+
+    def action_back(self) -> None:
+        if self._busy:
+            return
+        self._install_armed = False
+        super().action_back()
 
     def compose(self) -> ComposeResult:
         yield from self.compose_chrome()
@@ -59,6 +68,11 @@ class UpdateScreen(XScreen):
         """
         if self._busy:
             return
+        self._install_armed = False
+        self._release = None
+        button = self.query_one("#install", Button)
+        button.disabled = True
+        button.label = self.tr("tui_update_install")
         self._busy = True
         self._status(self.tr("tui_update_checking"))
 
@@ -101,10 +115,12 @@ class UpdateScreen(XScreen):
         if self._busy or self._release is None:
             return
         button = self.query_one("#install", Button)
-        if str(button.label) != "Really install?":
+        if not self._install_armed:
+            self._install_armed = True
             button.label = self.tr("tui_update_confirm_install")
             self._status(self.tr("tui_update_confirm"))
             return
+        self._install_armed = False
         button.label = self.tr("tui_update_install")
         button.disabled = True
         self._busy = True
@@ -118,20 +134,32 @@ class UpdateScreen(XScreen):
 
         import updater
 
-        from tui.runner import run_in_thread
+        from tui import runner
 
-        run_in_thread(self.app, lambda _args: updater.do_update(),
-                      argparse.Namespace(),
-                      on_progress=lambda line: self._status(
-                          line.lstrip("# ").strip() or line),
-                      on_done=self._installed)
+        self._run = runner.start(lambda _args: updater.do_update(), argparse.Namespace())
+        self._timer = self.set_interval(0.15, self._poll_install)
+
+    def _poll_install(self) -> None:
+        run = self._run
+        if run is None:
+            return
+        for line in run.new_lines():
+            self._status(line.lstrip("# ").strip() or line)
+        if not run.running:
+            self._timer.stop()
+            self._timer = None
+            self._run = None
+            self._installed(run.result)
 
     def _installed(self, result) -> None:
         self._busy = False
+        self._install_armed = False
+        self._release = None
         if result.error:
             self._status(self.tr("tui_update_install_failed", error=result.error))
             return
-        tail = [line for line in (result.stderr + "\n" + result.stdout)
+        output = (result.stderr if result.exit_code else result.stdout) or result.stderr or result.stdout
+        tail = [line for line in output
                 .splitlines() if line.strip()]
         summary = tail[-1] if tail else ""
         if result.exit_code == 0:

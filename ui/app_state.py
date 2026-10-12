@@ -64,6 +64,8 @@ class AppState(QObject):
         self._target: str = ""
         self._depth: int = 0
         self._scope: str = "content"
+        self._incremental: bool = False
+        self._extensions: tuple[str, ...] = ()
         #: Which audit categories to report, and how certain a finding has to
         #: be. Empty means every category and every certainty - the state a
         #: run starts in, and the reason neither is stored as a full tuple of
@@ -442,6 +444,32 @@ class AppState(QObject):
             return
         self._scope = value
         self.scope_changed.emit(value)
+        self.any_changed.emit()
+
+    @property
+    def incremental(self) -> bool:
+        return self._incremental
+
+    def set_incremental(self, value: bool) -> None:
+        value = bool(value)
+        if value == self._incremental:
+            return
+        self._incremental = value
+        self.any_changed.emit()
+
+    @property
+    def extensions(self) -> tuple[str, ...]:
+        return self._extensions
+
+    def set_extensions(self, value) -> None:
+        extensions = tuple(dict.fromkeys(
+            extension if extension.startswith(".") else f".{extension}"
+            for item in (value or ())
+            if (extension := str(item).strip().lower())
+        ))
+        if extensions == self._extensions:
+            return
+        self._extensions = extensions
         self.any_changed.emit()
 
     # -- the view over a finished audit ------------------------------------

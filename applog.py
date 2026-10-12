@@ -35,10 +35,12 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 APP_NAME = "xanalyze"
 
@@ -80,7 +82,8 @@ def log_dir() -> Path:
         base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
         path = Path(base) / APP_NAME / "logs"
     try:
-        path.mkdir(parents=True, exist_ok=True)
+        path.mkdir(mode=0o700, parents=True, exist_ok=True)
+        path.chmod(0o700)
     except OSError:
         pass
     return path
@@ -131,6 +134,7 @@ def log(event: str, level: str = "info", **fields) -> None:
             record["run"] = _run_id
         for key, value in fields.items():
             record[key] = _plain(value)
+        record = _redact(record)
         line = json.dumps(record, ensure_ascii=False, default=str)
         if len(line) > MAX_RECORD_BYTES:
             record = {**{k: record[k] for k in ("at", "level", "event")},
@@ -139,7 +143,11 @@ def log(event: str, level: str = "info", **fields) -> None:
             line = json.dumps(record, ensure_ascii=False, default=str)
         with _lock:
             _clean_once()
-            with open(file_for(), "a", encoding="utf-8") as handle:
+            fd = os.open(file_for(), os.O_WRONLY | os.O_APPEND | os.O_CREAT
+                         | getattr(os, "O_NOFOLLOW", 0), 0o600)
+            with os.fdopen(fd, "a", encoding="utf-8") as handle:
+                if os.name != "nt":
+                    os.fchmod(handle.fileno(), 0o600)
                 handle.write(line + "\n")
     except Exception:  # noqa: BLE001 - see the module docstring
         pass
@@ -159,6 +167,29 @@ def warning(event: str, **fields) -> None:
 
 def error(event: str, **fields) -> None:
     log(event, "error", **fields)
+
+
+def _redact(value):
+    """Remove credentials before serialization, including URLs inside errors."""
+    if isinstance(value, dict):
+        return {k: "[redacted]" if re.search(
+            r"password|secret|token|authorization|cookie|api.?key", k, re.I)
+                else _redact(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact(item) for item in value]
+    if not isinstance(value, str):
+        return value
+
+    def url(match):
+        try:
+            parts = urlsplit(match.group())
+            return urlunsplit((parts.scheme, parts.netloc.rsplit("@", 1)[-1],
+                               parts.path, "[redacted]" if parts.query else "",
+                               "[redacted]" if parts.fragment else ""))
+        except ValueError:
+            return "[redacted URL]"
+
+    return re.sub(r"https?://[^\s\"'<>]+", url, value, flags=re.I)
 
 
 def _plain(value):
@@ -195,6 +226,9 @@ def clean(retention_days: int = RETENTION_DAYS,
         surviving = []
         for path in files:
             try:
+                if path.is_symlink():
+                    continue
+                path.chmod(0o600)
                 stamp = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)
             except OSError:
                 continue
@@ -297,11 +331,47 @@ def summary() -> dict:
             "level": _level_floor()}
 
 
-def format_line(record: dict) -> str:
-    """One record as a line a person reads in a terminal."""
+_LEVEL_KEYS = {
+    "debug": "tui_log_level_debug",
+    "info": "tui_log_level_info",
+    "warning": "tui_log_level_warning",
+    "error": "tui_log_level_error",
+}
+
+_EVENT_KEYS = {
+    "audit.web_done": "tui_log_event_audit_web_done",
+    "browser.engine_error": "tui_log_event_browser_engine_error",
+    "browser.skipped": "tui_log_event_browser_skipped",
+    "command.done": "tui_log_event_command_done",
+    "command.failed": "tui_log_event_command_failed",
+    "command.start": "tui_log_event_command_start",
+    "crawl.page": "tui_log_event_crawl_page",
+    "crawl.page_failed": "tui_log_event_crawl_page_failed",
+    "pairing.failed": "tui_log_event_pairing_failed",
+    "rule.raised": "tui_log_event_rule_raised",
+}
+
+
+def display_level(level: str, lang: str = "en") -> str:
+    """A readable severity label for a GUI or TUI log view."""
+    from i18n.translations import t
+
+    return t(_LEVEL_KEYS.get(level, ""), lang) if level in _LEVEL_KEYS else level
+
+
+def display_event(event: str, lang: str = "en") -> str:
+    """Translate known internal event names; preserve unknown diagnostics."""
+    from i18n.translations import t
+
+    key = _EVENT_KEYS.get(event)
+    return t(key, lang) if key else event
+
+
+def format_line(record: dict, lang: str = "en") -> str:
+    """One log record formatted for the requested interface language."""
     at = (record.get("at") or "")[11:19] or "--:--:--"
-    level = (record.get("level") or "info")[:5].ljust(5)
-    event = record.get("event", "")
+    level = display_level(record.get("level") or "info", lang)
+    event = display_event(record.get("event", ""), lang)
     rest = {k: v for k, v in record.items()
             if k not in ("at", "level", "event", "run")}
     tail = " ".join(f"{k}={v}" for k, v in rest.items())

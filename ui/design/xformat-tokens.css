@@ -2,7 +2,7 @@
    Design Tokens - XFormat
    Luxury mono redesign (2026-07-03): warm gray canvas, monolithic white
    cards on soft shadows, graphite primary + refreshed indigo accent,
-   monochrome sections, Geist type.
+   monochrome sections, system type.
    ═══════════════════════════════════════ */
 
 :root {
@@ -122,8 +122,8 @@
 
   /* ── Typography ── */
   /* Native Apple artwork on Apple platforms, bundled Twemoji elsewhere. */
-  --font: "Geist", "Apple Color Emoji", "Twemoji", "Segoe UI Emoji", "Segoe UI", system-ui, -apple-system, sans-serif;
-  --font-mono: "Geist Mono", "SF Mono", "Cascadia Code", "Fira Code", monospace;
+  --font: "Sans Serif";
+  --font-mono: "monospace";
   --font-serif: "Georgia", "Times New Roman", serif;
   --font-size-xs: 0.68rem;
   --font-size-sm: 0.78rem;

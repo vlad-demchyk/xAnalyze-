@@ -285,9 +285,11 @@ def _incremental_signature(args) -> dict:
         "detector": DetectorFactory.resolve(getattr(args, "detector", None)
                                             or "none"),
         "scope": getattr(args, "scope", "content"),
-        "categories": list(_categories(args)),
+        "categories": sorted(set(_categories(args))),
         "no_unicode": bool(getattr(args, "no_unicode", False)),
         "no_ignore": bool(getattr(args, "no_ignore", False)),
+        "suppressions": suppression.Suppressions.load(
+            _settings_for_ignore(args), _ignore_root(args)).to_dict(),
     }
 
 
@@ -297,16 +299,20 @@ def _split_unchanged(file_results, args):
     Returns `(fresh, cached_findings, reused)`. `--incremental` exists for
     the pre-commit case: a repository of four thousand files where two
     changed. Reading the two is the whole point, and the cache is keyed on
-    modification time and size, so a file edited back to its previous
-    contents is still re-read rather than assumed.
+    the text already read by the scanner, together with the configuration
+    and detector version. File timestamps are not evidence of identity.
     """
     from scan_cache import get_cache
 
     cache = get_cache()
     signature = _incremental_signature(args)
+    # Model verdicts have their own cache with provider/model/prompt identity.
+    # A file-level result must not bypass it or cache a failed provider call.
+    if signature["detector"] not in ("none", "offline"):
+        return list(file_results), [], 0
     fresh, cached_findings, reused = [], [], 0
     for result in file_results:
-        entry = cache.get(result.path)
+        entry = cache.get(result.path, content=result.raw_text)
         if entry and entry.get("config") == signature:
             cached_findings.extend(entry.get("findings") or [])
             reused += 1
@@ -326,14 +332,17 @@ def _store_unchanged(file_results, findings, args) -> None:
 
     cache = get_cache()
     signature = _incremental_signature(args)
+    if signature["detector"] not in ("none", "offline"):
+        return
     by_file: dict = {result.path: [] for result in file_results}
     for finding in findings:
         bucket = by_file.get(finding.get("file"))
         if bucket is not None:
             bucket.append({k: v for k, v in finding.items()
                            if k not in _UNCACHEABLE})
-    for path, rows in by_file.items():
-        cache.put(path, {"config": signature, "findings": rows}, save=False)
+    for result in file_results:
+        cache.put(result.path, {"config": signature, "findings": by_file[result.path]},
+                  save=False, content=result.raw_text)
     cache.save()
 
 

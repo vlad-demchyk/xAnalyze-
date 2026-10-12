@@ -39,13 +39,14 @@ class UninstallScreen(XScreen):
         items = [i for i in uninstaller.enumerate_items() if i.exists]
         listing = self.query_one("#uninstall-list", Label)
         if items:
-            listing.update("\n".join(f"• {i.label}" for i in items))
+            listing.update("\n".join(
+                f"• {uninstaller.display_item(i, self.lang)}" for i in items))
         else:
             listing.update(self.tr("tui_uninstall_none"))
         self.query_one("#remove", Button).display = bool(items)
         status = self.query_one("#uninstall-status", Label)
         status.update("")
-        notes = uninstaller.remaining_notes()
+        notes = uninstaller.remaining_notes(self.lang)
         if notes:
             status.update(self.tr("tui_uninstall_kept", what="; ".join(notes)))
 
@@ -64,13 +65,17 @@ class UninstallScreen(XScreen):
             self._armed = True
             button.label = self.tr("tui_uninstall_confirm")
             return
-        removed, errors = uninstaller.remove_all(uninstaller.enumerate_items())
+        items = uninstaller.enumerate_items()
+        removed, _errors = uninstaller.remove_all(items)
         self._armed = False
         button.label = self.tr("tui_uninstall_remove")
         button.display = False
         listing = self.query_one("#uninstall-list", Label)
         listing.update(self.tr("tui_uninstall_none"))
-        if errors:
-            status.update(self.tr("tui_uninstall_errors", what="; ".join(errors)))
+        failures = [f"{uninstaller.display_item(item, self.lang)}: {item.error}"
+                    for item in items if item.error]
+        if failures:
+            status.update(self.tr("tui_uninstall_errors",
+                                  what="; ".join(failures)))
         else:
             status.update(self.tr("tui_uninstall_done", n=len(removed)))

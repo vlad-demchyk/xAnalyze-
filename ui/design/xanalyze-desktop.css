@@ -111,9 +111,9 @@
 
   /* ── Type. The artboards set the window's own root at 13.5px and reach for
    *    12px (secondary), 15px (a screen heading) and 22px (the page title).
-   *    Two families, and only two: Geist and Geist Mono, in 20 and 74 uses. ── */
-  --font: "Geist", "Apple Color Emoji", "Segoe UI Emoji", system-ui, -apple-system, sans-serif;
-  --font-mono: "Geist Mono", "SF Mono", "Cascadia Code", "Fira Code", monospace;
+   *    Native Qt system families avoid a missing-font warning and work on clean installs. ── */
+  --font: "Sans Serif";
+  --font-mono: "monospace";
   --font-size-base: 13.5px;
   --font-size-sm: 12px;
   --font-size-lg: 15px;

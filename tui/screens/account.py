@@ -39,6 +39,8 @@ SIGNS_IN = "xformat"
 class AccountScreen(XScreen):
     """Who is signed in, and the two buttons that change it."""
 
+    AUTO_FOCUS = ""
+
     BINDINGS = [
         ("escape", "back", "Back"),
         ("ctrl+r", "refresh", "Refresh"),

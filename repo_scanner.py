@@ -1330,7 +1330,8 @@ def scan_file(path: str, scope: str = SCOPE_CONTENT) -> FileResult:
 
 def scan_repo(root_dir: str, config: ScanConfig | None = None, progress_cb=None,
               diagnostics: ScanDiagnostics | None = None,
-              cancelled=None) -> list[FileResult]:
+              cancelled=None,
+              reusable_files: list[FileResult] | None = None) -> list[FileResult]:
     """Walk root_dir, skip anything matched by config.ignore_patterns, and
     extract tag-embedded text from every file with a matching extension.
 
@@ -1349,6 +1350,17 @@ def scan_repo(root_dir: str, config: ScanConfig | None = None, progress_cb=None,
     matcher = _build_matcher(config.ignore_patterns)
     diagnostics = diagnostics if diagnostics is not None else ScanDiagnostics()
     diagnostics.limit = config.max_files
+
+    # The GUI can hand in extraction results from a previous pass. Read each
+    # candidate again and compare its text before reusing blocks: timestamps
+    # and file sizes can stay the same while a file changes, and stale blocks
+    # would put the findings on the wrong text. The detector still runs over
+    # the complete current set, so results keep their normal TextSpan data.
+    reusable_by_path = {
+        str(Path(file.path).resolve()): file
+        for file in (reusable_files or ())
+        if file.raw_text is not None and not file.error
+    }
 
     results: list[FileResult] = []
     def count_ignored(_rel: str, _is_dir: bool) -> None:
@@ -1383,8 +1395,12 @@ def scan_repo(root_dir: str, config: ScanConfig | None = None, progress_cb=None,
             results.append(FileResult(path=str(path), error=str(exc)))
             continue
 
-        blocks = _extract_blocks(raw_text, str(path), config.scope)
         diagnostics.files_read += 1
+        previous = reusable_by_path.get(str(path.resolve()))
+        if previous is not None and previous.raw_text == raw_text:
+            blocks = previous.blocks
+        else:
+            blocks = _extract_blocks(raw_text, str(path), config.scope)
         diagnostics.blocks_found += len(blocks)
         results.append(FileResult(path=str(path), blocks=blocks, raw_text=raw_text))
 

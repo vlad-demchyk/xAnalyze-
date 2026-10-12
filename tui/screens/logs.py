@@ -27,6 +27,8 @@ SHOWN = 300
 class LogsScreen(XScreen):
     """The application log, filtered by level."""
 
+    AUTO_FOCUS = "#logs-table"
+
     BINDINGS = [
         ("escape", "back", "Back"),
         ("r", "refresh", "Refresh"),
@@ -43,9 +45,7 @@ class LogsScreen(XScreen):
         with Vertical(id="logs-view"):
             yield Label(self.tr("tui_logs_title"), classes="menu-title")
             yield Label("", id="logs-summary")
-            yield Static("")
             yield DataTable(id="logs-table", cursor_type="row")
-            yield Static("")
             with Horizontal():
                 yield Button(self.tr("tui_logs_errors"), id="errors", variant="primary")
                 yield Button(self.tr("tui_logs_all"), id="all")
@@ -70,7 +70,7 @@ class LogsScreen(XScreen):
         self.query_one("#logs-summary", Label).update(
             self.tr("tui_logs_summary", files=len(summary["files"]),
                     mb=f"{megabytes:.2f}", days=summary["retention_days"],
-                    level=summary["level"]))
+                    level=applog.display_level(summary["level"], self.lang)))
         records = applog.read_records(limit=SHOWN, level=self._level)
         for record in reversed(records):
             rest = {k: v for k, v in record.items()
@@ -79,8 +79,10 @@ class LogsScreen(XScreen):
             # middle of a `key=value`, and the pair it cuts is usually the
             # one that explains the line - see `tui.cells`.
             table.add_row(folded((record.get("at") or "")[11:19]),
-                          folded(record.get("level", "")),
-                          folded(record.get("event", "")),
+                          folded(applog.display_level(
+                              record.get("level", ""), self.lang)),
+                          folded(applog.display_event(
+                              record.get("event", ""), self.lang)),
                           folded(" ".join(f"{k}={v}"
                                           for k, v in rest.items())),
                           height=AUTO_HEIGHT)

@@ -107,10 +107,21 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Analizza",
         "en": "Analyze",
     },
+    "analyze_button_mnemonic": {
+        "uk": "&Аналізувати",
+        "it": "&Analizza",
+        "en": "&Analyze",
+    },
     "cancel_button": {
         "uk": "Скасувати",
         "it": "Annulla",
         "en": "Cancel",
+    },
+    "close": {"uk": "Закрити", "it": "Chiudi", "en": "Close"},
+    "cancel_button_mnemonic": {
+        "uk": "&Скасувати",
+        "it": "A&nnulla",
+        "en": "&Cancel",
     },
     "status_idle": {
         "uk": "Готово до роботи",
@@ -747,6 +758,11 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Measurements, not checks, so they count as neither fixed nor "
               "new: {rules}",
     },
+    "comparison_measurement_unknown": {
+        "uk": "вимірювання швидкодії",
+        "it": "misurazione delle prestazioni",
+        "en": "performance measurement",
+    },
     "comparison_document": {
         "uk": "Відкрити changes.md", "it": "Apri changes.md",
         "en": "Open changes.md",
@@ -1371,6 +1387,61 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "File e cartelle da escludere dall'analisi",
         "en": "Files/folders to exclude from analysis",
     },
+    "incremental_check": {
+        "uk": "Інкрементно",
+        "it": "Incrementale",
+        "en": "Incremental",
+    },
+    "incremental_check_full": {
+        "uk": "Повторно використати розбір незмінених файлів. Вміст файлів перевіряється знову, а детектор запускається для всього набору.",
+        "it": "Riusa l'estrazione dei file invariati. Il contenuto viene ricontrollato e il rilevatore analizza l'intero insieme.",
+        "en": "Reuse extraction for unchanged files. File contents are checked again and the detector runs on the full set.",
+    },
+    "scan_options_button": {
+        "uk": "Скан…",
+        "it": "Scansione…",
+        "en": "Scan…",
+    },
+    "scan_options_button_full": {
+        "uk": "Задати ліміт файлів, розширення та виключення",
+        "it": "Imposta limite file, estensioni ed esclusioni",
+        "en": "Set file limit, extensions, and exclusions",
+    },
+    "scan_options_title": {
+        "uk": "Що сканувати",
+        "it": "Cosa scansionare",
+        "en": "What to scan",
+    },
+    "scan_max_files": {
+        "uk": "Максимум файлів",
+        "it": "File massimi",
+        "en": "Maximum files",
+    },
+    "scan_extensions": {
+        "uk": "Розширення",
+        "it": "Estensioni",
+        "en": "Extensions",
+    },
+    "scan_extensions_placeholder": {
+        "uk": ".html, .php, .twig",
+        "it": ".html, .php, .twig",
+        "en": ".html, .php, .twig",
+    },
+    "scan_extensions_hint": {
+        "uk": "Порожнє поле використовує розширення, визначені типом скану. Виключення задаються по одному на рядок.",
+        "it": "Lascia vuoto per usare le estensioni previste dal tipo di scansione. Inserisci un'esclusione per riga.",
+        "en": "Leave blank to use the extensions for this scan type. Enter one exclusion per line.",
+    },
+    "scan_exclusions": {
+        "uk": "Виключити файли й папки",
+        "it": "Escludi file e cartelle",
+        "en": "Exclude files and folders",
+    },
+    "scan_extensions_invalid": {
+        "uk": "Введіть розширення на кшталт .html або .php, розділяючи їх комами чи пробілами.",
+        "it": "Inserisci estensioni come .html o .php, separate da virgole o spazi.",
+        "en": "Enter extensions such as .html or .php, separated by commas or spaces.",
+    },
     "auto_devserver_check": {
         "uk": "Автозапуск сервера",
         "it": "Avvio automatico server",
@@ -1542,6 +1613,31 @@ _STRINGS: dict[str, dict[str, str]] = {
     "tui_scan_run": {"uk": "Запустити скан", "it": "Esegui la scansione", "en": "Run Scan"},
     "tui_scan_of": {"uk": "Скан: {target}", "it": "Scansione: {target}", "en": "Scan of {target}"},
     "tui_label_detector": {"uk": "детектор", "it": "detector", "en": "detector"},
+    "tui_detector_offline": {
+        "uk": "Локально, безкоштовно",
+        "it": "Locale, gratis",
+        "en": "Offline, free",
+    },
+    "tui_detector_embedding": {
+        "uk": "Семантично, безкоштовно",
+        "it": "Semantico, gratis",
+        "en": "Semantic, free",
+    },
+    "tui_detector_hybrid": {
+        "uk": "Гібрид: локальний і AI",
+        "it": "Ibrido: locale e AI",
+        "en": "Hybrid: offline and AI",
+    },
+    "tui_detector_judge": {
+        "uk": "Лише модель AI, платно",
+        "it": "Solo modello AI, a pagamento",
+        "en": "AI model only, paid",
+    },
+    "tui_detector_none": {
+        "uk": "Без детектора, лише символи",
+        "it": "Senza rilevatore, solo caratteri",
+        "en": "No detector, characters only",
+    },
     "tui_label_scope": {"uk": "область", "it": "ambito", "en": "scope"},
     "tui_label_depth": {"uk": "глибина", "it": "profondità", "en": "depth"},
     "tui_label_widths": {"uk": "ширини", "it": "larghezze", "en": "widths"},
@@ -1820,6 +1916,18 @@ _STRINGS: dict[str, dict[str, str]] = {
         "uk": "Максимум сторінок за прогін", "it": "Pagine massime per scansione",
         "en": "Max pages per crawl",
     },
+    "tui_session_default": {
+        "uk": "Як у сесії Claude Code",
+        "it": "Come nella sessione Claude Code",
+        "en": "Use the Claude Code session setting",
+    },
+    "tui_model_sonnet": {"uk": "Sonnet", "it": "Sonnet", "en": "Sonnet"},
+    "tui_model_opus": {"uk": "Opus", "it": "Opus", "en": "Opus"},
+    "tui_model_haiku": {"uk": "Haiku", "it": "Haiku", "en": "Haiku"},
+    "tui_effort_low": {"uk": "Низькі", "it": "Basso", "en": "Low"},
+    "tui_effort_medium": {"uk": "Середні", "it": "Medio", "en": "Medium"},
+    "tui_effort_high": {"uk": "Високі", "it": "Alto", "en": "High"},
+    "tui_unlimited": {"uk": "Без обмеження", "it": "Illimitato", "en": "Unlimited"},
     "tui_flag_prefer_cc": {
         "uk": "Використовувати Claude Code, коли запущено в ньому",
         "it": "Usa Claude Code quando è avviato al suo interno",
@@ -2153,6 +2261,11 @@ _STRINGS: dict[str, dict[str, str]] = {
         "uk": "Налаштування…",
         "it": "Impostazioni…",
         "en": "Settings…",
+    },
+    "settings_button_mnemonic": {
+        "uk": "&Налаштування…",
+        "it": "Im&postazioni…",
+        "en": "&Settings…",
     },
     "advanced_show": {
         "uk": "Більше…",
@@ -4195,6 +4308,106 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Individua l'elemento LCP nel profiling del browser e ottimizza la sua risorsa e il percorso: risposta del server, immagine, font, CSS o JavaScript bloccante. Verifica di nuovo sul percorso reale.",
         "en": "Identify the LCP element in browser profiling and optimise its resource and path: server response, image, font, CSS or blocking JavaScript. Verify again on the real route.",
     },
+    "a11y_perf_first_paint_title": {
+        "uk": "Перше відображення вмісту затримується",
+        "it": "Il primo contenuto appare tardi",
+        "en": "The first content appears late",
+    },
+    "a11y_perf_first_paint_found": {
+        "uk": "Браузер виміряв FCP {value} мс при цілі не більше {budget} мс.",
+        "it": "Il browser ha misurato FCP a {value} ms, con obiettivo massimo di {budget} ms.",
+        "en": "The browser measured FCP at {value} ms against a target of {budget} ms.",
+    },
+    "a11y_perf_first_paint_why": {
+        "uk": "FCP показує, коли браузер уперше намалював текст, зображення чи інший вміст. Пізній перший кадр залишає сторінку порожньою довше, ніж потрібно.",
+        "it": "FCP indica quando il browser ha mostrato per la prima volta testo, immagini o altro contenuto. Un primo fotogramma tardivo lascia la pagina vuota più a lungo del necessario.",
+        "en": "FCP records when the browser first painted text, an image or other content. A late first paint leaves the page blank longer than it needs to be.",
+    },
+    "a11y_perf_first_paint_fix": {
+        "uk": "Скоротіть час відповіді сервера, приберіть ресурси, що блокують перше відображення, і залиште критичні стилі невеликими. Перевірте мережевий профіль після змін.",
+        "it": "Riduci il tempo di risposta del server, rimuovi le risorse che bloccano il primo rendering e mantieni piccoli gli stili critici. Ricontrolla il profilo di rete dopo le modifiche.",
+        "en": "Reduce server response time, remove resources that block the first paint and keep critical styles small. Check the network profile again after the change.",
+    },
+    "a11y_perf_load_time_title": {
+        "uk": "Сторінка завантажується повільно",
+        "it": "La pagina si carica lentamente",
+        "en": "The page takes too long to load",
+    },
+    "a11y_perf_load_time_found": {
+        "uk": "Браузер завершив завантаження за {value} мс при бюджеті {budget} мс.",
+        "it": "Il browser ha completato il caricamento in {value} ms, con budget di {budget} ms.",
+        "en": "The browser finished loading in {value} ms against a budget of {budget} ms.",
+    },
+    "a11y_perf_load_time_why": {
+        "uk": "Це час до завершення завантаження сторінки та її ресурсів у браузері. Довге очікування затримує доступ до вмісту й часто вказує на важкі ресурси або зайві мережеві запити.",
+        "it": "È il tempo necessario al browser per completare il caricamento della pagina e delle sue risorse. Un'attesa lunga ritarda l'accesso ai contenuti e spesso segnala risorse pesanti o troppe richieste di rete.",
+        "en": "This is how long the browser took to finish loading the page and its resources. A long wait delays access to the content and often points to heavy resources or too many network requests.",
+    },
+    "a11y_perf_load_time_fix": {
+        "uk": "Перегляньте мережевий профіль: зменште зображення й скрипти, приберіть непотрібні запити та налаштуйте кешування. Порівнюйте той самий маршрут у тих самих умовах.",
+        "it": "Esamina il profilo di rete: riduci immagini e script, rimuovi richieste inutili e configura la cache. Confronta lo stesso percorso nelle stesse condizioni.",
+        "en": "Inspect the network profile: reduce images and scripts, remove unnecessary requests and configure caching. Compare the same route under the same conditions.",
+    },
+    "a11y_perf_page_weight_title": {
+        "uk": "Сторінка передає забагато даних",
+        "it": "La pagina trasferisce troppi dati",
+        "en": "The page transfers too much data",
+    },
+    "a11y_perf_page_weight_found": {
+        "uk": "Передано {value} байтів при бюджеті {budget} байтів.",
+        "it": "Sono stati trasferiti {value} byte, con budget di {budget} byte.",
+        "en": "The page transferred {value} bytes against a budget of {budget} bytes.",
+    },
+    "a11y_perf_page_weight_why": {
+        "uk": "Великий обсяг даних довше завантажується в повільній або лімітованій мережі. Часто основну вагу створюють зображення, відео, шрифти й сторонні скрипти.",
+        "it": "Una quantità elevata di dati richiede più tempo su reti lente o a consumo. Spesso il peso maggiore viene da immagini, video, font e script di terze parti.",
+        "en": "A large transfer takes longer on slow or metered connections. Images, video, fonts and third-party scripts often account for most of the weight.",
+    },
+    "a11y_perf_page_weight_fix": {
+        "uk": "Стисніть і задайте потрібні розміри зображень, відкладайте завантаження вмісту поза першим екраном і видаліть непотрібні бібліотеки. Перевірте фактичні байти у мережевому профілі.",
+        "it": "Comprimi le immagini e specifica le dimensioni necessarie, rimanda il contenuto fuori dal primo schermo e rimuovi le librerie inutili. Verifica i byte effettivi nel profilo di rete.",
+        "en": "Compress images and give them the needed dimensions, defer content below the first screen and remove unused libraries. Check the actual bytes in the network profile.",
+    },
+    "a11y_perf_request_count_title": {
+        "uk": "Сторінка робить забагато мережевих запитів",
+        "it": "La pagina effettua troppe richieste di rete",
+        "en": "The page makes too many network requests",
+    },
+    "a11y_perf_request_count_found": {
+        "uk": "Браузер виконав {value} запитів при бюджеті {budget}.",
+        "it": "Il browser ha eseguito {value} richieste, con budget di {budget}.",
+        "en": "The browser made {value} requests against a budget of {budget}.",
+    },
+    "a11y_perf_request_count_why": {
+        "uk": "Кожен запит додає очікування та витрати на з'єднання, особливо на мобільній мережі. Велика кількість дрібних файлів може затримати готовність сторінки навіть за невеликого загального обсягу.",
+        "it": "Ogni richiesta aggiunge attesa e costi di connessione, soprattutto sulle reti mobili. Molti file piccoli possono ritardare la pagina anche quando il volume totale è contenuto.",
+        "en": "Each request adds waiting and connection overhead, especially on mobile networks. Many small files can delay the page even when the total transfer is modest.",
+    },
+    "a11y_perf_request_count_fix": {
+        "uk": "Об'єднайте або приберіть зайві ресурси, відкладіть некритичні скрипти й перевірте, чи не завантажуються дублікати. Не об'єднуйте файли ціною кешування без вимірювання.",
+        "it": "Unisci o rimuovi le risorse superflue, rimanda gli script non critici e controlla che non vengano caricati duplicati. Non unire file a scapito della cache senza misurare il risultato.",
+        "en": "Combine or remove unnecessary resources, defer non-critical scripts and check for duplicate downloads. Do not sacrifice caching by combining files without measuring the result.",
+    },
+    "a11y_perf_dom_size_title": {
+        "uk": "У сторінці забагато елементів DOM",
+        "it": "La pagina contiene troppi elementi DOM",
+        "en": "The page has too many DOM elements",
+    },
+    "a11y_perf_dom_size_found": {
+        "uk": "У DOM знайдено {value} вузлів при бюджеті {budget}.",
+        "it": "Nel DOM sono stati rilevati {value} nodi, con budget di {budget}.",
+        "en": "The DOM contains {value} nodes against a budget of {budget}.",
+    },
+    "a11y_perf_dom_size_why": {
+        "uk": "Велике дерево сторінки потребує більше пам'яті та роботи під час стилізації, розкладки й оновлення. Це може сповільнити малювання та взаємодію на слабших пристроях.",
+        "it": "Un albero della pagina troppo grande richiede più memoria e lavoro per stili, layout e aggiornamenti. Può rallentare il rendering e l'interazione sui dispositivi meno potenti.",
+        "en": "A large page tree needs more memory and work for styling, layout and updates. It can slow rendering and interaction on less powerful devices.",
+    },
+    "a11y_perf_dom_size_fix": {
+        "uk": "Зменште кількість повторюваних обгорток і не створюйте невидимі елементи наперед. Для довгих списків використайте віртуалізацію та відображайте лише видиму частину.",
+        "it": "Riduci i contenitori ripetuti ed evita di creare in anticipo elementi invisibili. Per gli elenchi lunghi usa la virtualizzazione e mostra solo la parte visibile.",
+        "en": "Reduce repeated wrappers and avoid creating invisible elements in advance. Virtualise long lists so only the visible portion is rendered.",
+    },
     "a11y_perf_layout_shift_browser_title": {
         "uk": "Браузер зафіксував нестабільність макета",
         "it": "Il browser ha rilevato instabilità del layout",
@@ -4549,7 +4762,14 @@ _STRINGS: dict[str, dict[str, str]] = {
               "fire: there the element either has a name or is not in the DOM "
               "at all.",
     },
+    "breakpoint_default": {"uk": "типово", "it": "predefinito", "en": "default"},
+    "breakpoint_all": {"uk": "усі ширини", "it": "tutte le larghezze", "en": "all widths"},
     "breakpoint_desktop": {"uk": "десктоп", "it": "desktop", "en": "desktop"},
+    "breakpoint_desktop_mobile": {
+        "uk": "десктоп і мобільний",
+        "it": "desktop e mobile",
+        "en": "desktop and mobile",
+    },
     "breakpoint_tablet": {"uk": "планшет", "it": "tablet", "en": "tablet"},
     "breakpoint_mobile": {"uk": "мобільний", "it": "mobile", "en": "mobile"},
     "breakpoint_reflow": {"uk": "перекомпонування 320 px", "it": "reflow 320 px", "en": "320 px reflow"},
@@ -5010,6 +5230,31 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Trovato da {engine}, regola {rule}. Il testo qui sotto è suo, "
               "in inglese.",
         "en": "Found by {engine}, rule {rule}.",
+    },
+    "a11y_engine_error_title": {
+        "uk": "Перевірка у браузері не завершилась",
+        "it": "Il controllo nel browser non è stato completato",
+        "en": "The browser check did not finish",
+    },
+    "a11y_engine_generic_name": {
+        "uk": "двигун браузера",
+        "it": "motore del browser",
+        "en": "browser engine",
+    },
+    "a11y_engine_error_found": {
+        "uk": "Двигун {engine} не зміг виконати перевірку доступності.",
+        "it": "Il motore {engine} non ha potuto eseguire il controllo di accessibilità.",
+        "en": "The {engine} engine could not complete the accessibility check.",
+    },
+    "a11y_engine_error_detail": {
+        "uk": "Технічна причина: {error}",
+        "it": "Dettaglio tecnico: {error}",
+        "en": "Technical detail: {error}",
+    },
+    "a11y_engine_error_fix": {
+        "uk": "Перевірте, що браузер доступний, і запустіть перевірку ще раз.",
+        "it": "Verifica che il browser sia disponibile e ripeti il controllo.",
+        "en": "Make sure the browser is available, then run the check again.",
     },
     "a11y_engine_incomplete": {
         "uk": "{engine} не зміг вирішити сам і позначив це як таке, що "
@@ -5887,6 +6132,11 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Incremental - re-read only the files that changed",
     },
     "tui_label_medium": {"uk": "документи", "it": "documenti", "en": "documents"},
+    "tui_medium_label": {
+        "uk": "Тип вмісту",
+        "it": "Tipo di contenuto",
+        "en": "Content type",
+    },
     "tui_medium_auto": {
         "uk": "визначити з файлу", "it": "rileva dal file", "en": "detect from the file",
     },
@@ -6488,6 +6738,120 @@ _STRINGS: dict[str, dict[str, str]] = {
     "severity_serious": {"uk": "серйозно", "it": "serio", "en": "serious"},
     "severity_moderate": {"uk": "помірно", "it": "moderato", "en": "moderate"},
     "severity_minor": {"uk": "дрібно", "it": "minore", "en": "minor"},
+    "tui_subtitle": {
+        "uk": "v{version} · аналізатор тексту й доступності",
+        "it": "v{version} · analizzatore di testo e accessibilità",
+        "en": "v{version} · AI text & accessibility analyzer",
+    },
+    "tui_yes": {"uk": "Так", "it": "Sì", "en": "Yes"},
+    "tui_no": {"uk": "Ні", "it": "No", "en": "No"},
+    "tui_sum_target": {"uk": "ціль", "it": "obiettivo", "en": "target"},
+    "tui_sum_by": {"uk": "за {detector}", "it": "per {detector}",
+                    "en": "by {detector}"},
+    "tui_sum_audit_severity": {
+        "uk": "аудит · {severity}", "it": "audit · {severity}",
+        "en": "audit {severity}",
+    },
+    "tui_sum_critical": {"uk": "критично", "it": "critico", "en": "critical"},
+    "tui_sum_serious": {"uk": "серйозно", "it": "serio", "en": "serious"},
+    "tui_sum_moderate": {"uk": "помірно", "it": "moderato", "en": "moderate"},
+    "tui_sum_minor": {"uk": "незначно", "it": "minore", "en": "minor"},
+    "tui_log_level_debug": {"uk": "налагодження", "it": "debug", "en": "debug"},
+    "tui_log_level_info": {"uk": "інформація", "it": "info", "en": "info"},
+    "tui_log_level_warning": {"uk": "попередження", "it": "avviso", "en": "warning"},
+    "tui_log_level_error": {"uk": "помилка", "it": "errore", "en": "error"},
+    "tui_log_event_audit_web_done": {
+        "uk": "вебаудит завершено", "it": "audit web completato",
+        "en": "web audit completed",
+    },
+    "tui_log_event_browser_engine_error": {
+        "uk": "помилка браузерного рушія", "it": "errore del motore browser",
+        "en": "browser engine error",
+    },
+    "tui_log_event_browser_skipped": {
+        "uk": "браузерну перевірку пропущено", "it": "controllo browser saltato",
+        "en": "browser check skipped",
+    },
+    "tui_log_event_command_done": {
+        "uk": "команду завершено", "it": "comando completato",
+        "en": "command completed",
+    },
+    "tui_log_event_command_failed": {
+        "uk": "команда завершилася помилкою", "it": "comando non riuscito",
+        "en": "command failed",
+    },
+    "tui_log_event_command_start": {
+        "uk": "команду запущено", "it": "comando avviato",
+        "en": "command started",
+    },
+    "tui_log_event_crawl_page": {
+        "uk": "сторінку оброблено", "it": "pagina elaborata",
+        "en": "page processed",
+    },
+    "tui_log_event_crawl_page_failed": {
+        "uk": "не вдалося обробити сторінку", "it": "pagina non elaborata",
+        "en": "page processing failed",
+    },
+    "tui_log_event_pairing_failed": {
+        "uk": "не вдалося зіставити репозиторій", "it": "abbinamento repository non riuscito",
+        "en": "repository pairing failed",
+    },
+    "tui_log_event_rule_raised": {
+        "uk": "помилка правила аудиту", "it": "errore della regola di audit",
+        "en": "audit rule error",
+    },
+    "tui_detector_heuristic": {
+        "uk": "евристичний аналіз", "it": "analisi euristica",
+        "en": "heuristic analysis",
+    },
+    "tui_detector_unicode_anomalies": {
+        "uk": "аномалії Unicode", "it": "anomalie Unicode",
+        "en": "Unicode anomalies",
+    },
+    "tui_detector_claude": {"uk": "Claude", "it": "Claude", "en": "Claude"},
+    "tui_detector_claude_code": {
+        "uk": "Claude Code", "it": "Claude Code", "en": "Claude Code",
+    },
+    "tui_detector_xformat": {"uk": "xFormat", "it": "xFormat", "en": "xFormat"},
+    "tui_uninstall_item_command": {
+        "uk": "{path} (командний файл у PATH)",
+        "it": "{path} (comando nel PATH)",
+        "en": "{path} (command on PATH)",
+    },
+    "tui_uninstall_item_app": {
+        "uk": "{path} (застосунок)", "it": "{path} (applicazione)",
+        "en": "{path} (application)",
+    },
+    "tui_uninstall_item_config": {
+        "uk": "{path} (налаштування й кеш сканування)",
+        "it": "{path} (impostazioni e cache delle scansioni)",
+        "en": "{path} (settings and scan cache)",
+    },
+    "tui_uninstall_item_legacy_config": {
+        "uk": "{path} (налаштування старої версії)",
+        "it": "{path} (impostazioni della versione precedente)",
+        "en": "{path} (previous-version settings)",
+    },
+    "tui_uninstall_item_keychain": {
+        "uk": "Запис у Зв’язці ключів: {service} / {account}",
+        "it": "Voce nel Portachiavi: {service} / {account}",
+        "en": "Keychain entry: {service} / {account}",
+    },
+    "tui_uninstall_reports_left": {
+        "uk": "Залишаться теки звітів ({n}) у {path}",
+        "it": "Rimarranno {n} cartelle di report in {path}",
+        "en": "{n} report folders will remain in {path}",
+    },
+    "tui_uninstall_old_reports_left": {
+        "uk": "Залишаться старі звіти ({n}) на Робочому столі",
+        "it": "Rimarranno {n} report precedenti sulla Scrivania",
+        "en": "{n} older reports will remain on the Desktop",
+    },
+    "tui_uninstall_history_kept": {
+        "uk": ".xanalyze/ та .xanalyze-ignore у ваших репозиторіях залишаться без змін",
+        "it": ".xanalyze/ e .xanalyze-ignore nei repository resteranno invariati",
+        "en": ".xanalyze/ history and .xanalyze-ignore files in repositories stay untouched",
+    },
 }
 
 

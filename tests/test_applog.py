@@ -132,6 +132,18 @@ class Reading(LogDirectory):
         self.assertIn("scan.start", line)
         self.assertIn("target=https://x/", line)
 
+    def test_known_log_labels_follow_the_interface_language(self):
+        from i18n.translations import t
+
+        record = {"at": "2026-01-02T03:04:05Z", "level": "warning",
+                  "event": "command.failed", "command": "audit"}
+        for lang in ("uk", "en", "it"):
+            with self.subTest(lang=lang):
+                line = applog.format_line(record, lang)
+                self.assertIn(t("tui_log_level_warning", lang), line)
+                self.assertIn(t("tui_log_event_command_failed", lang), line)
+                self.assertIn("command=audit", line)
+
 
 if __name__ == "__main__":
     unittest.main()

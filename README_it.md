@@ -82,6 +82,18 @@ finita che è.
 | `clean` | filtra testo da stdin a stdout |
 | `update` / `uninstall` | autoaggiornamento dall'ultima release; rimozione completa |
 
+L'aggiornamento prepara e verifica il bundle GUI prima della sostituzione e ripristina
+l'app precedente se l'installazione fallisce. Un aggiornamento parziale CLI/GUI restituisce
+il codice `3` e indica il componente fallito; prima di riprovare nella TUI, verifica di nuovo.
+
+I nuovi log nascondono credenziali negli URL, query, frammenti e campi contenenti
+segreti. Su macOS/Linux, log e file di credenziali di riserva sono privati;
+gli aggiornamenti delle credenziali sono atomici e serializzati tra processi.
+
+La scansione incrementale confronta testo analizzato, opzioni, esclusioni e versione
+dell'app. I verdetti AI usano la cache dedicata. Le scritture concorrenti delle cache
+di scansione, browser e giudizi uniscono le modifiche sotto lock e sostituiscono il file atomicamente.
+
 `xanalyze COMANDO --help` stampa tutte le opzioni. Quelle che vale la pena
 conoscere:
 

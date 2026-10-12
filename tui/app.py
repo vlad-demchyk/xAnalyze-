@@ -37,7 +37,7 @@ class XAnalyzeApp(App):
     """Interactive terminal interface for XAnalyze."""
 
     TITLE = "XAnalyze"
-    SUB_TITLE = f"v{config.APP_VERSION} — AI text & accessibility analyzer"
+    SUB_TITLE = ""
 
     CSS = """
     Screen {
@@ -55,6 +55,7 @@ class XAnalyzeApp(App):
         max-width: 100%;
         height: auto;
         max-height: 90%;
+        overflow-y: auto;
         border: tall $accent;
         padding: 1 2;
     }
@@ -77,7 +78,7 @@ class XAnalyzeApp(App):
     }
     #scan-form, #audit-form, #fullscan-form, #settings-view, #reports-view,
     #update-view, #uninstall-view, #account-view {
-        width: 74;
+        width: 96;
         max-width: 100%;
         height: auto;
         max-height: 90%;
@@ -203,6 +204,12 @@ class XAnalyzeApp(App):
         height: auto;
         max-height: 22;
     }
+    #reports-table {
+        max-height: 5;
+    }
+    #logs-table {
+        max-height: 6;
+    }
     #results-summary {
         height: auto;
         max-height: 14;
@@ -244,6 +251,7 @@ class XAnalyzeApp(App):
         #: after Settings changed it, which is exactly what "the option does
         #: nothing" looks like from the outside.
         self.lang = settings.ui_language or "uk"
+        self.sub_title = self._localized_subtitle()
         #: The resolved theme name, matching the registered `xanalyze-{name}`
         #: themes. Read from config once; `set_theme` updates it at runtime.
         self._theme_name = _resolve_theme(settings.theme)
@@ -258,6 +266,11 @@ class XAnalyzeApp(App):
         for theme in build_textual_themes().values():
             self.register_theme(theme)
         self.theme = f"xanalyze-{self._theme_name}"
+
+    def _localized_subtitle(self) -> str:
+        from i18n.translations import t
+
+        return t("tui_subtitle", self.lang, version=config.APP_VERSION)
 
     def _translate_own_bindings(self) -> None:
         """The app's own footer hints, in the app's language.
@@ -327,6 +340,7 @@ class XAnalyzeApp(App):
         if lang == self.lang:
             return
         self.lang = lang
+        self.sub_title = self._localized_subtitle()
         self._translate_own_bindings()
         while len(self.screen_stack) > 1:
             self.pop_screen()

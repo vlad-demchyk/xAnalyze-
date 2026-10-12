@@ -56,6 +56,19 @@ def render(issue, lang: str = "uk") -> IssueExplanation:
             found=details["rule_error"], why="", fix="",
         )
 
+    if "engine_error" in details:
+        engine = {
+            "axe": "axe-core",
+            "htmlcs": "HTML_CodeSniffer",
+        }.get(issue.engine, t("a11y_engine_generic_name", lang))
+        return IssueExplanation(
+            title=t("a11y_engine_error_title", lang),
+            found=t("a11y_engine_error_found", lang, engine=engine),
+            why=t("a11y_engine_error_detail", lang,
+                  error=_flatten(str(details["engine_error"]))),
+            fix=t("a11y_engine_error_fix", lang),
+        )
+
     # A third-party engine already wrote the explanation, in its own words.
     # Rendering it beats inventing a translation key that will never exist:
     # axe and HTML_CodeSniffer between them ship hundreds of rules, and a

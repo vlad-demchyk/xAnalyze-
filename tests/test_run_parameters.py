@@ -1,11 +1,11 @@
-"""Five run parameters existed in the core and in the CLI and nowhere else.
+"""Five run parameters were once reachable only in the core and the CLI.
 
 `P-23`: `--category` (including the `geo` category), `--confidence`,
 `--scope`, `--site-controls` and `--no-typography` were all reachable from
 `cli.py` and settled inside `audit/`, and two of the three surfaces this
-tool ships could not ask for any of them. The window ran the same pass and
-showed everything; the TUI's audit screen sent `category=None` and
-`confidence` was not in the namespace at all.
+tool ships could not ask for any of them. At the time, the window ran the
+same pass and showed everything; the TUI audit screen sent `category=None`
+and omitted `confidence` from the namespace.
 
 What this file pins is not "there is a checkbox". It is that the two
 narrowings are **one view over one pass**, computed by one function, so the
@@ -347,14 +347,14 @@ class TheStateHoldsTheChoice(unittest.TestCase):
 
 
 class TheTuiAsksForThemToo(unittest.TestCase):
-    """The audit screen sent `category=None` and no `confidence` at all."""
+    """Keep the audit form's run parameters connected to its CLI command."""
 
     @staticmethod
     def _run(coroutine):
         return asyncio.new_event_loop().run_until_complete(coroutine)
 
     def _captured_args(self, category: str, confidence: str,
-                       site_controls: bool) -> argparse.Namespace:
+                       site_controls: bool, medium: str = "") -> argparse.Namespace:
         from textual.widgets import Checkbox, Input, Select
 
         from tui.app import XAnalyzeApp
@@ -370,6 +370,7 @@ class TheTuiAsksForThemToo(unittest.TestCase):
                 screen.query_one("#target", Input).value = "example.com"
                 screen.query_one("#category", Select).value = category
                 screen.query_one("#confidence", Select).value = confidence
+                screen.query_one("#medium", Select).value = medium
                 screen.query_one("#site-controls", Checkbox).value = site_controls
                 with mock.patch.object(screen, "start_run",
                                        side_effect=lambda *a, **k:
@@ -399,12 +400,44 @@ class TheTuiAsksForThemToo(unittest.TestCase):
         args = self._captured_args("", "", True)
         self.assertTrue(args.site_controls)
 
+    def test_the_selected_medium_reaches_the_audit_command(self):
+        args = self._captured_args("", "", False, medium="email")
+        self.assertEqual(args.medium, "email")
+
     def test_the_command_accepts_what_the_screen_sends(self):
         """The form is only half of it: `cli.py` has to read these names."""
         args = self._captured_args(SEO, EXACT, True)
         for name in ("category", "confidence", "site_controls", "medium"):
             with self.subTest(field=name):
                 self.assertTrue(hasattr(args, name))
+
+    def test_the_selected_medium_reaches_the_fullscan_command(self):
+        from textual.widgets import Input, Select
+
+        from tui.app import XAnalyzeApp
+
+        async def body():
+            app = XAnalyzeApp()
+            captured: list = []
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                await pilot.press("3")
+                await pilot.pause()
+                screen = app.screen
+                screen.query_one("#target", Input).value = "example.com"
+                screen.query_one("#medium", Select).value = "web"
+                await pilot.pause()
+                with mock.patch.object(screen, "start_run",
+                                       side_effect=lambda *a, **k:
+                                       captured.append((a, k)) or True):
+                    screen._run_fullscan()
+                await pilot.pause()
+            return captured
+
+        captured = self._run(body())
+        self.assertEqual(len(captured), 1)
+        (_command, args), _kwargs = captured[0]
+        self.assertEqual(args.medium, "web")
 
 
 if __name__ == "__main__":

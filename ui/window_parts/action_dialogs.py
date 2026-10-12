@@ -20,6 +20,7 @@ questions actually being asked.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QCheckBox, QDialog, QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit,
     QProgressBar, QPushButton, QScrollArea, QVBoxLayout, QWidget,
@@ -408,6 +409,8 @@ class LogViewerDialog(QDialog):
 
         self.lang = lang
         self._applog = applog
+        palette = theme.current_palette()
+        self.setFont(QFont(palette.font))
         self.setWindowTitle(t("tui_logs_title", lang))
         self.resize(880, 560)
 
@@ -418,9 +421,8 @@ class LogViewerDialog(QDialog):
 
         self.view = QPlainTextEdit()
         self.view.setReadOnly(True)
-        font = self.view.font()
-        font.setFamily("monospace")
-        self.view.setFont(font)
+        self.view.setProperty("class", theme.CLASS_CODE)
+        self.view.setFont(QFont(palette.font_mono))
         layout.addWidget(self.view, stretch=1)
 
         row = QHBoxLayout()
@@ -445,11 +447,12 @@ class LogViewerDialog(QDialog):
         self.summary_label.setText(
             t("tui_logs_summary", self.lang, files=len(summary["files"]),
               mb=f"{megabytes:.2f}", days=summary["retention_days"],
-              level=summary["level"]))
+              level=self._applog.display_level(summary["level"], self.lang)))
         level = "warning" if self.errors_only.isChecked() else ""
         records = self._applog.read_records(limit=500, level=level)
         if not records:
             self.view.setPlainText(t("tui_logs_empty", self.lang))
             return
         self.view.setPlainText("\n".join(
-            self._applog.format_line(record) for record in reversed(records)))
+            self._applog.format_line(record, self.lang)
+            for record in reversed(records)))

@@ -123,7 +123,6 @@ KNOWN_FROM_THE_ARTBOOK = {
     "success": "#3f7a58", "error": "#c0564f", "amber": "#d6a94e",
     # Panel 14, nested block 10, button 8, chip 7.
     "radius": 14, "radius_lg": 10, "radius_md": 8, "radius_sm": 7,
-    "font": "Geist", "font_mono": "Geist Mono",
     "font_size": 14, "font_size_sm": 12, "font_size_lg": 15,
     "font_size_xl": 22,
 }

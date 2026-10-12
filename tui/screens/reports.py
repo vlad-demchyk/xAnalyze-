@@ -74,6 +74,8 @@ def _total(run: dict) -> int:
 class ReportsScreen(XScreen):
     """Previous runs, and the documents they wrote."""
 
+    AUTO_FOCUS = "#reports-table"
+
     BINDINGS = [
         ("escape", "back", "Back"),
         ("r", "refresh", "Refresh"),
@@ -88,9 +90,7 @@ class ReportsScreen(XScreen):
         yield from self.compose_chrome()
         with Vertical(id="reports-view"):
             yield Label(self.tr("tui_reports_title"), classes="menu-title")
-            yield Static("")
             yield DataTable(id="reports-table", cursor_type="row")
-            yield Static("")
             yield Label("", id="report-detail")
             with Horizontal():
                 yield Button(self.tr("tui_open_report"), id="open", variant="primary")
@@ -133,7 +133,7 @@ class ReportsScreen(XScreen):
             table.add_row(
                 folded((run.get("at") or "?").replace(" UTC", "")),
                 folded(run.get("root") or "?"),
-                folded(run.get("mode") or "?"),
+                folded(self._display_mode(run.get("mode"))),
                 folded(_total(run)),
                 folded("-" if distinct is None else distinct),
                 height=AUTO_HEIGHT,
@@ -141,6 +141,14 @@ class ReportsScreen(XScreen):
         self.query_one("#report-status", Label).update(
             self.tr("tui_reports_count", n=len(self._runs)))
         self._show_detail(0)
+
+    def _display_mode(self, mode: str | None) -> str:
+        if not mode:
+            return "?"
+        key = {"web": "source_site", "repo": "source_repo",
+               "file": "source_file"}.get(mode, f"tui_mode_{mode}")
+        translated = self.tr(key)
+        return translated if translated != key else mode
 
     def _enable_actions(self, enabled: bool) -> None:
         self.query_one("#open", Button).disabled = not enabled
@@ -161,7 +169,7 @@ class ReportsScreen(XScreen):
         report = run.get("report") or ""
         exists = report and Path(report).exists()
         lines = [
-            f"{run.get('root', '?')}  ·  {run.get('mode', '?')}",
+            f"{run.get('root', '?')}  ·  {self._display_mode(run.get('mode'))}",
             "  ".join(
                 f"{t('severity_' + level, self.lang)} {counts.get(level, 0)}"
                 for level in ("critical", "serious", "moderate", "minor")),

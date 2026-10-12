@@ -81,6 +81,12 @@ class Screen(unittest.TestCase):
         self.assertNotIn(t("theme_label", "uk"), labels)  # the one with a colon
         self.assertIn(t("theme_label", "uk").rstrip(":"), labels)
 
+    def test_advanced_json_editor_uses_the_installed_fixed_width_font(self):
+        dialog, _ = self._dialog()
+        self.assertEqual(dialog.font().family(), dialog._palette.font)
+        self.assertEqual(dialog.endpoints_edit.font().family(),
+                         dialog._palette.font_mono)
+
     def test_the_theme_is_a_segmented_control_and_saves(self):
         dialog, settings = self._dialog(theme="auto")
         self.assertIsInstance(dialog.theme_seg, Segmented)
@@ -99,6 +105,65 @@ class Screen(unittest.TestCase):
         dialog._on_accept()
         self.assertFalse(settings.unicode_check_enabled)
         self.assertTrue(settings.auto_start_devserver)
+
+    def test_dismissing_theme_preview_restores_application_and_custom_palette(self):
+        from PySide6.QtWidgets import QWidget
+        from ui import theme
+
+        initial_qss = self.app.styleSheet()
+
+        def restore_theme(qss=initial_qss):
+            self.app.setStyleSheet(qss)
+            self.app.processEvents()
+
+        self.addCleanup(restore_theme)
+        for dismiss in ("cancel", "escape", "close"):
+            with self.subTest(dismiss=dismiss):
+                palette = theme.apply_theme(self.app, "light")
+                preview_qss = self.app.styleSheet()
+                parent = QWidget()
+                parent.palette_tokens = palette
+                parent.apply_palette = lambda value: setattr(parent, "palette_tokens", value)
+                settings = config.Settings(theme="light")
+                dialog = SettingsDialog(settings, "uk", parent)
+                dialog.show()
+                dialog.theme_seg.set_current_data("dark")
+                dialog._on_theme_changed()
+                self.assertNotEqual(self.app.styleSheet(), preview_qss)
+                self.assertNotEqual(parent.palette_tokens, palette)
+                if dismiss == "cancel":
+                    dialog.cancel_btn.click()
+                elif dismiss == "escape":
+                    from PySide6.QtCore import Qt
+                    from PySide6.QtTest import QTest
+                    QTest.keyClick(dialog, Qt.Key.Key_Escape)
+                else:
+                    dialog.close()
+                self.assertEqual(self.app.styleSheet(), preview_qss)
+                self.assertEqual(parent.palette_tokens, palette)
+                self.assertEqual(settings.theme, "light")
+                parent.deleteLater()
+
+    def test_saving_theme_keeps_preview(self):
+        from ui import theme
+
+        original_qss = self.app.styleSheet()
+        dialog = None
+        try:
+            theme.apply_theme(self.app, "light")
+            dialog, settings = self._dialog(theme="light")
+            dialog.theme_seg.set_current_data("dark")
+            dialog._on_theme_changed()
+            preview_qss = self.app.styleSheet()
+            settings.save = lambda: None
+            dialog._on_accept()
+            self.assertEqual(settings.theme, "dark")
+            self.assertEqual(self.app.styleSheet(), preview_qss)
+        finally:
+            if dialog is not None:
+                dialog.deleteLater()
+            self.app.setStyleSheet(original_qss)
+            self.app.processEvents()
 
     def test_a_category_row_goes_dead_when_the_pass_is_off(self):
         """The categories mean nothing while the pass is off, and a row that

@@ -20,6 +20,9 @@ boundary of a control. Where 3:1 is the right threshold that is said per
 pair, with the reason - never as a way of letting a failing pair pass.
 """
 import unittest
+import os
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from audit.rules.accessibility import contrast_ratio
 from ui import theme
@@ -47,6 +50,9 @@ PAIRS = (
     # information *required* to identify a control - and this outline is the
     # only thing saying "the finding is here", so it has to meet it.
     ("error", "bg_card", AA_LARGE, "the highlight outline on a preview"),
+    # Unlike a panel edge, an unchecked indicator has no label or fill to
+    # communicate its state. Its outline must be visible on the control fill.
+    ("text_muted", "bg", AA_LARGE, "unchecked checkbox and radio indicators"),
 )
 
 #: Measured and deliberately not asserted, so that the omission is a decision
@@ -90,6 +96,12 @@ def rgb(value: str) -> tuple:
 
 
 class PaletteContrast(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from PySide6.QtWidgets import QApplication
+
+        cls.app = QApplication.instance() or QApplication([])
+
     def test_every_painted_pair_clears_its_threshold(self):
         for mode in ("light", "dark"):
             palette = theme.current_palette(mode)
@@ -149,6 +161,30 @@ class PaletteContrast(unittest.TestCase):
         self.assertNotEqual(light.error_text, dark.error_text)
         self.assertEqual(dark.error_text, dark.error)
 
+    def test_qss_uses_installed_system_and_fixed_width_fonts(self):
+        from PySide6.QtGui import QFont, QFontDatabase, QFontInfo
+
+        palette = theme.current_palette("light")
+        installed = {family.casefold() for family in QFontDatabase.families()}
+        self.assertIn(palette.font.casefold(), installed)
+        self.assertIn(palette.font_mono.casefold(), installed)
+        self.assertNotIn(palette.font.casefold(), {"geist", "sans serif"})
+        self.assertNotIn(palette.font_mono.casefold(), {"geist mono", "monospace"})
+        self.assertEqual(QFontInfo(QFont(palette.font)).family(), palette.font)
+        self.assertEqual(QFontInfo(QFont(palette.font_mono)).family(),
+                         palette.font_mono)
+        self.assertNotIn("Geist", theme.build_qss(palette))
+
+    def test_apply_theme_uses_a_concrete_application_font_without_resizing(self):
+        old_font = self.app.font()
+        old_stylesheet = self.app.styleSheet()
+        try:
+            palette = theme.apply_theme(self.app, "light")
+            self.assertEqual(self.app.font().family(), palette.font)
+            self.assertEqual(self.app.font().pointSize(), old_font.pointSize())
+        finally:
+            self.app.setFont(old_font)
+            self.app.setStyleSheet(old_stylesheet)
 
 if __name__ == "__main__":
     unittest.main()

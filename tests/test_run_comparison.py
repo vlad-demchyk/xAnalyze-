@@ -261,11 +261,23 @@ class Panel(unittest.TestCase):
 
     def test_the_measurements_are_named_and_kept_out_of_the_totals(self):
         panel = self.panel()
+        panel.lang = "uk"
         panel.show_comparison(self.view({"perf-first-paint": 10},
                                         {"perf-first-paint": 0},
                                         measured=("perf-first-paint",)))
         self.assertFalse(panel.measurements.isHidden())
-        self.assertIn("perf-first-paint", panel.measurements.text())
+        self.assertIn("Перше відображення вмісту затримується",
+                      panel.measurements.text())
+        self.assertNotIn("perf-first-paint", panel.measurements.text())
+
+    def test_unrecognized_measurements_use_a_localized_generic_label(self):
+        panel = self.panel()
+        panel.lang = "uk"
+        panel.show_comparison(self.view({"new-browser-probe": 10},
+                                        {"new-browser-probe": 0},
+                                        measured=("new-browser-probe",)))
+        self.assertIn("вимірювання швидкодії", panel.measurements.text())
+        self.assertNotIn("new-browser-probe", panel.measurements.text())
 
     def test_a_run_with_no_measurements_says_nothing_about_them(self):
         panel = self.panel()

@@ -438,8 +438,10 @@ class Palette:
     shadow_blur: int = 0
     shadow_y: int = 0
 
-    font: str = "Geist"
-    font_mono: str = "Geist Mono"
+    # Qt reports a warning for missing named families instead of reliably
+    # walking a CSS fallback stack. These are Qt's guaranteed system aliases.
+    font: str = "Sans Serif"
+    font_mono: str = "monospace"
     font_size: int = 14
     font_size_sm: int = 12
     font_size_lg: int = 17

@@ -111,5 +111,34 @@ class TheShortcutsExist(KeyboardCase):
         self.assertIn("Ctrl+,", keys)
 
 
+class TheActionMnemonicsAreTranslated(KeyboardCase):
+    def test_main_actions_have_unique_mnemonics_and_plain_accessible_names(self):
+        from i18n.translations import t
+
+        actions = (
+            ("analyze_btn", "analyze_button", "analyze_button_mnemonic"),
+            ("cancel_btn", "cancel_button", "cancel_button_mnemonic"),
+            ("settings_btn", "settings_button", "settings_button_mnemonic"),
+        )
+        for lang in ("uk", "en", "it"):
+            with self.subTest(language=lang):
+                self.window.settings.ui_language = lang
+                self.window.lang = lang
+                self.window._retranslate_ui()
+                mnemonic_chars = []
+                for attribute, label_key, _mnemonic_key in actions:
+                    button = getattr(self.window, attribute)
+                    text = button.text()
+                    self.assertEqual(text, t(_mnemonic_key, lang))
+                    self.assertEqual(text.count("&"), 1, text)
+                    marker = text.index("&")
+                    self.assertLess(marker + 1, len(text), text)
+                    mnemonic_chars.append(text[marker + 1].casefold())
+                    self.assertEqual(button.accessibleName(), t(label_key, lang))
+                    self.assertNotIn("&", button.accessibleName())
+                    self.assertTrue(button.accessibleDescription())
+                self.assertEqual(len(set(mnemonic_chars)), len(actions))
+
+
 if __name__ == "__main__":
     unittest.main()

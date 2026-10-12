@@ -183,13 +183,15 @@ class DesignTokens(unittest.TestCase):
         self.assertEqual(qss_color("#123456"), "#123456")
 
     def test_generated_stylesheet_carries_the_palette(self):
-        from ui.theme import build_qss
+        from ui.theme import _palette_with_installed_fonts, build_qss
         from ui.tokens import Palette
 
         palette = Palette.from_tokens({}, "light")
+        rendered = _palette_with_installed_fonts(palette)
         qss = build_qss(palette)
         self.assertIn(palette.page_bg, qss)
-        self.assertIn(palette.font, qss)
+        self.assertIn(f'font-family: "{rendered.font}";', qss)
+        self.assertIn(f'font-family: "{rendered.font_mono}";', qss)
 
 
 if __name__ == "__main__":

@@ -481,8 +481,9 @@ class MainViewModel(QObject):
             return
 
         detector_name, detector_config = self._detector_for_request()
+        incremental = self.state.incremental
         self._worker = RepoAnalysisWorker(
-            files=self._reusable_files(),
+            files=self._reusable_files() if incremental else None,
             root_dir=path,
             ignore_patterns=self.effective_ignore_patterns,
             detector_name=detector_name,
@@ -490,7 +491,8 @@ class MainViewModel(QObject):
             unicode_categories=self._active_unicode_categories(),
             scope=self._repo_scope(),
             settings=self.settings,
-            diagnostics=(self._snapshot.scan if self._snapshot is not None else None),
+            extensions=self.state.extensions or None,
+            incremental=incremental,
             cancellation=self._run_context.cancellation if self._run_context else None,
         )
         self._wire_worker(self._worker,
@@ -524,6 +526,11 @@ class MainViewModel(QObject):
                    if self.state.source == SOURCE_SITE else None),
             ignore_patterns=self.effective_ignore_patterns,
             max_files=self.settings.max_files,
+            extensions=self.state.extensions or None,
+            files=(self._reusable_files()
+                   if self.state.source == SOURCE_REPO
+                   and self.state.incremental else None),
+            incremental=self.state.incremental,
             settings=self.settings,
             site_controls=self.state.site_controls,
             medium=self.state.medium,

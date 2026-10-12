@@ -80,6 +80,18 @@ a single HTML file is read as the finished page it is.
 | `clean` | filter text from stdin to stdout |
 | `update` / `uninstall` | self-update from the latest release; remove everything |
 
+Updates stage and validate the GUI bundle before replacing it, restoring the previous
+app if installation fails. A partial CLI/GUI update returns exit code `3` and names
+the component that failed; check again before retrying from the TUI.
+
+New log records hide URL credentials, query strings, fragments and structured secret
+fields. On macOS/Linux, logs and fallback credential files are private to the user;
+fallback credential updates are atomic and serialized across processes.
+
+Incremental file scans match the analyzed text, options, suppressions and app version.
+AI verdicts use the dedicated judgment cache. Concurrent scan, browser and judgment
+cache writes merge changed entries under a lock before replacing the file atomically.
+
 `xanalyze COMMAND --help` prints every option. The ones worth knowing:
 
 | Option | Purpose |

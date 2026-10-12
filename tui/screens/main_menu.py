@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Vertical
 from textual.widgets import Button, Label, Static
 
@@ -31,10 +32,13 @@ MENU = (
 class MainMenuScreen(XScreen):
     """Central menu with all major actions."""
 
+    AUTO_FOCUS = "#scan"
+
     BINDINGS = [
         ("q", "quit", "Quit"),
         ("escape", "quit", "Quit"),
-    ] + [(key, f"go('{name}')", name) for key, name in MENU]
+    ] + [Binding(key, f"go('{name}')", name, show=False)
+         for key, name in MENU]
 
     def compose(self) -> ComposeResult:
         yield from self.compose_chrome()

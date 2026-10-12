@@ -22,6 +22,7 @@ class AuditScreen(RunScreen):
     FIELD_OPTIONS = {
         "depth": "depth",
         "breakpoints": "breakpoints",
+        "medium": "medium",
         "category": "category",
         "confidence": "confidence",
         "within": "within",
@@ -104,13 +105,13 @@ class AuditScreen(RunScreen):
                 # finds WCAG 1.4.10 overflow was unreachable from the TUI.
                 yield Select(
                     [
-                        ("default", ""),
-                        ("all", "all"),
-                        ("desktop", "desktop"),
-                        ("desktop + mobile", "desktop,mobile"),
-                        ("tablet", "tablet"),
-                        ("mobile", "mobile"),
-                        ("reflow (320 px)", "reflow"),
+                        (self.tr("breakpoint_default"), ""),
+                        (self.tr("breakpoint_all"), "all"),
+                        (self.tr("breakpoint_desktop"), "desktop"),
+                        (self.tr("breakpoint_desktop_mobile"), "desktop,mobile"),
+                        (self.tr("breakpoint_tablet"), "tablet"),
+                        (self.tr("breakpoint_mobile"), "mobile"),
+                        (self.tr("breakpoint_reflow"), "reflow"),
                     ],
                     value="",
                     id="breakpoints",
@@ -141,6 +142,20 @@ class AuditScreen(RunScreen):
                        for value in CONFIDENCE_ORDER],
                     value="",
                     id="confidence",
+                    compact=True,
+                    classes="inline-select",
+                )
+
+            with Horizontal(classes="sentence"):
+                yield Static(self.tr("tui_medium_label"), classes="inline-label")
+                yield Select(
+                    [
+                        (self.tr("tui_medium_auto"), ""),
+                        (self.tr("setup_medium_web"), "web"),
+                        (self.tr("setup_medium_email"), "email"),
+                    ],
+                    value="",
+                    id="medium",
                     compact=True,
                     classes="inline-select",
                 )
@@ -230,7 +245,7 @@ class AuditScreen(RunScreen):
             confidence=self.query_one("#confidence", Select).value or None,
             unsettled=self.query_one("#unsettled", Checkbox).value,
             site_controls=self.query_one("#site-controls", Checkbox).value,
-            medium=None,
+            medium=self.query_one("#medium", Select).value or None,
             language=self.query_one("#language", Select).value,
             no_ignore=False,
             no_typography=False,

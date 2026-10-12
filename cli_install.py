@@ -28,6 +28,7 @@ Developer ID yet — see `manual-todo.md`):
 from __future__ import annotations
 
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -132,11 +133,17 @@ def install(source: Path | None = None, link_dir: Path = USER_BIN_DIR,
     if not source.exists():
         raise CliInstallError(f"CLI executable not found at {source}")
 
+    source = source.absolute()
+    link_dir = link_dir.absolute()
+    if any(ord(c) < 32 or ord(c) == 127 for c in str(source) + str(link_dir)):
+        raise CliInstallError("control characters are not allowed in installation paths")
+
     _clear_quarantine(source)
     target = link_dir / CLI_NAME
 
     if use_admin:
-        _run_admin(f"mkdir -p {link_dir} && ln -sf {source} {target}")
+        _run_admin(f"/bin/mkdir -p {shlex.quote(str(link_dir))} && "
+                   f"/bin/ln -sfh {shlex.quote(str(source))} {shlex.quote(str(target))}")
     else:
         try:
             link_dir.mkdir(parents=True, exist_ok=True)
@@ -152,11 +159,13 @@ def uninstall(link_dir: Path = USER_BIN_DIR, use_admin: bool = False) -> bool:
     """Remove `link_dir/xanalyze` if it is there. Returns whether anything
     was actually removed, so a caller can tell "already gone" from "just
     removed it" without a second existence check."""
-    target = link_dir / CLI_NAME
+    target = link_dir.absolute() / CLI_NAME
+    if any(ord(c) < 32 or ord(c) == 127 for c in str(target)):
+        raise CliInstallError("control characters are not allowed in installation paths")
     if not target.is_symlink() and not target.exists():
         return False
     if use_admin:
-        _run_admin(f"rm -f {target}")
+        _run_admin(f"/bin/rm -f {shlex.quote(str(target))}")
     else:
         try:
             target.unlink()

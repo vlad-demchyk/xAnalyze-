@@ -29,10 +29,12 @@ audited from two checkouts is the same page.
 from __future__ import annotations
 
 import hashlib
+from copy import deepcopy
 import json
 import os
 import time
 from pathlib import Path
+from cache_store import merge_cache
 
 #: Where entries live.
 CACHE_DIR = Path.home() / ".xanalyze" / "browser"
@@ -129,6 +131,7 @@ class BrowserCache:
         self.hits = 0
         self.misses = 0
         self._load()
+        self._baseline = deepcopy(self._entries)
 
     # ---------------------------------------------------------------- disk
     def _load(self) -> None:
@@ -148,16 +151,11 @@ class BrowserCache:
     def save(self) -> None:
         if not self._dirty:
             return
-        if len(self._entries) > MAX_ENTRIES:
-            keep = sorted(self._entries.items(),
-                          key=lambda kv: kv[1].get("at", 0), reverse=True)
-            self._entries = dict(keep[:MAX_ENTRIES])
         try:
-            self.directory.mkdir(parents=True, exist_ok=True)
-            temp = self.path.with_suffix(".tmp")
-            temp.write_text(json.dumps(self._entries, ensure_ascii=False),
-                            encoding="utf-8")
-            temp.replace(self.path)
+            self._entries = merge_cache(self.path, self._entries, self._baseline,
+                                        cutoff=time.time() - MAX_AGE_DAYS * 86400,
+                                        limit=MAX_ENTRIES)
+            self._baseline = deepcopy(self._entries)
             self._dirty = False
         except OSError:
             # A cache that cannot be written is a slow run, not a failed one.

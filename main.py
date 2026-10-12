@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import sys
 
+from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 import cli_install
@@ -80,6 +81,7 @@ def main() -> int:
         print(f"XAnalyze {config.APP_VERSION}")
         return 0
 
+    QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
     app = QApplication(sys.argv)
     app.setApplicationName("XAnalyze")
     app.setOrganizationName("xFormat")

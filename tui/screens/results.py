@@ -94,6 +94,35 @@ def open_in_os(path: str, lang: str = "uk") -> str:
 #: three places have to agree on it: the ramp, the mark, and this ordering.
 SEVERITIES = ("critical", "serious", "moderate", "minor")
 
+_SUMMARY_DETECTOR_KEYS = {
+    "offline": "tui_detector_offline",
+    "heuristic": "tui_detector_heuristic",
+    "unicode-anomalies": "tui_detector_unicode_anomalies",
+    "hybrid": "tui_detector_hybrid",
+    "embedding": "tui_detector_embedding",
+    "claude-llm-judge": "tui_detector_claude",
+    "claude-code-llm-judge": "tui_detector_claude_code",
+    "xformat-llm-judge": "tui_detector_xformat",
+}
+
+
+def summary_label(label: str, lang: str) -> str:
+    """Translate result labels, including dynamic detector and severity rows."""
+    if label.startswith("by "):
+        detector = label[3:]
+        key = _SUMMARY_DETECTOR_KEYS.get(detector)
+        name = t(key, lang) if key else detector
+        return t("tui_sum_by", lang, detector=name)
+    if label.startswith("audit "):
+        severity = label[6:]
+        name = t(f"severity_{severity}", lang)
+        if name.startswith("severity_"):
+            name = severity
+        return t("tui_sum_audit_severity", lang, severity=name)
+    key = f"tui_sum_{label.replace(' ', '_')}"
+    translated = t(key, lang)
+    return translated if translated != key else label
+
 
 def summary_rows(payload: dict | None) -> list:
     """`(label, value)` pairs for whichever command produced this payload.
@@ -185,9 +214,7 @@ class ResultsScreen(XScreen):
                 # The payload's keys are machine names; the table is read by
                 # a person, so each one is said in their language and falls
                 # back to the raw key when a command grows a new field.
-                shown = self.tr(f"tui_sum_{label.replace(' ', '_')}")
-                if shown.startswith("tui_sum_"):
-                    shown = label
+                shown = summary_label(label, self.lang)
                 table.add_row(
                     self._severity_cell(label, variables, shown, marked=marked),
                     value)
