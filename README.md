@@ -92,6 +92,16 @@ Incremental file scans match the analyzed text, options, suppressions and app ve
 AI verdicts use the dedicated judgment cache. Concurrent scan, browser and judgment
 cache writes merge changed entries under a lock before replacing the file atomically.
 
+Machine findings use `schema_version: 1` and preserve source locations, ranges,
+confidence, engines, structured details and complete snippets. Existing keys remain
+available. JSON briefings include full `findings` and `content_findings` beside their
+human summaries; checkpoints preserve the same evidence on resume.
+
+`audit` and `fullscan` include a coverage manifest with checked, skipped, unknown and
+failed executions, engine versions/hashes, options and decoded-input hashes. Unknown
+checks survive result filters. Missing instrumentation and unverified source mappings
+stay explicit. See [the finding contract](docs/finding-contract.md).
+
 `xanalyze COMMAND --help` prints every option. The ones worth knowing:
 
 | Option | Purpose |
@@ -381,10 +391,18 @@ anyway.
 - A folder scan cannot see content that exists only after rendering. Use a URL
   or `--devserver`.
 - One width cannot describe responsive behaviour. Use `--breakpoints all`.
+- Browser performance reports include LCP/CLS/INP evidence and measurement
+  conditions. Use `--performance-repeats 3` and an explicit interaction scenario
+  for repeated lab observations; optional Lighthouse and CrUX stay separate.
+  See [browser performance](docs/browser-performance.md).
 - Typography checks can flag intentional punctuation (`--no-typography`).
 - C2PA reading needs the optional `c2pa-python` and `cryptography` packages.
 
 ## Building a release
+
+Independent detector validation uses [frozen benchmark protocols](docs/detector-validation.md).
+The release quality gate checks all uk/it/en and required strata; historical
+calibration alone cannot approve a release.
 
 ```bash
 make version        # what config.py says

@@ -592,6 +592,9 @@ def cmd_audit(args) -> int:
     for document in result.documents:
         document.issues = suppression.filter_issues(document.issues, suppressions)
 
+    from audit.coverage import build_coverage
+    result.coverage = build_coverage(result, args)
+
     # Category narrowing and the certainty floor are one *view* over one
     # pass, not a different run, and `audit.base.issues_in_view` is where
     # that view lives - the window applies the identical function to the
@@ -629,6 +632,7 @@ def cmd_audit(args) -> int:
             # the corrections were written would tell the user - or the agent
             # parsing `--json` - that work is outstanding when it is done.
             result = _reaudit(args, target, result)
+            result.coverage = build_coverage(result, args)
             for document in result.documents:
                 document.issues = suppression.filter_issues(
                     document.issues, suppressions)
@@ -662,31 +666,17 @@ def cmd_audit(args) -> int:
                          documents=len(result.documents),
                          sources=len({d.source for d in result.documents}))
     if args.json:
+        from finding_contract import SCHEMA_VERSION, serialize_issue
         print(json.dumps({
+            "schema_version": SCHEMA_VERSION,
             "root": result.root,
             "mode": result.mode,
             "counts": result.counts(),
             "platform_owned": _owned_counts(result),
             "rules_run": result.rules_run,
-            "issues": [
-                {
-                    "rule": issue.rule_id,
-                    "category": issue.category,
-                    "severity": issue.severity,
-                    "confidence": issue.confidence,
-                    "source": issue.source,
-                    "selector": issue.selector,
-                    "line": issue.line,
-                    "snippet": issue.snippet,
-                    "details": issue.details,
-                    "fix_snippet": issue.fix_snippet,
-                    # Which platform emitted the element, when one did. An
-                    # agent reading this can skip what the site owner cannot
-                    # change; empty means the page's own markup.
-                    "owner": issue.owner,
-                }
-                for issue in result.issues()
-            ],
+            "coverage": getattr(result, "coverage", {}),
+            "issues": [serialize_issue(issue, source=document.source)
+                       for document in result.documents for issue in document.issues],
         }, ensure_ascii=False, indent=2, default=_json_default))
     else:
         for document in result.documents_with_issues():
@@ -1526,6 +1516,23 @@ def build_parser() -> argparse.ArgumentParser:
                         help="do not print what this run leaves "
                              "undone (see cli_impl/prerun.py)")
     p_fullscan.set_defaults(func=cmd_fullscan)
+
+    for performance_parser in (p_audit, p_fullscan):
+        performance_parser.add_argument("--performance-repeats", type=int, choices=range(1, 11), default=1,
+                                        help="fresh performance navigations per page (1-10); report dispersion")
+        performance_parser.add_argument("--performance-fresh", action="store_true",
+                                        help="bypass stored browser results for fresh lab measurements")
+        performance_parser.add_argument("--performance-settle-ms", type=int, default=2500,
+                                        help="foreground observation after load, in milliseconds")
+        performance_parser.add_argument("--performance-scenario", metavar="JSON",
+                                        help="opt-in file of native clicks/keys on explicit CSS selectors")
+        performance_parser.add_argument("--lighthouse", action="store_true",
+                                        help="also run an installed Lighthouse CLI as a separate lab source")
+        performance_parser.add_argument("--lighthouse-profile", choices=("desktop", "mobile"), default="mobile")
+        performance_parser.add_argument("--crux", action="store_true",
+                                        help="query Google CrUX for this public URL; uses CRUX_API_KEY")
+        performance_parser.add_argument("--crux-scope", choices=("url", "origin"), default="url")
+        performance_parser.add_argument("--crux-form-factor", choices=("all", "PHONE", "TABLET", "DESKTOP"), default="all")
 
     # `runs` / `resume` / `pause`: a long scan that stops must not be a scan
     # that is lost. Registered from their own module because they are about

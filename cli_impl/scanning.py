@@ -280,8 +280,10 @@ def _incremental_signature(args) -> dict:
     changes what the same file yields, and a cache that outlives the release
     would keep reporting the old verdict.
     """
+    from finding_contract import SCHEMA_VERSION
     return {
         "version": config.APP_VERSION,
+        "finding_schema": SCHEMA_VERSION,
         "detector": DetectorFactory.resolve(getattr(args, "detector", None)
                                             or "none"),
         "scope": getattr(args, "scope", "content"),
@@ -352,6 +354,7 @@ def _analyze(file_results, args, unjudged_out: list | None = None):
     blocks = [b for f in file_results for b in f.blocks]
     blocks_by_id = {b.block_id: b for b in blocks}
     spans = []
+    args._detector_coverage = []
 
     categories = _categories(args)
     # The offline detector holds both free passes. Style analysis is opt-in
@@ -367,6 +370,8 @@ def _analyze(file_results, args, unjudged_out: list | None = None):
         spans.extend(s for s in offline.analyze_blocks(blocks)
                      if s.confidence != Confidence.LOW
                      or (s.details or {}).get("source") == CHARACTER_SOURCE)
+        args._detector_coverage.append({"engine": offline.name, "status": "checked",
+                                        "blocks": len(blocks), "version": config.APP_VERSION})
     if args.detector and args.detector != "none" and not wants_style:
         detector = _create_detector(args)
         judged = detector.analyze_blocks(blocks)
@@ -375,6 +380,9 @@ def _analyze(file_results, args, unjudged_out: list | None = None):
         # key would otherwise print "No findings", which reads as a clean
         # result and is the one answer a failed run must never give.
         failed = _report_detector_errors(judged)
+        args._detector_coverage.append({"engine": detector.name, "status": "error" if failed else "checked",
+            "blocks": len(blocks), "model": getattr(detector, "model", None),
+            "version": getattr(detector, "version", None)})
         if failed and unjudged_out is not None:
             unjudged_out.append(failed)
         spans.extend(s for s in judged
@@ -394,18 +402,9 @@ def _analyze(file_results, args, unjudged_out: list | None = None):
         block = blocks_by_id.get(span.block_id)
         if block is None:
             continue
+        from finding_contract import serialize_span
         findings.append({
-            "file": block.file_path,
-            "line": block.line_number,
-            "offset": block.start + span.start,
-            "end_offset": block.start + span.end,
-            "detector": span.detector_name,
-            "source": (span.details or {}).get("source", ""),
-            "confidence": span.confidence.value,
-            "score": round(span.score, 3),
-            "text": block.text[span.start:span.end],
-            "replacement": span.replacement,
-            "explanation": span.explanation,
+            **serialize_span(span, block),
             "_span": span,
             "_block": block,
         })

@@ -3303,7 +3303,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         and until now the tool could only say so.
         """
         from audit import driver
-        from crawler import RENDER_AUTO, CrawlConfig, crawl
+        from crawler import RENDER_ALWAYS, CrawlConfig, crawl
 
         usable, reason = driver.available()
         if not usable:
@@ -3312,14 +3312,14 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
 
         config = CrawlConfig(max_depth=self.depth_spin.value(),
                              max_pages=self.settings.max_pages,
-                             render_mode=RENDER_AUTO)
+                             render_mode=RENDER_ALWAYS)
 
         def progress(page_url: str, _depth: int) -> None:
             self.status_bar.showMessage(
                 t("status_browser_pass", self.lang, url=page_url))
 
         try:
-            with driver.html_renderer() as render:
+            with driver.html_renderer(within=self.app_state.within) as render:
                 return crawl(url, config, progress_cb=progress, render=render)
         except Exception as exc:  # noqa: BLE001 - a failed browser is worth a
             # sentence, not a traceback: the run can still be repeated without

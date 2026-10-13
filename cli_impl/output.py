@@ -10,7 +10,8 @@ import unicode_rules
 
 
 def _public(finding: dict) -> dict:
-    return {k: v for k, v in finding.items() if not k.startswith("_")}
+    from finding_contract import serialize_finding
+    return serialize_finding(finding)
 
 
 def _counts(findings) -> dict:
@@ -29,7 +30,9 @@ def _counts(findings) -> dict:
 
 
 def _print_json(findings, applied=None, walked=None) -> None:
+    from finding_contract import SCHEMA_VERSION
     payload = {
+        "schema_version": SCHEMA_VERSION,
         "findings": [_public(f) for f in findings],
         "counts": _counts(findings),
     }

@@ -91,7 +91,7 @@ def _agent_candidates_from_blocks(blocks) -> list:
     """
     offline = DetectorFactory.create("offline", include_style=True)
     candidates = []
-    for representative, occurrences in duplicates.distinct_blocks(blocks):
+    for representative, occurrences in duplicates.distinct_blocks(blocks, exact_text=True):
         for span in offline.analyze_blocks([representative]):
             if span.score < _AGENT_CANDIDATE_FLOOR \
                     or (span.details or {}).get("error"):
@@ -123,7 +123,7 @@ def _agent_candidates_from_pages(pages) -> list:
     offline = DetectorFactory.create("offline", include_style=True)
     blocks = [block for page in pages for block in page.blocks]
     candidates = []
-    for representative, occurrences in duplicates.distinct_blocks(blocks):
+    for representative, occurrences in duplicates.distinct_blocks(blocks, exact_text=True):
         for span in offline.analyze_blocks([representative]):
             if span.score < _AGENT_CANDIDATE_FLOOR \
                     or (span.details or {}).get("error"):
@@ -150,6 +150,8 @@ def _content_passes(args) -> list:
     would be a downgrade wearing an upgrade's name.
     """
     offline = DetectorFactory.create("offline", include_style=True)
+    if args is not None:
+        args._detector_unavailable = []
     name = getattr(args, "detector", None) if args is not None else None
     if not name or DetectorFactory.resolve(name) == "offline":
         return [offline]
@@ -159,6 +161,8 @@ def _content_passes(args) -> list:
     try:
         judge = _create_detector(args)
     except Exception as exc:  # noqa: BLE001 - said out loud, not swallowed
+        if args is not None:
+            args._detector_unavailable.append({"engine": name, "status": "error", "reason": str(exc)})
         # Loud, and the run continues on the offline pass. A judge that cannot
         # be built (no account, an exhausted plan, a typo in a name) must not
         # cost the crawl that already happened - but it must never be silent
@@ -200,10 +204,12 @@ def _judge_distinct(groups, passes, args) -> dict:
     spans_by_id: dict = {}
     for detector in passes:
         cache = _cache_for(detector, args)
-        todo = representatives
+        eligible = [b for b in representatives if getattr(detector, "includes_character_pass", False)
+                    or getattr(b, "analysis_eligible", True)]
+        todo = eligible
         if cache is not None:
             todo = []
-            for block in representatives:
+            for block in eligible:
                 stored = cache.get(block.text, block.language_hint)
                 if stored is None:
                     todo.append(block)
@@ -248,6 +254,7 @@ def _cache_for(detector, args):
         model=str(getattr(detector, "model", "") or ""),
         effort=str(getattr(detector, "effort", "") or ""),
         prompt=_SYSTEM_PROMPT,
+        exact_text=True,
     )
 
 
@@ -381,8 +388,26 @@ def _content_findings_from_pages(pages, args=None, stats_out: dict | None = None
     # Both detectors read the same list. A second list would be a second
     # answer to "what is distinct here", and the offline pass would keep
     # paying for repeats the judge had stopped paying for.
-    groups = duplicates.distinct_blocks(blocks)
+    groups = duplicates.distinct_blocks(blocks, exact_text=True)
     spans_by_id = _judge_distinct(groups, passes, args)
+    if args is not None:
+        args._detector_coverage = list(getattr(args, "_detector_unavailable", []))
+        for detector in passes:
+            failed = [span for spans in spans_by_id.values() for span in spans
+                      if span.detector_name == detector.name and (span.details or {}).get("error")]
+            args._detector_coverage.append({"engine": detector.name,
+                "status": "error" if failed else "checked", "blocks": sum(
+                    getattr(detector, "includes_character_pass", False) or getattr(rep, "analysis_eligible", True)
+                    for rep, _ in groups),
+                "style_skipped": sum(not getattr(rep, "analysis_eligible", True) for rep, _ in groups),
+                "model": getattr(detector, "model", None), "version": getattr(detector, "version", None)})
+    if stats_out is not None:
+        from finding_contract import serialize_span
+        scan_errors = [serialize_span(span, block)
+            for block, _ in groups for span in spans_by_id.get(block.block_id, ())
+            if (span.details or {}).get("error")]
+        if scan_errors:
+            stats_out["scan_errors"] = scan_errors
 
     # Said once per run, and said at all. The offline pass finds 36% of known
     # Italian AI passages where the embedding detector finds 100%, and until
@@ -393,16 +418,20 @@ def _content_findings_from_pages(pages, args=None, stats_out: dict | None = None
 
     repo_path = getattr(args, "repo", None) if args is not None else None
     repo_index = _repo_content_index(repo_path, args) if repo_path else None
+    if repo_index is not None:
+        from repo_pairing import pair_blocks
+        pair_blocks(blocks, repo_index)
     if repo_index is not None and stats_out is not None:
-        matched = sum(1 for representative, _occurrences in groups
-                      if duplicates.block_identity(representative) in repo_index)
+        matched = sum(bool(representative.source_candidates) for representative, _occurrences in groups)
         stats_out["repo_matched"] = matched
         stats_out["repo_total"] = len(groups)
+        for status in ("ambiguous", "inferred"):
+            count = sum(rep.source_mapping == status for rep, _ in groups)
+            if count:
+                stats_out["repo_" + status] = count
 
     findings = []
     for representative, occurrences in groups:
-        source_block = repo_index.get(duplicates.block_identity(representative)) \
-            if repo_index is not None else None
         for span in spans_by_id.get(representative.block_id, ()):
             if (span.details or {}).get("error"):
                 continue
@@ -424,18 +453,10 @@ def _content_findings_from_pages(pages, args=None, stats_out: dict | None = None
             # *asked*; every place is still reported, because a fix has to
             # visit each page that carries the passage.
             for block in occurrences:
-                finding = {
-                    "file": block.page_url,
-                    "line": 0,
-                    "text": passage[:200],
-                    "source": (span.details or {}).get("source", ""),
-                    "score": round(span.score, 3),
-                    "confidence": confidence,
-                    "explanation": span.explanation,
-                }
-                if source_block is not None:
-                    finding["source_file"] = source_block.file_path
-                    finding["source_line"] = source_block.line_number
+                from finding_contract import serialize_span
+                finding = serialize_span(span, block)
+                if not finding["text"]:
+                    finding.update(text=passage, range=None, evidence_status="unknown")
                 findings.append(finding)
     return findings
 
@@ -478,7 +499,8 @@ def _scan_local_target(target, args, lang, agent_mode):
     walked: list = []
     files = _collect_files(scan_args.paths, scan_args, diagnostics_out=walked)
     if not files:
-        return scan_findings, scan_result, agent_candidates
+        return scan_findings, {"findings": [], "counts": {"total": 0, "style": 0, "characters": 0},
+                               "read": _read_diagnostics(walked)}, agent_candidates
     # Said out loud, not only in the JSON. Measured on this repository: the
     # walk stopped at the 5000-file limit with a third of the tree unopened,
     # `scan` prints that in one line, and `fullscan` printed nothing at all -
@@ -510,6 +532,7 @@ def _scan_local_target(target, args, lang, agent_mode):
         # Off unless asked for - a cached answer has to be something the
         # reader chose - and the number reused is printed, not assumed.
         cached_findings: list = []
+        reused = 0
         to_read = files
         if getattr(scan_args, "incremental", False):
             from cli_impl.scanning import _split_unchanged, _store_unchanged
@@ -522,7 +545,8 @@ def _scan_local_target(target, args, lang, agent_mode):
                 human=f"# [scan] incremental: {reused} file(s) unchanged "
                       f"since the last scan, {len(to_read)} re-read",
                 reused=reused, reread=len(to_read))
-        scan_findings, _ = _analyze(to_read, scan_args)
+        unjudged = []
+        scan_findings, _ = _analyze(to_read, scan_args, unjudged_out=unjudged)
         if getattr(scan_args, "incremental", False):
             from cli_impl.scanning import _store_unchanged
 
@@ -538,6 +562,14 @@ def _scan_local_target(target, args, lang, agent_mode):
             },
             "read": _read_diagnostics(walked),
         }
+        if unjudged:
+            scan_result["errors"] = [{"engine": scan_args.detector, "unjudged_blocks": sum(unjudged)}]
+        scan_result["detector_coverage"] = getattr(scan_args, "_detector_coverage", [])
+        scan_result["cached_files"] = reused
+    from audit.coverage import content_digest
+    scan_result["read"] = _read_diagnostics(walked)
+    scan_result["content_hashes"] = {f.path: content_digest(f.raw_text)
+                                     for f in files if f.raw_text is not None}
     return scan_findings, scan_result, agent_candidates
 
 
@@ -566,12 +598,13 @@ def _read_diagnostics(walked) -> list:
 
 def _crawl_for_fullscan(target: str, args, no_browser: bool):
     """Crawl a URL for the fullscan pass; returns (pages, resolved target)."""
-    from crawler import CrawlConfig, RENDER_AUTO, RENDER_NEVER
+    from crawler import CrawlConfig, RENDER_ALWAYS, RENDER_NEVER
 
     if not target.startswith(("http://", "https://")):
         target = "https://" + target
-    # Use RENDER_AUTO for fullscan on URLs, RENDER_NEVER if --no-browser
-    render_mode = RENDER_NEVER if no_browser else RENDER_AUTO
+    # Browser mode reads actual layout/text, including server-rendered pages
+    # whose styles hide copy. A nonempty HTTP body is not visibility evidence.
+    render_mode = RENDER_NEVER if no_browser else RENDER_ALWAYS
     config = CrawlConfig(max_depth=args.depth, max_pages=args.max_pages,
                          render_mode=render_mode)
     from cli_impl.auditpass import apply_session
@@ -594,8 +627,9 @@ def _crawl_for_fullscan(target: str, args, no_browser: bool):
         progress.page(crawled, args.max_pages or None, url, depth=depth,
                       human=f"# [crawl {crawled}{limit}] depth={depth} {url}")
 
+    extra = {"within": args.within} if getattr(args, "within", None) else {}
     pages = _crawl_maybe_rendering(target, config, progress_cb=_crawl_progress,
-                                   session_host=session_host)
+                                   session_host=session_host, **extra)
     progress.stage("crawl", "end", f"# [crawl done] {len(pages)} page(s)",
                    pages=len(pages))
     return pages, target
@@ -780,9 +814,6 @@ def _issues_at_floor(audit_result, floor: str | None,
     # out loud rather than dropped in silence.
     hidden = 0 if unsettled else sum(unsettled_count(d.issues)
                                      for d in audit_result.documents)
-    for document in audit_result.documents:
-        document.issues = issues_in_view(document.issues, (), floor or "",
-                                         unsettled=unsettled)
     if hidden:
         progress.notice(
             "audit",
@@ -792,7 +823,7 @@ def _issues_at_floor(audit_result, floor: str | None,
                   f"not listed; add --unsettled to see them",
             unsettled=hidden)
     return [issue for document in audit_result.documents
-            for issue in document.issues]
+            for issue in issues_in_view(document.issues, (), floor or "", unsettled=unsettled)]
 
 
 def _count(audit_issues, category: str) -> int:
@@ -810,7 +841,9 @@ def _build_combined(args, target: str, is_url: bool, lang: str,
                     scan_result, clean_findings: list, audit_issues: list) -> dict:
     """Phase 3: the single JSON document the command prints."""
     from audit import base
+    from finding_contract import SCHEMA_VERSION, serialize_issue
     return {
+        "schema_version": SCHEMA_VERSION,
         "target": target,
         "is_url": is_url,
         "language": lang,
@@ -822,17 +855,7 @@ def _build_combined(args, target: str, is_url: bool, lang: str,
                 "moderate": sum(1 for i in audit_issues if i.severity == "moderate"),
                 "minor": sum(1 for i in audit_issues if i.severity == "minor"),
             },
-            "issues": [
-                {
-                    "rule": i.rule_id,
-                    "category": i.category,
-                    "severity": i.severity,
-                    "selector": i.selector,
-                    "snippet": i.snippet[:200] if i.snippet else None,
-                    "fix_snippet": i.fix_snippet[:200] if i.fix_snippet else None,
-                }
-                for i in audit_issues
-            ],
+            "issues": [serialize_issue(i) for i in audit_issues],
         },
         "summary": {
             "total_findings": len(clean_findings) + len(audit_issues),
@@ -915,6 +938,8 @@ def _populate_ai_patterns(model, style_findings: list, repo_stats: dict | None =
         if f.get("source_file"):
             row["source_file"] = f["source_file"]
             row["source_line"] = f.get("source_line", 0)
+        if f.get("mapping"):
+            row["mapping"] = f["mapping"]
         top_patterns.append(row)
     model.ai_patterns = {
         "total": len(style_findings),
@@ -1041,19 +1066,7 @@ def _markdown_briefing_input(agent_mode: bool, agent_candidates: list,
         ]
     rows = []
     for f in scan_findings:
-        row = {"file": f.get("file", ""), "line": f.get("line", 0),
-               "text": f.get("text", "")[:200],
-               "score": f.get("score", 0),
-               "confidence": f.get("confidence", ""),
-               # Carried, not dropped: the briefing has to sort these into
-               # wording and characters, and `explanation` alone cannot say.
-               # Without it an `[invisible] U+00AD SOFT HYPHEN` finding -
-               # which is a character, and says so in `source` - was counted
-               # as an AI-written passage at high confidence. Measured on a
-               # 250-page run: nine of the twenty-nine rows under
-               # "AI-generated text patterns" were invisible characters.
-               "source": f.get("source", ""),
-               "explanation": f.get("explanation", "")}
+        row = _public(f)
         # `file`/`line` stay the page - the agent briefing's other rows all
         # mean "here" that way. `source_file`/`source_line` are additive:
         # where `--repo` was given and this passage matched, an agent about
@@ -1174,7 +1187,18 @@ def _stop_short(state, folder, target, timings, phase, reason, *,
     # The machine-readable half goes to stdout, where every other command
     # puts its JSON: an agent that ran this must be able to read the outcome
     # the same way it reads a success, and not have to scrape stderr.
-    print(json.dumps({"target": target, "incomplete": True,
+    from audit.coverage import build_coverage
+    from audit.engine import AccessibilityResult
+    from finding_contract import SCHEMA_VERSION, serialize_issue
+    partial_audit = checkpoint.load_audit(state.run_dir) or AccessibilityResult(target)
+    partial_scan = checkpoint.load_scan_result(state.run_dir)
+    coverage = partial_audit.coverage or build_coverage(partial_audit, scan=partial_scan)
+    coverage["status"] = "incomplete"
+    coverage.setdefault("errors", []).append({"phase": phase, "reason": reason})
+    print(json.dumps({"schema_version": SCHEMA_VERSION,
+                      "target": target, "incomplete": True, "coverage": coverage,
+                      "audit": {"issues": [serialize_issue(i) for i in partial_audit.issues()]},
+                      "scan": partial_scan,
                       "run": str(state.run_dir), "state": info},
                      indent=2, ensure_ascii=False))
     return EXIT_INCOMPLETE
@@ -1433,9 +1457,8 @@ def _run_phases_body(args, state, folder, timings, target, lang, is_url, is_page
     if not is_url:
         guard("scan")
         if already("scan"):
-            scan_findings, counts = checkpoint.load_scan(state.run_dir)
-            scan_result = {"findings": scan_findings or [],
-                           "counts": counts or {}}
+            scan_result = checkpoint.load_scan_result(state.run_dir) or {}
+            scan_findings = scan_result.get("findings", [])
             progress.notice("resume", "AI patterns scan reused",
                             human="# [resume] AI patterns scan reused",
                             phase="scan")
@@ -1461,7 +1484,7 @@ def _run_phases_body(args, state, folder, timings, target, lang, is_url, is_page
                 # complete for every consumer that exists.
                 saved = checkpoint.save_scan(
                     state.run_dir, (scan_result or {}).get("findings", []),
-                    (scan_result or {}).get("counts"))
+                    (scan_result or {}).get("counts"), scan_result=scan_result)
                 state.done("scan", artifacts=[saved])
     elif state is not None:
         state.skip("scan", "folded into the crawl for a website")
@@ -1516,6 +1539,7 @@ def _run_phases_body(args, state, folder, timings, target, lang, is_url, is_page
             # so only the numeric stats go in. The detector note is a
             # sentence and belongs beside the findings, not among them.
             note = repo_stats.pop("detector_note", None)
+            scan_errors = repo_stats.pop("scan_errors", [])
             if "repo_matched" in repo_stats:
                 counts.update(repo_stats)
                 # One line, not one per passage: `--repo` given but almost
@@ -1535,6 +1559,7 @@ def _run_phases_body(args, state, folder, timings, target, lang, is_url, is_page
             scan_result = {
                 "findings": scan_findings,
                 "counts": counts,
+                "errors": scan_errors,
             }
             if note:
                 scan_result["detector_note"] = note
@@ -1605,9 +1630,18 @@ def _run_phases_body(args, state, folder, timings, target, lang, is_url, is_page
                     None, [checkpoint.save_audit(state.run_dir, audit_result)]))
         elif state is not None:
             state.skip("browser", "no browser pass for this target")
+    if audit_result is not None:
+        from audit.coverage import build_coverage
+        audit_result.coverage = build_coverage(audit_result, args, scan=scan_result, pages=pages)
+        if state is not None:
+            checkpoint.save_audit(state.run_dir, audit_result)
     audit_issues.extend(
         _issues_at_floor(audit_result, getattr(args, "confidence", None),
                          unsettled=bool(getattr(args, "unsettled", False))))
+    if audit_result is not None:
+        audit_result = audit_result.narrowed(
+            confidence=getattr(args, "confidence", None) or "",
+            unsettled=bool(getattr(args, "unsettled", False)))
     # One event per finding, for a reader that asked for them
     # (`--progress jsonl=findings`). Here rather than at the end: this is the
     # first moment each one exists as a decided finding, and the reports
@@ -1635,9 +1669,13 @@ def _run_phases_body(args, state, folder, timings, target, lang, is_url, is_page
             "report", line.removeprefix("# [report] "), human=line))
 
     # --- Phase 3: Build combined result ---
+    if pages and scan_result is not None:
+        from finding_contract import json_value
+        scan_result["text_blocks"] = [json_value(block) for page in pages for block in page.blocks]
     clean_findings = scan_result["findings"] if scan_result else []
     combined = _build_combined(args, target, is_url, lang, scan_result,
                                clean_findings, audit_issues)
+    combined["coverage"] = audit_result.coverage if audit_result is not None else {"status": "unknown"}
 
     if agent_mode and agent_candidates:
         _attach_agent_payload(combined, agent_candidates, target)

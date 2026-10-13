@@ -150,7 +150,9 @@ class TheBrowserPassRemembersPages(unittest.TestCase):
         stored = self._cache().get("<html>a</html>", "https://example.test/")
         self.assertIsNotNone(stored)
         self.assertEqual([i.rule_id for i in stored.issues], ["image-alt"])
-        self.assertEqual(stored.measurements, {"lcp": 1200})
+        self.assertEqual(stored.measurements["lcp"], 1200)
+        self.assertTrue(stored.measurements["conditions"]["cacheHit"])
+        self.assertFalse(stored.measurements["conditions"]["freshMeasurement"])
 
     def test_changed_markup_is_a_different_page(self):
         cache = self._cache()

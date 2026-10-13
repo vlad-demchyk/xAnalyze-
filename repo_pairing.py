@@ -19,19 +19,30 @@ so the pairing reports how many matched and never treats a miss as an error.
 from __future__ import annotations
 
 import duplicates
+import hashlib
+from copy import deepcopy
 
 
 def content_index(files) -> dict:
-    """`{identity: block}` for every distinct passage in the scanned files.
-
-    First occurrence wins: a passage repeated inside the repository itself -
-    a shared partial, an include - still resolves to one place, matching how
-    `duplicates.distinct_blocks` treats the crawled side.
-    """
+    """`{identity: [candidate, ...]}`; repeated copy keeps every source."""
     index: dict = {}
+    seen: dict = {}
     for file in files or ():
+        raw = getattr(file, "raw_text", None)
+        file_hash = hashlib.sha256(raw.encode("utf-8")).hexdigest() if raw is not None else None
         for block in getattr(file, "blocks", ()) or ():
-            index.setdefault(duplicates.block_identity(block), block)
+            candidate = {"file": block.file_path, "line": block.line_number,
+                         "offset": block.start, "end_offset": block.end,
+                         "text": block.text, "file_hash": file_hash,
+                         "text_hash": hashlib.sha256(block.text.encode("utf-8")).hexdigest(),
+                         "source_range_verified": raw is not None and raw[block.start:block.end] == block.text,
+                         "context": deepcopy(getattr(block, "source_context", {}) or {})}
+            identity = duplicates.block_identity(block)
+            location = (candidate["file"], candidate["offset"], candidate["end_offset"])
+            known = seen.setdefault(identity, set())
+            if location not in known:
+                known.add(location)
+                index.setdefault(identity, []).append(candidate)
     return index
 
 
@@ -53,36 +64,65 @@ def index_for_path(path: str, ignore_patterns=None, max_files: int = 5000,
 
 
 def pair_blocks(blocks, index) -> int:
-    """Fill in `source_file`/`source_line` on every block that matches.
+    """Keep every textual candidate; choose only an exact unique occurrence.
 
-    Returns how many did. The number is the honest half of this feature: a
-    run that paired 3 of 40 passages has pointed at the wrong checkout, and
-    a surface that shows only the three matches would never say so.
-
-    **Two passes, and the second one exists because of the language.**
-    `block_identity` is `(text, language_hint)`, which is right for grouping
-    passages *within* one reading - the same string read as Italian and as
-    English is two questions for a detector. Across two readings it is too
-    strict: a crawled page takes its hint from `<html lang="uk">` while the
-    same sentence in a `.tsx` file is guessed from the sentence itself, so an
-    English heading on a Ukrainian site is `uk` on one side and `en` on the
-    other and never matches. The text is the same text; when the strict key
-    misses, the normalised text alone is asked, which cannot produce a wrong
-    pairing - identical copy is the same passage whichever language either
-    side thought it was in.
+    Returns how many passages have candidates, including ambiguous matches.
+    Language hints can differ between rendered and source readings, so all
+    candidates for the text are considered. DOM/locale/component context
+    ranks the candidates without treating a hint as proof of origin.
     """
-    if not index:
-        return 0
     by_text: dict = {}
-    for (text, _language), source in index.items():
-        by_text.setdefault(text, source)
+    for (text, _language), sources in (index or {}).items():
+        candidates = by_text.setdefault(text, {})
+        for source in sources:
+            candidates.setdefault((source["file"], source["offset"], source["end_offset"]), source)
     matched = 0
     for block in blocks or ():
         identity = duplicates.block_identity(block)
-        source = index.get(identity) or by_text.get(identity[0])
-        if source is None:
+        sources = by_text.get(identity[0], {}).values()
+        block.source_file, block.source_line = "", None
+        block.source_mapping, block.source_candidates = "unmapped", []
+        context = getattr(block, "source_context", {}) or {}
+        candidates = []
+        for source in sources:
+            candidate = deepcopy({k: v for k, v in source.items() if k != "text"})
+            candidate["match"] = "exact" if source["text"] == block.text else "normalized"
+            candidate["context_matches"] = [key for key in ("locale_key", "element", "component_file")
+                if context.get(key) and context[key] == candidate["context"].get(key)]
+            candidates.append(candidate)
+        candidates.sort(key=lambda c: (-len(c["context_matches"]), c["file"], c["offset"]))
+        block.source_candidates = candidates
+        if not candidates:
             continue
-        block.source_file = getattr(source, "file_path", "") or ""
-        block.source_line = getattr(source, "line_number", None)
+        block.source_mapping = "ambiguous" if len(candidates) > 1 else (
+            "exact-unique" if candidates[0]["match"] == "exact" else "inferred")
+        if block.source_mapping == "exact-unique":
+            block.source_file = candidates[0]["file"]
+            block.source_line = candidates[0]["line"]
         matched += 1
     return matched
+
+
+def mapping_for(block) -> dict:
+    """Detached mapping evidence, including context hints that do not prove origin."""
+    status = getattr(block, "source_mapping", "")
+    if not status:
+        return {}
+    candidates = deepcopy(getattr(block, "source_candidates", []) or [])
+    eligible = status == "exact-unique" and len(candidates) == 1 and candidates[0]["source_range_verified"]
+    return {"status": status, "candidates": candidates,
+            "context": {"selector": getattr(block, "dom_path", ""),
+                        **deepcopy(getattr(block, "source_context", {}) or {})},
+            "auto_fix_eligible": eligible, "requires_hash_revalidation": True,
+            "source_map_status": "unknown"}
+
+
+def mapping_lines(mapping, lang="en") -> list[str]:
+    """The same candidate list in GUI and human report exports."""
+    if not mapping or mapping.get("status") == "unmapped":
+        return []
+    from i18n.translations import t
+    lines = [t("source_mapping_" + mapping["status"].replace("-", "_"), lang)]
+    for candidate in mapping.get("candidates", []):
+        lines.append(t("finding_file_line", lang, path=candidate["file"], line=candidate["line"]))
+    return lines

@@ -62,7 +62,7 @@ class OfflineDetector(Detector):
 
     def analyze_block(self, block) -> list[TextSpan]:
         spans: list[TextSpan] = []
-        if self.include_style:
+        if self.include_style and getattr(block, "analysis_eligible", True):
             spans.extend(self._style.analyze_block(block))
         if self._characters is not None:
             spans.extend(self._characters.analyze_block(block))

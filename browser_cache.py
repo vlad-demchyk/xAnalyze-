@@ -79,7 +79,10 @@ def options_key(options, sizes) -> str:
     a new switch that changes the answer and is not in the key is a cache
     that lies, and that is worse than no cache at all.
     """
+    from audit import vitals
     return _fingerprint(
+        vitals.vendor_identity()["artifact_sha256"],
+        vitals.vendor_identity()["collector_sha256"],
         tuple(sorted(getattr(options, "exclude", ()) or ())),
         tuple(sorted(getattr(options, "disabled_rules", ()) or ())),
         bool(getattr(options, "run_axe", True)),
@@ -88,6 +91,8 @@ def options_key(options, sizes) -> str:
         bool(getattr(options, "run_measurements", True)),
         bool(getattr(options, "allow_local_files", False)),
         int(getattr(options, "settle_ms", 0) or 0),
+        int(getattr(options, "performance_repeats", 1)),
+        json.dumps(getattr(options, "performance_scenario", []), sort_keys=True),
         tuple((name, width, height) for name, width, height in (sizes or ())),
     )
 
@@ -171,11 +176,21 @@ class BrowserCache:
         from audit.driver import PageAudit
 
         self.hits += 1
+        measurements = deepcopy(entry.get("measurements") or {})
+        if measurements:
+            measurements.setdefault("conditions", {}).update({
+                "cacheHit": True, "reusedAtUnix": time.time(),
+                "freshMeasurement": False, "originalMeasurementUnix": entry.get("at"),
+            })
+        issues = [_record_to_issue(deepcopy(record), source)
+                  for record in entry.get("issues", [])]
+        for issue in issues:
+            if issue.details and "measurements" in issue.details:
+                issue.details["measurements"] = deepcopy(measurements)
         return PageAudit(
             url=source,
-            issues=[_record_to_issue(record, source)
-                    for record in entry.get("issues", [])],
-            measurements=entry.get("measurements") or {},
+            issues=issues,
+            measurements=measurements,
             error="",
             engine_errors={},
             html=entry.get("html", "") or "",
@@ -183,7 +198,7 @@ class BrowserCache:
 
     def put(self, markup: str, page_audit) -> None:
         """Remember one page. A failed pass is not remembered."""
-        if getattr(page_audit, "error", ""):
+        if getattr(page_audit, "error", "") or getattr(page_audit, "engine_errors", {}):
             return
         self._entries[markup_key(markup)] = {
             "at": int(time.time()),

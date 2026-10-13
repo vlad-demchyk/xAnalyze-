@@ -131,6 +131,9 @@ class ReportFinding:
     #: is a different sentence from "this page has 23 problems", and the
     #: reader needs the first one before the second.
     document_kind: str = ""
+    #: Detached machine evidence from the shared finding contract. Display
+    #: prose and grouping never replace the source facts or span offsets.
+    evidence: dict = field(default_factory=dict)
 
     @property
     def severity_rank(self) -> int:
@@ -173,11 +176,13 @@ class ReportFinding:
         fact that is wrong for half its rows.
         """
         from duplicates import mask_generated_ids
+        import json
 
         return (self.category, self.severity, self.rule_id, self.confidence,
                 self.title, self.found, self.why, self.fix,
                 mask_generated_ids(" ".join((self.snippet or "").split())),
-                self.replacement, self.engine, self.wcag)
+                self.replacement, self.engine, self.wcag,
+                json.dumps((self.evidence or {}).get("mapping", {}), sort_keys=True))
 
 
 @dataclass
@@ -245,6 +250,7 @@ class ReportModel:
     #: else, and "40 pages, 3 findings" over a login form is the one sentence
     #: in it that would be a lie.
     auth: dict = field(default_factory=dict)
+    coverage: dict = field(default_factory=dict)
 
     def counts_by_severity(self) -> dict:
         counts: dict[str, int] = {}
@@ -429,6 +435,7 @@ def from_finding_dicts(findings, target: str | None = None,
     # it would make the two modules import each other. The caller that owns
     # the answer passes it.
     is_character_finding = character_of or (lambda _finding: False)
+    from finding_contract import serialize_finding
 
     rows: list[ReportFinding] = []
     for finding in findings or ():
@@ -453,6 +460,7 @@ def from_finding_dicts(findings, target: str | None = None,
             snippet=text,
             replacement=replacement or "",
             engine=finding.get("detector", "") or finding.get("source", ""),
+            evidence=serialize_finding(finding),
         ))
     return ReportModel(meta=ReportMeta(target=target or "", mode="text-repo"),
                        findings=rows)
@@ -470,6 +478,7 @@ def from_text_analysis(result, target: str | None = None,
     and otherwise leaves `replacement` empty, same as `--json` does today.
     """
     drafts = drafts or {}
+    from finding_contract import serialize_span
     blocks_by_id = {b.block_id: b for b in result.blocks()}
     findings: list[ReportFinding] = []
     for span in result.spans:
@@ -494,6 +503,7 @@ def from_text_analysis(result, target: str | None = None,
             snippet=original,
             replacement=draft or (span.replacement or ""),
             engine=(span.details or {}).get("source") or span.detector_name,
+            evidence=serialize_span(span, block),
         ))
     root = target or getattr(result, "root_url", None) or getattr(result, "root_dir", "")
     mode = "web" if isinstance(result, AnalysisResult) else "repo"
@@ -512,6 +522,7 @@ def from_accessibility(result, lang: str = "uk") -> ReportModel:
     """
     from audit.explanations import render
     from report.markup import element_of
+    from finding_contract import json_value, serialize_issue
 
     findings: list[ReportFinding] = []
     for document in result.documents:
@@ -541,9 +552,11 @@ def from_accessibility(result, lang: str = "uk") -> ReportModel:
                 confidence=getattr(issue, "confidence", ""),
                 caveat=explanation.caveat,
                 document_kind=getattr(document, "kind", ""),
+                evidence=serialize_issue(issue, source=document.source),
             ))
     return ReportModel(meta=ReportMeta(target=result.root, mode=f"audit-{result.mode}"),
-                       findings=findings, auth=_auth_summary(result))
+                       findings=findings, auth=_auth_summary(result),
+                       coverage=json_value(getattr(result, "coverage", {})))
 
 
 def _auth_summary(result) -> dict:

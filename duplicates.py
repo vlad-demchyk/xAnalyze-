@@ -288,7 +288,7 @@ def block_identity(block) -> tuple:
     return (text, getattr(block, "language_hint", None) or "")
 
 
-def distinct_blocks(blocks: list) -> list:
+def distinct_blocks(blocks: list, *, exact_text=False) -> list:
     """`[(representative, [every block with that identity])]`, in arrival order.
 
     The representative is the first occurrence, and it is the one handed to a
@@ -299,7 +299,7 @@ def distinct_blocks(blocks: list) -> list:
     order: list = []
     seen: dict = {}
     for block in blocks:
-        key = block_identity(block)
+        key = (block.text, block.language_hint) if exact_text else block_identity(block)
         if key in seen:
             seen[key].append(block)
             continue

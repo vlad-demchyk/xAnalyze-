@@ -32,6 +32,23 @@ class TextBlock:
     #: contain - which is a real answer about that checkout, not a failure.
     source_file: str = ""
     source_line: int | None = None
+    source_mapping: str = ""
+    source_candidates: list = field(default_factory=list)
+    source_context: dict = field(default_factory=dict)
+    #: `text` retains the decoded source characters. Normalisation is a
+    #: separate view with a reversible offset map, never a destructive read.
+    raw_text: str | None = None
+    normalized_text: str | None = None
+    normalization_map: list = field(default_factory=list)
+    rendered_visible_text: str | None = None
+    visibility: str = "unknown"
+    text_kind: str = "dom-text"
+    attribute_name: str = ""
+    dom_ranges: list = field(default_factory=list)
+    declared_language: str | None = None
+    language_context: list = field(default_factory=list)
+    context_path: list = field(default_factory=list)
+    analysis_eligible: bool = True
 
 
 @dataclass
@@ -93,6 +110,7 @@ class PageDiagnostics:
     #: fetched reading still stands, so this is a note on the result rather
     #: than an error that replaces it.
     render_error: str = ""
+    extraction: dict = field(default_factory=dict)
     has_noscript_notice: bool = False
     #: The response headers, lower-cased keys. Kept because they arrived
     #: with the page and were being thrown away: everything except
@@ -237,6 +255,7 @@ class CodeBlock:
     line_number: int
     language_hint: str | None = None
     kind: str = KIND_MARKUP
+    source_context: dict = field(default_factory=dict)
 
 
 @dataclass

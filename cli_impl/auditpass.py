@@ -55,7 +55,10 @@ def _audit_at_widths(urls, options, sizes, on_page=None, markup=None,
     import browser_cache
 
     markup = markup or {}
-    cache = browser_cache.BrowserCache(options, sizes) if markup else None
+    cache = browser_cache.BrowserCache(options, sizes) if (
+        markup and getattr(options, "performance_repeats", 1) == 1
+        and not getattr(options, "performance_scenario", [])
+        and not getattr(options, "performance_fresh", False)) else None
 
     results = []
     todo = []
@@ -159,6 +162,8 @@ def _run_browser_pass(result, suppressions, args=None) -> None:
 
     usable, reason = driver.available()
     if not usable:
+        result.browser_coverage.append({"engine": "browser", "status": "error",
+                                        "reason": str(reason)})
         applog.warning("browser.skipped", reason=str(reason))
         progress.notice("browser", f"browser pass skipped: {reason}",
                         human=f"# browser pass skipped: {reason}",
@@ -168,9 +173,18 @@ def _run_browser_pass(result, suppressions, args=None) -> None:
     targets = [d for d in result.documents
                if not d.error and _is_renderable(d.source)]
     if not targets:
+        result.browser_coverage.append({"engine": "browser", "status": "skipped",
+                                        "reason": "no renderable documents"})
         return
 
     within = getattr(args, "within", None) or "" if args is not None else ""
+    from audit.vitals import validate_scenario
+    scenario_path = getattr(args, "performance_scenario", None)
+    scenario = []
+    if scenario_path:
+        import json
+        from pathlib import Path
+        scenario = validate_scenario(json.loads(Path(scenario_path).read_text()))
     options = browser_mod.BrowserAuditOptions(
         exclude=list(suppressions.selectors),
         disabled_rules=list(suppressions.rules),
@@ -186,6 +200,10 @@ def _run_browser_pass(result, suppressions, args=None) -> None:
         run_htmlcs=not within,
         run_states=not within,
         run_measurements=not within,
+        settle_ms=getattr(args, "performance_settle_ms", 2500),
+        performance_repeats=getattr(args, "performance_repeats", 1),
+        performance_scenario=scenario,
+        performance_fresh=getattr(args, "performance_fresh", False),
     )
     if within:
         progress.notice(
@@ -231,6 +249,9 @@ def _run_browser_pass(result, suppressions, args=None) -> None:
     if profile is not None:
         audit_kwargs["profile"] = profile
     audits = _audit_at_widths(urls, options, sizes, **audit_kwargs)
+    from audit.performance_sources import optional_sources
+    result.coverage.setdefault("performance_sources", []).extend(
+        optional_sources(urls, args, scoped=bool(within)))
     by_url = {a.url: a for a in audits}
     #: Addresses already handled. One page is several documents, and
     #: merging the same audit into each of them counted every browser
@@ -242,9 +263,20 @@ def _run_browser_pass(result, suppressions, args=None) -> None:
     processed_urls = set()
     for document, url in zip(targets, urls):
         page_audit = by_url.get(url)
-        if page_audit is None or url in processed_urls:
+        if url in processed_urls:
             continue
         processed_urls.add(url)
+        if page_audit is None:
+            result.browser_coverage.append({"source": document.source, "engine": "browser",
+                                            "status": "unknown", "reason": "no page result"})
+            continue
+        for engine, enabled in (("axe", options.run_axe), ("htmlcs", options.run_htmlcs),
+                                ("states", options.run_states), ("browser", options.run_measurements)):
+            error = page_audit.error or page_audit.engine_errors.get(
+                "measurements" if engine == "browser" else engine)
+            result.browser_coverage.append({"source": document.source, "engine": engine,
+                "status": "skipped" if not enabled else "error" if error else "checked",
+                "reason": "excluded by scope/options" if not enabled else str(error or "")})
         browser_mod.merge_page_audit(result, document, page_audit)
         if page_audit.error:
             progress.notice(
@@ -453,7 +485,7 @@ def apply_session(target: str, config, use_session: bool = True) -> str:
 
 
 def _crawl_maybe_rendering(target: str, config, progress_cb=None,
-                           session_host: str = ""):
+                           session_host: str = "", within: str = ""):
     """Crawl, starting a browser only if the configuration can use one."""
     from crawler import RENDER_NEVER, crawl
 
@@ -474,7 +506,8 @@ def _crawl_maybe_rendering(target: str, config, progress_cb=None,
                   f"# Install PySide6 and QtWebEngine for full SPA support.",
             available=False, reason=str(reason))
         return crawl(target, config, progress_cb=progress_cb)
-    with driver.html_renderer(session_host=session_host) as render:
+    extra = {"within": within} if within else {}
+    with driver.html_renderer(session_host=session_host, **extra) as render:
         return crawl(target, config, render=render, progress_cb=progress_cb)
 
 

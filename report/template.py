@@ -386,6 +386,10 @@ def _finding_card(finding, lang: str, palette: Palette) -> str:
     parts.append(f'<h3>{_esc(finding.title)}</h3>')
     parts.append(_meta_line(finding, labels))
     parts.append(_locations_block(finding, labels))
+    if (finding.evidence or {}).get("mapping"):
+        from repo_pairing import mapping_lines
+        for line in mapping_lines(finding.evidence["mapping"], lang):
+            parts.append(f'<p class="src">{_esc(line)}</p>')
 
     if finding.category == CATEGORY_AI_TEXT:
         if finding.why:
@@ -827,7 +831,7 @@ def _pages_section(model: ReportModel, labels: dict) -> str:
             f'{rows}</table></section>')
 
 
-def _top_patterns_section(model: ReportModel, labels: dict) -> str:
+def _top_patterns_section(model: ReportModel, labels: dict, lang="en") -> str:
     """The highest-scoring passages, kept as detail rather than as a summary.
 
     The confidence tally that used to head this section now lives in the one
@@ -849,6 +853,10 @@ def _top_patterns_section(model: ReportModel, labels: dict) -> str:
             note = labels["source_at"].format(
                 path=p["source_file"], line=p.get("source_line", 0))
             explanation += f'<div class="src">{_esc(note)}</div>'
+        if p.get("mapping", {}).get("status") in ("ambiguous", "inferred"):
+            from repo_pairing import mapping_lines
+            for note in mapping_lines(p["mapping"], lang):
+                explanation += f'<div class="src">{_esc(note)}</div>'
         rows.append(
             f'<tr><td class="num">{p.get("score", 0):.2f}</td>'
             f'<td>{_esc(p.get("confidence", ""))}</td>'
@@ -932,10 +940,21 @@ def render_html(model: ReportModel, lang: str = "en") -> str:
                      if findings else f'<p class="empty">{_esc(labels["no_findings"])}</p>')
 
     authwall_section = _behind_the_login(model, labels, palette)
+    coverage_section = ""
+    if model.coverage:
+        from audit.coverage import coverage_summary
+        coverage_title, coverage_text = coverage_summary(model.coverage, lang)
+        coverage_section = (f'<section class="authwall"><h2>{_esc(coverage_title)}</h2>'
+                            f'<p class="authwall-note">{_esc(coverage_text)}</p></section>')
+        from audit.vitals import performance_lines
+        performance_title, lines = performance_lines(model.coverage, lang)
+        if lines:
+            coverage_section += (f'<section class="authwall"><h2>{_esc(performance_title)}</h2><ul>'
+                                 + ''.join(f'<li>{_esc(line)}</li>' for line in lines) + '</ul></section>')
     first_section = _first_things(model, labels, palette)
     work_section = _where_the_work_is(model, labels, palette)
     pages_section = _pages_section(model, labels)
-    ai_section = _top_patterns_section(model, labels)
+    ai_section = _top_patterns_section(model, labels, lang)
     typo_section = ""
 
     # The heading is the name; the target is the line under it. A report
@@ -1219,6 +1238,7 @@ footer {{
 </section>
 
 {authwall_section}
+{coverage_section}
 
 {first_section}
 

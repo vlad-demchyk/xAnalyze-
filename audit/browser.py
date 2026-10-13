@@ -34,6 +34,7 @@ deadlocks Qt.
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -135,6 +136,11 @@ class BrowserAuditOptions:
     #: the links of an application shell exist only after hydration, and a
     #: plain fetch of it returns neither.
     capture_html: bool = False
+    capture_text: bool = False
+    text_within: str = ""
+    performance_repeats: int = 1
+    performance_scenario: list = field(default_factory=list)
+    performance_fresh: bool = False
 
 
 #: The rendered document, source of both text and links for a page whose
@@ -282,9 +288,11 @@ MEASUREMENT_SCRIPT = """
   // LCP and layout-shift candidates rather than trying to infer them from
   // markup. Not every embedded Chromium exposes every entry type, so an
   // unavailable metric stays absent instead of becoming a fabricated zero.
-  var lcp = null, cls = 0, clsAvailable = false, longTaskMs = 0;
+  var longTaskMs = 0;
   function observe(type, each) {
     try {
+      if (typeof PerformanceObserver !== 'function' ||
+          !(PerformanceObserver.supportedEntryTypes || []).includes(type)) return null;
       var observer = new PerformanceObserver(function(list) {
         list.getEntries().forEach(each);
       });
@@ -292,19 +300,12 @@ MEASUREMENT_SCRIPT = """
       return observer;
     } catch (e) { return null; }
   }
-  var lcpObserver = observe('largest-contentful-paint', function(entry) {
-    lcp = Math.round(entry.startTime || 0);
-  });
-  var clsObserver = observe('layout-shift', function(entry) {
-    clsAvailable = true;
-    if (!entry.hadRecentInput) cls += entry.value || 0;
-  });
   var longTaskObserver = observe('longtask', function(entry) {
     longTaskMs += Math.round(entry.duration || 0);
   });
   return new Promise(function(resolve) {
     setTimeout(function() {
-      [lcpObserver, clsObserver, longTaskObserver].forEach(function(observer) {
+      [longTaskObserver].forEach(function(observer) {
         if (observer) observer.disconnect();
       });
       var result = {
@@ -339,8 +340,7 @@ MEASUREMENT_SCRIPT = """
           result.imagesAboveFold.push(src.slice(0, 500));
         }
       }
-      if (lcp !== null) result.largestContentfulPaint = lcp;
-      if (clsAvailable) result.cumulativeLayoutShift = Math.round(cls * 1000) / 1000;
+      // XANALYZE_VITALS_SNAPSHOT
       // A supported observer reporting no entries is a real zero. An engine
       // that has no long-task observer exposes no metric at all, so it cannot
       // be mistaken for an idle page.
@@ -350,6 +350,11 @@ MEASUREMENT_SCRIPT = """
   });
 })()
 """
+
+# Early web-vitals collector owns CLS session windows and input percentiles.
+from .vitals import SNAPSHOT as _VITALS_SNAPSHOT
+MEASUREMENT_SCRIPT = MEASUREMENT_SCRIPT.replace(
+    "// XANALYZE_VITALS_SNAPSHOT", _VITALS_SNAPSHOT)
 
 
 # ------------------------------------------------------------- normalisation
@@ -472,7 +477,7 @@ def issues_from_measurements(payload: str, source: str, budgets=None) -> list:
     issues = []
     for key, (limit, severity, rule) in budgets.items():
         value = data.get(key)
-        if not isinstance(value, (int, float)) or value <= limit:
+        if type(value) not in (int, float) or not math.isfinite(value) or value <= limit:
             continue
         issues.append(Issue(
             rule_id=rule, severity=severity, category=PERFORMANCE,
@@ -490,6 +495,7 @@ DEFAULT_BUDGETS = {
     "firstContentfulPaint": (1800, SERIOUS, "perf-first-paint"),
     "largestContentfulPaint": (2500, SERIOUS, "perf-largest-contentful-paint"),
     "cumulativeLayoutShift": (0.1, MODERATE, "perf-layout-shift-browser"),
+    "interactionToNextPaint": (200, SERIOUS, "perf-interaction-to-next-paint"),
     "loadComplete": (5000, MODERATE, "perf-load-time"),
     "transferBytes": (1_600_000, MODERATE, "perf-page-weight"),
     "requestCount": (50, MINOR, "perf-request-count"),
@@ -546,6 +552,10 @@ def merge_page_audit(result, document, page_audit) -> bool:
                 "error": str(message)}
         if item not in errors:
             errors.append(item)
+    measurements = getattr(page_audit, "measurements", None) or {}
+    if measurements:
+        result.coverage.setdefault("performance", []).append({
+            "source": document.source, "measurements": measurements})
     merge_into_document(document, page_audit)
     return True
 

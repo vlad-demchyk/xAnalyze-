@@ -4428,6 +4428,26 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Nel profilo di caricamento trova la risorsa o il blocco che si sposta e riservagli spazio. Di solito è un'immagine, pubblicità, un widget incorporato o un font che cambia la dimensione del testo quando arriva.",
         "en": "Use the loading profile to find the resource or block that shifts and reserve its space. It is often an image, ad, embedded widget or font that changes text size after it arrives.",
     },
+    "a11y_perf_interaction_to_next_paint_title": {
+        "uk": "Сторінка повільно відповідає на введення",
+        "it": "La pagina risponde lentamente all'input",
+        "en": "The page responds slowly to input",
+    },
+    "a11y_perf_interaction_to_next_paint_found": {
+        "uk": "У цьому лабораторному сценарії INP становить {value} мс при цілі не більше {budget} мс.",
+        "it": "In questo scenario di laboratorio INP è {value} ms, con obiettivo non oltre {budget} ms.",
+        "en": "INP in this lab scenario was {value} ms, against a target of at most {budget} ms.",
+    },
+    "a11y_perf_interaction_to_next_paint_why": {
+        "uk": "INP вимірює затримку між введенням і наступним відображенням. Цей обмежений сценарій не описує всі взаємодії реальних користувачів.",
+        "it": "INP misura il ritardo tra l'input e il rendering successivo. Questo scenario limitato non descrive tutte le interazioni degli utenti reali.",
+        "en": "INP measures the delay from input to the next paint. This bounded scenario does not describe all real-user interactions.",
+    },
+    "a11y_perf_interaction_to_next_paint_fix": {
+        "uk": "За атрибуцією знайдіть повільну взаємодію, скоротіть синхронну роботу обробника та перевірте повторно з тим самим сценарієм.",
+        "it": "Usa l'attribuzione per trovare l'interazione lenta, riduci il lavoro sincrono del gestore e ripeti lo stesso scenario.",
+        "en": "Use the attribution to find the slow interaction, reduce synchronous handler work and repeat the same scenario.",
+    },
     "a11y_perf_long_tasks_title": {
         "uk": "Головний потік надто довго зайнятий JavaScript",
         "it": "Il thread principale resta occupato troppo a lungo dal JavaScript",
@@ -6698,9 +6718,24 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "This run used the session you signed in to yourself ({host}).",
     },
     "finding_written_in": {
-        "uk": "Написано у {path}:{line}",
-        "it": "Scritto in {path}:{line}",
-        "en": "Written in {path}:{line}",
+        "uk": "Точний текст знайдено у {path}:{line}",
+        "it": "Testo esatto trovato in {path}:{line}",
+        "en": "Exact text found in {path}:{line}",
+    },
+    "source_mapping_exact_unique": {
+        "uk": "Точний текст знайдено в одному місці вихідного коду.",
+        "it": "Il testo esatto è presente in un solo punto del codice sorgente.",
+        "en": "The exact text occurs at one source location.",
+    },
+    "source_mapping_ambiguous": {
+        "uk": "Текст є в кількох місцях. Джерело неоднозначне; потрібен ручний вибір.",
+        "it": "Il testo compare in più punti. L'origine è ambigua; serve una scelta manuale.",
+        "en": "The text occurs at several locations. Its source is ambiguous; choose manually.",
+    },
+    "source_mapping_inferred": {
+        "uk": "Є схожий текст після нормалізації. Привʼязка припущена; автоматична правка недоступна.",
+        "it": "Testo simile dopo la normalizzazione. L'origine è dedotta; correzione automatica non disponibile.",
+        "en": "Similar text after normalization. The mapping is inferred; automatic correction is unavailable.",
     },
     "paired_repo_placeholder": {
         "uk": "код за цим сайтом (не обовʼязково)",

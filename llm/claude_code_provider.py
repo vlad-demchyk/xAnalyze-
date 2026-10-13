@@ -143,6 +143,7 @@ class ClaudeCodeProvider(LLMProvider):
             # No tools, no MCP servers: a rewrite needs neither, and their
             # definitions would be the largest part of every request.
             "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
+            "--tools", "",
             "--allowedTools", "",
             "--system-prompt", system,
         ]

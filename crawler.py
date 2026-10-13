@@ -60,6 +60,7 @@ from bs4 import BeautifulSoup, NavigableString
 from lang_detect import guess_language_safe
 import applog
 from models import LinkRef, PageDiagnostics, PageResult, TextBlock
+from text_extraction import RenderedHTML, normalize_with_map, text_from_nodes
 
 USER_AGENT = "AIContentScanner/0.1 (+https://example.local)"
 
@@ -272,7 +273,8 @@ def _should_render(mode: str, diagnostics) -> bool:
     # page that came back with its copy in it is not rendered again: it would
     # cost seconds per page to confirm what is already known.
     return (EMPTY_JS_RENDERED in diagnostics.reasons
-            or not diagnostics.blocks_kept)
+            or not diagnostics.blocks_kept
+            or diagnostics.extraction.get("style_blocks") == 0)
 
 
 CANDIDATE_TAGS = [
@@ -289,10 +291,13 @@ CONTAINER_TAGS = ["div", "section", "article", "dd", "dt", "figure", "summary", 
 
 def _extract_text_blocks(html: str, page_url: str,
                           diagnostics: PageDiagnostics | None = None) -> list[TextBlock]:
+    if isinstance(html, RenderedHTML) and isinstance(html.text_snapshot.get("blocks"), list):
+        return _snapshot_blocks(html.text_snapshot, page_url, diagnostics)
     soup = BeautifulSoup(html, "html.parser")
     blocks: list[TextBlock] = []
     dropped_short = 0
     dropped_dup = 0
+    hidden = 0
 
     # Walk block-level-ish containers so each highlighted chunk maps to a
     # coherent piece of UI copy (heading, paragraph, button label, list item...)
@@ -303,17 +308,24 @@ def _extract_text_blocks(html: str, page_url: str,
     # join inside the per-candidate loop, which re-walked the same subtrees
     # over and over on deep pages.
     texts: dict[int, str] = {}
+    nodes_by_tag = {}
     for tag in candidates:
-        texts[id(tag)] = re.sub(r"\s+", " ", " ".join(tag.stripped_strings)).strip()
+        nodes = _text_nodes(tag)
+        nodes_by_tag[id(tag)] = nodes
+        texts[id(tag)] = text_from_nodes(nodes)[0]
 
     for tag in candidates:
         text = texts[id(tag)]
         if tag.find_parent(SKIP_TAGS):
             continue
-        if len(text) < MIN_BLOCK_LEN:
+        if _static_hidden(tag):
+            hidden += 1
+            continue
+        if len(normalize_with_map(text)[0]) < MIN_BLOCK_LEN:
             if text:
                 dropped_short += 1
-            continue
+            else:
+                continue
 
         # Skip a node when an ancestor candidate carries exactly the same
         # text (e.g. <li><a>same words</a></li> would otherwise be captured
@@ -330,18 +342,74 @@ def _extract_text_blocks(html: str, page_url: str,
             dropped_dup += 1
             continue
 
-        blocks.append(_make_block(tag, text, page_url))
+        blocks.append(_make_block(tag, text, page_url, nodes=nodes_by_tag[id(tag)]))
 
     covered = {id(tag) for tag in candidates}
     extra, extra_short = _leaf_container_blocks(soup, page_url, covered)
     blocks.extend(extra)
     dropped_short += extra_short
+    attributes = _attribute_blocks(soup, page_url)
+    blocks.extend(attributes)
 
     if diagnostics is not None:
         diagnostics.candidates_found = len(candidates)
         diagnostics.blocks_kept = len(blocks)
         diagnostics.dropped_too_short = dropped_short
         diagnostics.dropped_duplicate = dropped_dup
+        diagnostics.extraction = {
+            "mode": "static", "blocks": len(blocks), "hidden_excluded": hidden,
+            "style_blocks": sum(b.analysis_eligible for b in blocks),
+            "visibility_unknown": len(blocks), "attribute_blocks": len(attributes),
+            "frames": [{"selector": _dom_path(tag), "status": "unknown", "reason": "browser required"}
+                       for tag in soup.find_all("iframe")],
+            "closed_shadow_roots": "unknown", "truncated": False,
+        }
+        if isinstance(html, RenderedHTML) and html.text_snapshot.get("error"):
+            diagnostics.extraction["snapshot_error"] = str(html.text_snapshot["error"])
+    return blocks
+
+
+def _snapshot_blocks(snapshot, page_url, diagnostics):
+    blocks, short, duplicate = [], 0, 0
+    seen = set()
+    for entry in snapshot.get("blocks", []):
+        nodes = entry.get("nodes", [])
+        if not nodes:
+            continue
+        text, ranges, languages = text_from_nodes(nodes)
+        normal, mapping = normalize_with_map(text)
+        declared = {r["language"] for r in languages}
+        attribute = entry.get("attribute", "")
+        if not text:
+            continue
+        if len(normal) < MIN_BLOCK_LEN:
+            short += 1
+        identity = (entry["selector"], attribute, text,
+                    repr(entry.get("context_path", [])))
+        if identity in seen:
+            duplicate += 1
+            continue
+        seen.add(identity)
+        blocks.append(TextBlock(
+            block_id=str(uuid.uuid4()), page_url=page_url, dom_path=entry["selector"],
+            text=text, raw_text=text, normalized_text=normal, normalization_map=mapping,
+            language_hint=guess_language_safe(text), visibility=entry.get("visibility", "unknown"),
+            declared_language=(next(iter(declared)) if len(declared) == 1 else "mixed" if declared
+                               else entry.get("declared_language")), language_context=languages,
+            rendered_visible_text=entry.get("rendered_visible_text"), dom_ranges=ranges,
+            attribute_name=attribute, text_kind=entry.get("text_kind", "dom-text"),
+            context_path=entry.get("context_path", []), source_context=entry.get("source_context", {}),
+            analysis_eligible=len(normal) >= MIN_BLOCK_LEN,
+        ))
+    if diagnostics is not None:
+        diagnostics.candidates_found = len(snapshot.get("blocks", []))
+        diagnostics.blocks_kept = len(blocks)
+        diagnostics.dropped_too_short = short
+        diagnostics.dropped_duplicate = duplicate
+        diagnostics.extraction = {k: v for k, v in snapshot.items() if k != "blocks"}
+        diagnostics.extraction.update(mode="rendered", blocks=len(blocks),
+            style_blocks=sum(b.analysis_eligible for b in blocks),
+            visibility_unknown=sum(b.visibility != "visible" for b in blocks))
     return blocks
 
 
@@ -356,24 +424,27 @@ def _leaf_container_blocks(soup, page_url: str, covered: set) -> tuple[list[Text
     blocks: list[TextBlock] = []
     dropped_short = 0
     for tag in soup.find_all(CONTAINER_TAGS):
-        if tag.find_parent(SKIP_TAGS):
+        if tag.find_parent(SKIP_TAGS) or _static_hidden(tag):
             continue
-        own_text = " ".join(
-            str(child) for child in tag.children if isinstance(child, NavigableString)
-        )
-        own_text = re.sub(r"\s+", " ", own_text).strip()
+        nodes = _text_nodes(tag, direct=True)
+        own_text = text_from_nodes(nodes)[0]
         if not own_text:
             continue
-        if len(own_text) < MIN_BLOCK_LEN:
+        if len(normalize_with_map(own_text)[0]) < MIN_BLOCK_LEN:
             dropped_short += 1
-            continue
         if id(tag) in covered:
             continue
-        blocks.append(_make_block(tag, own_text, page_url))
+        blocks.append(_make_block(tag, own_text, page_url, nodes=nodes))
     return blocks, dropped_short
 
 
-def _make_block(tag, text: str, page_url: str) -> TextBlock:
+def _make_block(tag, text: str, page_url: str, *, nodes=None, attribute="") -> TextBlock:
+    normalized, mapping = normalize_with_map(text)
+    ranges, languages = (text_from_nodes(nodes)[1:] if nodes else ([], []))
+    declared = {r["language"] for r in languages}
+    if not declared:
+        inherited = _declared_language(tag)
+        declared = {inherited} if inherited else set()
     return TextBlock(
         block_id=str(uuid.uuid4()),
         page_url=page_url,
@@ -392,7 +463,91 @@ def _make_block(tag, text: str, page_url: str) -> TextBlock:
         # handle - the detectors check every list, and `prompt_language`
         # names no language rather than the wrong one.
         language_hint=guess_language_safe(text),
+        raw_text=text, normalized_text=normalized, normalization_map=mapping,
+        visibility="unknown", attribute_name=attribute,
+        text_kind="attribute" if attribute else "dom-text",
+        dom_ranges=ranges, language_context=languages,
+        declared_language=next(iter(declared)) if len(declared) == 1 else "mixed" if declared else None,
+        analysis_eligible=len(normalized) >= MIN_BLOCK_LEN,
+        source_context={key: value for key, value in {
+            "element": tag.name,
+            "locale_key": tag.get("data-i18n") or tag.get("data-l10n-key"),
+            "component_file": tag.get("data-component-file"),
+        }.items() if isinstance(value, str) and value},
     )
+
+
+def _declared_language(tag):
+    for node in [tag, *tag.parents]:
+        value = node.get("lang") or node.get("xml:lang")
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _static_hidden(tag):
+    """Known visual exclusions only; aria-hidden does not hide pixels."""
+    visibility_set = False
+    for node in [tag, *tag.parents]:
+        if node.has_attr("hidden"):
+            return True
+        style = node.get("style") or ""
+        if not isinstance(style, str):
+            continue
+        declarations = {}
+        for part in style.lower().split(";"):
+            name, colon, value = part.partition(":")
+            if colon:
+                declarations[name.strip()] = value.split("!important", 1)[0].strip()
+        if declarations.get("display") == "none" or declarations.get("content-visibility") == "hidden":
+            return True
+        if declarations.get("opacity") in ("0", "0.0", "0%"):
+            return True
+        visibility = declarations.get("visibility")
+        if not visibility_set and visibility in ("visible", "hidden", "collapse"):
+            visibility_set = True
+            if visibility != "visible":
+                return True
+    return False
+
+
+def _text_nodes(tag, *, direct=False):
+    from bs4 import Comment
+    nodes = []
+    for child in (tag.children if direct else tag.descendants):
+        if not isinstance(child, NavigableString) or isinstance(child, Comment):
+            continue
+        parent = child.parent
+        if parent is None or parent.name in SKIP_TAGS or parent.find_parent(SKIP_TAGS) or _static_hidden(parent):
+            continue
+        index = next(i for i, sibling in enumerate(parent.children) if sibling is child)
+        nodes.append({"text": str(child), "selector": _dom_path(parent), "node_index": index,
+                      "language": _declared_language(parent)})
+    return nodes
+
+
+def _attribute_blocks(soup, page_url):
+    blocks = []
+    for tag in soup.find_all(True):
+        attribute_skip = SKIP_TAGS - {"svg", "path"}
+        if tag.name in attribute_skip or tag.find_parent(attribute_skip) or _static_hidden(tag):
+            continue
+        for attribute in ("aria-label", "placeholder", "alt", "title"):
+            text = tag.get(attribute)
+            if isinstance(text, str) and text.strip():
+                blocks.append(_make_block(tag, text, page_url, attribute=attribute))
+        for reference in str(tag.get("aria-labelledby") or "").split():
+            labels = soup.find_all(id=reference)
+            if len(labels) != 1:
+                continue
+            # Referenced labels may deliberately be visually hidden.
+            text = labels[0].get_text().strip()
+            if text:
+                block = _make_block(tag, text, page_url, attribute="aria-labelledby")
+                block.text_kind = "referenced-label"
+                block.source_context["label_reference"] = reference
+                blocks.append(block)
+    return blocks
 
 
 def _dom_path(tag) -> str:
@@ -471,14 +626,14 @@ def _diagnose(diag: PageDiagnostics, url: str, html: str, blocks: list) -> None:
     if (diag.final_url and _normalize(diag.final_url) != _normalize(url)
             and EMPTY_REDIRECTED not in diag.reasons):
         diag.reasons.append(EMPTY_REDIRECTED)
-    if blocks:
+    if any(getattr(block, "analysis_eligible", True) for block in blocks):
         return
 
     if diag.status_code in _BLOCKED_STATUSES:
         diag.reasons.append(EMPTY_BLOCKED)
     if diag.js_framework or (diag.text_ratio < 0.05 and diag.html_bytes > 500):
         diag.reasons.append(EMPTY_JS_RENDERED)
-    elif diag.dropped_too_short and not diag.blocks_kept:
+    elif diag.dropped_too_short:
         diag.reasons.append(EMPTY_TOO_SHORT)
     elif not diag.candidates_found or diag.text_ratio < 0.01:
         diag.reasons.append(EMPTY_NO_TEXT)

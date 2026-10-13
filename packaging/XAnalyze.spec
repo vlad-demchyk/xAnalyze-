@@ -59,6 +59,9 @@ datas = [
     (str(ROOT / "audit" / "vendor" / "axe.min.js"), "audit/vendor"),
     (str(ROOT / "audit" / "vendor" / "HTMLCS.js"), "audit/vendor"),
     (str(ROOT / "audit" / "vendor" / "axe-LICENSE.txt"), "audit/vendor"),
+    (str(ROOT / "audit" / "vendor" / "web-vitals.attribution.iife.js"), "audit/vendor"),
+    (str(ROOT / "audit" / "vendor" / "web-vitals-LICENSE.txt"), "audit/vendor"),
+    (str(ROOT / "audit" / "vendor" / "web-vitals.json"), "audit/vendor"),
     (str(ROOT / "ui" / "design" / "assets"), "ui/design/assets"),
     *collect_data_files("textual"),
 ]

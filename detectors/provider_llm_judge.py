@@ -20,7 +20,7 @@ from models import TextBlock, TextSpan
 from .base import Detector, DetectorUnavailable
 from .claude_llm_judge import (
     DEFAULT_BATCH_SIZE, ClaudeLLMJudgeDetector, _SYSTEM_PROMPT,
-    _parse_json_relaxed,
+    _batch_input, _parse_json_relaxed,
 )
 
 # Providers reached through this path have no schema-enforcement parameter,
@@ -29,10 +29,10 @@ from .claude_llm_judge import (
 JSON_INSTRUCTION = (
     "\n\nRespond with ONLY JSON, no prose, in exactly this shape:\n"
     '{"results": [{"block_index": 0, "flags": '
-    '[{"quote": "...", "score": 0.8, "reason": "..."}]}]}'
-    "\n\nUse ALL detection rules from the system prompt: statistical signals "
-    "(uniformity, repetition, dash density), structural patterns, and cliché "
-    "phrases. Do NOT dismiss dash density as typography."
+    '[{"quote": "...", "score": 0.8, "reason": "...", "start": null, "end": null}]}]}'
+    "\nInclude exactly one result per supplied block_index. Use an empty flags "
+    "array for a completed judgment with nothing to flag. Repeated quotes "
+    "require exact start/end offsets; never omit a block or guess its range."
 )
 
 
@@ -95,6 +95,9 @@ class ProviderLLMJudgeDetector(ClaudeLLMJudgeDetector):
         return provider
 
     def analyze_blocks(self, blocks: list[TextBlock]) -> list[TextSpan]:
+        blocks = [b for b in blocks if getattr(b, "analysis_eligible", True)]
+        if not blocks:
+            return []
         provider = self._get_provider()
         spans: list[TextSpan] = []
         for i in range(0, len(blocks), self.batch_size):
@@ -103,7 +106,7 @@ class ProviderLLMJudgeDetector(ClaudeLLMJudgeDetector):
         return spans
 
     def _analyze_batch(self, provider, batch: list[TextBlock]) -> list[TextSpan]:
-        numbered = "\n\n".join(f"[{idx}] {b.text}" for idx, b in enumerate(batch))
+        numbered = _batch_input(batch)
         # The mapping is inside the `try` as well, not only the call. It was
         # outside, and the comment below already said what should happen to a
         # failed batch - but a failure in the mapping walked straight past it

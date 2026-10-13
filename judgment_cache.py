@@ -74,8 +74,12 @@ class JudgmentCache:
     """
 
     def __init__(self, detector: str, model: str = "", effort: str = "",
-                 prompt: str = "", directory: Path | None = None) -> None:
-        self.key = _fingerprint(detector, model, effort, prompt)
+                 prompt: str = "", directory: Path | None = None, exact_text: bool = False) -> None:
+        self.exact_text = exact_text
+        parts = [detector, model, effort, prompt]
+        if exact_text:
+            parts.append("exact-text")
+        self.key = _fingerprint(*parts)
         self.directory = Path(directory) if directory else cache_dir()
         self.path = self.directory / f"{self.key}.json"
         self._entries: dict = {}
@@ -125,16 +129,25 @@ class JudgmentCache:
 
     def get(self, text: str, language: str | None = None):
         """The stored verdict, or None. Counts the hit for reporting."""
-        entry = self._entries.get(self.passage_key(text, language))
-        if entry is None:
+        key = _fingerprint(text, language) if self.exact_text else self.passage_key(text, language)
+        entry = self._entries.get(key)
+        # Span offsets refer to exact characters. Normalised passage identity
+        # may share a key, but whitespace/identifier edits require a fresh verdict.
+        text_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        if entry is None or entry.get("text_hash") != text_hash:
             self.misses += 1
             return None
         self.hits += 1
         return entry.get("spans", [])
 
     def put(self, text: str, spans: list, language: str | None = None) -> None:
-        self._entries[self.passage_key(text, language)] = {
+        # A transport or contract failure is retryable, not a stable verdict.
+        if any((span.get("details") or {}).get("error") for span in spans):
+            return
+        key = _fingerprint(text, language) if self.exact_text else self.passage_key(text, language)
+        self._entries[key] = {
             "at": int(time.time()),
+            "text_hash": hashlib.sha256(text.encode("utf-8")).hexdigest(),
             "spans": spans,
         }
         self._dirty = True

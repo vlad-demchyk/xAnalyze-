@@ -16,6 +16,7 @@ import unittest
 from unittest import mock
 
 from audit.engine import AccessibilityResult, DocumentReport
+from audit.browser import BrowserAuditOptions
 from cli_impl import auditpass
 
 
@@ -142,7 +143,7 @@ class HowManyTimesOnePageIsLoaded(unittest.TestCase):
         # test imported it first would get the real browser.
         with mock.patch("audit.driver.BrowserAuditRunner", _Runner), \
                 mock.patch("audit.driver.ensure_headless_application"):
-            results = auditpass._audit_at_widths(urls, options=mock.Mock(),
+            results = auditpass._audit_at_widths(urls, options=BrowserAuditOptions(),
                                                  sizes=())
         return rendered, results
 
@@ -168,7 +169,7 @@ class HowManyTimesOnePageIsLoaded(unittest.TestCase):
                 mock.patch("audit.driver.ensure_headless_application"):
             results = auditpass._audit_at_widths(
                 ["https://x.test/a", "https://x.test/a"],
-                options=mock.Mock(), sizes=(),
+                options=BrowserAuditOptions(), sizes=(),
                 markup={"https://x.test/a": "<html>a</html>"})
         self.assertEqual(cache.get.call_count, 1)
         self.assertEqual(results, [stored, stored])

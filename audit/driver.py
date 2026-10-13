@@ -86,6 +86,7 @@ class PageAudit:
     #: otherwise - and empty is not the same as "the page had no content",
     #: which is why it is not None.
     html: str = ""
+    text_snapshot: dict = field(default_factory=dict)
 
 
 def ensure_headless_application():
@@ -159,6 +160,7 @@ class _Slot:
         self.script = script
         self.on_done = on_done
         self.elapsed = 0
+        self.world_id = 1 if name in ("text", "measurements") else 0
 
     def start(self) -> None:
         # `String(v)` because a script may resolve to something that is
@@ -179,7 +181,7 @@ class _Slot:
   return true;
 }})()
 """
-        self.page.runJavaScript(wrapped, 0, lambda _result: self._poll())
+        self.page.runJavaScript(wrapped, self.world_id, lambda _result: self._poll())
 
     def _poll(self) -> None:
         from PySide6.QtCore import QTimer
@@ -194,7 +196,7 @@ class _Slot:
                 return
             QTimer.singleShot(POLL_INTERVAL_MS, self._poll)
 
-        self.page.runJavaScript(f"window.__xanalyze && window.__xanalyze[{_js(self.name)}]", 0, read)
+        self.page.runJavaScript(f"window.__xanalyze && window.__xanalyze[{_js(self.name)}]", self.world_id, read)
 
 
 class BrowserAuditRunner:
@@ -224,7 +226,7 @@ class BrowserAuditRunner:
     def _get_page(self):
         if self._page is not None:
             return self._page
-        from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineSettings
+        from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineSettings, QWebEngineScript
 
         profile = self._profile
         if profile is None:
@@ -245,6 +247,15 @@ class BrowserAuditRunner:
         settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls,
                               bool(self.options.allow_local_files))
         settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptCanOpenWindows, False)
+        if self.options.run_measurements:
+            from .vitals import bootstrap_script
+            script = QWebEngineScript()
+            script.setName("xanalyze-web-vitals")
+            script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
+            script.setWorldId(QWebEngineScript.ScriptWorldId.ApplicationWorld)
+            script.setRunsOnSubFrames(False)
+            script.setSourceCode(bootstrap_script())
+            page.scripts().insert(script)
         self._page = page
         return page
 
@@ -320,7 +331,30 @@ class BrowserAuditRunner:
 
     def audit(self, url: str) -> PageAudit:
         """Load one page, run every enabled pass, and return the findings."""
-        return self._audit(url, load=True, options=self.options)
+        from dataclasses import replace
+        from .vitals import repeat_summary
+        count = self.options.performance_repeats if self.options.run_measurements else 1
+        if type(count) is not int or not 1 <= count <= 10:
+            raise ValueError("performance_repeats must be between 1 and 10")
+        result = self._audit(url, load=True, options=self.options)
+        if count == 1 or result.error:
+            return result
+        samples = [dict(result.measurements)]
+        repeat_options = replace(self.options, run_axe=False, run_htmlcs=False,
+                                 run_states=False, capture_html=False, capture_text=False)
+        for index in range(2, count + 1):
+            if self._cancelled():
+                result.engine_errors["repeats"] = "cancelled"
+                break
+            sample = self._audit(url, load=True, options=repeat_options)
+            sample.measurements.setdefault("conditions", {})["repeatIndex"] = index
+            samples.append(sample.measurements)
+            if sample.error or sample.engine_errors:
+                result.engine_errors[f"repeat:{index}"] = sample.error or str(sample.engine_errors)
+        result.measurements["repeats"] = {**repeat_summary(samples),
+            "requested_runs": count, "completed_runs": len(samples), "runs": samples,
+            "cache_policy": "fresh navigations sharing the same profile and HTTP cache"}
+        return result
 
     def audit_loaded(self, url: str,
                      options: browser.BrowserAuditOptions | None = None) -> PageAudit:
@@ -334,6 +368,73 @@ class BrowserAuditRunner:
             return PageAudit(url=url, error="no page is loaded")
         return self._audit(url, load=False, options=options or self.options)
 
+    def _run_scenario(self, actions, on_done, finished):
+        """Deliver real Qt pointer/keyboard inputs only to explicitly named targets."""
+        from PySide6.QtCore import QPoint, Qt, QTimer
+        from PySide6.QtTest import QTest
+        from .vitals import validate_scenario
+
+        evidence = []
+        queue = list(validate_scenario(actions))
+        initial_url = self._page.url().toString()
+
+        def next_action():
+            if finished():
+                return
+            if not queue:
+                on_done(evidence)
+                return
+            action = queue.pop(0)
+            selector = _js(action["selector"])
+            script = f"""(function() {{
+              const nodes = document.querySelectorAll({selector});
+              if (nodes.length !== 1) return JSON.stringify({{error:'selector must match exactly one element'}});
+              const node = nodes[0], rect = node.getBoundingClientRect();
+              const x = rect.left + rect.width/2, y = rect.top + rect.height/2;
+              if (!rect.width || !rect.height || x < 0 || y < 0 || x >= innerWidth || y >= innerHeight)
+                return JSON.stringify({{error:'target is outside the visible viewport'}});
+              const hit = document.elementFromPoint(x, y);
+              if (!hit || (hit !== node && !node.contains(hit)))
+                return JSON.stringify({{error:'target is covered by another element'}});
+              node.focus();
+              return JSON.stringify({{x:x, y:y}});
+            }})()"""
+
+            def ready(value):
+                if finished():
+                    return
+                record = dict(action)
+                try:
+                    coordinates = _parse(value)
+                    if coordinates.get("error"):
+                        raise ValueError(coordinates["error"])
+                    if not self._view or "x" not in coordinates:
+                        raise ValueError("native input target unavailable")
+                    target = self._view.focusProxy() or self._view
+                    target.setFocus()
+                    if action["action"] == "click":
+                        QTest.mouseClick(target, Qt.MouseButton.LeftButton,
+                                         pos=QPoint(round(coordinates["x"]), round(coordinates["y"])))
+                    else:
+                        key = {"Enter": Qt.Key.Key_Return, "Space": Qt.Key.Key_Space,
+                               "Tab": Qt.Key.Key_Tab, "Escape": Qt.Key.Key_Escape,
+                               "ArrowDown": Qt.Key.Key_Down, "ArrowUp": Qt.Key.Key_Up}[action["key"]]
+                        QTest.keyClick(target, key)
+                    record.update(status="checked", transport="Qt native input")
+                except Exception as exc:  # callback errors must complete the audit
+                    record.update(status="error", reason=str(exc))
+                evidence.append(record)
+
+                def settled():
+                    if self._page.url().toString() != initial_url:
+                        record.update(status="error", reason="scenario changed navigation")
+                        queue.clear()
+                    next_action()
+                QTimer.singleShot(action["wait_ms"], settled)
+
+            self._page.runJavaScript(script, 1, ready)
+        next_action()
+
     def _audit(self, url: str, *, load: bool,
                options: browser.BrowserAuditOptions) -> PageAudit:
         """Run one browser probe, navigating only when `load` is true."""
@@ -343,7 +444,12 @@ class BrowserAuditRunner:
         if not usable:
             return PageAudit(url=url, error=reason)
 
-        page = self._get_page()
+        if type(options.settle_ms) is not int or not 0 <= options.settle_ms <= 60_000:
+            return PageAudit(url=url, error="settle_ms must be between 0 and 60000")
+        try:
+            page = self._get_page()
+        except Exception as exc:
+            return PageAudit(url=url, error=f"browser preparation failed: {exc}")
         result = PageAudit(url=url)
         loop = QEventLoop()
         state = {"loaded": None if load else True, "finished": False}
@@ -354,6 +460,8 @@ class BrowserAuditRunner:
                 loop.quit()
 
         def on_load(ok: bool):
+            if state["loaded"] is not None:
+                return
             state["loaded"] = bool(ok)
             if not ok:
                 result.error = "the page did not load"
@@ -367,12 +475,14 @@ class BrowserAuditRunner:
         #: Active `_Slot`s, kept alive against garbage collection. See
         #: `next_script` below for why this cannot be a local in the loop.
         live: list = []
+        scenario_evidence = []
         pending = [name for name, enabled in (
+            ("measurements", options.run_measurements),
             ("axe", options.run_axe and browser.engines_available()["axe"]),
             ("htmlcs", options.run_htmlcs and browser.engines_available()["htmlcs"]),
-            ("measurements", options.run_measurements),
             ("states", options.run_states),
-            ("html", options.capture_html),
+            ("html", options.capture_html and not options.capture_text),
+            ("text", options.capture_text),
         ) if enabled]
 
         def on_script_done(name: str, value):
@@ -388,6 +498,7 @@ class BrowserAuditRunner:
                 finish()
 
         def run_scripts():
+            from text_extraction import TEXT_SNAPSHOT_SCRIPT
             if not pending:
                 finish()
                 return
@@ -397,6 +508,9 @@ class BrowserAuditRunner:
                 "measurements": lambda: browser.MEASUREMENT_SCRIPT,
                 "states": states.state_script,
                 "html": lambda: browser.HTML_SCRIPT,
+                "text": lambda: TEXT_SNAPSHOT_SCRIPT.replace(
+                    'const scope = ""; // XANALYZE_SCOPE',
+                    'const scope = ' + _js(options.text_within) + ';'),
             }
             # Sequentially, not in parallel: axe and the state pass both walk
             # the whole DOM, and the state pass moves focus around. Running
@@ -407,7 +521,18 @@ class BrowserAuditRunner:
                 if state["finished"] or not queue:
                     return
                 name = queue.pop(0)
-                slot = _Slot(page, name, scripts[name](),
+                try:
+                    source = scripts[name]()
+                except Exception as exc:  # noqa: BLE001 - a callback must not leave the loop parked
+                    result.engine_errors[name] = f"script preparation failed: {exc}"
+                    if name in pending:
+                        pending.remove(name)
+                    if not pending:
+                        finish()
+                    else:
+                        QTimer.singleShot(0, next_script)
+                    return
+                slot = _Slot(page, name, source,
                              lambda n, v: (on_script_done(n, v), next_script()))
                 # Held for the length of the run. Without this the only
                 # reference to the slot is the callback Qt is holding, and Qt
@@ -418,7 +543,23 @@ class BrowserAuditRunner:
                 live.append(slot)
                 slot.start()
 
-            next_script()
+            if options.run_measurements and options.performance_scenario:
+                def scenario_done(evidence):
+                    scenario_evidence.extend(evidence)
+                    if any(entry.get("reason") == "scenario changed navigation" for entry in evidence):
+                        result.error = "performance scenario changed navigation"
+                        result.measurements = {"conditions": {"scenario": evidence, "scope": "invalidated navigation"}}
+                        finish()
+                        return
+                    next_script()
+                try:
+                    self._run_scenario(options.performance_scenario, scenario_done,
+                                       lambda: state["finished"])
+                except Exception as exc:
+                    result.engine_errors["scenario"] = str(exc)
+                    next_script()
+            else:
+                next_script()
 
         cancel_timer = QTimer()
         cancel_timer.setInterval(50)
@@ -463,8 +604,24 @@ class BrowserAuditRunner:
         if "htmlcs" in payloads:
             issues += browser.issues_from_htmlcs(payloads["htmlcs"], url)
         if "measurements" in payloads:
-            issues += browser.issues_from_measurements(payloads["measurements"], url)
+            from .vitals import vendor_identity
             result.measurements = _parse(payloads["measurements"])
+            if result.measurements.get("error"):
+                result.engine_errors["measurements"] = str(result.measurements["error"])
+            if result.measurements:
+                result.measurements.setdefault("conditions", {}).update({
+                    "settleMs": options.settle_ms, "navigationLoaded": load,
+                    "profile": "session" if self._profile and not self._profile.isOffTheRecord()
+                               else "off-the-record",
+                    "httpCache": "shared profile cache, not forcibly cleared",
+                    "webVitals": vendor_identity(),
+                    "scenario": scenario_evidence,
+                })
+                failures = [entry for entry in scenario_evidence if entry["status"] == "error"]
+                if failures:
+                    result.engine_errors["scenario"] = "; ".join(
+                        f"{entry['selector']}: {entry['reason']}" for entry in failures)
+            issues += browser.issues_from_measurements(result.measurements, url)
         if "states" in payloads:
             issues += states.issues_from_states(payloads["states"], url)
         if "html" in payloads:
@@ -472,6 +629,10 @@ class BrowserAuditRunner:
             # returns the document, and putting it through the same parser
             # would only be a way to lose it.
             result.html = payloads["html"] if isinstance(payloads["html"], str) else ""
+        if "text" in payloads:
+            result.text_snapshot = _parse(payloads["text"])
+            if options.capture_html:
+                result.html = result.text_snapshot.pop("main_html", "")
 
         # One finding per problem, whoever found it: the same missing `alt`
         # reported by our rule, by axe and by HTML_CodeSniffer is one row that
@@ -556,11 +717,12 @@ class html_renderer:
     """
 
     def __init__(self, settle_ms: int = 1200, allow_local_files: bool = False,
-                 session_host: str = ""):
+                 session_host: str = "", within: str = ""):
         self.options = browser.BrowserAuditOptions(
             run_axe=False, run_htmlcs=False, run_measurements=False,
-            run_states=False, capture_html=True, settle_ms=settle_ms,
+            run_states=False, capture_html=True, capture_text=True, settle_ms=settle_ms,
             allow_local_files=allow_local_files,
+            text_within=within,
         )
         #: Render as the person who signed in, when they did. Empty - the
         #: normal case - keeps the off-the-record profile.
@@ -588,7 +750,11 @@ class html_renderer:
             # against the page, and "" would be indistinguishable from a page
             # that rendered to nothing.
             raise RuntimeError(result.error)
-        return result.html
+        from text_extraction import RenderedHTML
+        snapshot = getattr(result, "text_snapshot", {}) or {"error": getattr(result, "engine_errors", {}).get("text", "text snapshot unavailable")}
+        if not result.html:
+            raise RuntimeError(snapshot.get("error", "rendered text snapshot unavailable"))
+        return RenderedHTML(result.html or "", snapshot)
 
 
 def _pump(milliseconds: int) -> None:

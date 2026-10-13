@@ -60,7 +60,8 @@ class CrawlerDiagnostics(unittest.TestCase):
     def test_navigation_only_page_is_reported_as_too_short(self):
         blocks, diagnostics = extract(
             "<html><body><p>Hi</p><h1>Home</h1><a href='/x'>Next</a></body></html>")
-        self.assertEqual(blocks, [])
+        self.assertEqual([b.text for b in blocks], ["Hi", "Home", "Next"])
+        self.assertTrue(all(not b.analysis_eligible for b in blocks))
         self.assertIn(crawler.EMPTY_TOO_SHORT, diagnostics.reasons)
         self.assertEqual(diagnostics.dropped_too_short, 3)
 

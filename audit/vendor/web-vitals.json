@@ -1,0 +1,8 @@
+{
+  "package": "web-vitals",
+  "version": "6.2.3",
+  "license": "Apache-2.0",
+  "source": "https://registry.npmjs.org/web-vitals/-/web-vitals-6.2.3.tgz",
+  "upstream": "https://github.com/GoogleChrome/web-vitals",
+  "artifact_sha256": "42d0cfd64b5cf19408e19c0393ce59eef6cc09317e94faaca6d3a032d4112e48"
+}

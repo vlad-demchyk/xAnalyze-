@@ -131,7 +131,7 @@ def audit_responsive(url: str, breakpoints=None,
             replace(options, viewport=(sizes[0][1], sizes[0][2])))
     try:
         results = {}
-        responsive_options = replace(options, run_htmlcs=False,
+        responsive_options = replace(options, run_htmlcs=False, run_measurements=False,
                                      capture_html=False)
         for index, (name, width, height) in enumerate(sizes):
             runner.set_viewport(width, height)

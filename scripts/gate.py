@@ -152,7 +152,7 @@ def run_smoke(result: Result) -> None:
 
 
 def run_quality(result: Result) -> None:
-    """Precision and recall against text whose author is known."""
+    """Historical regression evidence cannot establish independent release quality."""
     print("quality")
     from corpus_split import split
     from scripts.calibrate import load, score_rows
@@ -175,15 +175,46 @@ def run_quality(result: Result) -> None:
     result.check(f"held-out recall {recall*100:.0f}%", recall >= 0.5,
                  "below the 50% floor")
 
-    for language in ("en", "uk"):
-        subset = [r for r in scored
+    for language in ("en", "it", "uk"):
+        subset = [r for r in test
                   if r["label"] == "model" and r["language"] == language]
         if not subset:
+            result.check(f"{language} model samples present", False, "missing subgroup")
             continue
         hit = sum(1 for r in subset if r["score"] >= 0.33) / len(subset)
         result.check(f"{language} recall {hit*100:.0f}%", hit >= 0.5,
                      "one language far behind the other is a broken detector, "
                      "not a weaker one")
+    from validation.metrics import metric_report, quality_failures
+    evaluated = [{**row, "status": "abstained" if len(row["text"].split()) < 5 else "checked",
+                  "register": row.get("register", "unknown").replace(" ", "-"),
+                  "condition": "original"} for row in test]
+    report = metric_report(evaluated, .33)
+    failures = quality_failures(report, independent=False)
+    result.check("independent multilingual quality requirements", not failures,
+                 "; ".join(failures[:8]) + (f"; {len(failures) - 8} more requirements unmet" if len(failures) > 8 else ""))
+
+
+def run_quality_report(result: Result, path: Path) -> None:
+    """Only an unchanged, independently evaluated production configuration can pass."""
+    from validation.corpus import strict_json
+    from validation.metrics import QualityPolicy, metric_report, quality_failures
+    from validation.protocol import verify_report
+    try:
+        report = strict_json(path.read_text(encoding="utf-8"))
+        verify_report(report)
+        frozen = report["protocol"]
+        policy = QualityPolicy()  # An experiment's relaxed policy cannot relax the release gate.
+        computed = metric_report(report["predictions"], frozen["threshold"], policy.prevalence)
+        failures = quality_failures(computed, policy, independent=frozen["purpose"] == "validation")
+        if frozen["detector"]["name"] != "offline" or frozen["detector"]["config"] or frozen["threshold"] != .33:
+            failures.append("benchmark configuration differs from the production offline detector")
+        if not frozen["detector"]["snapshot_verified"]:
+            failures.append("model snapshot is unverified")
+        result.check("independent production quality", not failures,
+                     "; ".join(failures[:8]) + (f"; {len(failures) - 8} more requirements unmet" if len(failures) > 8 else ""))
+    except (ValueError, OSError, KeyError, TypeError) as exc:
+        result.check("independent benchmark report valid", False, str(exc))
 
 
 def run_budget(result: Result, repo: Path) -> None:
@@ -226,6 +257,8 @@ def main() -> int:
     parser.add_argument("--skip-tests", action="store_true")
     parser.add_argument("--skip-smoke", action="store_true")
     parser.add_argument("--skip-quality", action="store_true")
+    parser.add_argument("--quality-report", type=Path,
+                        help="verify a frozen independent benchmark; without it, only historical diagnostics run")
     args = parser.parse_args()
 
     result = Result()
@@ -234,7 +267,10 @@ def main() -> int:
     if not args.skip_smoke:
         run_smoke(result)
     if not args.skip_quality:
-        run_quality(result)
+        if args.quality_report:
+            run_quality_report(result, args.quality_report)
+        else:
+            run_quality(result)
     if args.repo is not None:
         run_budget(result, args.repo.expanduser())
 
@@ -244,7 +280,7 @@ def main() -> int:
         for failure in result.failures:
             print(f"  - {failure}")
         return 1
-    print("all checks passed")
+    print("all selected checks passed" + ("; quality was skipped" if args.skip_quality else ""))
     return 0
 
 

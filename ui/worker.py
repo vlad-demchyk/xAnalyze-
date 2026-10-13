@@ -79,7 +79,8 @@ class _PairingMixin:
             applog.error("pairing.failed", repo=self.paired_repo, error=str(exc))
             return
         self.paired_total = len(distinct_blocks(blocks))
-        self.paired_matched = repo_pairing.pair_blocks(blocks, index)
+        repo_pairing.pair_blocks(blocks, index)
+        self.paired_matched = sum(bool(rep.source_candidates) for rep, _ in distinct_blocks(blocks))
 
 
 class AnalysisWorker(_PairingMixin, QThread):

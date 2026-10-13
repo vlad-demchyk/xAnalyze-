@@ -386,6 +386,7 @@ def main() -> int:
     parser.add_argument("--holdout", action="store_true",
                         help="report the tune half and the held-out half apart")
     args = parser.parse_args()
+    print("Historical regression corpus: previously used to choose rules/thresholds; not an independent locked test.")
     if args.threshold is None:
         args.threshold = live_threshold(args.detector)
 

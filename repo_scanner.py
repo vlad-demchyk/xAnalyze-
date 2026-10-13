@@ -975,6 +975,8 @@ def _make_code_block(raw_text: str, file_path: str, start: int, end: int,
         # names no language rather than the wrong one.
         language_hint=guess_language_safe(text),
         kind=kind,
+        source_context={"component_file": Path(file_path).name,
+                        "kind": kind},
     )
 
 
@@ -982,11 +984,11 @@ def _make_code_block(raw_text: str, file_path: str, start: int, end: int,
 # offsets have to point into the original file: a fix writes back to them, and
 # `json.loads` throws the positions away.
 _LOCALE_PAIR_RE = re.compile(
-    r'"(?:\\.|[^"\\])*"\s*:\s*"(?P<text>(?:\\.|[^"\\])*)"'
+    r'"(?P<key>(?:\\.|[^"\\])*)"\s*:\s*"(?P<text>(?:\\.|[^"\\])*)"'
 )
 # YAML: `key: value`, quoted or bare, one per line.
 _LOCALE_YAML_RE = re.compile(
-    r'^[ \t]*[\w.-]+:[ \t]+(?P<text>(?:"[^"\n]*"|\'[^\'\n]*\'|[^\n#]+?))[ \t]*$',
+    r'^[ \t]*(?P<key>[\w.-]+):[ \t]+(?P<text>(?:"[^"\n]*"|\'[^\'\n]*\'|[^\n#]+?))[ \t]*$',
     re.MULTILINE,
 )
 
@@ -1027,9 +1029,17 @@ def _extract_locale_blocks(raw_text: str, file_path: str) -> list[CodeBlock]:
         if raw_text[start:end] != stripped:
             continue
         seen.add((start, end))
-        blocks.append(
-            _make_code_block(raw_text, file_path, start, end, stripped, KIND_INJECTED)
-        )
+        block = _make_code_block(raw_text, file_path, start, end, stripped, KIND_INJECTED)
+        key = match.group("key")
+        if pattern is _LOCALE_PAIR_RE:
+            import json
+            try:
+                key = json.loads('"' + key + '"')
+            except ValueError:
+                key = None
+        if key:
+            block.source_context["locale_key"] = key
+        blocks.append(block)
     return blocks
 
 
@@ -1289,9 +1299,10 @@ def _extract_blocks(raw_text: str, file_path: str,
                 if raw_text[start:end] != text:
                     continue  # defensive: offsets must line up with the ORIGINAL file
                 seen_spans.add((start, end))
-                blocks.append(
-                    _make_code_block(raw_text, file_path, start, end, text, KIND_MARKUP)
-                )
+                block = _make_code_block(raw_text, file_path, start, end, text, KIND_MARKUP)
+                if not gap.group("closing"):
+                    block.source_context["element"] = gap.group("name").lower()
+                blocks.append(block)
 
     # Copy that never sits between two tags: attributes, DOM assignments,
     # translation calls, content-keyed object literals. Skipped where markup

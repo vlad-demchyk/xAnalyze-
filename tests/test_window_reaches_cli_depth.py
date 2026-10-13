@@ -86,15 +86,17 @@ class Pairing(unittest.TestCase):
         block = TextBlock(block_id="1", page_url="u", dom_path="p", text="x")
         self.assertEqual(repo_pairing.pair_blocks([block], {}), 0)
 
-    def test_one_passage_repeated_in_the_repo_resolves_to_one_place(self):
+    def test_one_passage_repeated_in_the_repo_keeps_both_candidates(self):
         self.write("src/A.tsx", "<p>Read the docs</p>\n")
         self.write("src/B.tsx", "<p>Read the docs</p>\n")
         index = repo_pairing.index_for_path(self.root)
         block = TextBlock(block_id="1", page_url="u", dom_path="p",
                           text="Read the docs")
         repo_pairing.pair_blocks([block], index)
-        self.assertIn(block.source_file, {str(self.root / "src" / "A.tsx"),
-                                          str(self.root / "src" / "B.tsx")})
+        self.assertEqual(block.source_file, "")
+        self.assertEqual(block.source_mapping, "ambiguous")
+        self.assertEqual({c["file"] for c in block.source_candidates},
+                         {str(self.root / "src" / "A.tsx"), str(self.root / "src" / "B.tsx")})
 
 
 class MissedDepthIsData(unittest.TestCase):

@@ -173,6 +173,7 @@ def _write_report(result, args, lang: str, fix_outcome=None, ai_findings=None) -
     """
     from audit.explanations import render
     from audit.saturation import saturated_rules
+    from finding_contract import SCHEMA_VERSION, serialize_finding, serialize_issue
 
     path = Path(args.report)
     history = _read_history(result.root, result.mode)
@@ -284,6 +285,11 @@ def _write_report(result, args, lang: str, fix_outcome=None, ai_findings=None) -
     from cli_impl.runheader import describe
 
     payload = {
+        "schema_version": SCHEMA_VERSION,
+        "findings": [serialize_issue(issue, source=document.source)
+                     for document in result.documents for issue in document.issues],
+        "content_findings": [serialize_finding(f) for f in (ai_findings or ())],
+        "coverage": getattr(result, "coverage", {}),
         "generated": entry["at"],
         "root": result.root,
         "mode": result.mode,
@@ -609,6 +615,28 @@ def _report_markdown(payload: dict, lang: str) -> str:
         "",
     ]
     run = payload.get("run") or []
+    if payload.get("coverage"):
+        from audit.coverage import coverage_summary
+        title, text = coverage_summary(payload["coverage"], lang)
+        out += [f"## {title}", "", text, ""]
+        from audit.vitals import performance_lines
+        title, lines = performance_lines(payload["coverage"], lang)
+        if lines:
+            out += [f"## {title}", ""] + [f"- {line}" for line in lines] + [""]
+    mappings = [f.get("mapping") for f in payload.get("content_findings", [])
+                if f.get("mapping", {}).get("status") in ("ambiguous", "inferred")]
+    if mappings:
+        from repo_pairing import mapping_lines
+        title = {"uk": "Джерела вебтексту", "it": "Sorgenti del testo web", "en": "Web text sources"}
+        out += [f"## {title.get(lang, title['en'])}", ""]
+        seen = set()
+        for mapping in mappings:
+            key = (mapping["status"], tuple((c["file"], c["offset"]) for c in mapping["candidates"]))
+            if key in seen:
+                continue
+            seen.add(key)
+            out += [f"- {line}" for line in mapping_lines(mapping, lang)]
+            out.append("")
     if run:
         out += ["## This run", ""]
         out += [f"- **{row['label']}:** {row['value']}" for row in run]

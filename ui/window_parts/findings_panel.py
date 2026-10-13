@@ -493,8 +493,17 @@ class FindingsPanelMixin:
             written_label = QLabel(t("finding_written_in", lang,
                                      path=written_in,
                                      line=getattr(block, "source_line", "") or "?"))
+            written_label.setTextFormat(Qt.TextFormat.PlainText)
             written_label.setWordWrap(True)
             layout.addWidget(written_label)
+        if getattr(block, "source_mapping", "") in ("ambiguous", "inferred"):
+            from repo_pairing import mapping_for, mapping_lines
+            for line in mapping_lines(mapping_for(block), lang):
+                candidate_label = QLabel(line)
+                candidate_label.setTextFormat(Qt.TextFormat.PlainText)
+                candidate_label.setWordWrap(True)
+                candidate_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+                layout.addWidget(candidate_label)
 
         original_caption = muted(t("detail_original_label", lang))
         layout.addWidget(original_caption)

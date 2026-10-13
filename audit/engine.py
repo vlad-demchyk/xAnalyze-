@@ -46,6 +46,8 @@ class DocumentReport:
     #: than one that says "this is an email, and three of those matter in
     #: Outlook".
     kind: str = "page"
+    checks: list = field(default_factory=list)
+    content_hash: str = ""
 
     def by_severity(self) -> dict:
         out = {level: [] for level in SEVERITY_ORDER}
@@ -86,6 +88,11 @@ class AccessibilityResult:
     #: the result so every surface can say the audit is partial instead of
     #: silently presenting the static half as the whole answer.
     browser_errors: list = field(default_factory=list)
+    browser_coverage: list = field(default_factory=list)
+    #: Includes clean and skipped source documents that the finding list
+    #: historically omits. Never derive coverage from triggered rules alone.
+    coverage_documents: list = field(default_factory=list)
+    coverage: dict = field(default_factory=dict)
 
     def issues(self) -> list:
         out = []
@@ -319,6 +326,7 @@ def analyze_document(markup: str, source: str, rules=None,
     error and not an empty result - see `audit.within`.
     """
     rules = rules if rules is not None else RuleRegistry.all_rules()
+    selected_rules = list(rules)
     if within:
         from audit import within as within_mod
 
@@ -420,6 +428,12 @@ def analyze_document(markup: str, source: str, rules=None,
                 and not getattr(rule, "needs_external_css", False)]
 
     report = DocumentReport(source=source)
+    from audit.coverage import content_digest
+    report.content_hash = content_digest(source_text if source_text is not None else markup)
+    active_ids = {rule.id for rule in rules}
+    report.checks = [{"rule": rule.id, "engine": "static", "status": "skipped",
+                      "reason": "not applicable to syntax, stack, medium or document kind"}
+                     for rule in selected_rules if rule.id not in active_ids]
     report.kind = (medium.EMAIL if context.medium == medium.EMAIL
                    else document_kind)
     report.elements_checked = len(document.find_all(True))
@@ -434,7 +448,12 @@ def analyze_document(markup: str, source: str, rules=None,
                 rule_id=rule.id, severity="minor", source=source,
                 details={"rule_error": str(exc)},
             ))
+            report.checks.append({"rule": rule.id, "engine": "static",
+                                  "status": "error", "reason": str(exc)})
             continue
+        found = list(found)
+        status = "unknown" if any(i.confidence == "needs-browser" for i in found) else "checked"
+        report.checks.append({"rule": rule.id, "engine": "static", "status": status})
         for issue in found:
             if issue.key in seen:
                 continue
@@ -794,8 +813,13 @@ def analyze_files(file_results, root: str, rules=None, ai_review=None,
                                  rules_run=[r.id for r in rules])
     for file_result in file_results:
         if file_result.error or not file_result.raw_text:
+            result.coverage_documents.append({"source": file_result.path,
+                "status": "error" if file_result.error else "skipped",
+                "reason": file_result.error or "empty source", "checks": []})
             continue
         if "<" not in file_result.raw_text:
+            result.coverage_documents.append({"source": file_result.path,
+                "status": "skipped", "reason": "no markup", "checks": []})
             continue
         if _is_skipped_path(file_result.path):
             # Skipped as a *file*, and rightly: in `.ts` and `.js` a `<` is
@@ -814,6 +838,8 @@ def analyze_files(file_results, root: str, rules=None, ai_review=None,
             # technology - protobuf, GraphQL codegen, OpenAPI clients, Prisma
             # and `.d.ts` emitters all write one - so it is checked here,
             # where every stack passes through, rather than per stack.
+            result.coverage_documents.append({"source": file_result.path,
+                "status": "skipped", "reason": "generated source", "checks": []})
             continue
         kind = _document_kind(file_result.path, file_result.raw_text)
         markup = file_result.raw_text
@@ -830,6 +856,8 @@ def analyze_files(file_results, root: str, rules=None, ai_review=None,
                                   force_medium=force_medium,
                                   syntax=_syntax_of(file_result.path),
                                   stacks=stacks)
+        from audit.coverage import document_coverage
+        result.coverage_documents.append(document_coverage(report))
         if report.issues or report.error:
             result.documents.append(report)
     if media:
