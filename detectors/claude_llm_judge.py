@@ -1,11 +1,10 @@
 """Claude used as an "LLM judge" to flag likely AI-generated passages.
 
 This is NOT the official Claude watermark, and the distinction matters more
-now than it did when this file was first written. Claude *does* watermark
-its text output — imperceptibly, since 2 August 2026 — but as of this
-writing Anthropic has published no way to read that mark: detection is
-still "forthcoming technical documentation" (see
-`claude_watermark_stub.py`, which is where that lands when it ships).
+now than it did when this file was first written. Anthropic's official
+watermark detector is in private preview, without an access/endpoint contract
+configured here (see `claude_watermark_stub.py`). This classifier provides
+stylistic judgments, separately from that provenance signal.
 
 What this backend does instead is ask a live Claude model to read the text
 and flag passages that read as AI-generated, the same way a careful human

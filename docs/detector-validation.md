@@ -25,6 +25,41 @@ fails readiness. The current Italian historical holdout recall is 4/11,
 English/Ukrainian aggregate cannot hide Italian. `--skip-quality` explicitly
 skips this requirement and reports that only selected checks passed.
 
+For a comparison, declare **all** methods and configurations before accessing
+the shared test. For example, `methods.json`:
+
+```json
+[
+  {"id": "offline", "detector": "offline"},
+  {"id": "heuristic", "detector": "heuristic"},
+  {"id": "ensemble", "detector": "ensemble", "config": {
+    "members": [{"detector": "offline"}, {"detector": "heuristic"}],
+    "weights": [1, 1]}}
+]
+```
+
+This is a wiring example: `heuristic` currently resolves to `offline`, so those
+two entries are the same predictor and their ensemble adds no independent signal.
+Actual comparisons need distinct frozen models/configurations, chosen before test.
+
+```sh
+python scripts/benchmark.py freeze-comparison dataset.json --methods methods.json --output comparison.json
+python scripts/benchmark.py run-comparison dataset.json --protocol comparison.json --output comparison-results.json
+```
+
+Every method calibrates before exposure. The ledger then claims each test text
+once for the entire declared comparison. Permission/configuration failures in
+preflight do not consume test; a failure after inference starts does. Reruns,
+adding methods after exposure and refitting on exposed test text are rejected.
+Every declared result must remain in the comparison, including weak/error
+results. `validation.comparison.verify_comparison_report` checks membership,
+ledger evidence, metrics and quality without trusting saved pass flags. Individual
+member reports can be verified with `verify_report`; the release gate consumes
+one such member report, not the comparison container. The container's quality
+flag means every declared method passed, not that the best method was chosen.
+Choosing a winner or changing weights after reading test results requires a new
+independent test. This mode does not relax the prohibition on test-driven tuning.
+
 ## Dataset contract
 
 The manifest is one JSON object with `schema_version: 1`, a `dataset_id`,
@@ -118,6 +153,26 @@ not the benchmark's gold language. Character findings are not AI-authorship
 evidence. Unsupported lengths/languages abstain; detector failures are errors.
 Embedding reads only the reference file and retains its production text-hash
 selection within that file. It does not read calibration/test neighbours.
+
+`ensemble` takes 2..12 explicitly configured components and positive finite
+weights. It combines document ranking scores with a normalized weighted mean;
+its threshold is selected only on calibration and all component snapshots are
+frozen. An abstaining/error component makes the aggregate abstain/error; weights
+are never renormalized over only successful components. Unknown API cost stays
+unknown. This ranking is not an authorship probability and has no inferred span
+localization. Remote components inherit the permission/public-text requirement.
+
+`claude-legacy-prompt` is a benchmark-only counterpart to `claude-llm-judge`.
+The archived prompt, response schema and numbered input format come exactly from
+git commit `8f8914aa4408f303da37893257bd385923dfddaa`; its source SHA and explicit
+prompt/schema hashes are recorded. Both variants use the current strict verdict
+checker. Thus this compares the old/new request under the same evidence contract,
+not the whole old backend with its former score coercion, omitted-block negatives
+or unverifiable whole-block fallback. The archived variant is absent from the
+production detector registry. Declare both with the same explicit model/effort
+in a comparison before access; approved public benchmark calls still require
+`--allow-remote`. Actual prompt quality has not been measured. Remote model
+weights remain opaque, so neither request is a certified immutable model snapshot.
 
 Additional benchmark adapters implement the following contracts. They do not
 change the production detector or establish independent accuracy.

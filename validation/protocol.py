@@ -80,7 +80,9 @@ def freeze(data: dict, detector="offline", config=None, policy=None, *, allow_re
               "dataset_id": data["dataset_id"], "dataset_sha256": digest(data),
               "purpose": data["purpose"], "detector": identity,
               "threshold": threshold, "policy": asdict(policy), "reference_sha256": digest(reference),
-              "reference_selection": "legacy text hash within reference" if detector == "embedding" else "not used",
+              "reference_selection": ("legacy text hash within reference" if detector == "embedding" else
+                  "legacy text hash within reference for embedding component" if detector == "ensemble"
+                  and any(m["detector"] == "embedding" for m in config["members"]) else "not used"),
               "calibration_report": calibration_report, "test_scores_read": False}
     frozen["calibration_constraint"] = {"target_fpr": policy.max_fpr,
         "selection": "fixed threshold" if fixed_threshold is not None else "maximum recall under worst-case calibration FPR"}
@@ -120,6 +122,13 @@ def evaluate(data, frozen, *, allow_remote=False):
         raise ValueError("locked test has already been consumed")
     for path in paths.values():
         write_new(path, access)
+    return _evaluate_claimed(data, frozen, groups, access, allow_remote=allow_remote)
+
+
+def _evaluate_claimed(data, frozen, groups, access, *, allow_remote=False, comparison_sha256=None):
+    """Score a protocol after its test was claimed by a single run or frozen comparison."""
+    test = [r for r in data["samples"] if r["split"] == "test"]
+    reference = [r for r in data["samples"] if r["split"] == "reference"]
     scored = score_samples(test, frozen["detector"]["name"], frozen["detector"]["config"], reference, allow_remote=allow_remote)
     if digest(detector_identity(frozen["detector"]["name"], frozen["detector"]["config"])) != digest(frozen["detector"]):
         raise ValueError("detector/model artifact changed during test inference")
@@ -136,6 +145,8 @@ def evaluate(data, frozen, *, allow_remote=False):
               "limitations": ["Provenance is an explicit supplier assertion, not automatically verified authorship.",
                 "Unknown training-data exposure of pretrained models is not certified absent.",
                 "Group event intervals are not document-level population intervals."]}
+    if comparison_sha256 is not None:
+        report["comparison_sha256"] = comparison_sha256
     report["report_sha256"] = digest(report)
     return report
 
@@ -170,7 +181,14 @@ def verify_report(report: dict) -> dict:
             raise ValueError("benchmark source groups changed")
     for path in _test_paths(originals).values():
         access = strict_json(path.read_text())
-        if access.get("protocol_sha256") != frozen["protocol_sha256"] or access.get("dataset_sha256") != frozen["dataset_sha256"]:
+        if report.get("test_access") != access:
+            raise ValueError("test access evidence changed")
+        single = (access.get("protocol_sha256") == frozen["protocol_sha256"]
+                  and "comparison_sha256" not in access and "comparison_sha256" not in report)
+        comparison = (isinstance(access.get("comparison_sha256"), str)
+                      and access["comparison_sha256"] == report.get("comparison_sha256")
+                      and frozen["protocol_sha256"] in access.get("protocol_sha256s", []))
+        if not (single or comparison) or access.get("dataset_sha256") != frozen["dataset_sha256"]:
             raise ValueError("test access record belongs to another protocol")
     policy = QualityPolicy(**frozen["policy"])
     computed = metric_report(report["predictions"], frozen["threshold"], policy.prevalence)

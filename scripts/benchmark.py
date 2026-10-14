@@ -17,6 +17,7 @@ from validation.metrics import QualityPolicy  # noqa: E402
 from validation.protocol import evaluate, freeze, write_new  # noqa: E402
 from validation.transforms import add_unicode_variants  # noqa: E402
 from validation.capabilities import method_capabilities  # noqa: E402
+from validation.comparison import evaluate_comparison, freeze_comparison  # noqa: E402
 
 
 def main(argv=None):
@@ -26,22 +27,25 @@ def main(argv=None):
     capabilities.add_argument("--detector")
     capabilities.add_argument("--config", type=Path)
     capabilities.add_argument("--output", type=Path)
-    for command in ("inspect", "partition", "unicode", "freeze", "run"):
+    for command in ("inspect", "partition", "unicode", "freeze", "run", "freeze-comparison", "run-comparison"):
         p = sub.add_parser(command)
         p.add_argument("dataset", type=Path)
         if command != "inspect":
             p.add_argument("--output", type=Path, required=True)
         if command == "partition":
             p.add_argument("--seed", required=True)
-        if command in ("freeze", "run"):
+        if command in ("freeze", "run", "freeze-comparison", "run-comparison"):
             p.add_argument("--allow-remote", action="store_true",
                            help="explicitly permit inference on exclusively public benchmark text")
-        if command == "freeze":
-            p.add_argument("--detector", default="offline")
-            p.add_argument("--config", type=Path)
+        if command in ("freeze", "freeze-comparison"):
+            if command == "freeze":
+                p.add_argument("--detector", default="offline")
+                p.add_argument("--config", type=Path)
+                p.add_argument("--fixed-threshold", type=float)
+            else:
+                p.add_argument("--methods", type=Path, required=True)
             p.add_argument("--policy", type=Path)
-            p.add_argument("--fixed-threshold", type=float)
-        if command == "run":
+        if command in ("run", "run-comparison"):
             p.add_argument("--protocol", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
@@ -71,13 +75,18 @@ def main(argv=None):
                 config = strict_json(args.config.read_text()) if args.config else {}
                 policy = QualityPolicy(**strict_json(args.policy.read_text())) if args.policy else QualityPolicy()
                 result = freeze(data, args.detector, config, policy, allow_remote=args.allow_remote, fixed_threshold=args.fixed_threshold)
+            elif args.command == "freeze-comparison":
+                methods = strict_json(args.methods.read_text())
+                policy = QualityPolicy(**strict_json(args.policy.read_text())) if args.policy else QualityPolicy()
+                result = freeze_comparison(data, methods, policy, allow_remote=args.allow_remote)
             else:
                 protocol = strict_json(args.protocol.read_text())
-                result = evaluate(data, protocol, allow_remote=args.allow_remote)
+                run = evaluate_comparison if args.command == "run-comparison" else evaluate
+                result = run(data, protocol, allow_remote=args.allow_remote)
         write_new(args.output, result)
         print(json.dumps({"output": str(args.output), "quality": result.get("quality"),
                           "protocol_sha256": result.get("protocol_sha256")}, indent=2))
-        return 2 if args.command == "run" and not result["quality"]["passed"] else 0
+        return 2 if args.command in ("run", "run-comparison") and not result["quality"]["passed"] else 0
     except (ValueError, OSError, TypeError, KeyError) as exc:
         print(str(exc), file=sys.stderr)
         return 1

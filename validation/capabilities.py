@@ -87,6 +87,11 @@ def method_capabilities(name=None, config=None):
             item.update(adapter_implemented=True, status="implemented", remote=method in REMOTE)
             if method == name and config is not None:
                 validate_config(config, method)
+            if method == "ensemble":
+                item["requirements"] = ["declared component configurations and positive weights", "calibration threshold"]
+                item["remote"] = any(m["detector"] in REMOTE for m in config["members"]) if name == method and config is not None else None
+                if name != method or config is None:
+                    item["blockers"].append("ensemble configuration not supplied")
             if method in MODEL_METHODS:
                 item["requirements"] = ["local safetensors/config/tokenizer snapshot", "calibration threshold",
                                         "aligned tokenizers for paired causal models"]
@@ -108,6 +113,13 @@ def method_capabilities(name=None, config=None):
                         item["blockers"].append(KEY_ENV[method] + " not configured")
                     if config is None:
                         item["blockers"].append("explicit vendor version configuration not supplied")
+                else:
+                    if name != method or config is None:
+                        item["blockers"].append("explicit judge model configuration not supplied")
+                    if method in ("claude-llm-judge", "claude-legacy-prompt"):
+                        item["credential_configured"] = bool(os.environ.get("ANTHROPIC_API_KEY"))
+                        if not item["credential_configured"]:
+                            item["blockers"].append("ANTHROPIC_API_KEY not configured")
         classifications.append(item)
     return {"schema_version": 1, "runtime": runtime, "classification_methods": classifications,
             "provenance_signals": [dict(WATERMARK)] if name in (None, WATERMARK["name"]) else [],

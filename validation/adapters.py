@@ -15,14 +15,19 @@ from models import TextBlock
 from .corpus import digest
 from .api_adapters import API_METHODS, score_api_samples, validate_api_config
 from .local_models import MODEL_METHODS, artifact_identity, score_local_samples, validate_model_config
+from .ensemble import score_ensemble_samples, validate_ensemble_config
+from .prompt_baseline import LegacyClaudePrompt, request_identity
 
 ROOT = Path(__file__).resolve().parent.parent
-LOCAL = ("offline", "heuristic", "embedding") + MODEL_METHODS
-REMOTE = ("hybrid", "claude-llm-judge") + API_METHODS
+LOCAL = ("offline", "heuristic", "embedding", "ensemble") + MODEL_METHODS
+REMOTE = ("hybrid", "claude-llm-judge", "claude-legacy-prompt") + API_METHODS
 CONFIG_KEYS = {"model_name", "model", "effort", "batch_size", "judge_name", "judge_config"}
 
 
 def validate_config(config, name=None):
+    if name == "ensemble":
+        validate_ensemble_config(config)
+        return
     if name in MODEL_METHODS:
         validate_model_config(name, config)
         digest(config)
@@ -49,6 +54,7 @@ def detector_identity(name: str, config: dict) -> dict:
     paths += sorted((ROOT / "heuristic_rules").glob("*.py"))
     paths += sorted(ROOT.glob("*.py"))
     paths += sorted((ROOT / "validation").glob("*.py"))
+    paths += sorted((ROOT / "validation" / "assets").glob("*.json"))
     paths += [ROOT / "scripts" / "benchmark.py", ROOT / "scripts" / "gate.py"]
     files = {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths if p.is_file()}
     versions = {}
@@ -61,16 +67,30 @@ def detector_identity(name: str, config: dict) -> dict:
     versions["python"] = sys.version
     versions["unicode"] = unicodedata.unidata_version
     artifacts = artifact_identity(name, config) if name in MODEL_METHODS else {}
+    request = request_identity(name)
+    components = []
+    if name == "ensemble":
+        for member in config["members"]:
+            identity = detector_identity(member["detector"], member.get("config", {}))
+            components.append({k: identity[k] for k in ("name", "config", "fingerprint", "snapshot_verified", "model_artifacts")})
     return {"name": name, "config": config, "source_hashes": files,
             "dependency_versions": versions, "model_artifacts": artifacts,
-            "snapshot_verified": name in ("offline", "heuristic") or bool(artifacts) and all(a["status"] == "frozen" for a in artifacts.values()),
-            "fingerprint": digest([name, config, files, versions, artifacts])}
+            "component_identities": components,
+            "request_identity": request,
+            "snapshot_verified": (name in ("offline", "heuristic")
+                                  or bool(artifacts) and all(a["status"] == "frozen" for a in artifacts.values())
+                                  or bool(components) and all(c["snapshot_verified"] for c in components)),
+            "fingerprint": digest([name, config, files, versions, artifacts, components, request])}
 
 
 def inference_policy(samples, name, config, allow_remote):
     validate_config(config, name)
     if name not in LOCAL + REMOTE:
         raise ValueError("method has no classification benchmark adapter; inspect benchmark capabilities")
+    if name == "ensemble":
+        for member in config["members"]:
+            inference_policy(samples, member["detector"], member.get("config", {}), allow_remote)
+        return
     if name in REMOTE:
         if not allow_remote or any(r["provenance"]["public_benchmark"] is not True for r in samples):
             raise ValueError("remote inference requires --allow-remote and exclusively public benchmark text")
@@ -86,6 +106,8 @@ def inference_policy(samples, name, config, allow_remote):
 def score_samples(samples: list[dict], name: str, config: dict, reference: list[dict], *, allow_remote=False) -> list[dict]:
     """One record per sample; errors and unsupported inputs never become negatives."""
     inference_policy(samples, name, config, allow_remote)
+    if name == "ensemble":
+        return score_ensemble_samples(samples, config, reference, allow_remote=allow_remote)
     if name in API_METHODS:
         return score_api_samples(samples, name, config, allow_remote=allow_remote)
     if name in MODEL_METHODS:
@@ -106,7 +128,7 @@ def score_samples(samples: list[dict], name: str, config: dict, reference: list[
         detector = None
         initialization_error = None
         try:
-            detector = DetectorFactory.create(name, **settings)
+            detector = LegacyClaudePrompt(**settings) if name == "claude-legacy-prompt" else DetectorFactory.create(name, **settings)
         except Exception as exc:
             initialization_error = type(exc).__name__
         results = []

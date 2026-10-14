@@ -113,7 +113,8 @@ def span_localization(rows, threshold):
             continue
         truth = _merge_ranges(row["gold_spans"])
         found = _merge_ranges([[s["start"], s["end"]] for s in row.get("spans", [])
-                              if s.get("selected") is True or (s.get("selection") != "provider-label" and s["score"] >= threshold)])
+                              if (s.get("selection") == "provider-label" and s.get("selected") is True)
+                              or (s.get("selection") != "provider-label" and s["score"] >= threshold)])
         annotated += 1
         predicted += sum(b - a for a, b in found)
         gold += sum(b - a for a, b in truth)

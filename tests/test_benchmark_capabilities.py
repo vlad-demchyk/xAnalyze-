@@ -12,7 +12,7 @@ def test_capabilities_are_passive_and_keep_watermark_outside_classification(monk
     monkeypatch.setattr("requests.Session", lambda: pytest.fail("network session created"))
     result = capabilities.method_capabilities()
     assert result["network_calls"] == result["model_loads"] == 0
-    assert len(result["classification_methods"]) == 13
+    assert len(result["classification_methods"]) == 15
     assert all(item["name"] != "claude-official-watermark" for item in result["classification_methods"])
     mark = result["provenance_signals"][0]
     assert mark["channel"] == "provenance" and mark["authorship_score"] is None
