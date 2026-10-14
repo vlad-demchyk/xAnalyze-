@@ -110,30 +110,134 @@ samples does not establish a 1% FPR. Human marketing uses negative-only checks;
 mixed content requires at least 30 annotated samples, IoU >=0.5 and coverage.
 A policy JSON can declare a research scope, but cannot loosen release defaults.
 
-## Adapters and remaining work
+## Benchmark adapters
 
-The implemented adapters use the existing offline/heuristic, embedding, direct
-Claude judge and hybrid detectors. Production language guessing is used,
+The production adapters use offline/heuristic, embedding, direct Claude judge
+and hybrid detectors. Production language guessing is used,
 not the benchmark's gold language. Character findings are not AI-authorship
 evidence. Unsupported lengths/languages abstain; detector failures are errors.
 Embedding reads only the reference file and retains its production text-hash
 selection within that file. It does not read calibration/test neighbours.
 
+Additional benchmark adapters implement the following contracts. They do not
+change the production detector or establish independent accuracy.
+
+| Method | Input/configuration | Score and localization |
+| --- | --- | --- |
+| `multilingual-encoder` | Local Transformers sequence-classifier checkpoint; explicit `ai_class_index` and declared `languages` | AI-class softmax; no sentence localization. Language declarations need empirical validation. |
+| `fast-detectgpt` | Local scoring/reference causal models with identical vocabulary/tokenization | Analytic conditional sampling discrepancy, higher means more AI-like. Bounded logistic ranking score, not an authorship probability. |
+| `binoculars` | Local observer/performer causal models with identical vocabulary/tokenization | Performer next-token NLL divided by observer-to-performer cross-entropy. Lower raw ratio means more AI-like; bounded logistic of its negative. |
+| `copyleaks` | `COPYLEAKS_ACCESS_TOKEN`, explicit `expected_model_version`, optional sensitivity 1/2/3 | `summary.ai` is separate from section confidence. Vendor character ranges have no verified Unicode unit/quote, so localization remains unknown. |
+| `pangram` | `PANGRAM_API_KEY`, explicit `model` and `expected_model_version` | AI-generated fraction; AI-assisted fraction/evidence stays separate. Windows become spans only after exact-quote verification. |
+| `gptzero` | `GPTZERO_API_KEY`, explicit `request_version`, optional expected observed version | `class_probabilities.ai`, with human/mixed kept separately. Provider sentence highlights require an exact unique quote. |
+
+Local model settings use `model_path`, `scoring_model_path`/`reference_model_path`
+or `observer_model_path`/`performer_model_path` according to method. Checkpoints
+must already contain config, tokenizer and safetensors. No Hub downloads or
+remote model code run. SHA-256 manifests cover artifacts before/after loading,
+calibration and test. Dependency versions and source hashes are frozen too.
+Missing artifacts abstain with no score. Token lengths outside `max_tokens`
+(default 512) or model context abstain instead of truncating. Device defaults
+to CPU; `mps`/`cuda` require explicit configuration. Tiny owned checkpoints in
+tests exercise real inference; they are not trained authorship detectors.
+
+Example classifier configuration, requiring a genuinely trained local model:
+
+```json
+{"model_path": "/absolute/path/to/frozen-classifier", "ai_class_index": 1,
+ "languages": "uk,it,en", "device": "cpu", "max_tokens": 512}
+```
+
+The index and language scope must come from that classifier's documented label
+mapping and supported languages, then be checked on independent data. A generic
+multilingual encoder alone does not identify authorship. Published thresholds
+for other model pairs, precisions or datasets are not imported. Select a
+threshold on calibration; the frozen protocol records the exact configuration.
+
 Remote inference requires both `--allow-remote` and exclusively declared public
-benchmark text, with an explicit model identifier. It is off by default. Model
-weights and remote response identity are not yet fully pinned for these
-adapters, so their reports cannot pass release readiness. Provider-bound
-session models and experimental multilingual encoder, Fast-DetectGPT,
-Binoculars, Copyleaks/Pangram/GPTZero, AdaDetectGPT/ProSSD comparisons still
-need their own adapters and measurements. No unavailable method is counted as
-a successful negative. Anthropic watermark availability is separate from
-stylistic authorship scoring and remains to be verified.
+benchmark text. Keys are read only from environment variables, never config or
+reports. Copyleaks uses its synchronous writer detector and enforces its
+255..100000-character range. Pangram uses asynchronous `POST /task`, then
+`GET /task/{id}`, with `public_dashboard_link: false`. Task IDs are persisted;
+pending tasks are polled again without another submission. An ambiguous POST
+outcome leaves a submission marker requiring resolution, preventing an automatic
+paid retry. Job cache defaults to `~/.xanalyze/validation/api-jobs`; override
+with `XANALYZE_API_JOB_CACHE`. Request/poll timeouts are finite; polling is not a
+strict whole-request wall-clock deadline. GPTZero uses `POST /v2/predict/text`.
+
+Observed response versions/hashes are recorded separately from requested
+versions. A configured expected version mismatch is an error with no score.
+An absent observed version remains unknown. Opaque vendor weights are never
+marked as a verified snapshot merely because a version string matches.
+These remote reports and the existing embedding/judge/hybrid reports therefore
+cannot pass release readiness. Unknown API cost stays null; usage credits or
+word counts do not invent a USD charge. Local `cost_usd: 0` means no API billing,
+not free hardware. Local HTTP tests verify requests and payloads without vendor
+calls; they do not prove account authorization or current vendor behavior.
+
+Provider-labelled AI spans are selected independently of the calibrated document
+threshold. Fractions, class probabilities and assistance confidence are distinct
+quantities. Unverifiable offsets, normalized/ambiguous repeated quotes and absent
+localization are counted as unsupported, never as successful empty localization.
+
+Primary API contracts: [Copyleaks request](https://docs.copyleaks.com/reference/actions/writer-detector/check),
+[Copyleaks response](https://docs.copyleaks.com/reference/data-types/ai-detector/ai-text-detector-response),
+[Pangram detection](https://docs.pangram.com/api-reference/ai-detection),
+[Pangram models](https://docs.pangram.com/api-reference/models),
+[GPTZero endpoint](https://gptzero.me/developers),
+[GPTZero score interpretation](https://support.gptzero.me/articles/8947054519-how-do-i-use-and-interpret-the-results-from-your-api).
+Research formulas were checked against [Fast-DetectGPT](https://github.com/baoguangsheng/fast-detect-gpt/tree/971b05202bac2bb504d60c0ac0812fea7a8f7c82)
+and [Binoculars](https://github.com/ahans30/Binoculars/tree/c8ae2f90d50ee696418bc71d8d9e5020e5f9d7b8).
+
+## Experimental availability and provenance
+
+Inspect configuration and prerequisites without inference or downloads:
+
+```sh
+python scripts/benchmark.py capabilities
+python scripts/benchmark.py capabilities --detector multilingual-encoder --config classifier.json
+python scripts/benchmark.py capabilities --detector prossd --output capabilities.json
+```
+
+The command records adapter availability and actual runtime prerequisites,
+not a readiness/accuracy certificate. Unknown methods and unsupported configuration
+fail instead of silently running another detector.
+
+[AdaDetectGPT](https://github.com/Mamba413/AdaDetectGPT/tree/ff83b52efd0d2f81afac1692d4ea0765658bb6e0)
+was reviewed at that revision. Its upstream inference hard-codes CUDA and has
+a sampling-model argument typo. A learned B-spline witness requires separate
+training data; published pretrained coefficients belong to the author's setup.
+No CUDA is available on the development host, and no frozen scoring/reference
+pair and witness have been supplied. This is an assessed experimental method,
+without an XAnalyze inference adapter or measured target-language performance.
+
+[ProSSD's paper](https://aclanthology.org/2026.acl-long.638/) links to its
+[implementation](https://github.com/RuoChoXio/ProSSD/tree/988125b1bc11213314a5f10dd21cb4db75729625).
+It needs an encoder, supervised `projection.npy` and reference style distributions;
+a generic embedding distance is not equivalent. The reviewed implementation
+uses spaCy `en_core_web_sm` POS tagging, so uk/it coverage is unverified. The
+upstream library is pickled and has a training-derived threshold. Artifacts are
+not supplied or loaded here. A future adapter must freeze reference-trained
+artifacts and select its threshold on calibration. No quality result is claimed.
+
+Anthropic's [official announcement](https://www.anthropic.com/news/claude-text-watermark),
+updated 1 September 2026 and reviewed 14 October, confirms a private-preview
+detection API. Approved access and an implemented endpoint contract are not
+configured here. A general Anthropic API key is insufficient. The placeholder
+fails before crawling even when a key/base URL is present. Capability output
+places this under `provenance_signals`, outside classification methods and
+their FPR/recall metrics. A watermark concerns Claude involvement; absence
+does not prove human authorship or exclude another AI.
+
+## Remaining validation
 
 The command expects a supplied manifest with confirmed provenance. Synthetic
-fixtures prove the pipeline contract, not detector accuracy. New calibration does not silently
+fixtures prove the pipeline contract, not detector accuracy. Fresh uk/it/en
+authorship annotations, reference/calibration/test splits, real perturbation
+strata and comparative measurements remain pending in T-64/T-1797. No external
+provider inference was used to produce the implementation's test results.
+New calibration does not silently
 replace a production configuration; release consumption also checks the
 current offline configuration and reporting threshold.
 
 Statistical reference: [NIST confidence intervals](https://www.itl.nist.gov/div898/handbook/prc/section2/prc241.htm).
-Research implementations to evaluate: [Fast-DetectGPT](https://github.com/baoguangsheng/fast-detect-gpt),
-[Binoculars](https://github.com/ahans30/Binoculars).

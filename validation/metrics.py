@@ -104,18 +104,23 @@ def _merge_ranges(ranges):
 
 
 def span_localization(rows, threshold):
-    intersection = predicted = gold = annotated = 0
+    intersection = predicted = gold = annotated = unsupported = 0
     for row in rows:
+        if row.get("localization_supported") is False:
+            unsupported += 1
+            continue
         if row.get("gold_spans") is None or row["status"] != "checked":
             continue
         truth = _merge_ranges(row["gold_spans"])
-        found = _merge_ranges([[s["start"], s["end"]] for s in row.get("spans", []) if s["score"] >= threshold])
+        found = _merge_ranges([[s["start"], s["end"]] for s in row.get("spans", [])
+                              if s.get("selected") is True or (s.get("selection") != "provider-label" and s["score"] >= threshold)])
         annotated += 1
         predicted += sum(b - a for a, b in found)
         gold += sum(b - a for a, b in truth)
         intersection += sum(max(0, min(b, d) - max(a, c)) for a, b in truth for c, d in found)
     union = predicted + gold - intersection
     return {"annotated_checked_samples": annotated, "character_precision": _ratio(intersection, predicted),
+            "unsupported_localization_samples": unsupported,
             "character_recall": _ratio(intersection, gold), "iou": _ratio(intersection, union),
             "coordinate_system": "original Unicode code points"}
 

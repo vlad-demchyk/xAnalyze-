@@ -70,12 +70,15 @@ def freeze(data: dict, detector="offline", config=None, policy=None, *, allow_re
     overlap = historical_overlap(test, ROOT / "corpus")
     if overlap:
         raise ValueError("test overlaps historical corpus: " + ", ".join(overlap[:10]))
+    identity = detector_identity(detector, config)
     scored = score_samples(calibration, detector, config, reference, allow_remote=allow_remote)
+    if digest(identity) != digest(detector_identity(detector, config)):
+        raise ValueError("detector/model artifact changed during calibration")
     threshold = choose_threshold(scored, policy.max_fpr, fixed=fixed_threshold)
     calibration_report = metric_report([{**r, "group_id": groups[r["id"]]} for r in scored], threshold, policy.prevalence)
     frozen = {"schema_version": 1, "created_at": datetime.now(timezone.utc).isoformat(),
               "dataset_id": data["dataset_id"], "dataset_sha256": digest(data),
-              "purpose": data["purpose"], "detector": detector_identity(detector, config),
+              "purpose": data["purpose"], "detector": identity,
               "threshold": threshold, "policy": asdict(policy), "reference_sha256": digest(reference),
               "reference_selection": "legacy text hash within reference" if detector == "embedding" else "not used",
               "calibration_report": calibration_report, "test_scores_read": False}
@@ -118,6 +121,8 @@ def evaluate(data, frozen, *, allow_remote=False):
     for path in paths.values():
         write_new(path, access)
     scored = score_samples(test, frozen["detector"]["name"], frozen["detector"]["config"], reference, allow_remote=allow_remote)
+    if digest(detector_identity(frozen["detector"]["name"], frozen["detector"]["config"])) != digest(frozen["detector"]):
+        raise ValueError("detector/model artifact changed during test inference")
     scored = [{**r, "group_id": groups[r["id"]]} for r in scored]
     policy = QualityPolicy(**frozen["policy"])
     metrics = metric_report(scored, frozen["threshold"], policy.prevalence)

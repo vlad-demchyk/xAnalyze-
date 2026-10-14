@@ -16,11 +16,16 @@ from validation.corpus import assign_splits, load_dataset, strict_json, validate
 from validation.metrics import QualityPolicy  # noqa: E402
 from validation.protocol import evaluate, freeze, write_new  # noqa: E402
 from validation.transforms import add_unicode_variants  # noqa: E402
+from validation.capabilities import method_capabilities  # noqa: E402
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
+    capabilities = sub.add_parser("capabilities", help="inspect prerequisites without inference or downloads")
+    capabilities.add_argument("--detector")
+    capabilities.add_argument("--config", type=Path)
+    capabilities.add_argument("--output", type=Path)
     for command in ("inspect", "partition", "unicode", "freeze", "run"):
         p = sub.add_parser(command)
         p.add_argument("dataset", type=Path)
@@ -42,6 +47,13 @@ def main(argv=None):
     try:
         if getattr(args, "output", None) and args.output.exists():
             raise ValueError("output already exists; reports/protocols are never overwritten")
+        if args.command == "capabilities":
+            config = strict_json(args.config.read_text()) if args.config else None
+            result = method_capabilities(args.detector, config)
+            if args.output:
+                write_new(args.output, result)
+            print(json.dumps(result, indent=2))
+            return 0
         if args.command == "partition":
             data = strict_json(args.dataset.read_text())
             result = assign_splits(data, args.seed)

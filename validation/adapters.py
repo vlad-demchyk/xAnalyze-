@@ -13,15 +13,24 @@ from lang_detect import guess_language_safe
 from models import TextBlock
 
 from .corpus import digest
+from .api_adapters import API_METHODS, score_api_samples, validate_api_config
+from .local_models import MODEL_METHODS, artifact_identity, score_local_samples, validate_model_config
 
 ROOT = Path(__file__).resolve().parent.parent
-LOCAL = ("offline", "heuristic", "embedding")
-REMOTE = ("hybrid", "claude-llm-judge")
+LOCAL = ("offline", "heuristic", "embedding") + MODEL_METHODS
+REMOTE = ("hybrid", "claude-llm-judge") + API_METHODS
 CONFIG_KEYS = {"model_name", "model", "effort", "batch_size", "judge_name", "judge_config"}
-RESEARCH_METHODS = ("multilingual-encoder", "fast-detectgpt", "binoculars", "copyleaks", "pangram", "gptzero", "adadetectgpt", "prossd")
 
 
-def validate_config(config):
+def validate_config(config, name=None):
+    if name in MODEL_METHODS:
+        validate_model_config(name, config)
+        digest(config)
+        return
+    if name in API_METHODS:
+        validate_api_config(name, config)
+        digest(config)
+        return
     if not isinstance(config, dict) or set(config) - CONFIG_KEYS:
         raise ValueError("benchmark config contains unsupported or secret-bearing fields")
     if "judge_config" in config:
@@ -33,7 +42,7 @@ def validate_config(config):
 
 
 def detector_identity(name: str, config: dict) -> dict:
-    validate_config(config)
+    validate_config(config, name)
     paths = sorted((ROOT / "detectors").glob("*.py"))
     paths += [ROOT / "models.py", ROOT / "lang_detect.py", ROOT / "unicode_rules.py", Path(__file__)]
     paths += sorted((ROOT / "llm").glob("*.py"))
@@ -43,25 +52,30 @@ def detector_identity(name: str, config: dict) -> dict:
     paths += [ROOT / "scripts" / "benchmark.py", ROOT / "scripts" / "gate.py"]
     files = {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths if p.is_file()}
     versions = {}
-    for package in ("anthropic", "sentence-transformers", "torch", "transformers", "langdetect"):
+    for package in ("anthropic", "sentence-transformers", "torch", "transformers", "tokenizers", "safetensors",
+                    "numpy", "scikit-learn", "huggingface-hub", "langdetect", "requests"):
         try:
             versions[package] = metadata.version(package)
         except metadata.PackageNotFoundError:
             versions[package] = None
     versions["python"] = sys.version
     versions["unicode"] = unicodedata.unidata_version
+    artifacts = artifact_identity(name, config) if name in MODEL_METHODS else {}
     return {"name": name, "config": config, "source_hashes": files,
-            "dependency_versions": versions, "snapshot_verified": name in ("offline", "heuristic"),
-            "fingerprint": digest([name, config, files, versions])}
+            "dependency_versions": versions, "model_artifacts": artifacts,
+            "snapshot_verified": name in ("offline", "heuristic") or bool(artifacts) and all(a["status"] == "frozen" for a in artifacts.values()),
+            "fingerprint": digest([name, config, files, versions, artifacts])}
 
 
 def inference_policy(samples, name, config, allow_remote):
-    validate_config(config)
+    validate_config(config, name)
     if name not in LOCAL + REMOTE:
-        raise ValueError("benchmark currently supports offline/heuristic/embedding and direct Claude/hybrid only")
+        raise ValueError("method has no classification benchmark adapter; inspect benchmark capabilities")
     if name in REMOTE:
         if not allow_remote or any(r["provenance"]["public_benchmark"] is not True for r in samples):
             raise ValueError("remote inference requires --allow-remote and exclusively public benchmark text")
+        if name in API_METHODS:
+            return
         settings = config.get("judge_config", {}) if name == "hybrid" else config
         if not isinstance(settings.get("model"), str) or not settings["model"]:
             raise ValueError("remote benchmark requires an explicit model identifier")
@@ -72,6 +86,10 @@ def inference_policy(samples, name, config, allow_remote):
 def score_samples(samples: list[dict], name: str, config: dict, reference: list[dict], *, allow_remote=False) -> list[dict]:
     """One record per sample; errors and unsupported inputs never become negatives."""
     inference_policy(samples, name, config, allow_remote)
+    if name in API_METHODS:
+        return score_api_samples(samples, name, config, allow_remote=allow_remote)
+    if name in MODEL_METHODS:
+        return score_local_samples(samples, name, config)
     remote = name in REMOTE
     import tempfile
     import json
