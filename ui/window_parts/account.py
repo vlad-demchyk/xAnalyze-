@@ -1,6 +1,11 @@
 """The xFormat account control in the brand header."""
 from __future__ import annotations
 
+from copy import deepcopy
+from queue import Empty, Queue
+from threading import Thread
+
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QDialog
 
 from analysis_modes import METHOD_AI, METHOD_LOCAL
@@ -13,9 +18,43 @@ def _ask_account_later(window) -> None:
     Deferred rather than skipped: the header should end up telling the truth,
     it just must not make startup wait for a round trip to do so.
     """
-    from PySide6.QtCore import QTimer
-
     QTimer.singleShot(0, lambda: window._refresh_account_control(refresh=True))
+
+
+def _query_account_and_provider(settings, generation, results):
+    """Only providers and a queue cross the thread boundary, never widgets."""
+    from llm.base import LLMProviderFactory
+    import rewriter
+    account_status = None
+    account = provider = None
+    try:
+        account = LLMProviderFactory.create("xformat", base_url=settings.xformat_base_url,
+                                            endpoints=settings.xformat_endpoints or {})
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        provider = rewriter.build_provider(settings)  # The desktop honours the explicit provider.
+    except Exception:  # noqa: BLE001
+        pass
+    if getattr(provider, "name", None) != "xformat":
+        Thread(target=_query_provider_ready, args=(provider, generation, results),
+               daemon=True, name="xanalyze-provider-status").start()
+    try:
+        status = account.auth_status(read_only=True)
+        account_status = status if status and status.signed_in else None
+    except Exception:  # noqa: BLE001 - status failure cannot disable another provider
+        pass
+    results.put((generation, "account", account_status))
+    if getattr(provider, "name", None) == "xformat":
+        results.put((generation, "provider", account_status is not None))
+
+
+def _query_provider_ready(provider, generation, results):
+    try:
+        available = bool(provider.auth_status().signed_in)
+    except Exception:  # noqa: BLE001 - unavailable credentials are an answer
+        available = False
+    results.put((generation, "provider", available))
 
 
 #: "This has not been asked yet", distinct from "the answer is no".
@@ -43,34 +82,95 @@ class AccountMixin:
         )
 
     def _account_status(self, refresh: bool = False, ask: bool = True):
-        """The xFormat account's state, or None when it cannot be asked.
-
-        Asked of the subscription specifically, not of whichever provider is
-        configured: this control is about the account, and a machine with a
-        personal key but no account is signed out as far as it is concerned.
-
-        Cached, because every answer is a network round trip and the question
-        is asked on every retranslate. Refreshed only where the answer can
-        actually have changed - signing in, signing out, opening settings.
-        """
+        """Return the cached header account; schedule probes without waiting."""
         if refresh:
+            self._invalidate_account_check()
             self._account_cache = _UNASKED
-        if self._account_cache is not _UNASKED:
-            return self._account_cache
-        if not ask:
-            # Building the window must not wait on the network. The control is
-            # drawn as signed out and corrected a moment later, which is honest:
-            # nothing is known yet.
-            return None
+            self._provider_ready = _UNASKED
+        if ask and (self._account_cache is _UNASKED or getattr(self, "_provider_ready", _UNASKED) is _UNASKED):
+            self._start_account_check()
+        return None if self._account_cache is _UNASKED else self._account_cache
 
-        from llm.base import LLMAuthError, LLMUnavailable
+    def _invalidate_account_check(self):
+        self._account_generation = getattr(self, "_account_generation", 0) + 1
+        self._account_checking = False
+        self._account_check_pending = set()
+        timer = getattr(self, "_account_timer", None)
+        if timer is not None:
+            timer.stop()
 
-        try:
-            status = self._xformat_provider().auth_status()
-        except (LLMAuthError, LLMUnavailable, Exception):  # noqa: BLE001
-            status = None
-        self._account_cache = status if status and status.signed_in else None
-        return self._account_cache
+    def _start_account_check(self):
+        if getattr(self, "_account_checking", False) or getattr(self, "_account_probe_closed", False):
+            return
+        if not hasattr(self, "_account_results"):
+            self._account_results = Queue()
+            self._account_timer = QTimer(self)
+            self._account_timer.timeout.connect(self._poll_account_check)
+        self._account_checking = True
+        self._account_check_pending = {"account", "provider"}
+        self._account_timer.start(25)
+        if getattr(self, "_provider_ready", _UNASKED) is _UNASKED:
+            if METHOD_AI in self.app_state.methods:
+                self._pending_ai_methods = self.app_state.methods
+            self.app_state.set_ai_available(False)
+        self._update_account_run_button()
+        Thread(target=_query_account_and_provider,
+               args=(deepcopy(self.settings), getattr(self, "_account_generation", 0), self._account_results),
+               daemon=True, name="xanalyze-account-status").start()
+
+    def _poll_account_check(self):
+        if getattr(self, "_account_probe_closed", False):
+            return
+        while True:
+            try:
+                generation, kind, value = self._account_results.get_nowait()
+            except Empty:
+                return
+            if generation != getattr(self, "_account_generation", 0):
+                continue
+            self._account_check_pending.discard(kind)
+            self._account_checking = bool(self._account_check_pending)
+            if not self._account_checking:
+                self._account_timer.stop()
+            if kind == "account":
+                self._account_cache = value
+                self._refresh_account_control(ask=False)
+                continue
+            available = value
+            self._provider_ready = available
+            self.app_state.set_ai_available(available)
+            pending = getattr(self, "_pending_ai_methods", None)
+            self._pending_ai_methods = None
+            if available and pending:
+                self.app_state.set_methods(pending)
+            elif pending and hasattr(self, "status_bar"):
+                self.status_bar.showMessage(t("method_ai_unavailable", self.lang))
+            self._update_account_run_button()
+            self._refresh_account_control(ask=False)
+
+    def _discard_pending_ai_method(self, *_args):
+        self._pending_ai_methods = None
+        self._update_account_run_button()
+
+    def _update_account_run_button(self):
+        if hasattr(self, "analyze_btn"):
+            busy = getattr(getattr(self, "view_model", None), "is_busy", False)
+            pending = getattr(self, "_account_checking", False) and getattr(self, "_pending_ai_methods", None)
+            self.analyze_btn.setEnabled(not busy and not pending)
+            if not hasattr(self, "_account_run_tooltip"):
+                self._account_run_tooltip = self.analyze_btn.toolTip()
+            if pending:
+                if self.analyze_btn.toolTip() != getattr(self, "_account_checking_tooltip", None):
+                    self._account_run_tooltip = self.analyze_btn.toolTip()
+                self._account_checking_tooltip = t("provider_checking", self.lang)
+                self.analyze_btn.setToolTip(self._account_checking_tooltip)
+            else:
+                self.analyze_btn.setToolTip(self._account_run_tooltip)
+                self._account_checking_tooltip = None
+
+    def _stop_account_checks(self):
+        self._account_probe_closed = True
+        self._invalidate_account_check()
 
     def _refresh_account_control(self, refresh: bool = False,
                                  ask: bool = True) -> None:
@@ -79,18 +179,20 @@ class AccountMixin:
             self.account_label.setText(status.detail)
             self.account_btn.setText(t("settings_sign_out", self.lang))
         else:
-            self.account_label.setText("")
-            self.account_btn.setText(t("settings_sign_in", self.lang))
-        # The one place that learns whether an AI pass can be paid for is
-        # also the place that has to say so. `AppState` normalises the
-        # method choice against this, and it was never told: the state kept
-        # its startup default of "no account", so a signed-in user asking
-        # for the AI pass had it silently normalised back to offline.
-        if ask or status is not None:
-            self.app_state.set_ai_available(status is not None)
+            checking = self._account_cache is _UNASKED and getattr(self, "_account_checking", False)
+            self.account_label.setText(t("account_checking", self.lang) if checking else "")
+            self.account_btn.setText(t("account_checking_button", self.lang) if checking else t("settings_sign_in", self.lang))
+        self.account_btn.setEnabled(self._account_cache is not _UNASKED)
+        self.account_btn.setAccessibleName(self.account_btn.text())
+        self.account_btn.setToolTip(self.account_label.text())
+        ready = getattr(self, "_provider_ready", _UNASKED)
+        if ready is not _UNASKED:
+            self.app_state.set_ai_available(ready)
 
     def _on_account_clicked(self) -> None:
-        if self._account_status(refresh=True) is not None:
+        if self._account_cache is _UNASKED:
+            return
+        if self._account_status(ask=False) is not None:
             self._sign_out()
             return
         self._sign_in()
@@ -99,7 +201,8 @@ class AccountMixin:
         from ui.sign_in_dialog import SignInDialog
 
         dialog = SignInDialog(self._xformat_provider(), self.lang, self)
-        if dialog.exec() != QDialog.DialogCode.Accepted or dialog.status is None:
+        if (dialog.exec() != QDialog.DialogCode.Accepted or dialog.status is None
+                or not dialog.status.signed_in):
             return
         # Signing in *is* the choice of who pays: an account that was just
         # connected and then ignored in favour of a personal key would make the
@@ -107,17 +210,32 @@ class AccountMixin:
         # inside a Claude Code session its own signed-in account pays.
         self.settings.llm_provider = "xformat"
         self.settings.save()
+        self._invalidate_account_check()
+        self._account_cache, self._provider_ready = dialog.status, True
+        self._pending_ai_methods = None
+        self.app_state.set_provider("xformat")
+        self.app_state.set_ai_available(True)
+        if hasattr(self, "_populate_providers"):
+            self._populate_providers()
         self._select_ai_method()
-        self._refresh_account_control(refresh=True)
+        self._update_account_run_button()
+        self._refresh_account_control(ask=False)
         self.status_bar.showMessage(
             t("sign_in_switched", self.lang, detail=dialog.status.detail))
 
     def _sign_out(self) -> None:
+        ready = getattr(self, "_provider_ready", _UNASKED)
+        self._invalidate_account_check()
         try:
             self._xformat_provider().sign_out()
         except Exception as exc:  # noqa: BLE001 - the tokens are gone either way
             self.status_bar.showMessage(str(exc))
-        self._refresh_account_control(refresh=True)
+        self._account_cache = None
+        self._provider_ready = False if self.settings.llm_provider == "xformat" else ready
+        if self.settings.llm_provider == "xformat":
+            self._pending_ai_methods = None
+        self._refresh_account_control()
+        self._update_account_run_button()
         # The method combo drops its AI entries when nothing can pay for them,
         # and a request that asked for AI normalises back to the offline engine.
         self._retranslate_choices()

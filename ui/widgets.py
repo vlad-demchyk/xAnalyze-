@@ -447,6 +447,7 @@ class InlineValue(QWidget):
     #: The index the user picked. Named like `QComboBox.currentIndexChanged`
     #: so the wiring in `main_window` reads the same for both.
     currentIndexChanged = Signal(int)  # noqa: N815 - matches Qt's spelling
+    activated = Signal(int)
 
     def __init__(self, label: str = "", parent=None):
         super().__init__(parent)
@@ -629,6 +630,10 @@ class InlineValue(QWidget):
 
     # -- interaction -----------------------------------------------------
 
+    def _activate_index(self, index):
+        self.set_index(index)
+        self.activated.emit(self._index)
+
     def _open_menu(self) -> None:
         if len(self._items) < 2:
             return
@@ -646,7 +651,7 @@ class InlineValue(QWidget):
             if self._tips[position]:
                 action.setToolTip(self._tips[position])
             action.triggered.connect(
-                lambda _checked=False, chosen=position: self.set_index(chosen))
+                lambda _checked=False, chosen=position: self._activate_index(chosen))
         menu.exec(self.mapToGlobal(QPoint(0, self.height())))
 
     def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt override
@@ -665,11 +670,11 @@ class InlineValue(QWidget):
         # Left/right step through the choices without opening anything, the
         # way a native combo does when it has focus.
         if key == Qt.Key_Left and self._index > 0:
-            self.set_index(self._index - 1)
+            self._activate_index(self._index - 1)
             event.accept()
             return
         if key == Qt.Key_Right and 0 <= self._index < len(self._items) - 1:
-            self.set_index(self._index + 1)
+            self._activate_index(self._index + 1)
             event.accept()
             return
         super().keyPressEvent(event)

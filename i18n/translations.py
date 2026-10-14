@@ -2585,6 +2585,21 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Accedi",
         "en": "Sign in",
     },
+    "account_checking": {
+        "uk": "Перевіряємо акаунт…",
+        "it": "Verifica account…",
+        "en": "Checking account…",
+    },
+    "account_checking_button": {
+        "uk": "Перевірка…",
+        "it": "Verifica…",
+        "en": "Checking…",
+    },
+    "provider_checking": {
+        "uk": "Перевіряємо провайдера…",
+        "it": "Verifica provider…",
+        "en": "Checking provider…",
+    },
     "settings_sign_out": {
         "uk": "Вийти",
         "it": "Esci",

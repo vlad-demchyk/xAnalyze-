@@ -45,6 +45,9 @@ class MethodDecidesTheEngine(unittest.TestCase):
         # window used to carry its own `_ai_available`, and the two could
         # disagree.
         self.window.app_state.set_ai_available(True)
+        # Readiness has its own async tests. Pin it when this test changes
+        # providers so routing is tested independently of machine credentials.
+        self.window._refresh_account_control = lambda **_kwargs: None
         # Picking an account in the toolbar writes it to settings, which is
         # the point of the control - but a test run must not edit the config
         # of whoever is running it.

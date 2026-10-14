@@ -462,13 +462,20 @@ class XFormatProvider(LLMProvider):
                 return fn()
             raise
 
-    def auth_status(self) -> AuthStatus:
+    def auth_status(self, *, read_only: bool = False) -> AuthStatus:
         if not self._access_token:
             return AuthStatus(signed_in=False, detail="not signed in")
         ep = self.endpoints
         try:
-            data = self._authed_call(lambda: self._get(ep.me_path))
+            # GUI probes may finish after signing out or changing accounts.
+            # They must never refresh/save credentials from that old snapshot.
+            data = self._get(ep.me_path) if read_only else self._authed_call(lambda: self._get(ep.me_path))
         except LLMAuthError as exc:
+            if read_only and self._refresh_token:
+                email = credentials.load_secret(ACCOUNT_EMAIL_KEY) or ""
+                # A locally held session may refresh on the user's next AI
+                # request; the passive probe neither renews nor erases it.
+                return AuthStatus(signed_in=True, detail=email)
             return AuthStatus(signed_in=False, detail=str(exc))
         except LLMUnavailable as exc:
             # Signed in as far as we know, but the check itself failed —

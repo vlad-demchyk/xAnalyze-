@@ -264,6 +264,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self.mode_combo.currentIndexChanged.connect(self._on_mode_to_state)
         self.checks_combo.currentIndexChanged.connect(self._on_checks_to_state)
         self.method_combo.currentIndexChanged.connect(self._on_method_to_state)
+        self.method_combo.activated.connect(self._discard_pending_ai_method)
         self.provider_combo.currentIndexChanged.connect(self._on_provider_to_state)
 
         # -- fields -> AppState --
@@ -516,6 +517,10 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         data = self.provider_combo.currentData()
         if data:
             self.app_state.set_provider(data)
+            if data != self.settings.llm_provider:
+                self.settings.llm_provider = data
+                self.settings.save()
+                self._refresh_account_control(refresh=True)
 
     def _sync_source_from_state(self) -> None:
         """Keep the legacy self.source in sync during the transition."""
@@ -533,7 +538,8 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self._refresh_run_plan()
 
     def _on_busy_changed(self, busy: bool) -> None:
-        self.analyze_btn.setEnabled(not busy)
+        pending = getattr(self, "_account_checking", False) and getattr(self, "_pending_ai_methods", None)
+        self.analyze_btn.setEnabled(not busy and not pending)
         self.cancel_btn.setEnabled(busy)
         if busy:
             self._begin_run_progress()
@@ -958,9 +964,8 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
     def _build_account_control(self) -> QWidget:
         """The account, at the right end of the top row.
 
-        Account state belongs where it can be seen: it is the one fact that
-        decides whether the AI assessment is available at all, and it used to
-        be three clicks away inside the settings dialog.
+        The xFormat account belongs where it can be seen. The selected AI
+        provider has its own independent readiness probe.
 
         The label keeps its text for `_refresh_account_control` and for the
         tooltip, but the row shows the button alone - a whole sentence about
@@ -1726,6 +1731,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             self.settings.llm_provider = chosen
             self.settings.save()
             self._account_cache = _UNASKED
+            self._refresh_account_control(refresh=True)
             self._retranslate_choices()
 
     #: The order a keyboard walks the window in, by attribute name.
@@ -2161,6 +2167,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             self.lang = self.settings.ui_language
             self._retranslate_ui()
             self._populate_flagged_list()
+            self._refresh_account_control(refresh=True)
 
     # ------------------------------------------------------- responsive layout
 
@@ -2215,6 +2222,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             self._active_workers.remove(worker)
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        self._stop_account_checks()
         self._stop_devserver_if_any()
         self.view_model.shutdown()
         for worker in list(self._active_workers):
@@ -2357,24 +2365,8 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         return self.app_state.methods
 
     def _ai_available(self) -> bool:
-        """Is there anything to pay for an AI pass with?
-
-        Asked of the account state rather than of the provider combo: a key in
-        settings, a signed-in xFormat subscription and a Claude Code session
-        are three different answers to one question, and the window should not
-        offer the pass when all three are absent.
-        """
-        try:
-            import rewriter
-            from llm.base import LLMUnavailable
-
-            provider = rewriter.build_provider(self.settings, allow_auto=True)
-            try:
-                return bool(provider.auth_status().signed_in)
-            except LLMUnavailable:
-                return False
-        except Exception:  # noqa: BLE001 - absence is an answer, not an error
-            return False
+        """Read the provider probe's cached answer, without network or subprocess."""
+        return self.app_state.ai_available
 
     def current_request(self) -> AnalysisRequest:
         """The run the current choices describe.
@@ -2708,6 +2700,9 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
                 if (s.details or {}).get("source") == "characters"]
 
     def _on_analyze_clicked(self) -> None:
+        if getattr(self, "_account_checking", False) and getattr(self, "_pending_ai_methods", None):
+            self.status_bar.showMessage(t("provider_checking", self.lang))
+            return
         # Inline validation before starting
         if not self._validate_target():
             return

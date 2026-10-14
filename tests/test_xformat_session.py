@@ -194,6 +194,21 @@ class BackendErrorTests(unittest.TestCase):
 
 
 class AuthStatusTests(unittest.TestCase):
+    def test_readonly_probe_does_not_refresh_or_save_credentials(self):
+        with mock.patch.object(credentials, "load_secret", return_value=None):
+            provider = XFormatProvider()
+        provider._access_token = "owned-old-access"
+        provider._refresh_token = "owned-refresh"
+        provider._access_expires_at = 1
+        provider._session = FakeSession([FakeResponse(status_code=401, body={})])
+        with mock.patch.object(provider, "_refresh_access_token", side_effect=AssertionError("refresh attempted")), \
+             mock.patch.object(credentials, "save_secret", side_effect=AssertionError("credentials written")), \
+             mock.patch.object(credentials, "delete_secret", side_effect=AssertionError("credentials deleted")), \
+             mock.patch.object(credentials, "load_secret", return_value=None):
+            status = provider.auth_status(read_only=True)
+        assert status.signed_in and provider._refresh_token == "owned-refresh"
+        assert [r["method"] for r in provider._session.requests] == ["GET"]
+
     def test_no_token_is_not_signed_in(self):
         with mock.patch.object(credentials, "load_secret", return_value=None):
             provider = XFormatProvider()
