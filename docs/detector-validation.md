@@ -191,10 +191,31 @@ or `observer_model_path`/`performer_model_path` according to method. Checkpoints
 must already contain config, tokenizer and safetensors. No Hub downloads or
 remote model code run. SHA-256 manifests cover artifacts before/after loading,
 calibration and test. Dependency versions and source hashes are frozen too.
+The loader requests `output_loading_info` and rejects missing/mismatched weights
+or loading errors. A base encoder cannot acquire a randomly initialized classifier
+head and still produce a benchmark score. Tokenizers/models are cached only after
+every model, tokenizer alignment and post-load manifest have passed; a failed load
+never leaves a partial cache for the next sample. Extra unused checkpoint keys
+are permitted when all required model weights were loaded. A frozen file manifest
+alone does not establish that a checkpoint is loadable or trained for authorship;
+passive `capabilities` output still records `inference_checked: false`.
+See [Transformers loading diagnostics](https://huggingface.co/docs/transformers/main_classes/model#transformers.PreTrainedModel.from_pretrained).
 Missing artifacts abstain with no score. Token lengths outside `max_tokens`
 (default 512) or model context abstain instead of truncating. Device defaults
 to CPU; `mps`/`cuda` require explicit configuration. Tiny owned checkpoints in
 tests exercise real inference; they are not trained authorship detectors.
+
+On MPS, inference stays on the GPU and logits/labels/masks move to CPU for
+float64 statistics. The transfer and cast are separate operations; a combined
+MPS-to-CPU float64 conversion also fails on the tested PyTorch 2.13 runtime.
+CPU/CUDA statistics retain float64 on their inference device. Checked predictions
+record `inference_device`, `statistics_device` and `statistics_dtype`; latency
+includes the transfer. `capabilities` reports actual MPS/CUDA availability.
+An unavailable requested accelerator abstains before loading, without switching
+to another device. Changing the declared device changes the frozen fingerprint;
+CPU/MPS numerical agreement on tiny fixtures does not certify identical outputs
+for every model. See [PyTorch MPS](https://docs.pytorch.org/docs/2.13/notes/mps.html)
+and [Tensor.to](https://docs.pytorch.org/docs/2.13/generated/torch.Tensor.to.html).
 
 Example classifier configuration, requiring a genuinely trained local model:
 

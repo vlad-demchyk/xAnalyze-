@@ -41,6 +41,16 @@ def test_experimental_prerequisites_report_actual_runtime_without_scores(monkeyp
             inference_policy([], name, {}, False)
 
 
+def test_configured_mps_reports_statistics_policy_and_unavailable_runtime(monkeypatch):
+    monkeypatch.setattr(capabilities, "_runtime", lambda: {"dependencies": {"torch": "fixture", "transformers": "fixture", "safetensors": "fixture"},
+        "mps_available": False, "mps_built": True, "cuda_available": False})
+    config = {"model_path": "/nonexistent/owned-fixture", "ai_class_index": 1, "languages": "en", "device": "mps"}
+    item = capabilities.method_capabilities("multilingual-encoder", config)["classification_methods"][0]
+    assert item["inference_device"] == "mps" and item["statistics_device"] == "cpu"
+    assert item["statistics_dtype"] == "float64"
+    assert "requested mps device unavailable" in item["blockers"]
+
+
 def test_capability_cli_writes_once_and_validates_configuration(tmp_path, capsys):
     target = tmp_path / "capabilities.json"
     assert main(["capabilities", "--detector", "prossd", "--output", str(target)]) == 0

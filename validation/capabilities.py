@@ -50,14 +50,16 @@ def _runtime():
             versions[package] = metadata.version(package)
         except metadata.PackageNotFoundError:
             versions[package] = None
-    cuda = None
+    cuda = mps = mps_built = None
     if versions["torch"]:
         try:
             import torch
             cuda = bool(torch.cuda.is_available())
+            mps_built = bool(torch.backends.mps.is_built())
+            mps = bool(torch.backends.mps.is_available())
         except (ImportError, OSError):
             pass
-    return {"dependencies": versions, "cuda_available": cuda}
+    return {"dependencies": versions, "cuda_available": cuda, "mps_available": mps, "mps_built": mps_built}
 
 
 def method_capabilities(name=None, config=None):
@@ -104,6 +106,13 @@ def method_capabilities(name=None, config=None):
                 for package in ("torch", "transformers", "safetensors"):
                     if not runtime["dependencies"][package]:
                         item["blockers"].append(package + " not installed")
+                if name == method and config is not None:
+                    device = config.get("device", "cpu")
+                    item["inference_device"] = device
+                    item["statistics_device"] = "cpu" if device == "mps" else device
+                    item["statistics_dtype"] = "float64"
+                    if device in ("cuda", "mps") and runtime.get(device + "_available") is not True:
+                        item["blockers"].append("requested " + device + " device unavailable")
             if method in REMOTE:
                 item["requirements"] = ["explicit --allow-remote", "public benchmark text only", "pinned request configuration"]
                 if method in API_METHODS:

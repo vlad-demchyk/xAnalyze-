@@ -64,13 +64,21 @@ def artifact_identity(name, config):
     return artifacts
 
 
+def _statistics_logits(logits):
+    """Move MPS logits before casting: even a combined device/dtype to() fails."""
+    if logits.device.type == "mps":
+        logits = logits.cpu()
+    return logits.double()
+
+
 def sampling_discrepancy(reference_logits, scoring_logits, labels):
     """Fast-DetectGPT analytic conditional log-likelihood discrepancy."""
     import torch
     if scoring_logits.ndim != 3 or scoring_logits.shape[0] != 1 or reference_logits.shape != scoring_logits.shape or labels.shape != scoring_logits.shape[:-1]:
         raise ValueError("aligned token positions and vocabulary are required")
-    reference_probabilities = reference_logits.double().softmax(-1)
-    scoring_log_probabilities = scoring_logits.double().log_softmax(-1)
+    scoring_log_probabilities = _statistics_logits(scoring_logits).log_softmax(-1)
+    reference_probabilities = _statistics_logits(reference_logits).to(scoring_log_probabilities.device).softmax(-1)
+    labels = labels.to(scoring_log_probabilities.device)
     observed = scoring_log_probabilities.gather(-1, labels.unsqueeze(-1)).squeeze(-1)
     mean = (reference_probabilities * scoring_log_probabilities).sum(-1)
     variance = (reference_probabilities * (scoring_log_probabilities - mean.unsqueeze(-1)).square()).sum()
@@ -87,14 +95,16 @@ def binoculars_statistic(observer_logits, performer_logits, input_ids, attention
     import torch
     if performer_logits.ndim != 3 or performer_logits.shape[0] != 1 or observer_logits.shape != performer_logits.shape or input_ids.shape != performer_logits.shape[:-1] or attention_mask.shape != input_ids.shape:
         raise ValueError("aligned vocabulary and token positions are required")
-    log_performer = performer_logits.double().log_softmax(-1)
+    log_performer = _statistics_logits(performer_logits).log_softmax(-1)
+    input_ids = input_ids.to(log_performer.device)
+    attention_mask = attention_mask.to(log_performer.device)
     valid_next = attention_mask[:, 1:].bool()
     valid_cross = input_ids != pad_token_id if pad_token_id is not None else attention_mask.bool()
     if not valid_next.any() or not valid_cross.any():
         raise ValueError("no valid tokens for Binoculars")
     observed_nll = -log_performer[:, :-1].gather(-1, input_ids[:, 1:].unsqueeze(-1)).squeeze(-1)
     numerator = observed_nll[valid_next].mean()
-    cross_entropy = -(observer_logits.double().softmax(-1) * log_performer).sum(-1)
+    cross_entropy = -(_statistics_logits(observer_logits).to(log_performer.device).softmax(-1) * log_performer).sum(-1)
     denominator = cross_entropy[valid_cross].mean()
     if not torch.isfinite(denominator) or denominator <= 0:
         raise ValueError("zero/nonfinite Binoculars cross-entropy")
@@ -127,21 +137,33 @@ class LocalModelAdapter:
             return
         from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSequenceClassification
         model_class = AutoModelForSequenceClassification if self.name == "multilingual-encoder" else AutoModelForCausalLM
+        tokenizers, models = {}, {}
         for key in PATHS[self.name]:
             path = str(Path(self.config[key]).resolve())
-            self.tokenizers[key] = AutoTokenizer.from_pretrained(path, local_files_only=True, trust_remote_code=False)
-            self.models[key] = model_class.from_pretrained(path, local_files_only=True, trust_remote_code=False,
-                                                         use_safetensors=True).to(self.config.get("device", "cpu")).eval()
-        if len(self.tokenizers) > 1:
-            first, second = self.tokenizers.values()
+            tokenizers[key] = AutoTokenizer.from_pretrained(path, local_files_only=True, trust_remote_code=False)
+            model, loading = model_class.from_pretrained(path, local_files_only=True, trust_remote_code=False,
+                                                         use_safetensors=True, output_loading_info=True)
+            fields = ("missing_keys", "mismatched_keys", "error_msgs")
+            if not isinstance(loading, dict) or any(not isinstance(loading.get(field), (list, tuple, set)) for field in fields):
+                raise ValueError("model loading diagnostics unavailable")
+            if any(loading[field] for field in fields):
+                raise ValueError("missing or mismatched checkpoint weights; random initialization is forbidden")
+            models[key] = model.to(self.config.get("device", "cpu")).eval()
+        if len(tokenizers) > 1:
+            first, second = tokenizers.values()
             if first.get_vocab() != second.get_vocab() or first.all_special_ids != second.all_special_ids:
                 raise ValueError("research model tokenizers/vocabularies differ")
         # Reject a checkpoint that changed between hashing and model loading.
         if artifact_identity(self.name, self.config) != self.artifacts:
             raise ValueError("local model artifact changed during loading")
+        self.tokenizers, self.models = tokenizers, models
 
     def score(self, text):
         import torch
+        device = self.config.get("device", "cpu")
+        if ((device == "mps" and not torch.backends.mps.is_available())
+                or (device == "cuda" and not torch.cuda.is_available())):
+            return {"status": "abstained", "reason": f"requested {device} device unavailable; no device substitution"}
         self._load()
         encodings = {}
         for key, tokenizer in self.tokenizers.items():
@@ -166,7 +188,7 @@ class LocalModelAdapter:
             index = self.config["ai_class_index"]
             if values.ndim != 2 or index >= values.shape[-1] or values.shape[-1] < 2:
                 raise ValueError("invalid classifier output/AI label mapping")
-            raw = values.double().softmax(-1)[0, index].item()
+            raw = _statistics_logits(values).softmax(-1)[0, index].item()
             score, semantics = raw, "declared AI-class softmax, calibration required"
         elif self.name == "fast-detectgpt":
             labels = encodings["scoring_model_path"]["input_ids"][:, 1:]
@@ -179,7 +201,11 @@ class LocalModelAdapter:
             score, semantics = oriented_score(raw, higher_ai=False), "logistic of negative Binoculars ratio; ranking, not probability"
         if not math.isfinite(score):
             raise ValueError("nonfinite local model score")
+        inference_device = next(iter(logits.values())).device
         return {"status": "checked", "score": score, "raw_score": raw, "score_semantics": semantics,
+                "inference_device": str(inference_device),
+                "statistics_device": "cpu" if inference_device.type == "mps" else str(inference_device),
+                "statistics_dtype": "float64",
                 "token_count": count, "truncated": False, "localization_supported": False, "spans": []}
 
 
@@ -198,7 +224,7 @@ def score_local_samples(samples, name, config):
             start = perf_counter()
             try:
                 record.update(adapter.score(row["text"]))
-            except (ImportError, OSError, ValueError, RuntimeError) as exc:
+            except (ImportError, OSError, TypeError, ValueError, RuntimeError) as exc:
                 record.update(status="error", reason=type(exc).__name__)
             record["latency_ms"] = (perf_counter() - start) * 1000
         results.append(record)

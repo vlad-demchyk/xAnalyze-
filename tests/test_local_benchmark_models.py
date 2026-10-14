@@ -120,13 +120,29 @@ def test_unavailable_checkpoint_never_becomes_a_human_negative():
     assert not adapters.detector_identity("fast-detectgpt",{})["snapshot_verified"]
 
 
+@pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS hardware unavailable")
 @pytest.mark.parametrize("name", local.MODEL_METHODS)
-def test_real_cli_freeze_and_locked_test_with_owned_tiny_models(tiny_models, tmp_path, monkeypatch, name):
+def test_mps_checkpoints_keep_gpu_inference_and_use_cpu_float64_statistics(tiny_models, name):
+    settings = {**config(name, tiny_models), "device": "mps"}
+    adapter = local.LocalModelAdapter(name, settings)
+    result = adapter.score("This is a fixture text.")
+    assert all(next(model.parameters()).device.type == "mps" for model in adapter.models.values())
+    assert result["status"] == "checked" and math.isfinite(result["raw_score"])
+    assert result["inference_device"].startswith("mps") and result["statistics_device"] == "cpu"
+    assert result["statistics_dtype"] == "float64"
+    cpu = local.LocalModelAdapter(name, {**settings, "device": "cpu"}).score("This is a fixture text.")
+    assert result["raw_score"] == pytest.approx(cpu["raw_score"], rel=1e-4, abs=2e-5)
+    assert adapters.detector_identity(name, settings)["fingerprint"] != adapters.detector_identity(name, {**settings, "device": "cpu"})["fingerprint"]
+
+
+@pytest.mark.parametrize("name", local.MODEL_METHODS)
+@pytest.mark.parametrize("device", ["cpu", pytest.param("mps", marks=pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS hardware unavailable"))])
+def test_real_cli_freeze_and_locked_test_with_owned_tiny_models(tiny_models, tmp_path, monkeypatch, name, device):
     from scripts.benchmark import main
     monkeypatch.setenv("HF_HUB_OFFLINE", "1")
     monkeypatch.setenv("XANALYZE_VALIDATION_LEDGER", str(tmp_path / "ledger"))
     data = tmp_path / "dataset.json";data.write_text(json.dumps(dataset()))
-    settings = tmp_path / "config.json";settings.write_text(json.dumps(config(name, tiny_models)))
+    settings = tmp_path / "config.json";settings.write_text(json.dumps({**config(name, tiny_models), "device": device}))
     frozen = tmp_path / "protocol.json"
     report = tmp_path / "report.json"
     assert main(["freeze", str(data), "--detector", name, "--config", str(settings),
@@ -135,8 +151,76 @@ def test_real_cli_freeze_and_locked_test_with_owned_tiny_models(tiny_models, tmp
     result = json.loads(report.read_text())
     assert result["protocol"]["detector"]["snapshot_verified"]
     assert all(r["status"] == "checked" for r in result["predictions"])
+    assert all(r["inference_device"].startswith(device) for r in result["predictions"])
+    assert all(r["statistics_device"] == "cpu" for r in result["predictions"])
     assert not result["quality"]["passed"] and result["protocol"]["purpose"] == "fixture"
     assert main(["run", str(data), "--protocol", str(frozen), "--output", str(tmp_path / "again.json")]) == 1
+
+
+def test_backend_type_error_keeps_a_record_and_continues_batch(tiny_models, monkeypatch):
+    original = local.LocalModelAdapter.score
+    calls = 0
+    def fail_first(self, text):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise TypeError("backend unsupported dtype")
+        return original(self, text)
+    monkeypatch.setattr(local.LocalModelAdapter, "score", fail_first)
+    rows = [sample("error", text="This is a fixture text."), sample("checked", text="This is a fixture text.")]
+    result = local.score_local_samples(rows, "multilingual-encoder", config("multilingual-encoder", tiny_models))
+    assert [r["status"] for r in result] == ["error", "checked"]
+    assert result[0]["score"] is None and result[0]["reason"] == "TypeError"
+
+
+@pytest.mark.parametrize("device", ["mps", "cuda"])
+def test_unavailable_device_abstains_without_loading_or_substituting_cpu(tiny_models, monkeypatch, device):
+    backend = torch.backends.mps if device == "mps" else torch.cuda
+    monkeypatch.setattr(backend, "is_available", lambda: False)
+    monkeypatch.setattr(local.LocalModelAdapter, "_load", lambda _: pytest.fail("model loaded on unavailable device"))
+    settings = {**config("multilingual-encoder", tiny_models), "device": device}
+    result = local.score_local_samples([sample("unavailable")], "multilingual-encoder", settings)[0]
+    assert result["status"] == "abstained" and result["score"] is None
+    assert "no device substitution" in result["reason"]
+
+
+def test_base_encoder_cannot_silently_add_random_classifier_weights(tiny_models, tmp_path):
+    from transformers import AutoTokenizer, BertConfig, BertModel
+    folder = tmp_path / "base-encoder"
+    BertModel(BertConfig.from_pretrained(tiny_models["classifier"], local_files_only=True)).save_pretrained(folder, safe_serialization=True)
+    AutoTokenizer.from_pretrained(tiny_models["classifier"], local_files_only=True, trust_remote_code=False).save_pretrained(folder)
+    settings = {**config("multilingual-encoder", tiny_models), "model_path": str(folder)}
+    adapter = local.LocalModelAdapter("multilingual-encoder", settings)
+    with pytest.raises(ValueError, match="missing or mismatched checkpoint weights"):
+        adapter.score("This is a fixture text.")
+    assert adapter.models == {} and adapter.tokenizers == {}
+
+
+def test_second_model_load_failure_never_publishes_partial_cache_and_retry_loads_both(tiny_models, monkeypatch):
+    from transformers import AutoModelForCausalLM
+    original = AutoModelForCausalLM.from_pretrained
+    calls = 0
+    def transient_failure(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("owned fixture transient failure")
+        return original(*args, **kwargs)
+    monkeypatch.setattr(AutoModelForCausalLM, "from_pretrained", transient_failure)
+    adapter = local.LocalModelAdapter("fast-detectgpt", config("fast-detectgpt", tiny_models))
+    with pytest.raises(OSError, match="transient failure"):
+        adapter.score("This is a fixture text.")
+    assert adapter.models == {} and adapter.tokenizers == {}
+    assert adapter.score("This is a fixture text.")["status"] == "checked"
+    assert calls == 4 and len(adapter.models) == len(adapter.tokenizers) == 2
+
+
+def test_loading_hash_failure_discards_model_and_tokenizer_cache(tiny_models, monkeypatch):
+    adapter = local.LocalModelAdapter("multilingual-encoder", config("multilingual-encoder", tiny_models))
+    monkeypatch.setattr(local, "artifact_identity", lambda *args: {"changed": True})
+    with pytest.raises(ValueError, match="artifact changed during loading"):
+        adapter.score("This is a fixture text.")
+    assert adapter.models == {} and adapter.tokenizers == {}
 
 
 @pytest.mark.parametrize("phase", ["calibration", "test"])
