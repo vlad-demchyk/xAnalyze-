@@ -281,7 +281,44 @@ class BrowserAuditRunner:
         view.resize(int(width), int(height))
         view.show()
         self._view = view
+        self._give_focus(view)
         return page
+
+    @staticmethod
+    def _give_focus(view) -> None:
+        """Let the hidden view have window focus, when nobody else does.
+
+        Chromium matches `:focus` only in a document whose window is active.
+        An unshown view never was, so `el.focus()` set `activeElement` and
+        changed no style - and `focus-not-visible` plus the two focus checks
+        beside it had nothing to read in every command-line audit. They said
+        so to nobody: the result looked like a page with no focus problems.
+
+        **Only when no other window is active.** In the desktop app the main
+        window is the active one, and handing focus to an unseen widget would
+        deactivate it under the user's hands. There the checks stay unmeasured
+        and say so (`state:focus-not-measured`), which is the honest outcome
+        of a pass that must not steal the keyboard.
+        """
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QApplication
+
+        import warnings
+
+        active = QApplication.activeWindow()
+        if active is not None and active is not view:
+            return
+        view.activateWindow()
+        view.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
+        # `activateWindow()` alone does nothing on the offscreen platform: no
+        # window system exists to grant it. Qt's own bookkeeping is what
+        # Chromium reads, and `setActiveWindow` is the call that writes it. It
+        # is marked deprecated; nothing replaces it for a widget that is never
+        # mapped, so the warning is silenced here and nowhere else.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            QApplication.setActiveWindow(view)
+        _pump(300)
 
     def set_viewport(self, width: int, height: int) -> None:
         """Resize the page's viewport, for the next `audit()` call.

@@ -54,6 +54,13 @@ MAX_AGE_DAYS = 7
 #: cache that eventually costs more to read than the pass it saves.
 MAX_ENTRIES = 500
 
+#: Bumped by hand when the *driver* changes what a pass can observe without
+#: any script changing: 2 is the hidden view being given window focus, which
+#: turned three focus checks from "read nothing" into "read the page". A
+#: changed in-page script needs no bump (its source is hashed into the key);
+#: a changed way of running it does.
+PASS_REVISION = 2
+
 
 def cache_dir() -> Path:
     override = os.environ.get(DIR_ENV)
@@ -79,10 +86,16 @@ def options_key(options, sizes) -> str:
     a new switch that changes the answer and is not in the key is a cache
     that lies, and that is worse than no cache at all.
     """
-    from audit import vitals
+    from audit import states, vitals
     return _fingerprint(
         vitals.vendor_identity()["artifact_sha256"],
         vitals.vendor_identity()["collector_sha256"],
+        # The state pass is our own script, and until now the one input to the
+        # answer that was not in the key: a changed focus check kept serving
+        # the findings of the old one for up to a week. Hashing the source is
+        # the whole fix - there is nothing to remember to bump.
+        hashlib.sha256(states.STATE_SCRIPT.encode("utf-8")).hexdigest()[:16],
+        PASS_REVISION,
         tuple(sorted(getattr(options, "exclude", ()) or ())),
         tuple(sorted(getattr(options, "disabled_rules", ()) or ())),
         bool(getattr(options, "run_axe", True)),
