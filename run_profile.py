@@ -115,6 +115,9 @@ _OPTION_KINDS = {
     "category": KINDS,
     "confidence": KINDS,
     "unsettled": KINDS,
+    # Only a web audit has a server whose headers can be left out; the table
+    # still answers "is this option meaningful here" for every kind.
+    "include_environment": (KIND_SITE,),
     "language": KINDS,
     "detector": KINDS,
     "model": KINDS,

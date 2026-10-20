@@ -90,7 +90,7 @@ def build_coverage(result, args=None, *, scan=None, pages=None) -> dict:
     options = {name: json_value(getattr(args, name)) for name in (
         "detector", "model", "effort", "scope", "depth", "max_pages", "max_files",
         "ext", "exclude", "no_default_excludes", "no_typography", "no_browser",
-        "no_judgment_cache", "incremental", "confidence", "category", "unsettled",
+        "no_judgment_cache", "incremental", "confidence", "category", "unsettled", "include_environment",
         "breakpoints", "within", "medium", "agent", "no_session", "site_controls",
         "performance_repeats", "performance_fresh", "performance_settle_ms", "performance_scenario",
         "lighthouse", "lighthouse_profile", "crux", "crux_scope", "crux_form_factor",

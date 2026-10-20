@@ -206,8 +206,12 @@ class SiteControlFacts(unittest.TestCase):
                               source=self.ROBOTS)
         with patch("audit.crawlability.site_control_issues",
                    return_value=[control_issue]) as controls:
+            # `.test` is a reserved development zone, so a local-environment
+            # finding is left out by default (see `audit.environment`); this
+            # test is about the pass reaching the audit, so it asks for it.
             result = audit.analyze_pages(
                 [page("https://example.test/", "<html><body>Text</body></html>")],
-                "https://example.test/", media=False, site_controls=True)
+                "https://example.test/", media=False, site_controls=True,
+                include_environment=True)
         controls.assert_called_once_with("https://example.test/")
         self.assertIn(control_issue, result.issues())

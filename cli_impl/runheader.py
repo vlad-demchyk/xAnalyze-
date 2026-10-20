@@ -65,6 +65,7 @@ def describe(command: str, target: str, args, *, language: str = "",
         rows.append(("browser", "on"))
     for flag, label in (("site_controls", "site controls"),
                         ("unsettled", "unsettled shown"),
+                        ("include_environment", "local environment shown"),
                         ("incremental", "incremental"),
                         ("no_typography", "typography off"),
                         ("devserver", "dev server"),
