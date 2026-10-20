@@ -5932,6 +5932,14 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Critici {critical}, seri {serious}, moderati {moderate}, minori {minor} su {documents} {documents_noun}",
         "en": "{critical} critical, {serious} serious, {moderate} moderate, {minor} minor across {documents} {documents_noun}",
     },
+    # The same sentence once something repeats: the headline is the number of
+    # distinct problems, and the occurrences follow, so a header that sits on
+    # every page is one job and not three hundred.
+    "a11y_summary_distinct": {
+        "uk": "Унікальних проблем {distinct}: критичних {critical}, серйозних {serious}, помірних {moderate}, дрібних {minor}. Усього знайдено {occurrences} разів на {documents} {documents_noun}",
+        "it": "Problemi unici {distinct}: critici {critical}, seri {serious}, moderati {moderate}, minori {minor}. Trovati {occurrences} volte in tutto su {documents} {documents_noun}",
+        "en": "{distinct} unique problems: {critical} critical, {serious} serious, {moderate} moderate, {minor} minor. Found {occurrences} times across {documents} {documents_noun}",
+    },
     # Ownership. The count is said out loud rather than folded into the
     # summary: a person deciding what to do next needs to know that some of
     # what they are looking at is not theirs to change.

@@ -38,6 +38,15 @@ from cli_impl.scanning import (
 _AGENT_CANDIDATE_FLOOR = 0.25
 
 
+def _severity_counts(issues) -> dict:
+    """`{severity: n}` for the four levels, in the order the report prints them."""
+    counts = {"critical": 0, "serious": 0, "moderate": 0, "minor": 0}
+    for issue in issues:
+        if issue.severity in counts:
+            counts[issue.severity] += 1
+    return counts
+
+
 def _fullscan_report_paths(args, target: str):
     """Put this run's documents in this target's folder on the Desktop.
 
@@ -711,7 +720,8 @@ def _audit_fullscan_target(is_url: bool, is_page_file: bool, target: str,
             pages, target, media_progress=_image_progress,
             site_controls=getattr(args, "site_controls", False),
             within=getattr(args, "within", None) or "",
-            web_parts=_web_parts_for(args))
+            web_parts=_web_parts_for(args),
+            include_environment=bool(getattr(args, "include_environment", False)))
     if is_page_file:
         return audit.analyze_page_file(
             target, within=getattr(args, "within", None) or "")
@@ -849,12 +859,12 @@ def _build_combined(args, target: str, is_url: bool, lang: str,
         "language": lang,
         "scan": scan_result or {"findings": [], "counts": {"total": 0, "style": 0, "characters": 0}},
         "audit": {
-            "counts": {
-                "critical": sum(1 for i in audit_issues if i.severity == "critical"),
-                "serious": sum(1 for i in audit_issues if i.severity == "serious"),
-                "moderate": sum(1 for i in audit_issues if i.severity == "moderate"),
-                "minor": sum(1 for i in audit_issues if i.severity == "minor"),
-            },
+            # Distinct problems, as `audit --json` counts them: a header on
+            # every page is one job. The occurrences are beside them.
+            "counts": _severity_counts(first for first, _ in
+                                       duplicates.group_issues(audit_issues)),
+            "occurrences": _severity_counts(audit_issues),
+            "distinct": len(duplicates.group_issues(audit_issues)),
             "issues": [serialize_issue(i) for i in audit_issues],
         },
         "summary": {

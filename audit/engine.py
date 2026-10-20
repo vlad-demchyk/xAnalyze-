@@ -23,7 +23,7 @@ import applog
 import progress
 from project_profile import looks_generated
 
-from . import medium
+from . import environment, medium
 from .base import (
     CATEGORIES, SEVERITY_ORDER, Issue, RuleContext, RuleRegistry,
     remember_source, resolve_bound_attributes, resolve_text_directives,
@@ -93,6 +93,10 @@ class AccessibilityResult:
     #: historically omits. Never derive coverage from triggered rules alone.
     coverage_documents: list = field(default_factory=list)
     coverage: dict = field(default_factory=dict)
+    #: What `audit.environment.apply` left out of a local site's list: counts
+    #: and the rules, so a surface can say so instead of presenting the shorter
+    #: list as the whole answer. Empty when the target was not local.
+    environment: dict = field(default_factory=dict)
 
     def issues(self) -> list:
         out = []
@@ -101,9 +105,29 @@ class AccessibilityResult:
         return out
 
     def counts(self) -> dict:
+        """Occurrences by severity: one for every place a problem was found."""
         counts = {level: 0 for level in SEVERITY_ORDER}
         for issue in self.issues():
             counts[issue.severity] = counts.get(issue.severity, 0) + 1
+        return counts
+
+    def distinct(self) -> list:
+        """`[(first, others)]`: one entry per distinct problem.
+
+        A header, a footer or a sprite is on every page, so a crawl of 381
+        pages reported four repeated ids as 2 612 findings, and a run that
+        looked like 15 338 problems was about 980. The number a person plans
+        work by is the second one. Nothing is dropped: `others` are the same
+        problem in the other places, and `counts()` still gives occurrences.
+        """
+        from duplicates import group_issues
+        return group_issues(self.issues())
+
+    def distinct_counts(self) -> dict:
+        """`counts()`, counting each distinct problem once."""
+        counts = {level: 0 for level in SEVERITY_ORDER}
+        for first, _others in self.distinct():
+            counts[first.severity] = counts.get(first.severity, 0) + 1
         return counts
 
     def by_rule(self) -> dict:
@@ -480,8 +504,15 @@ def analyze_pages(pages, root: str, rules=None, ai_review=None,
                   media_progress=None,
                   site_controls: bool = False,
                   within: str = "",
-                  web_parts=()) -> AccessibilityResult:
+                  web_parts=(),
+                  include_environment: bool = False) -> AccessibilityResult:
     """Web mode: run over what the crawler returned.
+
+    On a local address (`localhost`, `*.local`, a private IP) the findings that
+    describe the server rather than the page - missing security headers, `http`
+    form actions, a development copy's `noindex` - are left out of the list and
+    counted in `result.environment`. `include_environment=True` keeps them. See
+    `audit.environment`.
 
     Pages the crawler could not read are carried through with their error
     rather than dropped — a page that failed to load is a finding about the
@@ -533,6 +564,7 @@ def analyze_pages(pages, root: str, rules=None, ai_review=None,
         # finding list the developer asked to be narrowed would be the
         # widest possible reading of "only inside this part".
         attribute_ownership(result)
+        environment.apply(result, include=include_environment)
         applog.info("audit.web_done", pages=len(pages),
                     documents=len(result.documents),
                     findings=len(result.issues()), counts=result.counts(),
@@ -578,6 +610,7 @@ def analyze_pages(pages, root: str, rules=None, ai_review=None,
         result.media = scan
         result.documents.extend(media_pass.as_web_documents(scan))
     owned = attribute_ownership(result)
+    environment.apply(result, include=include_environment)
     applog.info("audit.web_done", pages=len(pages),
                 documents=len(result.documents), findings=len(result.issues()),
                 counts=result.counts(), platform_owned=owned)

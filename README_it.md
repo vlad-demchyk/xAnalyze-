@@ -170,6 +170,30 @@ erano 312 risultati di contrasto su 348 - e l'esecuzione dice quanti ne ha
 lasciati fuori. `--unsettled` li riporta, `--confidence exact` toglie anche
 quelli consultivi.
 
+**Problemi distinti, non ripetizioni.** Il titolo del riepilogo, `counts` in
+`--json`, la riga di stato della finestra e dell'interfaccia da terminale
+contano ogni problema una volta: un'intestazione o uno sprite di icone sta su
+ogni pagina, quindi una scansione di 381 pagine erano 15 338 risultati e circa
+980 cause. Le occorrenze restano accanto (`occurrences`, `distinct` e
+`problems` in `--json`, ognuna con le pagine) e ogni risultato è comunque
+nell'elenco. I promemoria «controlla a mano» di HTML_CodeSniffer (nome e testo
+visibile, `position: fixed`, immagine ignorata, «usa una lista») e il criterio
+WCAG 4.1.1, eliminato, sono `advisory` e `minor`; ciò che il motore ha misurato,
+come un rapporto di contrasto, mantiene il suo peso.
+
+**Il server di un sito locale non è un difetto del progetto.** Su `localhost`,
+`*.local`, `*.test` o un indirizzo privato, ciò che decide il server e che
+l'HTTP semplice rende inevitabile non finisce nell'elenco ma viene contato:
+intestazioni `Content-Security-Policy`, `X-Content-Type-Options`,
+`Referrer-Policy`, `X-Frame-Options`, compressione e cache mancanti, `action`
+dei moduli con `http://` e il `noindex` di una copia di sviluppo. Una scansione
+di un WordPress locale aveva 365 risultati critici che erano tutti moduli con
+`http://`. L'esecuzione dice quanti ne ha lasciati fuori (`environment` in
+`--json`); `--include-environment` li elenca. Tutto ciò che riguarda la pagina
+stessa (uno script di terze parti sincrono, un'immagine, un nome accessibile)
+è riportato su un indirizzo locale come su uno pubblico, e l'audit di un
+repository non cambia.
+
 ## È il bersaglio a decidere cosa chiedere
 
 Un progetto dichiara cosa è, e da questo discende molto più dell'elenco di

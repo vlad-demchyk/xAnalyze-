@@ -58,8 +58,11 @@ MAX_ENTRIES = 500
 #: any script changing: 2 is the hidden view being given window focus, which
 #: turned three focus checks from "read nothing" into "read the page". A
 #: changed in-page script needs no bump (its source is hashed into the key);
-#: a changed way of running it does.
-PASS_REVISION = 2
+#: a changed way of running it does. So does a change in how an engine's
+#: output becomes a finding, because what is stored here is the finding, not
+#: the engine's raw message: 3 is HTML_CodeSniffer's prompts and the removed
+#: 4.1.1 getting their own weight.
+PASS_REVISION = 3
 
 
 def cache_dir() -> Path:

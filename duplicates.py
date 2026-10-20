@@ -100,11 +100,24 @@ def issue_identity(issue) -> tuple:
     """
     snippet = mask_generated_ids(
         " ".join((getattr(issue, "snippet", "") or "").split()))
+    selector = getattr(issue, "selector", "") or ""
+    # A finding about the page or the run rather than an element - a missing
+    # response header, a string left untranslated - has neither a snippet nor
+    # a selector, and with nothing to tell them apart every one of a rule's
+    # findings would merge into a single "problem". 473 untranslated strings
+    # were one row. What tells them apart is what the finding says it found.
+    evidence = ""
+    if not snippet and not selector:
+        details = getattr(issue, "details", None) or {}
+        for key in ("text", "value", "header", "path", "target", "alt", "id"):
+            if details.get(key):
+                evidence = f"{key}={details[key]}"
+                break
     return (
         getattr(issue, "rule_id", ""),
         getattr(issue, "category", ""),
         getattr(issue, "severity", ""),
-        snippet or (getattr(issue, "selector", "") or ""),
+        snippet or selector or evidence,
     )
 
 

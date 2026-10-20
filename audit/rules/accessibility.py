@@ -696,7 +696,10 @@ class PositiveTabindex(AccessibilityRule):
 class DuplicateIds(AccessibilityRule):
     id = "duplicate-id"
     severity = MODERATE
-    wcag = ("4.1.1",)
+    # 4.1.1 Parsing, which this used to name, is not in WCAG 2.2. A duplicate
+    # id is still a defect where a `for`, `aria-*` or `url(#id)` points at it,
+    # but the standard no longer says so, and a report must not cite it.
+    wcag = ()
 
     def check(self, document, context) -> list:
         seen: dict = {}

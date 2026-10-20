@@ -40,7 +40,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .base import (
-    ACCESSIBILITY, CRITICAL, EXACT, MINOR, MODERATE, NEEDS_BROWSER,
+    ACCESSIBILITY, ADVISORY, CRITICAL, EXACT, MINOR, MODERATE, NEEDS_BROWSER,
     PERFORMANCE, SERIOUS, Issue,
 )
 
@@ -425,9 +425,43 @@ def issues_from_axe(payload: str, source: str, exclude_rules=()) -> list:
 #: vendored one.
 _HTMLCS_UNDETERMINED = (".Abs", ".BgImage", ".Alpha", ".BgGradient")
 
+#: HTML_CodeSniffer *warnings* that are a prompt to look, not a defect it
+#: measured. Each one fires on every element of a shape, whatever its state:
+#:
+#: * `.F96` (2.5.3) - "check that the accessible name contains the visible
+#:   label". It fired on a skip link whose `aria-label` *did* contain its
+#:   visible text, 221 times on a 381-page crawl;
+#: * `1_4_10.C32…` - "this element is `position: fixed`, which may require
+#:   scrolling in two dimensions": 1011 times, on the page's overlay, close
+#:   button and skip link, on a site that reflows without horizontal scroll at
+#:   320px;
+#: * `.H67.2` - "this image is marked as ignored by assistive technology",
+#:   which is what `alt=""` is for;
+#: * `.H48`, `.H48.2`, `.H85.2` - "it is recommended that this be a list /
+#:   an `optgroup`".
+#:
+#: What HTML_CodeSniffer *measured* is untouched: `G18.Fail` carries the
+#: contrast ratio, `H30.2` is an image that is the only content of a link and
+#: has no text. Those stay at the weight the engine gave them.
+_HTMLCS_MANUAL_CHECK = (".F96", "1_4_10.C32", ".H67.2", ".H48", ".H85.2")
+
+#: Success criteria WCAG 2.2 removed. 4.1.1 Parsing was dropped because the
+#: failures it described (duplicate ids, bad nesting) are handled by user
+#: agents and assistive technology; a duplicate id still matters where
+#: something *references* it, which is what the `duplicate-id` rule is for.
+_HTMLCS_OBSOLETE = (".F77",)
+
 
 def _is_undetermined(code: str) -> bool:
     return any(marker in code for marker in _HTMLCS_UNDETERMINED)
+
+
+def _is_manual_check(code: str) -> bool:
+    return any(marker in code for marker in _HTMLCS_MANUAL_CHECK)
+
+
+def _is_obsolete(code: str) -> bool:
+    return any(marker in code for marker in _HTMLCS_OBSOLETE)
 
 
 def issues_from_htmlcs(payload: str, source: str) -> list:
@@ -443,20 +477,28 @@ def issues_from_htmlcs(payload: str, source: str) -> list:
             continue  # Notice: a manual-check prompt, not a finding
         code = message.get("code", "")
         undetermined = _is_undetermined(code)
+        manual = _is_manual_check(code)
+        obsolete = _is_obsolete(code)
         issues.append(Issue(
             rule_id=f"htmlcs:{_short_code(code)}",
             # An unmeasurable element is not a failing one. Kept - the
             # element is worth a human's eye - but at the weight of a note
             # and flagged as needing a browser, so it cannot crowd out the
-            # violations the same rule really did find.
-            severity=MINOR if undetermined else severity,
-            confidence=NEEDS_BROWSER if undetermined else EXACT,
+            # violations the same rule really did find. A prompt to check by
+            # hand and a criterion WCAG 2.2 no longer has get the same
+            # weight, for the same reason.
+            severity=MINOR if (undetermined or manual or obsolete) else severity,
+            # `advisory`, not `needs-browser`: a browser has already looked,
+            # and what is left is a person's call.
+            confidence=(NEEDS_BROWSER if undetermined
+                        else ADVISORY if (manual or obsolete) else EXACT),
             category=ACCESSIBILITY,
             snippet=message.get("html", ""),
             source=source,
             engine="htmlcs",
             details={"engine": "HTML_CodeSniffer", "code": code,
                      "undetermined": undetermined,
+                     "manual_check": manual, "obsolete_criterion": obsolete,
                      "why": message.get("msg", ""), "element": message.get("tag", "")},
         ))
     return issues
@@ -788,6 +830,10 @@ _RULE_FAMILIES = {
     # ids
     "duplicate-id": "id", "aria-reference-broken": "id",
     "axe:duplicate-id": "id", "axe:duplicate-id-active": "id",
+    # HTML_CodeSniffer's own duplicate-id message (the 4.1.1 failure F77) is
+    # the same element the static rule already named. Without this a page
+    # with one repeated sprite id listed it twice, from two engines.
+    "htmlcs:4_1_1": "id",
     # contrast
     "contrast-inline": "contrast",
     "axe:color-contrast": "contrast", "htmlcs:1_4_3": "contrast",

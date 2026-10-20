@@ -162,6 +162,11 @@ def summary_rows(payload: dict | None) -> list:
         for severity in SEVERITIES:
             if severity in counts:
                 rows.append((severity, str(counts[severity])))
+    # An `audit` payload counts distinct problems and says so beside the
+    # number of places they were found: the severity rows above are the former.
+    if isinstance(payload.get("distinct"), int) and isinstance(payload.get("occurrences"), dict):
+        rows.append(("distinct problems", str(payload["distinct"])))
+        rows.append(("occurrences", str(sum(payload["occurrences"].values()))))
     audit = payload.get("audit")
     if isinstance(audit, dict) and isinstance(audit.get("counts"), dict):
         for severity, value in audit["counts"].items():

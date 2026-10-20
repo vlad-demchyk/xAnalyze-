@@ -318,6 +318,10 @@ def _template_fields(details: dict) -> dict:
     return fields
 
 
+#: Success criteria WCAG 2.2 removed; nothing here may be reported against them.
+_REMOVED_CRITERIA = frozenset({"4.1.1"})
+
+
 def _wcag_for(rule_id: str) -> tuple:
     """The success criteria a rule contributes to.
 
@@ -339,7 +343,11 @@ def _wcag_for(rule_id: str) -> tuple:
     # `htmlcs:2_5_3` is 2.5.3, `htmlcs:1_3_1_A` is 1.3.1 at level A.
     match = re.match(r"^htmlcs:(\d)_(\d)_(\d{1,2})(?:_|$)", rule_id)
     if match:
-        return (".".join(match.groups()),)
+        criterion = ".".join(match.groups())
+        # 4.1.1 Parsing is not in WCAG 2.2. The finding stays (a duplicate id
+        # is still a defect where it is referenced) but it no longer claims a
+        # criterion the standard has dropped.
+        return () if criterion in _REMOVED_CRITERIA else (criterion,)
     return CROSSPAGE_WCAG.get(rule_id, ())
 
 
@@ -355,9 +363,32 @@ _DOCUMENTS_NOUN = {
 
 
 def summary_line(result, lang: str = "uk") -> str:
-    """One sentence over a whole run, for the status bar and report header."""
+    """One sentence over a whole run, for the status bar and report header.
+
+    The headline counts **distinct problems**, with the occurrences after it.
+    A header or a footer is on every page, so the occurrence count measures
+    how many pages a site has, not how much work there is: 381 pages gave
+    15 338 findings from about 980 causes. When nothing repeats the two are the
+    same number and the shorter sentence is used.
+    """
     counts = result.counts()
     documents = len(result.documents_with_issues())
+    distinct_counts = getattr(result, "distinct_counts", None)
+    if callable(distinct_counts):
+        unique = distinct_counts()
+        distinct, occurrences = sum(unique.values()), sum(counts.values())
+        if occurrences > distinct:
+            return t(
+                "a11y_summary_distinct", lang,
+                distinct=distinct, occurrences=occurrences,
+                critical=unique.get("critical", 0),
+                serious=unique.get("serious", 0),
+                moderate=unique.get("moderate", 0),
+                minor=unique.get("minor", 0),
+                documents=documents,
+                documents_noun=plural(documents, lang, **_DOCUMENTS_NOUN.get(lang, _DOCUMENTS_NOUN["en"])),
+            )
+        counts = unique
     return t(
         "a11y_summary", lang,
         critical=counts.get("critical", 0),

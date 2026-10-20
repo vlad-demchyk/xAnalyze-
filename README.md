@@ -173,6 +173,27 @@ undecided are not listed by default - on one real page that was 312 of 348
 contrast findings - and the run says how many it left out. `--unsettled`
 brings them back; `--confidence exact` drops the advisory ones too.
 
+**Distinct problems, not repeats.** The headline, `counts` in `--json`, the
+status line of the window and the terminal interface count each problem once: a
+header or an icon sprite is on every page, so a crawl of 381 pages was 15 338
+findings and about 980 causes. The occurrences stay beside it (`occurrences`,
+`distinct` and `problems` in `--json`, each with the pages it was found on) and
+every finding is still listed. HTML_CodeSniffer's "check this by hand" prompts
+(label in name, `position: fixed`, an ignored image, "use a list") and the
+dropped WCAG 4.1.1 are `advisory` and `minor`; what it measured, like a contrast
+ratio, keeps its weight.
+
+**A local site's server is not the project's defect.** On `localhost`, `*.local`,
+`*.test` or a private address, what the server decides and plain HTTP makes
+inevitable is left out of the list and counted: missing `Content-Security-Policy`,
+`X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options`, compression and
+cache headers, `http://` form actions, and a development copy's `noindex`. One
+crawl of a local WordPress site had 365 critical findings that were all
+`http://` forms. The run says how many it left out (`environment` in `--json`);
+`--include-environment` lists them. Everything about the page itself - a
+synchronous third-party script, an image, an accessible name - is reported on a
+local address exactly as on a public one, and a repository audit is untouched.
+
 ## The target decides what to ask
 
 A project announces what it is, and that decides more than which folders to

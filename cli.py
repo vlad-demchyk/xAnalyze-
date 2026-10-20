@@ -565,7 +565,8 @@ def cmd_audit(args) -> int:
             pages, target, ai_review=reviewer,
             site_controls=getattr(args, "site_controls", False),
             within=getattr(args, "within", None) or "",
-            web_parts=_web_parts_for(args))
+            web_parts=_web_parts_for(args),
+            include_environment=bool(getattr(args, "include_environment", False)))
     else:
         from repo_scanner import scan_repo
 
@@ -618,6 +619,20 @@ def cmd_audit(args) -> int:
             human=f"# {hidden} check(s) could not be decided and are not "
                   f"listed; add --unsettled to see them",
             unsettled=hidden)
+    # What a local site's server decides, left out of the list and said so:
+    # `audit.environment` has the reason, `--include-environment` the list.
+    left_out = (getattr(result, "environment", None) or {}).get("hidden", 0)
+    if left_out:
+        rules = ", ".join((result.environment.get("by_rule") or {}))
+        progress.notice(
+            "audit",
+            f"{left_out} finding(s) about the local environment are not "
+            f"listed ({rules}); add --include-environment to see them",
+            human=f"# {left_out} finding(s) about the local environment "
+                  f"(server headers, http forms, a development noindex) are "
+                  f"not listed: they depend on the server, not the code; add "
+                  f"--include-environment to see them",
+            environment=left_out)
     _announce_auth_walls(result, session_host=session_host)
 
     from i18n.translations import report_language
@@ -666,13 +681,29 @@ def cmd_audit(args) -> int:
                          documents=len(result.documents),
                          sources=len({d.source for d in result.documents}))
     if args.json:
+        from duplicates import places_of
         from finding_contract import SCHEMA_VERSION, serialize_issue
+        distinct = result.distinct()
         print(json.dumps({
             "schema_version": SCHEMA_VERSION,
             "root": result.root,
             "mode": result.mode,
-            "counts": result.counts(),
+            # `counts` counts distinct problems: a header on every page is one
+            # job, not one per page. `occurrences` is the old number - every
+            # place a problem was found - for a reader who wants it.
+            "counts": result.distinct_counts(),
+            "distinct": len(distinct),
+            "occurrences": result.counts(),
+            "problems": [{
+                "rule": first.rule_id, "severity": first.severity,
+                "category": first.category, "confidence": first.confidence,
+                "snippet": first.snippet[:300], "selector": first.selector,
+                "occurrences": len(others) + 1,
+                "pages": len(places_of(first, others)),
+                "sources": [p for p in places_of(first, others)][:25],
+            } for first, others in distinct],
             "platform_owned": _owned_counts(result),
+            "environment": getattr(result, "environment", {}),
             "rules_run": result.rules_run,
             "coverage": getattr(result, "coverage", {}),
             "issues": [serialize_issue(issue, source=document.source)
@@ -1199,6 +1230,13 @@ def build_parser() -> argparse.ArgumentParser:
                               "'exact' keeps what the markup settles and drops "
                               "the editorial ones. The undecided are already "
                               "out - see --unsettled")
+    p_audit.add_argument("--include-environment", action="store_true",
+                         help="on a local address (localhost, *.local, a "
+                              "private IP) also list what the server decides, "
+                              "not the code: missing security headers, http "
+                              "form actions, a development copy's noindex. "
+                              "Out by default; the run says how many it left "
+                              "out")
     p_audit.add_argument("--unsettled", action="store_true",
                          help="also list what could not be decided: an "
                               "engine's 'this element is on a background "
@@ -1473,6 +1511,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_fullscan.add_argument("--incremental", action="store_true",
                             help="skip files unchanged since the last scan "
                                  "(see `scan --incremental`)")
+    p_fullscan.add_argument("--include-environment", action="store_true",
+                            help="on a local address also list what the "
+                                 "server decides, not the code (see `audit "
+                                 "--include-environment`)")
     p_fullscan.add_argument("--unsettled", action="store_true",
                             help="also list what could not be decided, even "
                                  "in the browser (see `audit --unsettled`)")
