@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 
 from .base import (
-    ACCESSIBILITY, MODERATE, SERIOUS, Issue,
+    ACCESSIBILITY, MINOR, MODERATE, NEEDS_BROWSER, SERIOUS, Issue,
 )
 
 #: What each check reports, and how badly. Keyboard traps come first because
@@ -35,6 +35,19 @@ STATE_RULES = {
     "no-skip-link": MODERATE,
     "focus-outside-viewport": MODERATE,
     "modal-focus-not-contained": SERIOUS,
+    # --- what a focus ring is drawn against ---------------------------------
+    # `focus-not-visible` asks whether anything changes on focus. These two
+    # ask the questions it cannot: whether the thing that changed can be seen
+    # against what is behind it, and whether anything the author built hides
+    # the focused element altogether. Both were found by hand on a live site
+    # with a sticky header and had passed every automated engine.
+    "focus-indicator-low-contrast": SERIOUS,
+    "focus-obscured": SERIOUS,
+    # Not a defect of the page: the page never had focus, so the two focus
+    # checks above and `focus-not-visible` had nothing to read. Said once per
+    # page instead of being silent, because "no focus problems found" and "focus
+    # could not be looked at" are different sentences.
+    "focus-not-measured": MINOR,
     # --- the form journey ---------------------------------------------------
     # A form is the part of a page where a mistake costs the visitor the
     # whole task, and every check here reads the state the page is *in*: the
@@ -44,6 +57,28 @@ STATE_RULES = {
     "form-placeholder-as-label": MODERATE,
     "form-invalid-not-announced": MODERATE,
     "form-error-not-associated": SERIOUS,
+}
+
+#: The success criteria each state check contributes to, as the registry rules
+#: declare theirs (`Rule.wcag`). "Contributes to", never "proves": a page can
+#: pass every check here and still fail the criterion. Without this the report
+#: printed a WCAG line for a static rule and none for the browser's own
+#: verdict on the same criterion, because `_wcag_for` only knew the registry.
+STATE_WCAG = {
+    "keyboard-trap": ("2.1.2",),
+    "focus-not-visible": ("2.4.7",),
+    "focus-order-mismatch": ("2.4.3",),
+    "hover-only-content": ("1.4.13",),
+    "no-skip-link": ("2.4.1",),
+    "focus-outside-viewport": ("2.4.7",),
+    "modal-focus-not-contained": ("2.4.3",),
+    "focus-indicator-low-contrast": ("2.4.7", "1.4.11"),
+    "focus-obscured": ("2.4.11",),
+    "focus-not-measured": ("2.4.7",),
+    "form-field-unnamed": ("4.1.2", "3.3.2"),
+    "form-placeholder-as-label": ("3.3.2",),
+    "form-invalid-not-announced": ("3.3.1",),
+    "form-error-not-associated": ("3.3.1", "1.3.1"),
 }
 
 # A raw string: everything below is JavaScript, and its backslashes belong to
@@ -81,6 +116,7 @@ STATE_SCRIPT = r"""
                 tag: el ? el.tagName.toLowerCase() : ''};
     for (var k in (extra || {})) item[k] = extra[k];
     findings.push(item);
+    return item;
   }
 
   function visible(el) {
@@ -88,6 +124,85 @@ STATE_SCRIPT = r"""
     if (style.display === 'none' || style.visibility === 'hidden') return false;
     var rect = el.getBoundingClientRect();
     return rect.width > 0 || rect.height > 0;
+  }
+
+  // --- colour helpers, for what a focus ring is drawn against ---------------
+  // Computed colours come back as `rgb(r, g, b)` / `rgba(r, g, b, a)`, or as
+  // `color(srgb r g b / a)` for the modern syntaxes. Anything else (a `lab()`
+  // value, a keyword that survived) is "unknown", and unknown is never
+  // reported: a contrast verdict made from a colour this could not read would
+  // be the tool inventing a number.
+  function parseColor(text) {
+    if (!text) return null;
+    var m = /^rgba?\(([^)]+)\)$/i.exec(text.trim());
+    if (m) {
+      var parts = m[1].split(/[\s,\/]+/).filter(Boolean).map(parseFloat);
+      if (parts.length < 3 || parts.slice(0, 3).some(isNaN)) return null;
+      return {r: parts[0], g: parts[1], b: parts[2], a: parts.length > 3 ? parts[3] : 1};
+    }
+    m = /^color\(srgb\s+([^)]+)\)$/i.exec(text.trim());
+    if (m) {
+      var p = m[1].split(/[\s\/]+/).filter(Boolean).map(parseFloat);
+      if (p.length < 3 || p.slice(0, 3).some(isNaN)) return null;
+      return {r: p[0] * 255, g: p[1] * 255, b: p[2] * 255, a: p.length > 3 ? p[3] : 1};
+    }
+    return null;
+  }
+  function over(top, bottom) {
+    var a = top.a + bottom.a * (1 - top.a);
+    if (a === 0) return {r: 0, g: 0, b: 0, a: 0};
+    return {
+      r: (top.r * top.a + bottom.r * bottom.a * (1 - top.a)) / a,
+      g: (top.g * top.a + bottom.g * bottom.a * (1 - top.a)) / a,
+      b: (top.b * top.a + bottom.b * bottom.a * (1 - top.a)) / a,
+      a: a
+    };
+  }
+  function luminance(c) {
+    function channel(v) {
+      v = v / 255;
+      return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    }
+    return 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b);
+  }
+  function contrastOf(a, b) {
+    var la = luminance(a), lb = luminance(b);
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+  }
+  function cssRgb(c) {
+    return 'rgb(' + Math.round(c.r) + ', ' + Math.round(c.g) + ', ' + Math.round(c.b) + ')';
+  }
+  // What is behind an element: its own and its ancestors' backgrounds,
+  // composited until something is opaque, the white canvas at the bottom.
+  // `null` when an image or gradient is in the way - pixels this cannot
+  // sample, and a ratio against a guess is not a measurement.
+  function backgroundBehind(el) {
+    var layers = [];
+    var node = el;
+    while (node && node.nodeType === 1) {
+      var style = getComputedStyle(node);
+      if (style.backgroundImage && style.backgroundImage !== 'none') return null;
+      var color = parseColor(style.backgroundColor);
+      if (color === null) return null;
+      if (color.a > 0) layers.push(color);
+      if (color.a >= 1) break;
+      node = node.parentElement;
+    }
+    var result = {r: 255, g: 255, b: 255, a: 1};
+    for (var i = layers.length - 1; i >= 0; i--) result = over(layers[i], result);
+    return result;
+  }
+  // Comma-separated `box-shadow` list, split outside the colour's parentheses.
+  function splitShadows(text) {
+    var out = [], depth = 0, start = 0;
+    for (var i = 0; i < text.length; i++) {
+      var ch = text.charAt(i);
+      if (ch === '(') depth++;
+      else if (ch === ')') depth--;
+      else if (ch === ',' && depth === 0) { out.push(text.slice(start, i)); start = i + 1; }
+    }
+    out.push(text.slice(start));
+    return out.map(function(s) { return s.trim(); }).filter(Boolean);
   }
 
   // --- 0. An already-open modal owns focus -------------------------------
@@ -134,6 +249,85 @@ STATE_SCRIPT = r"""
     } catch (e) { canSeeFocus = false; }
   }
 
+  // The ring that exists but cannot be seen. `focus-not-visible` is satisfied
+  // by *any* change, and a white outline on a white header is a change: found
+  // by hand on a live site, where the only thing marking focus on the search
+  // button was an outline of the colour of the page. WCAG asks for 3:1 between
+  // the indicator and what is next to it (1.4.11, and 2.4.7 in spirit).
+  //
+  // Judged only when the indicator is an outline, a ring-shaped shadow or a
+  // border: a change of fill or text colour alone is a different measurement
+  // (against the unfocused look, not the surroundings), and a soft glow has no
+  // single colour to compare. Anything this cannot read is left unreported.
+  function checkIndicatorContrast(el, after, beforeBg, gained) {
+    var outer = el.parentElement ? backgroundBehind(el.parentElement)
+                                 : {r: 255, g: 255, b: 255, a: 1};
+    var inner = backgroundBehind(el);
+    if (!outer || !inner) return;
+    var rings = [];
+    var unjudged = false;
+    if (gained.outline) {
+      // `outline-style: auto` is the browser's own ring: two-tone, drawn to
+      // be visible on any background, and its computed `outline-color` is a
+      // single colour that says nothing about what is painted. Judging it
+      // flagged every link of every page that had never styled its focus -
+      // the one case where the answer is known to be fine.
+      if (after.outlineStyle === 'auto') return null;
+      var outlineColor = parseColor(after.outlineColor);
+      if (!outlineColor) return null;
+      var offset = parseFloat(after.outlineOffset || '0');
+      rings.push({name: 'outline', color: outlineColor, against: offset < 0 ? inner : outer});
+    }
+    if (gained.shadow) {
+      splitShadows(after.boxShadow).forEach(function(shadow) {
+        var colorMatch = /(rgba?\([^)]*\)|color\([^)]*\))/.exec(shadow);
+        var color = colorMatch ? parseColor(colorMatch[1]) : null;
+        if (!color) { unjudged = true; return; }
+        var inset = /(^|\s)inset(\s|$)/.test(shadow);
+        var numbers = shadow.replace(colorMatch[1], '').replace('inset', '').trim()
+          .split(/\s+/).map(parseFloat).filter(function(n) { return !isNaN(n); });
+        var x = numbers[0] || 0, y = numbers[1] || 0;
+        var blur = numbers[2] || 0, spread = numbers[3] || 0;
+        if (spread <= 0 && x === 0 && y === 0 && !inset) {
+          // A glow: no edge, so no single colour to hold against the page.
+          if (blur > 0) unjudged = true;
+          return;
+        }
+        rings.push({name: 'box-shadow', color: color, against: inset ? inner : outer});
+      });
+    }
+    if (gained.border && parseFloat(after.borderTopWidth || '0') > 0) {
+      var borderColor = parseColor(after.borderTopColor);
+      if (borderColor) rings.push({name: 'border', color: borderColor, against: outer});
+    }
+    if (unjudged || !rings.length) return;
+    // A fill that changes enough on its own is an indicator too, and a ring
+    // that is invisible beside it does not make the control invisible.
+    if (gained.background) {
+      var afterFill = parseColor(after.backgroundColor), beforeFill = parseColor(beforeBg);
+      if (afterFill && beforeFill &&
+          contrastOf(over(afterFill, inner), over(beforeFill, inner)) >= 3) return;
+    }
+    var best = 0, bestRing = null;
+    rings.forEach(function(ring) {
+      var shown = ring.color.a < 1 ? over(ring.color, ring.against) : ring.color;
+      var ratio = contrastOf(shown, ring.against);
+      if (ratio > best) { best = ratio; bestRing = ring; }
+    });
+    if (bestRing && best < 3) {
+      // Handed back, not recorded here: `record` snapshots `outerHTML`, and
+      // while this runs the element carries the inline `transition: none`
+      // that the measurement put on it. A finding quoting that is quoting
+      // the tool's own scaffolding, and it would never match the same
+      // element found by another engine.
+      return {rule: 'focus-indicator-low-contrast', extra: {
+        ratio: Math.round(best * 100) / 100, required: 3,
+        indicator: bestRing.name, color: cssRgb(bestRing.color),
+        background: cssRgb(bestRing.against)}};
+    }
+    return null;
+  }
+
   candidates.forEach(function(el) {
     // Off-canvas, not below the fold. The third condition used to be
     // `rect.top > innerHeight + scrollY + 2000`, which is a statement about
@@ -150,6 +344,25 @@ STATE_SCRIPT = r"""
       record('focus-outside-viewport', el, {});
     }
     if (!canSeeFocus) return;
+    // A transition makes `getComputedStyle` return the first frame of the
+    // animation, which is the unfocused look: the ring a person sees 150ms
+    // later is not the ring read here. Switched off for this element for the
+    // length of the measurement and put back exactly as it was found.
+    var priorTransition = el.style.getPropertyValue('transition');
+    var priorPriority = el.style.getPropertyPriority('transition');
+    var hadStyleAttribute = el.hasAttribute('style');
+    el.style.setProperty('transition', 'none', 'important');
+    var pending = null;
+    try {
+    // Whatever held focus before (the probe, or the previous element) is
+    // let go first: the "before" snapshot has to be of an unfocused element,
+    // and the first candidate is the probe that detected whether focus is
+    // visible at all, which was still focused when it was measured - one
+    // false "focus-not-visible" on the first link of every page.
+    try {
+      var held = document.activeElement;
+      if (held && held !== document.body && held.blur) held.blur();
+    } catch (e) {}
     var before = getComputedStyle(el);
     var beforeShadow = before.boxShadow, beforeBorder = before.borderColor;
     var beforeOutlineW = before.outlineWidth, beforeOutlineS = before.outlineStyle;
@@ -172,9 +385,93 @@ STATE_SCRIPT = r"""
     var gainedColor = after.color !== beforeColor;
     if (!gainedOutline && !gainedShadow && !gainedBorder &&
         !gainedBackground && !gainedColor) {
-      record('focus-not-visible', el, {outline: after.outlineStyle});
+      pending = {rule: 'focus-not-visible', extra: {outline: after.outlineStyle}};
+    } else {
+      pending = checkIndicatorContrast(el, after, beforeBg, {
+        outline: gainedOutline, shadow: gainedShadow,
+        border: gainedBorder, background: gainedBackground});
     }
+    } finally {
+      if (priorTransition) el.style.setProperty('transition', priorTransition, priorPriority);
+      else el.style.removeProperty('transition');
+      // `removeProperty` leaves an empty `style=""` behind, which would be
+      // quoted in every finding and match nothing another engine reports.
+      if (!hadStyleAttribute && el.getAttribute('style') === '') el.removeAttribute('style');
+    }
+    if (pending) record(pending.rule, el, pending.extra);
   });
+
+  // --- 1b. Is the focused element hidden by something the page built? ------
+  // A sticky header that is 98px tall covers whatever a browser scrolls to the
+  // top edge of the window, and Shift+Tab scrolls exactly there. Found by hand
+  // on a live site: the breadcrumb's focused link sat at y 4-32px, entirely
+  // under the bar, on four of nine pages. WCAG 2.4.11 asks that the element is
+  // not *entirely* hidden by author-created content, so that is the line drawn
+  // here: five points of the element (centre and four inset corners) all land
+  // on something fixed or sticky that is not the element and not its ancestor.
+  //
+  // The check puts the element at the top edge and then at the bottom edge of
+  // the window - where a keyboard moving up or down leaves it - and looks at
+  // what is on top. Nothing is clicked; the scroll position is restored at the
+  // end like everything else here. Skipped when no fixed or sticky box exists
+  // (nothing can cover anything), and while a modal is open (the page behind
+  // it is meant to be covered).
+  var hasStuck = false;
+  if (!openModal) {
+    var everything = document.querySelectorAll('body *');
+    var scanLimit = Math.min(everything.length, 4000);
+    for (var si = 0; si < scanLimit && !hasStuck; si++) {
+      var position = getComputedStyle(everything[si]).position;
+      if ((position === 'fixed' || position === 'sticky') && visible(everything[si])) {
+        hasStuck = true;
+      }
+    }
+  }
+  function stuckBox(node) {
+    while (node && node.nodeType === 1 && node !== document.body) {
+      var position = getComputedStyle(node).position;
+      if (position === 'fixed' || position === 'sticky') return node;
+      node = node.parentElement;
+    }
+    return null;
+  }
+  var obscuredRecords = [], obscuredTotal = 0;
+  if (hasStuck) {
+    candidates.slice(0, 60).forEach(function(el) {
+      ['top', 'bottom'].forEach(function(edge) {
+        var box = el.getBoundingClientRect();
+        var absoluteTop = box.top + window.scrollY;
+        var wanted = edge === 'top' ? absoluteTop
+                                    : absoluteTop + box.height - window.innerHeight;
+        window.scrollTo(0, Math.max(0, wanted));
+        box = el.getBoundingClientRect();
+        if (box.width === 0 || box.height === 0) return;
+        if (box.bottom <= 0 || box.top >= window.innerHeight) return;
+        var covering = null, entirely = true;
+        [[0.5, 0.5], [0.1, 0.1], [0.9, 0.1], [0.1, 0.9], [0.9, 0.9]].forEach(function(p) {
+          if (!entirely) return;
+          var x = box.left + box.width * p[0], y = box.top + box.height * p[1];
+          if (x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight) {
+            entirely = false; return;
+          }
+          var hit = document.elementFromPoint(x, y);
+          if (!hit || el.contains(hit) || hit.contains(el)) { entirely = false; return; }
+          var fixedBox = stuckBox(hit);
+          if (!fixedBox || fixedBox.contains(el)) { entirely = false; return; }
+          covering = covering || fixedBox;
+        });
+        if (entirely && covering) {
+          obscuredTotal += 1;
+          if (obscuredRecords.length < 5) {
+            obscuredRecords.push(record('focus-obscured', el, {
+              edge: edge, coveredBy: selectorFor(covering),
+              coverHeight: Math.round(covering.getBoundingClientRect().height)}));
+          }
+        }
+      });
+    });
+    obscuredRecords.forEach(function(item) { item.count = obscuredTotal; });
+  }
 
   // --- 2. Keyboard traps --------------------------------------------------
   // Anything that swallows Tab without moving focus onwards. Checked by
@@ -427,6 +724,20 @@ def issues_from_states(payload: str, source: str) -> list:
             source=source,
             engine="browser",
             details=details,
+        ))
+    # The script ran, there were focusable elements, and the document never
+    # had focus: `:focus` styles cannot match, so three checks read nothing.
+    # That is recorded as a note and not left as silence. It is `NEEDS_BROWSER`
+    # on purpose - the default view treats "could not be decided" as not a
+    # finding, and `--unsettled` is where it shows.
+    if data.get("focusableChecked") and data.get("focusMeasured") is False:
+        issues.append(Issue(
+            rule_id="state:focus-not-measured",
+            severity=STATE_RULES["focus-not-measured"],
+            category=ACCESSIBILITY, source=source, engine="browser",
+            confidence=NEEDS_BROWSER,
+            details={"engine": "state-pass",
+                     "count": data.get("focusableChecked", 0)},
         ))
     return issues
 

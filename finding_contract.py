@@ -42,6 +42,10 @@ def _status(confidence, details, *, text=False):
 
 
 def serialize_issue(issue, *, source="") -> dict:
+    # Imported here: `audit.explanations` pulls in the translations, which a
+    # reader of a saved checkpoint should not need just to load a record.
+    from audit.explanations import _wcag_for
+
     data = json_value(issue)
     data["source"] = issue.source or source
     data.update(
@@ -49,6 +53,11 @@ def serialize_issue(issue, *, source="") -> dict:
         range=None, evidence_status=_status(issue.confidence, issue.details or {}),
         location={"source": data["source"], "line": issue.line,
                   "selector": issue.selector},
+        # The success criteria the rule contributes to, so a machine reader
+        # gets the number the printed report shows. Additive, and derived from
+        # the rule id alone: recomputed, never stored, so a record written
+        # before a rule learned its criteria reads the same today.
+        wcag=list(_wcag_for(issue.rule_id)),
     )
     return data
 

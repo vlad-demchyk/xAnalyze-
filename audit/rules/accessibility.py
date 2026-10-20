@@ -20,7 +20,7 @@ from __future__ import annotations
 import re
 
 from ..base import (
-    ACCESSIBILITY, CRITICAL, EXACT, MINOR, MODERATE, NEEDS_BROWSER, PERFORMANCE,
+    ACCESSIBILITY, ADVISORY, CRITICAL, EXACT, MINOR, MODERATE, NEEDS_BROWSER, PERFORMANCE,
     SERIOUS, Issue, Rule, RuleRegistry, is_binding, snippet_of,
 )
 
@@ -110,25 +110,98 @@ class ImageAlt(AccessibilityRule):
         return issues
 
 
+_IMAGE_EXTENSION_RE = re.compile(r"\.(png|jpe?g|gif|svg|webp|avif)$", re.IGNORECASE)
+# What a CMS appends to a stem: `-1024x683`, `-scaled`, `-e1700000000000`,
+# a duplicate counter. None of it is part of what the author named the file.
+_STEM_SUFFIX_RE = re.compile(r"(-\d+x\d+|-scaled|-e\d{6,}|-\d{1,2})+$")
+# Words joined by hyphens or underscores with no space: `mappa-parlante-palmanova`.
+_SLUG_RE = re.compile(r"^[^\W_]+(?:[-_][^\W_]+){2,}$")
+# A date, or a camera / export counter. Nothing a person would say aloud.
+_COUNTER_ALT_RE = re.compile(
+    r"^(?:\d{4}[-_.]\d{2}[-_.]\d{2}(?:[-_. ]\d+)*|"
+    r"(?:img|dsc|dscn|dscf|pxl|image|immagine|screenshot|foto|photo)[-_ ]?\d+(?:[-_. ]\d+)*)$",
+    re.IGNORECASE,
+)
+
+
+def _image_stem(src: str) -> str:
+    """The file's name as an author typed it, comparable with an `alt`.
+
+    Query string, directory and extension go; so do the size and counter
+    suffixes a media library adds, because `Piazza-Grande-1024x683.jpg` is
+    the file `Piazza-Grande.jpg` and the alt that matches either is the same
+    mistake. Case and `_` / space are folded so `Piazza_Grande` still matches.
+    """
+    name = (src or "").split("#")[0].split("?")[0].rstrip("/").rsplit("/", 1)[-1]
+    name = _IMAGE_EXTENSION_RE.sub("", name)
+    name = _STEM_SUFFIX_RE.sub("", name)
+    return re.sub(r"[-_ ]+", "-", name).strip("-").lower()
+
+
 class ImageAltIsFilename(AccessibilityRule):
+    """An `alt` that is the file's name, or a slug somebody pasted in its place.
+
+    `alt="hero-banner-2.png"` was always caught. The pattern that actually
+    filled a WordPress media library was the same string without the
+    extension: `mappa-parlante-palmanova`, `Piazza-Grande`,
+    `meccanica-della-fortezza`, and `2025-10-28`. Every "has alt" checker
+    passes those, and a screen reader reads them out letter by letter.
+
+    Two grades of certainty, because they are two different claims:
+
+    * the `alt` **is the file's name** (extension, size suffix and case
+      ignored): the markup settles it, so `EXACT`;
+    * the `alt` only **looks like a slug** (three or more words joined by `-`
+      or `_`, no space) or is a date or a camera counter: very likely, but
+      `covid-19-vaccine` is a sentence nobody wrote with spaces, so a person
+      decides - `ADVISORY`.
+
+    Single words are never flagged on shape alone; `Logo` is a fine alt.
+    """
     id = "image-alt-filename"
     severity = SERIOUS
     wcag = ("1.1.1",)
 
     _FILENAME_RE = re.compile(r"^[\w\-. ]+\.(png|jpe?g|gif|svg|webp|avif)$", re.IGNORECASE)
 
+    def _kind(self, alt: str, src: str) -> str:
+        # An unevaluated template expression (`{caption}`, `<%= @caption %>`)
+        # is not text yet. The parser sees a masked placeholder, and two
+        # placeholders of the same shape compared equal: an ERB page with a
+        # bound `alt` and a bound `src` was reported as an alt that is its
+        # file's name.
+        if is_binding(alt):
+            return ""
+        if self._FILENAME_RE.match(alt):
+            return "filename"
+        # An alt with a space is prose, whatever else it looks like.
+        if re.search(r"\s", alt):
+            return ""
+        stem = "" if is_binding(src) else _image_stem(src)
+        folded = re.sub(r"[-_ ]+", "-", alt).strip("-").lower()
+        if stem and folded == stem:
+            return "filename"
+        if _COUNTER_ALT_RE.match(alt) or _SLUG_RE.match(alt):
+            return "slug"
+        return ""
+
     def check(self, document, context) -> list:
         issues = []
         for tag in document.find_all("img"):
             alt = (tag.get("alt") or "").strip()
-            if not alt or not self._FILENAME_RE.match(alt):
+            if not alt:
+                continue
+            kind = self._kind(alt, tag.get("src") or "")
+            if not kind:
                 continue
             # alt="hero-banner-2.png" passes every "has alt" checker and
             # tells the listener nothing, which is why it gets its own rule.
             selector, line = context.locate(tag)
             issues.append(Issue(
                 rule_id=self.id, severity=self.severity, selector=selector, line=line,
-                snippet=snippet_of(tag), source=context.source, details={"alt": alt},
+                snippet=snippet_of(tag), source=context.source,
+                confidence=EXACT if kind == "filename" else ADVISORY,
+                details={"alt": alt, "kind": kind},
             ))
         return issues
 
@@ -785,6 +858,147 @@ class MediaWithoutCaptions(AccessibilityRule):
                 rule_id=self.id, severity=self.severity, selector=selector, line=line,
                 snippet=snippet_of(tag), source=context.source, confidence=self.confidence,
                 details={"element": tag.name, "tracks": len(tracks)},
+            ))
+        return issues
+
+
+#: Hosts whose player is embedded as an `<iframe>`, so `media-captions`
+#: (which reads `<video>` and `<audio>`) never sees them.
+_VIDEO_HOSTS = {
+    "youtube.com": "YouTube", "youtube-nocookie.com": "YouTube", "youtu.be": "YouTube",
+    "vimeo.com": "Vimeo", "dailymotion.com": "Dailymotion",
+    "wistia.com": "Wistia", "wistia.net": "Wistia",
+    "brightcove.net": "Brightcove",
+}
+_TRANSCRIPT_RE = re.compile(
+    r"transcript|transcription|trascrizion|transkript|транскрип|стенограм",
+    re.IGNORECASE)
+
+
+def _video_provider(src: str) -> str:
+    from urllib.parse import urlsplit
+    host = (urlsplit(src or "").netloc or "").lower().split(":")[0]
+    for suffix, name in _VIDEO_HOSTS.items():
+        if host == suffix or host.endswith("." + suffix):
+            return name
+    return ""
+
+
+class EmbeddedVideoAlternatives(AccessibilityRule):
+    """A hosted video player is an `<iframe>`, and nothing here can look inside.
+
+    `media-captions` answers for `<video>` and `<audio>`. A YouTube or Vimeo
+    embed is neither: the markup holds an address, and whether the video has
+    captions, a transcript or an audio description is a fact about a file on
+    another server. Measured by hand on a tourism site: a five-minute narrated
+    video embedded on a page, with only YouTube's auto-generated captions, no
+    transcript on the page and no audio description - and every automated
+    engine silent, because the iframe had a perfectly good `title`.
+
+    So this cannot say the video fails. It says there is a video whose three
+    alternatives (1.2.2 captions, 1.2.3 transcript or description, 1.2.5
+    audio description) the page itself does not answer, and that a person has
+    to check the hosted file. Hence `ADVISORY`: no browser will settle it
+    either. A page that carries a transcript is noted as such in the finding;
+    that closes one of the three, not all of them.
+    """
+    id = "embedded-video-alternatives"
+    severity = MODERATE
+    confidence = ADVISORY
+    wcag = ("1.2.2", "1.2.3", "1.2.5")
+
+    @staticmethod
+    def _is_background(src: str) -> bool:
+        """A muted, controls-less embed is the background-video idiom: no
+        audio to caption, same exemption `media-captions` gives `<video>`."""
+        query = (src.split("?", 1) + [""])[1].lower()
+        params = dict(p.split("=", 1) if "=" in p else (p, "") for p in query.split("&") if p)
+        return params.get("controls") == "0" and params.get("mute") == "1"
+
+    def check(self, document, context) -> list:
+        page_text = document.get_text(" ", strip=True) if hasattr(document, "get_text") else ""
+        has_transcript = bool(_TRANSCRIPT_RE.search(page_text))
+        issues = []
+        for tag in document.find_all("iframe"):
+            src = (tag.get("src") or tag.get("data-src") or "").strip()
+            provider = _video_provider(src)
+            if not provider or self._is_background(src):
+                continue
+            selector, line = context.locate(tag)
+            issues.append(Issue(
+                rule_id=self.id, severity=self.severity, selector=selector, line=line,
+                snippet=snippet_of(tag), source=context.source, confidence=self.confidence,
+                details={"provider": provider, "src": src[:160],
+                         "transcript": has_transcript},
+            ))
+        return issues
+
+
+#: What a button that appends results to the page is called, in the languages
+#: this tool answers in and the ones its test sites are written in. Matched
+#: against the visible text, `id` and `class` together, because the label is
+#: often an icon and the class is the only honest name.
+_LOAD_MORE_RE = re.compile(
+    r"load[-_ ]?more|loadmore|show[-_ ]?more|more[-_ ]results|"
+    r"carica[-_ ]?(?:altri|altre|più|piu|ancora)|mostra[-_ ]?(?:altri|altre|di[-_ ]?pi[uù]|ancora)|"
+    r"altri[-_ ]risultati|mehr[-_ ]?(?:laden|anzeigen|ergebnisse)|"
+    r"weitere[-_ ]?(?:laden|ergebnisse)|завантажити ще|показати ще",
+    re.IGNORECASE)
+
+
+class StatusMessageLiveRegion(AccessibilityRule):
+    """Results that arrive without a page load, announced to nobody.
+
+    A "load more" button replaces or appends content over AJAX, and the
+    messages around it - "loading", "showing 12 of 40", "no more results" -
+    are status messages in the sense of 4.1.3: they change what is on screen
+    without moving focus. Without a live region a screen reader says nothing
+    and the visitor does not learn that anything happened. Found by hand on a
+    live site, where the button swapped the whole results container and the
+    "no more results" sentence appeared by dropping a CSS class.
+
+    Static markup cannot see what the script writes, so this reports only the
+    structural half: a document that has such a trigger and **no live region
+    anywhere** (`aria-live`, `role="status"`, `role="alert"`, `role="log"`,
+    `<output>`). A page that has one may still announce nothing useful, and
+    that is why this is advisory and not exact.
+    """
+    id = "status-message-live-region"
+    severity = MODERATE
+    confidence = ADVISORY
+    wcag = ("4.1.3",)
+    page_level = True
+
+    @staticmethod
+    def _has_live_region(document) -> bool:
+        if document.find(attrs={"aria-live": lambda v: v and v.strip().lower() != "off"}):
+            return True
+        if document.find(attrs={"role": ["status", "alert", "log"]}):
+            return True
+        return document.find("output") is not None
+
+    def check(self, document, context) -> list:
+        triggers = []
+        for tag in document.find_all(("button", "a", "input")):
+            if tag.name == "input" and (tag.get("type") or "").lower() not in ("button", "submit"):
+                continue
+            label = " ".join([
+                _text_of(tag) if tag.name != "input" else (tag.get("value") or ""),
+                (tag.get("aria-label") or ""), (tag.get("id") or ""),
+                " ".join(tag.get("class") or []),
+            ])
+            if _LOAD_MORE_RE.search(label):
+                triggers.append(tag)
+        if not triggers or self._has_live_region(document):
+            return []
+        issues = []
+        for tag in triggers:
+            selector, line = context.locate(tag)
+            issues.append(Issue(
+                rule_id=self.id, severity=self.severity, selector=selector, line=line,
+                snippet=snippet_of(tag), source=context.source, confidence=self.confidence,
+                details={"element": tag.name},
+                fix_snippet='<p role="status" aria-live="polite" class="visually-hidden"></p>',
             ))
         return issues
 
@@ -1731,5 +1945,6 @@ for _rule in (
     LandmarkRegions, SkipLink, FormErrorMessage, TableScope,
     HreflangLinks, BreadcrumbMarkup, ImageModernFormat,
     LanguageChange, AbbreviationExpansion,
+    EmbeddedVideoAlternatives, StatusMessageLiveRegion,
 ):
     RuleRegistry.register(_rule)

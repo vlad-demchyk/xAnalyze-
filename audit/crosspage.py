@@ -24,7 +24,7 @@ import re
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from bs4 import BeautifulSoup
-from .base import EXACT, Issue, MINOR, MODERATE, SEO
+from .base import ACCESSIBILITY, ADVISORY, EXACT, Issue, MINOR, MODERATE, SEO
 
 RULE_DUPLICATE_TITLE = "seo-duplicate-title"
 RULE_DUPLICATE_DESCRIPTION = "seo-duplicate-description"
@@ -32,6 +32,14 @@ RULE_DUPLICATE_CANONICAL = "seo-duplicate-canonical"
 RULE_HREFLANG_NOT_RECIPROCAL = "seo-hreflang-not-reciprocal"
 RULE_SLUG_NOT_TRANSLATED = "seo-slug-not-translated"
 RULE_UNTRANSLATED_CONTENT = "seo-untranslated-content"
+RULE_LINK_TARGET_DIFFERS = "link-target-differs-across-translations"
+
+#: Success criteria the whole-crawl rules contribute to, for the same reason
+#: `states.STATE_WCAG` exists: these are not registry rules, so
+#: `explanations._wcag_for` cannot ask a class for them.
+CROSSPAGE_WCAG = {
+    RULE_LINK_TARGET_DIFFERS: ("2.4.4",),
+}
 
 _TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.I | re.S)
 _META_DESC_RE = re.compile(
@@ -194,6 +202,7 @@ def issues_for(pages) -> list:
                          "target": alternate["url"]}, engine="crawl"))
     issues.extend(untranslated_slug_issues(pages, parsed=parsed))
     issues.extend(untranslated_content_issues(pages, parsed=parsed))
+    issues.extend(link_target_issues(pages, parsed=parsed))
     return issues
 
 
@@ -492,6 +501,152 @@ def untranslated_content_issues(pages, parsed=None) -> list:
                     details={"text": text[:160], "where": key,
                              "language": _page_language(other) or alternate["language"],
                              "target": _normal(other.url), "translated": differing}))
+    return issues
+
+
+#: Query parameters that say who is looking or how they arrived, not what is
+#: being linked to: two addresses that differ only in these are the same page.
+_NOISE_PARAMS_RE = re.compile(r"^(utm_.+|fbclid|gclid|lang|language|hl|ref)$", re.I)
+_LANGUAGE_LABEL_RE = re.compile(r"^[a-z]{2,3}$", re.I)
+#: Not a destination: a fragment, a script, a mail or phone action.
+_NOT_A_PAGE_RE = re.compile(r"^(?:#|javascript:|mailto:|tel:|sms:|data:)", re.I)
+
+
+def _host_of(url: str) -> str:
+    host = (urlsplit(url).netloc or "").lower().split("@")[-1].split(":")[0]
+    return host[4:] if host.startswith("www.") else host
+
+
+def _destination_signature(url: str) -> tuple:
+    """What an address points at, with the language spelled out of it.
+
+    `it.wikipedia.org/wiki/X` and `en.wikipedia.org/wiki/X` are one article in
+    two languages and **should** differ between a page and its translation;
+    so do `/it/contatti` and `/en/contatti`. The signature drops the language
+    wherever a site spells it (leading host label, leading path segment, a
+    `lang` parameter), so what is left differing is a different destination.
+    """
+    parts = urlsplit(url)
+    host = _host_of(url)
+    labels = host.split(".")
+    if len(labels) >= 3 and _LANGUAGE_LABEL_RE.match(labels[0]):
+        host = ".".join(labels[1:])
+    path = parts.path or "/"
+    if len(path) > 1:
+        path = path.rstrip("/")
+    segments = [s for s in path.split("/") if s]
+    if segments and _PATH_LANGUAGE_RE.match(segments[0]):
+        segments = segments[1:]
+    query = sorted(
+        pair for pair in (parts.query or "").split("&")
+        if pair and not _NOISE_PARAMS_RE.match(pair.split("=", 1)[0]))
+    return (host, "/" + "/".join(segments), tuple(query))
+
+
+def _anchors_of(page) -> list:
+    """The links of a page that go somewhere, in document order."""
+    soup = BeautifulSoup(getattr(page, "raw_html", "") or "", "html.parser")
+    found = []
+    for tag in soup.find_all("a", href=True):
+        href = (tag.get("href") or "").strip()
+        if not href or _NOT_A_PAGE_RE.match(href):
+            continue
+        found.append({
+            "href": urljoin(page.url, href),
+            "text": _COLLAPSE_WS_RE.sub(" ", tag.get_text(" ", strip=True)).strip(),
+            "html": str(tag)[:200],
+        })
+    return found
+
+
+def link_target_issues(pages, parsed=None) -> list:
+    """A link in a translation that goes somewhere else than in the original.
+
+    Found by hand in the three-language copy of a tourism site: the same link,
+    labelled "Palmanova" on all three pages, led to Palmanova's page in Italian
+    and to a neighbouring village's in English and German. Nothing about it is
+    invalid - every address is well-formed and returns 200 - and nothing on one
+    page shows it. It only shows when the two pages are held side by side,
+    which is what a crawl of a translated site already has.
+
+    Compared **by position**, link against link, and only when the two pages
+    carry the same number of links: that is a page built from the same
+    template, where "the n-th link" means the same link. A translation that
+    added or dropped a link has no such correspondence, and guessing one would
+    report an editor's choice as a defect.
+
+    A destination counts as the same when the language is the only difference
+    (`it.` / `en.` subdomain, `/en/` prefix, `?lang=`). An internal pair is
+    judged through the site's own hreflang declarations: the translation's
+    target should be the original target's alternate, and where either page
+    was not crawled nothing is said. Advisory: the tool can say the two
+    differ, not which one the editor meant.
+    """
+    readable = [p for p in pages
+                if getattr(p, "raw_html", "") and not getattr(p, "error", None)]
+    if len(readable) < _MIN_PAGES:
+        return []
+
+    parsed = parsed or _PageFacts()
+    by_url = {_normal(p.url): p for p in readable}
+    anchors: dict = {}
+    issues = []
+    seen = set()
+    for page in readable:
+        here = _normal(page.url)
+        for alternate in parsed.alternates(page):
+            target = by_url.get(alternate["url"])
+            if target is None or target is page or here > alternate["url"]:
+                continue  # one unordered pair, judged once
+            decided = _translation_of_the_pair(page, target, parsed)
+            if decided is None:
+                continue
+            subject, other = decided
+            for candidate in (subject, other):
+                if candidate.url not in anchors:
+                    anchors[candidate.url] = _anchors_of(candidate)
+            mine, theirs = anchors[subject.url], anchors[other.url]
+            if not mine or len(mine) != len(theirs):
+                continue
+            for index, (own, original) in enumerate(zip(mine, theirs)):
+                if _destination_signature(own["href"]) == _destination_signature(original["href"]):
+                    continue
+                own_host, original_host = _host_of(own["href"]), _host_of(original["href"])
+                internal = (own_host == _host_of(subject.url)
+                            and original_host == _host_of(other.url))
+                if internal:
+                    # Two addresses on the site itself, each in its own
+                    # language: right when one is declared the other's
+                    # alternate, unknowable when either was not crawled.
+                    one = by_url.get(_normal(own["href"]))
+                    two = by_url.get(_normal(original["href"]))
+                    if one is None or two is None:
+                        continue
+                    # Each page lists itself among its own alternates, so a
+                    # union of the two lists would "confirm" two pages that
+                    # have nothing to do with each other. The question is
+                    # one-directional: is the translation's target declared as
+                    # an alternate of the original's target (or the reverse).
+                    own_url, original_url = _normal(own["href"]), _normal(original["href"])
+                    if own_url == original_url:
+                        continue
+                    if own_url in {a["url"] for a in parsed.alternates(two)}:
+                        continue
+                    if original_url in {a["url"] for a in parsed.alternates(one)}:
+                        continue
+                key = (subject.url, index)
+                if key in seen:
+                    continue
+                seen.add(key)
+                issues.append(Issue(
+                    rule_id=RULE_LINK_TARGET_DIFFERS, severity=MODERATE,
+                    category=ACCESSIBILITY, confidence=ADVISORY,
+                    source=subject.url, engine="crawl", snippet=own["html"],
+                    details={"text": own["text"][:120], "href": own["href"],
+                             "target": original["href"],
+                             "language": _page_language(other) or alternate["language"],
+                             "other_text": original["text"][:120],
+                             "where": f"a[{index}]"}))
     return issues
 
 

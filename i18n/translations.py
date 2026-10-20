@@ -3117,9 +3117,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "If the image carries content, describe it: alt=\"the team lead on stage\". If it is decorative, give it an empty alt=\"\" and it will be skipped. An empty alt and a missing alt are not the same thing.",
     },
     "a11y_image_alt_filename_title": {
-        "uk": "Замість опису в alt стоїть імʼя файлу",
-        "it": "Nell'alt c'è il nome del file invece della descrizione",
-        "en": "The alt text is a file name, not a description",
+        "uk": "Замість опису в alt стоїть імʼя файлу або слаг",
+        "it": "Nell'alt c'è il nome del file o uno slug invece della descrizione",
+        "en": "The alt text is a file name or a slug, not a description",
     },
     "a11y_image_alt_filename_found": {
         "uk": "Знайдено: alt=\"{alt}\".",
@@ -3127,19 +3127,59 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Found: alt=\"{alt}\".",
     },
     "a11y_image_alt_filename_why": {
-        "uk": "Атрибут є, тож автоматичні перевірки мовчать, але читач чує «логотип два ікс крапка пеенге». Це гірше за відсутній alt: помилка захована, а користі нуль.",
-        "it": "L'attributo c'è, quindi i controlli automatici tacciono, ma chi ascolta sente «logo due per ics punto png». È peggio di un alt assente: l'errore è nascosto e l'utilità è zero.",
-        "en": "The attribute is there, so automated checks stay quiet, but the listener hears \"logo dash two x dot p n g\". That is worse than a missing alt: the error is hidden and the value is nil.",
+        "uk": "Атрибут є, тож автоматичні перевірки мовчать, але читач чує «логотип два ікс крапка пеенге» або «мапа дефіс парламанте дефіс пальманова». Це гірше за відсутній alt: помилка захована, а користі нуль. Слаг у alt зазвичай означає, що поле заповнив CMS, а не людина.",
+        "it": "L'attributo c'è, quindi i controlli automatici tacciono, ma chi ascolta sente «logo due per ics punto png» o «mappa trattino parlante trattino palmanova». È peggio di un alt assente: l'errore è nascosto e l'utilità è zero. Uno slug nell'alt di solito vuol dire che il campo l'ha riempito il CMS, non una persona.",
+        "en": "The attribute is there, so automated checks stay quiet, but the listener hears \"logo dash two x dot p n g\" or \"mappa dash parlante dash palmanova\". That is worse than a missing alt: the error is hidden and the value is nil. A slug in alt usually means the CMS filled the field, not a person.",
     },
     "a11y_image_alt_filename_fix": {
-        "uk": "Напишіть, що на зображенні або яку функцію воно виконує, а не як називається файл. Для логотипа це назва компанії: alt=\"xFormat\".",
-        "it": "Scrivi cosa mostra l'immagine o che funzione ha, non come si chiama il file. Per un logo è il nome dell'azienda: alt=\"xFormat\".",
-        "en": "Write what the image shows or what it does, not what the file is called. For a logo that is the company name: alt=\"xFormat\".",
+        "uk": "Напишіть, що на зображенні або яку функцію воно виконує, а не як називається файл. Для логотипа це назва компанії: alt=\"xFormat\". Якщо зображення суто декоративне, поставте порожній alt=\"\" і нічого не вигадуйте.",
+        "it": "Scrivi cosa mostra l'immagine o che funzione ha, non come si chiama il file. Per un logo è il nome dell'azienda: alt=\"xFormat\". Se l'immagine è solo decorativa, metti alt=\"\" vuoto e non inventare nulla.",
+        "en": "Write what the image shows or what it does, not what the file is called. For a logo that is the company name: alt=\"xFormat\". If the image is purely decorative, give it an empty alt=\"\" and do not invent a description.",
     },
     "a11y_control_name_title": {
         "uk": "Елемент керування без доступного імені",
         "it": "Controllo senza nome accessibile",
         "en": "Control with no accessible name",
+    },
+    "a11y_embedded_video_alternatives_title": {
+        "uk": "Вбудоване відео: перевірте субтитри, транскрипт і аудіоопис",
+        "it": "Video incorporato: verifica sottotitoli, trascrizione e audiodescrizione",
+        "en": "Embedded video: check captions, transcript and audio description",
+    },
+    "a11y_embedded_video_alternatives_found": {
+        "uk": "Знайдено: відео {provider} у <iframe> ({src}). Транскрипт на сторінці: {transcript}.",
+        "it": "Trovato: video {provider} in un <iframe> ({src}). Trascrizione nella pagina: {transcript}.",
+        "en": "Found: a {provider} video in an <iframe> ({src}). Transcript on the page: {transcript}.",
+    },
+    "a11y_embedded_video_alternatives_why": {
+        "uk": "Розмітка містить лише адресу плеєра, тому інструмент не бачить, чи є в самого відео субтитри. Автоматичні субтитри помиляються саме на власних назвах і термінах, а людина, яка не бачить кадру, втрачає все, що показано і не сказано вголос. Це не вирок, а місце, яке мусить перевірити людина.",
+        "it": "Il markup contiene solo l'indirizzo del player, quindi lo strumento non vede se il video ha i sottotitoli. I sottotitoli automatici sbagliano proprio sui nomi propri e sui termini, e chi non vede lo schermo perde tutto ciò che è mostrato e non detto. Non è un verdetto: è un punto che una persona deve controllare.",
+        "en": "The markup holds only the player's address, so the tool cannot see whether the video has captions. Automatic captions fail precisely on proper names and terms, and a person who cannot see the frame loses everything that is shown but not said aloud. This is not a verdict but a place a person has to check.",
+    },
+    "a11y_embedded_video_alternatives_fix": {
+        "uk": "Перевірте відео на хостингу: завантажте перевірені вручну субтитри (1.2.2), додайте під відео повну транскрипцію (1.2.3) і, для відео з важливим зображенням, аудіоопис або його версію (1.2.5). Якщо відео суто декоративне й без звуку, закрийте знахідку.",
+        "it": "Controlla il video sulla piattaforma: carica sottotitoli verificati a mano (1.2.2), pubblica sotto il video la trascrizione completa (1.2.3) e, se l'immagine porta informazione, un'audiodescrizione o una versione audiodescritta (1.2.5). Se il video è solo decorativo e senza audio, chiudi la segnalazione.",
+        "en": "Check the video on its host: upload hand-verified captions (1.2.2), publish the full transcript under the video (1.2.3) and, where the picture carries information, an audio description or a described version (1.2.5). If the video is purely decorative and silent, close the finding.",
+    },
+    "a11y_status_message_live_region_title": {
+        "uk": "Повідомлення про стан без live region",
+        "it": "Messaggi di stato senza live region",
+        "en": "Status messages with no live region",
+    },
+    "a11y_status_message_live_region_found": {
+        "uk": "Знайдено: <{element}> для підвантаження результатів, а на сторінці немає жодного aria-live, role=\"status\", role=\"alert\" чи <output>.",
+        "it": "Trovato: <{element}> che carica altri risultati, ma la pagina non ha alcun aria-live, role=\"status\", role=\"alert\" né <output>.",
+        "en": "Found: a <{element}> that loads more results, and the page has no aria-live, role=\"status\", role=\"alert\" or <output> anywhere.",
+    },
+    "a11y_status_message_live_region_why": {
+        "uk": "Після натискання контент змінюється без перезавантаження, а програма читання з екрана мовчить: ні «завантаження», ні «показано 12 з 40», ні «більше результатів немає». Людина не знає, що щось сталося. Інструмент не бачить, що пише скрипт, тому це лише вказівка, що області оголошень на сторінці немає взагалі.",
+        "it": "Dopo il clic il contenuto cambia senza ricaricare la pagina e lo screen reader tace: né «caricamento», né «mostrati 12 su 40», né «nessun altro risultato». La persona non sa che è successo qualcosa. Lo strumento non vede cosa scrive lo script, quindi è solo l'indizio che nella pagina non esiste alcuna area di annuncio.",
+        "en": "After the click the content changes without a page load and a screen reader says nothing: not \"loading\", not \"showing 12 of 40\", not \"no more results\". The person does not know anything happened. The tool cannot see what the script writes, so this is only the signal that the page has no announcement area at all.",
+    },
+    "a11y_status_message_live_region_fix": {
+        "uk": "Додайте порожню live region поза контейнером, який замінюється: <p role=\"status\" aria-live=\"polite\" class=\"visually-hidden\"></p>. Скрипт пише в неї «Завантаження...», потім «Показано N з M», потім «Більше результатів немає», і окремо повідомляє про помилку.",
+        "it": "Aggiungi una live region vuota fuori dal contenitore che viene sostituito: <p role=\"status\" aria-live=\"polite\" class=\"visually-hidden\"></p>. Lo script vi scrive «Caricamento...», poi «Mostrati N di M», poi «Nessun altro risultato», e segnala a parte l'errore.",
+        "en": "Add an empty live region outside the container that gets replaced: <p role=\"status\" aria-live=\"polite\" class=\"visually-hidden\"></p>. The script writes \"Loading...\", then \"Showing N of M\", then \"No more results\" into it, and announces an error separately.",
     },
     "a11y_control_name_found": {
         "uk": "Знайдено: <{element}> без тексту, aria-label, title і без повʼязаного <label>.",
@@ -3756,6 +3796,26 @@ _STRINGS: dict[str, dict[str, str]] = {
         "uk": "Знайдіть, звідки береться цей рядок. Якщо він приходить із коду, проведіть його через ту саму систему перекладу, що й решту інтерфейсу; якщо з контенту, допишіть переклад у цій мовній версії. Виняток, який тут очікуваний: власні назви, назви організацій і адреси лишаються мовою оригіналу навмисно, і такі знахідки треба просто закрити.",
         "it": "Trova da dove arriva questa stringa. Se viene dal codice, falla passare dallo stesso sistema di traduzione del resto dell'interfaccia; se viene dai contenuti, inserisci la traduzione in questa versione linguistica. L'eccezione attesa: nomi propri, denominazioni di enti e indirizzi restano di proposito nella lingua originale, e queste segnalazioni vanno semplicemente chiuse.",
         "en": "Find where this string comes from. If it comes from the code, route it through the same translation system as the rest of the interface; if it comes from the content, add the translation in this language version. The expected exception: proper nouns, organisation names and addresses stay in the source language on purpose, and those findings should simply be closed.",
+    },
+    "a11y_link_target_differs_across_translations_title": {
+        "uk": "Посилання в перекладі веде не туди, куди в оригіналі",
+        "it": "Il link nella traduzione porta altrove rispetto all'originale",
+        "en": "A link in the translation goes somewhere other than in the original",
+    },
+    "a11y_link_target_differs_across_translations_found": {
+        "uk": 'Посилання "{text}" веде на {href}, а те саме за позицією посилання у версії "{language}" ("{other_text}") веде на {target}.',
+        "it": 'Il link "{text}" porta a {href}, mentre lo stesso link per posizione nella versione "{language}" ("{other_text}") porta a {target}.',
+        "en": 'The link "{text}" goes to {href}, while the link in the same position in the "{language}" version ("{other_text}") goes to {target}.',
+    },
+    "a11y_link_target_differs_across_translations_why": {
+        "uk": "Читач бачить те саме слово, а потрапляє на іншу сторінку: у прикладі з аудиту «Palmanova» в англійській і німецькій версіях вело до сусіднього села. Нічого не зламано технічно, тож жодна перевірка однієї сторінки цього не бачить, а людина, яка користується програмою читання з екрана, не має способу це помітити, поки не перейде.",
+        "it": "Chi legge vede la stessa parola e finisce su un'altra pagina: nell'esempio dell'audit «Palmanova» nelle versioni inglese e tedesca portava a un paese vicino. Tecnicamente nulla è rotto, quindi nessun controllo su una singola pagina lo vede, e chi usa uno screen reader non ha modo di accorgersene prima di seguire il link.",
+        "en": "The reader sees the same word and lands on a different page: in the audit's example \"Palmanova\" led to a neighbouring village in the English and German versions. Nothing is technically broken, so no single-page check sees it, and a screen reader user has no way to notice until they follow the link.",
+    },
+    "a11y_link_target_differs_across_translations_fix": {
+        "uk": "Звірте обидві адреси. Якщо різниця випадкова, виправте її в мовній версії, де вона хибна. Якщо вона навмисна (інший сайт для іншої мови), закрийте знахідку: інструмент бачить, що адреси різні, але не те, яка з них задумана.",
+        "it": "Confronta i due indirizzi. Se la differenza è casuale, correggila nella versione linguistica sbagliata. Se è voluta (un altro sito per un'altra lingua), chiudi la segnalazione: lo strumento vede che gli indirizzi sono diversi, non quale dei due sia quello inteso.",
+        "en": "Compare the two addresses. If the difference is accidental, fix it in the language version that is wrong. If it is deliberate (a different site for a different language), close the finding: the tool can see that the addresses differ, not which one was meant.",
     },
     "a11y_seo_slug_not_translated_title": {
         "uk": "Адреса лишилась мовою оригіналу",
@@ -5391,6 +5451,117 @@ _STRINGS: dict[str, dict[str, str]] = {
               "with a visible outline or shadow that contrasts with the "
               "background.",
     },
+    "a11y_state:focus_indicator_low_contrast_title": {
+        "uk": "Індикатор фокуса майже зливається з тлом",
+        "it": "L'indicatore del focus si distingue appena dallo sfondo",
+        "en": "The focus indicator barely stands out from the background",
+    },
+    "a11y_state:focus_indicator_low_contrast_found": {
+        "uk": "Індикатор фокуса ({indicator}, {color}) на тлі {background} дає "
+              "контраст {ratio}:1, а потрібно щонайменше {required}:1.",
+        "it": "L'indicatore del focus ({indicator}, {color}) su sfondo "
+              "{background} ha un contrasto di {ratio}:1, ne servono almeno "
+              "{required}:1.",
+        "en": "The focus indicator ({indicator}, {color}) on a {background} "
+              "background has a contrast of {ratio}:1; at least {required}:1 "
+              "is needed.",
+    },
+    "a11y_state:focus_indicator_low_contrast_why": {
+        "uk": "Обведення є, тож перевірка «чи змінилось щось» мовчить, але "
+              "бачити його майже неможливо: білий контур на білій шапці. "
+              "Людина, яка ходить сторінкою з клавіатури, і далі не знає, де "
+              "вона. Це та сама проблема, що й відсутній фокус, тільки "
+              "захована.",
+        "it": "Il contorno c'è, quindi il controllo «è cambiato qualcosa?» "
+              "tace, ma è quasi impossibile vederlo: un contorno bianco su "
+              "un'intestazione bianca. Chi naviga da tastiera continua a non "
+              "sapere dove si trova. È lo stesso problema del focus assente, "
+              "solo nascosto.",
+        "en": "There is an outline, so the \"did anything change\" check stays "
+              "quiet, but it is almost impossible to see: a white outline on a "
+              "white header. Someone moving through the page by keyboard "
+              "still cannot tell where they are. It is the same problem as a "
+              "missing focus ring, only hidden.",
+    },
+    "a11y_state:focus_indicator_low_contrast_fix": {
+        "uk": "Зробіть контур контрастним до сусіднього тла (щонайменше 3:1) "
+              "або додайте другий контур протилежного кольору, як два кільця "
+              "біле плюс темне. Перевіряйте і у sticky-стані, де тло інше.",
+        "it": "Rendi il contorno contrastato rispetto allo sfondo adiacente "
+              "(almeno 3:1) oppure aggiungi un secondo anello di colore "
+              "opposto, bianco più scuro. Controlla anche nello stato sticky, "
+              "dove lo sfondo è diverso.",
+        "en": "Give the outline at least 3:1 against the background next to "
+              "it, or add a second ring of the opposite colour, a white one "
+              "plus a dark one. Check the sticky state too, where the "
+              "background is different.",
+    },
+    "a11y_state:focus_obscured_title": {
+        "uk": "Елемент у фокусі повністю закритий фіксованим блоком",
+        "it": "L'elemento con il focus è coperto del tutto da un blocco fisso",
+        "en": "The focused element is entirely covered by a fixed block",
+    },
+    "a11y_state:focus_obscured_found": {
+        "uk": "Коли браузер прокручує елемент до {edge} краю вікна, його "
+              "повністю перекриває {coveredBy} (висота {coverHeight} px). "
+              "Таких елементів на сторінці: {count}.",
+        "it": "Quando il browser porta l'elemento al bordo {edge} della "
+              "finestra, lo copre del tutto {coveredBy} (altezza "
+              "{coverHeight} px). Elementi interessati nella pagina: {count}.",
+        "en": "When the browser scrolls the element to the {edge} edge of the "
+              "window, {coveredBy} ({coverHeight} px tall) covers it "
+              "completely. Elements affected on this page: {count}.",
+    },
+    "a11y_state:focus_obscured_why": {
+        "uk": "Людина, яка йде сторінкою з клавіатури, бачить, як фокус "
+              "зникає під липкою шапкою: елемент сфокусований, але його не "
+              "видно. Shift+Tab угору веде просто під шапку, тому страждають "
+              "саме посилання хлібних крихт і початок сторінки.",
+        "it": "Chi naviga da tastiera vede il focus sparire sotto "
+              "l'intestazione fissa: l'elemento è a fuoco ma non si vede. "
+              "Shift+Tab verso l'alto porta proprio sotto l'intestazione, "
+              "quindi a soffrirne sono i link del breadcrumb e l'inizio della "
+              "pagina.",
+        "en": "Someone moving through the page by keyboard watches focus "
+              "disappear under the sticky header: the element is focused but "
+              "cannot be seen. Shift+Tab upwards lands right under the "
+              "header, so the breadcrumb links and the top of the page suffer "
+              "most.",
+    },
+    "a11y_state:focus_not_measured_title": {
+        "uk": "Фокус на цій сторінці не вдалося виміряти",
+        "it": "Il focus di questa pagina non è stato misurabile",
+        "en": "Focus could not be measured on this page",
+    },
+    "a11y_state:focus_not_measured_found": {
+        "uk": "Сторінка не мала фокуса вікна, тому стилі :focus не застосовувались до {count} перевірених елементів.",
+        "it": "La pagina non aveva il focus della finestra, quindi gli stili :focus non si sono applicati ai {count} elementi controllati.",
+        "en": "The page did not have window focus, so :focus styles did not apply to the {count} elements checked.",
+    },
+    "a11y_state:focus_not_measured_why": {
+        "uk": "Відсутність знахідок про фокус у цьому звіті нічого не доводить: перевірки видимості фокуса, його контрасту і перекриття не мали з чого читати. Це не дефект сторінки, а межа самого прогону.",
+        "it": "L'assenza di segnalazioni sul focus in questo rapporto non prova nulla: i controlli su visibilità, contrasto e copertura del focus non avevano nulla da leggere. Non è un difetto della pagina ma un limite di questa esecuzione.",
+        "en": "The absence of focus findings in this report proves nothing: the checks for focus visibility, contrast and obstruction had nothing to read. This is not a defect of the page but a limit of this run.",
+    },
+    "a11y_state:focus_not_measured_fix": {
+        "uk": "Запустіть аудит у режимі CLI (`audit --browser`), де прихованому переглядачу надається фокус, або перевірте фокус вручну клавішею Tab.",
+        "it": "Esegui l'audit da riga di comando (`audit --browser`), dove alla vista nascosta viene dato il focus, oppure controlla il focus a mano con il tasto Tab.",
+        "en": "Run the audit from the command line (`audit --browser`), where the hidden view is given focus, or check focus by hand with the Tab key.",
+    },
+    "a11y_state:focus_obscured_fix": {
+        "uk": "Одне правило на весь сайт: `scroll-margin-top` (або "
+              "`scroll-padding-top` на контейнері прокрутки) дорівнює висоті "
+              "липкої шапки, краще через CSS-змінну. Для нижньої панелі "
+              "так само `scroll-margin-bottom`.",
+        "it": "Una sola regola per tutto il sito: `scroll-margin-top` (o "
+              "`scroll-padding-top` sul contenitore di scorrimento) uguale "
+              "all'altezza dell'intestazione fissa, meglio con una variabile "
+              "CSS. Per una barra in basso vale `scroll-margin-bottom`.",
+        "en": "One rule for the whole site: `scroll-margin-top` (or "
+              "`scroll-padding-top` on the scroll container) equal to the "
+              "sticky header's height, ideally through a CSS variable. For a "
+              "bar at the bottom, `scroll-margin-bottom` does the same.",
+    },
     "a11y_state:focus_order_mismatch_title": {
         "uk": "Порядок фокуса не збігається з порядком читання",
         "it": "L'ordine del focus non segue l'ordine di lettura",
@@ -5737,9 +5908,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Convert images to WebP or AVIF and add srcset with multiple sizes. Modern build tools do this automatically.",
     },
     "a11y_advisory": {
-        "uk": "Дорадча ознака: жоден інструмент не вирішить це за вас. Чи варто додавати цей сигнал, вирішує редактор.",
-        "it": "Segnale consultivo: nessuno strumento può deciderlo al posto tuo. Se valga la pena aggiungerlo lo decide la redazione.",
-        "en": "Advisory signal: no tool can settle this for you. Whether the signal is worth adding is an editorial call.",
+        "uk": "Дорадча ознака: жоден інструмент не вирішить це за вас. Чи це дефект, чи свідомий вибір, вирішує людина.",
+        "it": "Segnale consultivo: nessuno strumento può deciderlo al posto tuo. Se sia un difetto o una scelta voluta lo decide una persona.",
+        "en": "Advisory signal: no tool can settle this for you. Whether it is a defect or a deliberate choice is a person's call.",
     },
     "a11y_needs_browser": {
         "uk": "Часткова перевірка: без запуску браузера видно лише те, що є в самій розмітці. Решту треба звірити на живій сторінці.",
@@ -6784,6 +6955,10 @@ _STRINGS: dict[str, dict[str, str]] = {
     },
     "word_yes": {"uk": "так", "it": "sì", "en": "yes"},
     "word_no": {"uk": "ні", "it": "no", "en": "no"},
+    # The window edge a focused element was scrolled to, as an adjective that
+    # agrees with "edge" in the sentence that uses it (`focus-obscured`).
+    "word_edge_top": {"uk": "верхнього", "it": "superiore", "en": "top"},
+    "word_edge_bottom": {"uk": "нижнього", "it": "inferiore", "en": "bottom"},
     "severity_critical": {"uk": "критично", "it": "critico", "en": "critical"},
     "severity_serious": {"uk": "серйозно", "it": "serio", "en": "serious"},
     "severity_moderate": {"uk": "помірно", "it": "moderato", "en": "moderate"},

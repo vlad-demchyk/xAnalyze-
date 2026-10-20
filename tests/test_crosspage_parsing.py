@@ -67,9 +67,10 @@ class MarkupIsParsedOncePerPage(unittest.TestCase):
 
     def test_each_page_is_parsed_a_bounded_number_of_times(self):
         pages = _site(5, ("it", "en", "de"))
-        # Three questions per page - alternates, `x-default`, comparable
-        # strings - and none of them asked twice.
-        self.assertLessEqual(self.parses_for(pages), 3 * len(pages))
+        # Four questions per page - alternates, `x-default`, comparable
+        # strings, and the page's links (for translated-link targets) - and
+        # none of them asked twice.
+        self.assertLessEqual(self.parses_for(pages), 4 * len(pages))
 
     def test_the_answer_is_unchanged_by_the_caching(self):
         pages = _site(3, ("it", "en"))

@@ -88,6 +88,10 @@ def render(issue, lang: str = "uk") -> IssueExplanation:
     for name, value in list(fields.items()):
         if isinstance(value, bool):
             fields[name] = t("word_yes" if value else "word_no", lang)
+    # The window edge is data (`top`, `bottom`) and has to read as a word that
+    # agrees with the sentence it sits in, in the reader's language.
+    if fields.get("edge") in ("top", "bottom"):
+        fields["edge"] = t(f"word_edge_{fields['edge']}", lang)
     _add_count_noun(stem, fields, lang)
 
     # All four strings get the same values: "how to fix it" is worth far
@@ -307,16 +311,36 @@ def _template_fields(details: dict) -> dict:
     for key in ("src", "alt", "text", "href", "element", "id", "attribute",
                 "missing", "value", "count", "rows", "tracks", "ratio",
                 "required", "foreground", "background", "content", "from", "to",
-                "marker", "tool", "path", "names", "read"):
+                "marker", "tool", "path", "names", "read", "indicator", "color",
+                "edge", "coveredBy", "coverHeight", "provider", "target",
+                "language", "other_text"):
         fields.setdefault(key, "")
     return fields
 
 
 def _wcag_for(rule_id: str) -> tuple:
+    """The success criteria a rule contributes to.
+
+    The registry knows its own rules. The browser's state pass and the
+    whole-crawl comparisons are not registry rules, so they used to print no
+    criterion at all - the report showed "WCAG 2.4.7" for a static finding and
+    nothing for the same criterion measured live. Each of those modules now
+    declares its own table and this is the one place that reads them.
+    """
     try:
         return RuleRegistry.create(rule_id).wcag
     except KeyError:
-        return ()
+        pass
+    from .crosspage import CROSSPAGE_WCAG
+    from .states import STATE_WCAG
+    if rule_id.startswith("state:"):
+        return STATE_WCAG.get(rule_id[len("state:"):], ())
+    # HTML_CodeSniffer names its rules after the criterion they came from:
+    # `htmlcs:2_5_3` is 2.5.3, `htmlcs:1_3_1_A` is 1.3.1 at level A.
+    match = re.match(r"^htmlcs:(\d)_(\d)_(\d{1,2})(?:_|$)", rule_id)
+    if match:
+        return (".".join(match.groups()),)
+    return CROSSPAGE_WCAG.get(rule_id, ())
 
 
 #: The noun after a document count, by language. Locative case in Ukrainian

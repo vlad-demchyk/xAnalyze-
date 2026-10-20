@@ -130,18 +130,33 @@ ciascuno correggibile sul posto.
 
 **Regole del sito**, per categoria, con il numero che la suite verifica:
 
-`accessibility` (37), `best-practices` (13), `geo` (2), `performance` (8), `security` (10), `seo` (8)
+`accessibility` (39), `best-practices` (13), `geo` (2), `performance` (8), `security` (10), `seo` (8)
 
 Una regola gira dove significa qualcosa e da nessun'altra parte, e a deciderlo
 è una prova: la sintassi del file (le regole JSX solo in `.jsx`/`.tsx`), a cosa
 serve il documento (le regole email solo su un'email) e quale stack il progetto
 ha provato su disco (la regola di escaping WordPress solo in WordPress).
 
+**Scritte per ciò che un audit manuale ha trovato.** Un `alt` in forma di slug
+(`mappa-parlante-palmanova`, `Piazza-Grande`, una data) e non solo un nome di
+file con estensione; un video YouTube, Vimeo o simile incorporato, di cui la
+pagina non dice nulla su sottotitoli, trascrizione e audiodescrizione (1.2.2,
+1.2.3, 1.2.5); un pulsante «carica altri» in una pagina senza live region
+(4.1.3); e, su un sito multilingue scansionato, un link che nella traduzione
+porta altrove rispetto all'originale (2.4.4). I controlli su video, live region
+e link tradotti sono `advisory`: indicano dove deve guardare una persona, non
+che la pagina sia bocciata.
+
 **Nel browser**, quando ce n'è uno: axe-core e HTML_CodeSniffer, la pagina nello
-stato in cui la mette una persona - indicatore di focus, trappole da tastiera,
-ordine di focus, contenuto solo in hover, una modale aperta, il percorso del
-modulo - e la stessa pagina a più larghezze. Legge e non agisce mai: nulla viene
-digitato, cliccato o inviato.
+stato in cui la mette una persona - indicatore di focus e se si distingue dallo
+sfondo (3:1), se un'intestazione fissa copre l'elemento a fuoco (2.4.11),
+trappole da tastiera, ordine di focus, contenuto solo in hover, una modale
+aperta, il percorso del modulo - e la stessa pagina a più larghezze. Legge e non
+agisce mai: nulla viene digitato, cliccato o inviato. Nell'app desktop la pagina
+nascosta non può prendere il focus della finestra senza toglierlo alla finestra
+principale, quindi i tre controlli sul focus riportano lì `focus-not-measured`
+(visibile con `--unsettled`); la riga di comando li misura. Ogni segnalazione
+porta i criteri WCAG a cui contribuisce, nel rapporto e in `--json` (`wcag`).
 
 **Provenienza, non verdetti.** Campi IPTC/XMP e manifest C2PA in ogni immagine a
 cui la pagina rimanda (di ciascuna si scaricano solo i primi 512 KB), e i fatti

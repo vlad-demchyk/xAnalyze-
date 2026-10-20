@@ -136,18 +136,32 @@ fixable in place.
 
 **Website rules**, by category, with the count the test suite enforces:
 
-`accessibility` (37), `best-practices` (13), `geo` (2), `performance` (8), `security` (10), `seo` (8)
+`accessibility` (39), `best-practices` (13), `geo` (2), `performance` (8), `security` (10), `seo` (8)
 
 A rule runs where it means something and nowhere else, decided on evidence:
 the file's syntax (JSX rules only in `.jsx`/`.tsx`), what the document is for
 (email rules only on an email), and which stack the project proved on disk
 (the WordPress escaping rule only in WordPress).
 
+**Written for what a manual audit found.** An `alt` that is a slug
+(`mappa-parlante-palmanova`, `Piazza-Grande`, a date) and not only a file name
+with an extension; a YouTube, Vimeo or similar embed whose captions, transcript
+and audio description the page does not answer (1.2.2, 1.2.3, 1.2.5); a "load
+more" button on a page with no live region (4.1.3); and, across a crawled
+multilingual site, a link that goes somewhere else in the translation than in
+the original (2.4.4). The embed, live-region and translated-link checks are
+`advisory`: they say where a person must look, not that the page fails.
+
 **In a browser**, when one is available: axe-core and HTML_CodeSniffer, the
-page in the state a person puts it in - focus indicator, keyboard traps, focus
-order, hover-only content, an open modal, the form journey - and the same page
-at several widths. It reads and never acts: nothing is typed, clicked or
-submitted.
+page in the state a person puts it in - focus indicator and whether it can be
+seen against its background (3:1), whether a sticky header covers the focused
+element (2.4.11), keyboard traps, focus order, hover-only content, an open
+modal, the form journey - and the same page at several widths. It reads and
+never acts: nothing is typed, clicked or submitted. In the desktop app the
+hidden page cannot take window focus without stealing it from the main window,
+so the three focus checks report `focus-not-measured` there (shown with
+`--unsettled`); the command line measures them. Every finding carries the WCAG
+criteria it contributes to, in the report and in `--json` (`wcag`).
 
 **Provenance, not verdicts.** IPTC/XMP fields and C2PA manifests in every
 image a page refers to (only the first 512 KB of each is fetched), and

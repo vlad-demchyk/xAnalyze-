@@ -45,6 +45,48 @@ class Images(unittest.TestCase):
     def test_real_description_is_left_alone(self):
         self.assertEqual(issues('<img src="/a.png" alt="The team lead on stage">'), [])
 
+    # --- alt written as a slug (the Palmanova media library) -----------------
+
+    def test_slug_alt_without_extension_is_flagged_as_advisory(self):
+        for alt in ("mappa-parlante-palmanova", "meccanica-della-fortezza",
+                    "gallerie-e-baluardo-donato", "Pasquetta-sui-Bastioni",
+                    "infografica-meccanica-della-fortezza"):
+            with self.subTest(alt=alt):
+                found = issues(f'<img src="/a.jpg" alt="{alt}">', "image-alt-filename")
+                self.assertEqual(len(found), 1)
+                self.assertEqual(found[0].confidence, audit.ADVISORY)
+                self.assertEqual(found[0].details["kind"], "slug")
+
+    def test_alt_equal_to_the_files_stem_is_exact(self):
+        found = issues('<img src="/up/Piazza-Grande-1024x683.jpg" alt="Piazza-Grande">',
+                       "image-alt-filename")
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0].confidence, audit.EXACT)
+        self.assertEqual(found[0].details["kind"], "filename")
+
+    def test_stem_match_ignores_case_underscores_and_size_suffix(self):
+        found = issues('<img src="/up/piazza_grande-scaled.jpg?ver=2" alt="Piazza-Grande">',
+                       "image-alt-filename")
+        self.assertEqual([i.confidence for i in found], [audit.EXACT])
+
+    def test_date_and_camera_counter_alts_are_flagged(self):
+        for alt in ("2025-10-28", "IMG_2034", "DSC0001", "screenshot-12"):
+            with self.subTest(alt=alt):
+                self.assertEqual(
+                    len(issues(f'<img src="/a.png" alt="{alt}">', "image-alt-filename")), 1)
+
+    def test_short_hyphenated_words_and_prose_are_left_alone(self):
+        # One hyphen, a name that is not the file's, a sentence, a single word.
+        for alt in ("Wi-Fi", "Piazza-Grande", "Logo", "Porta Udine, la porta est",
+                    "Una galleria sotterranea di contromina", "Rievocazione storica"):
+            with self.subTest(alt=alt):
+                self.assertEqual(
+                    issues(f'<img src="/other.jpg" alt="{alt}">', "image-alt-filename"), [])
+
+    def test_empty_alt_is_never_a_slug(self):
+        self.assertEqual(issues('<img src="/mappa-parlante-palmanova.jpg" alt="">',
+                                "image-alt-filename"), [])
+
 
 class Controls(unittest.TestCase):
     def test_icon_only_button_has_no_name(self):
