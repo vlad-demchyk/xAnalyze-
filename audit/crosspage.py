@@ -21,7 +21,8 @@ Two things this does not do:
 from __future__ import annotations
 
 import re
-from urllib.parse import urljoin, urlsplit, urlunsplit
+import unicodedata
+from urllib.parse import unquote, urljoin, urlsplit, urlunsplit
 
 from bs4 import BeautifulSoup
 from .base import ACCESSIBILITY, ADVISORY, EXACT, Issue, MINOR, MODERATE, SEO
@@ -537,9 +538,17 @@ def _destination_signature(url: str) -> tuple:
     segments = [s for s in path.split("/") if s]
     if segments and _PATH_LANGUAGE_RE.match(segments[0]):
         segments = segments[1:]
-    query = sorted(
-        pair for pair in (parts.query or "").split("&")
-        if pair and not _NOISE_PARAMS_RE.match(pair.split("=", 1)[0]))
+    def keeps(pair: str) -> bool:
+        name, _, value = pair.partition("=")
+        if _NOISE_PARAMS_RE.match(name):
+            return False
+        # A share button carries the address of the page it sits on
+        # (`sharer.php?u=http%3A%2F%2F...`), so the same button differs on
+        # every page by construction. A value that is itself a URL says where
+        # the visitor is, not where the link goes.
+        return "://" not in unquote(value)
+
+    query = sorted(pair for pair in (parts.query or "").split("&") if pair and keeps(pair))
     return (host, "/" + "/".join(segments), tuple(query))
 
 
@@ -608,32 +617,61 @@ def link_target_issues(pages, parsed=None) -> list:
             mine, theirs = anchors[subject.url], anchors[other.url]
             if not mine or len(mine) != len(theirs):
                 continue
+            wanted = (_page_language(subject) or "").split("-")[0]
+            differing = []
             for index, (own, original) in enumerate(zip(mine, theirs)):
                 if _destination_signature(own["href"]) == _destination_signature(original["href"]):
+                    continue
+                # The same link is the same words, or a name that survives
+                # translation. Two links with nothing in common are two
+                # different links that happen to stand at the same position -
+                # the cards of an archive, sorted differently in each
+                # language - and one pointing elsewhere than the other is
+                # then simply true.
+                if not _same_link_text(own["text"], original["text"]):
                     continue
                 own_host, original_host = _host_of(own["href"]), _host_of(original["href"])
                 internal = (own_host == _host_of(subject.url)
                             and original_host == _host_of(other.url))
                 if internal:
                     # Two addresses on the site itself, each in its own
-                    # language: right when one is declared the other's
-                    # alternate, unknowable when either was not crawled.
+                    # language. The original's target declares what its
+                    # translation into this page's language is; the link is
+                    # wrong when it points anywhere else. Where nothing is
+                    # declared - a paginated archive, a filtered list, any
+                    # address with no hreflang pair - there is nothing to call
+                    # wrong: "not declared" is not "different". Compared
+                    # without the query, because a filter's value is a
+                    # translated slug (`?tipo_luogo=innerhalb` against
+                    # `?tipo_luogo=dentro-le-mura`) and says nothing about
+                    # which page the link leads to.
                     one = by_url.get(_normal(own["href"]))
                     two = by_url.get(_normal(original["href"]))
                     if one is None or two is None:
                         continue
-                    # Each page lists itself among its own alternates, so a
-                    # union of the two lists would "confirm" two pages that
-                    # have nothing to do with each other. The question is
-                    # one-directional: is the translation's target declared as
-                    # an alternate of the original's target (or the reverse).
-                    own_url, original_url = _normal(own["href"]), _normal(original["href"])
-                    if own_url == original_url:
+                    own_path, original_path = _without_query(own["href"]), _without_query(original["href"])
+                    if own_path == original_path:
                         continue
-                    if own_url in {a["url"] for a in parsed.alternates(two)}:
+                    expected = {_without_query(a["url"]) for a in parsed.alternates(two)
+                                if wanted and a["language"].split("-")[0] == wanted}
+                    if not expected or own_path in expected:
                         continue
-                    if original_url in {a["url"] for a in parsed.alternates(one)}:
-                        continue
+                elif _destination_signature(own["href"])[0] == _destination_signature(original["href"])[0]:
+                    # Same third-party site, different path: that is what a
+                    # translated address looks like (`/de/2017/03/16/x` against
+                    # `/2017/02/03/x`, `ger/intro.mp3` against `ita/intro.mp3`).
+                    # Only a different *site* is something to point at.
+                    continue
+                differing.append((index, own, original))
+            # Compared by position, so the comparison is only as good as the
+            # two pages' links being in the same order. A listing - cards of
+            # an archive, in the order each language sorts them - is not, and
+            # reports most of its links as different. A defect is the odd
+            # link out; when a quarter or more differ, the pages are not
+            # comparable by position and nothing is said.
+            if len(differing) > max(2, len(mine) // 4):
+                continue
+            for index, own, original in differing:
                 key = (subject.url, index)
                 if key in seen:
                     continue
@@ -648,6 +686,33 @@ def link_target_issues(pages, parsed=None) -> list:
                              "other_text": original["text"][:120],
                              "where": f"a[{index}]"}))
     return issues
+
+
+def _same_link_text(first: str, second: str) -> bool:
+    """Are these two link texts plausibly the same link in two languages?
+
+    True when they are equal once case and accents are folded, or share a word
+    of four letters or more (`Palmanova`, `Strassoldo`, a name, a number).
+    Empty text is no evidence either way - an icon link says nothing about
+    what it is - so it is not "the same".
+    """
+    def words(text: str) -> set:
+        folded = unicodedata.normalize("NFKD", text or "").encode("ascii", "ignore").decode().lower()
+        return set(re.findall(r"[a-z0-9]+", folded))
+
+    one, two = words(first), words(second)
+    if not one or not two:
+        return False
+    return one == two or any(len(word) >= 4 for word in one & two)
+
+
+def _without_query(url: str) -> str:
+    """An address as a place, with the query and fragment taken off."""
+    parts = urlsplit(url)
+    path = parts.path or "/"
+    if len(path) > 1:
+        path = path.rstrip("/")
+    return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), path, "", ""))
 
 
 def as_documents(pages, root_url: str = "") -> list:

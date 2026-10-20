@@ -165,20 +165,89 @@ class TranslatedLinks(unittest.TestCase):
             page("https://s.test/b", _doc("it", alt_b, "")),
             page("https://s.test/en/b-en", _doc("en", alt_b, "")),
         ]
-        right = [page("https://s.test/", _doc("it", home, '<a href="/a">Casa</a>')),
-                 page("https://s.test/en/", _doc("en", home, '<a href="/en/a-en">Home</a>'))]
-        wrong = [page("https://s.test/", _doc("it", home, '<a href="/a">Casa</a>')),
-                 page("https://s.test/en/", _doc("en", home, '<a href="/en/b-en">Home</a>'))]
+        right = [page("https://s.test/", _doc("it", home, '<a href="/a">Hotel</a>')),
+                 page("https://s.test/en/", _doc("en", home, '<a href="/en/a-en">Hotel</a>'))]
+        wrong = [page("https://s.test/", _doc("it", home, '<a href="/a">Hotel</a>')),
+                 page("https://s.test/en/", _doc("en", home, '<a href="/en/b-en">Hotel</a>'))]
         self.assertEqual(link_target_issues(right + crawled), [])
         hits = link_target_issues(wrong + crawled)
         self.assertEqual([h.source for h in hits], ["https://s.test/en/"])
+
+    def test_a_share_button_carries_its_own_page_and_that_is_not_a_destination(self):
+        # Measured on the three-language site: 86 pages each reported four
+        # share buttons, because `sharer.php?u=<this page>` is different on
+        # every page by construction.
+        pages = self.pages(
+            '<a href="https://www.facebook.com/sharer/sharer.php?u=https%3A%2F%2Fs.test%2F">F</a>',
+            '<a href="https://www.facebook.com/sharer/sharer.php?u=https%3A%2F%2Fs.test%2Fen%2F">F</a>')
+        self.assertEqual(link_target_issues(pages), [])
+
+    def test_a_share_button_to_a_different_network_is_still_a_difference(self):
+        pages = self.pages(
+            '<a href="https://www.facebook.com/sharer/sharer.php?u=https%3A%2F%2Fs.test%2F">F</a>',
+            '<a href="https://twitter.com/intent/tweet?text=https%3A%2F%2Fs.test%2Fen%2F">F</a>')
+        self.assertEqual(len(link_target_issues(pages)), 1)
+
+    def test_paginated_and_filtered_archive_links_have_no_declared_translation(self):
+        # Both targets were crawled, neither declares an hreflang pair: "not
+        # declared" is not "different". 229 internal findings of this shape,
+        # none a defect, came from one crawl.
+        home = ALTERNATES
+        crawled = [page("https://s.test/arch/page/2/", _doc("it", {}, "")),
+                   page("https://s.test/en/arch/page/2/", _doc("en", {}, ""))]
+        pages = [page("https://s.test/", _doc("it", home, '<a href="/arch/page/2/">2</a>')),
+                 page("https://s.test/en/", _doc("en", home, '<a href="/en/arch/page/2/">2</a>'))]
+        self.assertEqual(link_target_issues(pages + crawled), [])
+
+    def test_a_third_party_site_with_a_different_path_is_a_translated_address(self):
+        # `ger/intro.mp3` against `ita/intro.mp3`, `/de/2017/03/16/x` against
+        # `/2017/02/03/x`: the same site, so only a different *site* counts.
+        pages = self.pages(
+            '<a href="https://media.test/audio/ita/intro.mp3">Audio</a>',
+            '<a href="https://media.test/audio/ger/intro.mp3">Audio</a>')
+        self.assertEqual(link_target_issues(pages), [])
+
+    def test_a_filter_whose_value_is_a_translated_slug_is_not_a_different_page(self):
+        home = ALTERNATES
+        alt_a = {"it": "https://s.test/a", "en": "https://s.test/en/a-en"}
+        crawled = [page("https://s.test/a?f=dentro", _doc("it", alt_a, "")),
+                   page("https://s.test/en/a-en?f=inside", _doc("en", alt_a, ""))]
+        pages = [page("https://s.test/", _doc("it", home, '<a href="/a?f=dentro">Dentro</a>')),
+                 page("https://s.test/en/", _doc("en", home, '<a href="/en/a-en?f=inside">Inside</a>'))]
+        self.assertEqual(link_target_issues(pages + crawled), [])
+
+    def test_pages_whose_links_mostly_differ_are_not_comparable_by_position(self):
+        # An archive lists its cards in the order each language sorts them.
+        it = "".join(f'<a href="https://a.test/{n}">{n}</a>' for n in range(8))
+        en = "".join(f'<a href="https://b.test/{n}">{n}</a>' for n in range(8))
+        self.assertEqual(link_target_issues(self.pages(it, en)), [])
+
+    def test_two_links_with_nothing_in_common_are_two_different_links(self):
+        # Cards of a listing in a different order: same position, different
+        # card, so a different target is simply true. Not "Palmanova" against
+        # "Strassoldo" under one label.
+        pages = self.pages('<a href="https://a.test/1">Porta Udine</a>',
+                           '<a href="https://b.test/2">Duomo Dogale</a>')
+        self.assertEqual(link_target_issues(pages), [])
+
+    def test_an_icon_link_with_no_text_is_no_evidence(self):
+        pages = self.pages('<a href="https://a.test/1"><i></i></a>',
+                           '<a href="https://b.test/2"><i></i></a>')
+        self.assertEqual(link_target_issues(pages), [])
+
+    def test_the_odd_link_out_among_many_is_still_found(self):
+        same = "".join(f'<a href="https://a.test/{n}">{n}</a>' for n in range(20))
+        pages = self.pages(same + '<a href="https://palmanova.test/">Palmanova</a>',
+                           same + '<a href="https://strassoldo.test/">Palmanova</a>')
+        self.assertEqual([h.details["href"] for h in link_target_issues(pages)],
+                         ["https://strassoldo.test/"])
 
     def test_an_uncrawled_internal_target_is_not_guessed_at(self):
         pages = self.pages('<a href="/a">Casa</a>', '<a href="/en/zzz">Home</a>')
         self.assertEqual(link_target_issues(pages), [])
 
     def test_the_source_language_page_is_never_the_one_blamed(self):
-        pages = self.pages('<a href="https://x.test/1">A</a>', '<a href="https://x.test/2">A</a>')
+        pages = self.pages('<a href="https://x.test/1">A</a>', '<a href="https://y.test/1">A</a>')
         self.assertEqual({h.source for h in link_target_issues(pages)}, {"https://s.test/en/"})
 
 
