@@ -6,7 +6,7 @@
     {
       "name": "xanalyze",
       "source": "./xanalyze",
-      "version": "0.70.0",
+      "version": "0.71.1",
       "description": "How an agent works with XAnalyze: AI-copy and character scans, website audits, fixes, runs and the agent protocol"
     }
   ]

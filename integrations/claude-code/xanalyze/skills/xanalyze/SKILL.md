@@ -32,6 +32,7 @@ Options worth knowing (`xanalyze COMMAND --help` lists all):
 - `--json` (machine result on stdout), `--report FILE.md|.json` (briefing for an agent), `--styled-report FILE.html|.pdf` (for a person).
 - `--browser` / `--no-browser`: the browser pass adds axe-core, HTML_CodeSniffer, focus, keyboard, forms and target size (2.5.8). Without it only markup is read, much faster.
 - `--depth N --max-pages N` for a crawl; `--site-controls` reads robots.txt and sitemaps.
+- `--color-scheme dark` shows the page `prefers-color-scheme: dark`. One scheme per run: a site with a dark theme needs a second run, and each page records the scheme it actually saw.
 - `--repo PATH` maps a site's findings to files; `--devserver` starts the project's own server and audits the rendered site.
 - `--category`, `--confidence exact|needs-browser|advisory`, `--unsettled` are views over one pass, not different runs.
 - `--language uk|it|en` is the report's language. `--detector offline|ai|hybrid|embedding` for the AI-copy pass (offline is free and the default; `ai` is billed to the account `--provider` names).
