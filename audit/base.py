@@ -713,6 +713,138 @@ def source_tag_name(tag) -> str:
     return "".join(name)
 
 
+def source_position(tag) -> tuple:
+    """`(markup, offset)` of the tag's `<` in the file, or `(None, -1)`.
+
+    For a rule that has to read what surrounds an element in the source -
+    which branch of a JSX conditional it sits in - rather than the element.
+    """
+    markup, line_starts = _source_of(tag)
+    line = getattr(tag, "sourceline", None)
+    column = getattr(tag, "sourcepos", None)
+    if not markup or not line_starts or not line or column is None:
+        return None, -1
+    index = int(line) - 1
+    if not 0 <= index < len(line_starts):
+        return None, -1
+    start = line_starts[index] + int(column)
+    if not 0 <= start < len(markup) or markup[start] != "<":
+        return None, -1
+    return markup, start
+
+
+def opening_tag_source(tag) -> str:
+    """The whole opening tag as written, however long; "" without a source."""
+    markup, start = source_position(tag)
+    if markup is None:
+        return ""
+    end = _open_tag_end(markup, start)
+    return markup[start:end] if end != -1 else ""
+
+
+def attribute_expression(tag, attribute: str) -> str:
+    """The JS inside `attribute={…}` in the source, or "".
+
+    The parser cannot give it back: `aria-describedby={on ? `${id}-x` :
+    undefined}` reaches it as an attribute whose value is `{on` and a row of
+    junk attributes after it. Read from the file, braces balanced and string
+    literals skipped.
+    """
+    opening = opening_tag_source(tag)
+    if not opening:
+        return ""
+    match = re.search(r"(?<![\w-])" + re.escape(attribute) + r"\s*=\s*\{",
+                      opening, re.IGNORECASE)
+    if match is None:
+        return ""
+    depth, index, quote = 1, match.end(), ""
+    while index < len(opening):
+        char = opening[index]
+        if quote:
+            if char == "\\":
+                index += 2
+                continue
+            if char == quote:
+                quote = ""
+        elif char in "\"'`":
+            quote = char
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return opening[match.end():index].strip()
+        index += 1
+    return ""
+
+
+_BRANCHES_ATTR = "_xa_jsx_branches"
+
+
+def _branches_of(tag):
+    """The scanned constructs of the file this tag came from, or None."""
+    from .jsx_branches import Branches
+
+    node = tag
+    while node is not None and getattr(node, SOURCE_ATTR, None) is None:
+        node = getattr(node, "parent", None)
+    if node is None:
+        return None
+    branches = getattr(node, _BRANCHES_ATTR, None)
+    if branches is None:
+        branches = Branches(getattr(node, SOURCE_ATTR))
+        setattr(node, _BRANCHES_ATTR, branches)
+    return branches
+
+
+def jsx_path(tag, depth: int = 5) -> str:
+    """A readable path to a JSX element: its real JSX ancestors, as written.
+
+    The CSS path a page gets is wrong for a component file. An HTML parser
+    turns `useState<string>()` and `Record<CoachSessionParticipant["status"],
+    …>` into tags, and every element after them is nested inside: the
+    selectors read `coachsessionparticipant["status"],:nth-of-type(1) >
+    string,:…`. Only elements the scanner saw open as JSX are kept, in their
+    source spelling (`Select`, `div.card`), the nearest few.
+    """
+    branches = _branches_of(tag)
+    if branches is None:
+        return ""
+    parts = []
+    node = tag
+    while node is not None and getattr(node, "name", None) not in (None, "[document]"):
+        _markup, offset = source_position(node)
+        if offset in branches.tags and (node is tag or offset not in branches.self_closing):
+            name = source_tag_name(node) or node.name
+            classes = node.get("classname") or node.get("class") or ""
+            if isinstance(classes, list):
+                classes = " ".join(classes)
+            first = classes.split()[0] if classes and not classes.startswith("{") else ""
+            if first and re.fullmatch(r"[\w-]+", first):
+                name = f"{name}.{first}"
+            parts.append(name)
+            if len(parts) >= depth:
+                break
+        node = node.parent
+    return " > ".join(reversed(parts))
+
+
+def jsx_exclusive(first, second) -> bool:
+    """Can these two JSX elements never render together?
+
+    True when they sit on different arms of one conditional, of one
+    `cond &&` / `!cond &&` pair, or in two separate `return` statements.
+    False whenever that cannot be shown - including for anything that is
+    not JSX source - so a caller only ever stays silent on proof.
+    """
+    markup, one = source_position(first)
+    other_markup, two = source_position(second)
+    if markup is None or other_markup is not markup:
+        return False
+    branches = _branches_of(first)
+    return branches.exclusive(one, two) if branches is not None else False
+
+
 def snippet_of(tag, limit: int = 160) -> str:
     """The opening tag as it is written in the file.
 

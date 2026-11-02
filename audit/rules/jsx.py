@@ -39,7 +39,7 @@ import re
 
 from ..base import (
     ACCESSIBILITY, ADVISORY, BEST_PRACTICES, MINOR, MODERATE, SERIOUS,
-    Issue, Rule, RuleRegistry, snippet_of, source_tag_name,
+    Issue, Rule, RuleRegistry, opening_tag_source, snippet_of, source_tag_name,
 )
 
 #: Elements that are keyboard-reachable and actionable on their own. A click
@@ -149,6 +149,40 @@ def _is_interactive(tag) -> bool:
     return _role_of(tag) in _INTERACTIVE_ROLES
 
 
+_ARIA_HIDDEN_TRUE = re.compile(
+    r"""aria-hidden\s*=\s*(?:"true"|'true'|\{\s*true\s*\}|\{\s*["']true["']\s*\})""",
+    re.IGNORECASE)
+
+
+def _is_modal_backdrop(tag) -> bool:
+    """The dimmed layer behind a dialog, which closes it on click.
+
+    `<div className="modal-dim" onClick={close} aria-hidden="true" />` next
+    to `<div role="dialog" aria-modal="true">`: hidden from assistive
+    technology on purpose, and a mouse shortcut for what the dialog itself
+    offers the keyboard (its close button, Escape). Asking it for a key
+    handler or a role would make a hidden element focusable - the opposite
+    of a fix. Both shapes on `apps/coach/src` were this.
+    """
+    # Read from the file as well as the parse: `onClick={() => close()}`
+    # ends the tag at `=>` for an HTML parser, and every attribute after it
+    # - `aria-hidden` included - never reaches the tree.
+    hidden = (tag.get("aria-hidden") or "").strip().lower() == "true" or bool(
+        _ARIA_HIDDEN_TRUE.search(opening_tag_source(tag)))
+    if not hidden:
+        return False
+    parent = tag.parent
+    if parent is None:
+        return False
+    for other in parent.find_all(True):
+        if other is tag:
+            continue
+        if _role_of(other) in ("dialog", "alertdialog") or \
+                (other.get("aria-modal") or "").strip().lower() == "true":
+            return True
+    return False
+
+
 class JsxRule(Rule):
     """Base for this module: JSX only, declared once."""
     category = ACCESSIBILITY
@@ -212,7 +246,7 @@ class JsxClickWithoutKey(JsxRule):
             # well made one anchor three rows.
             if tag.name == "a":
                 continue
-            if _is_inert_handler(tag):
+            if _is_inert_handler(tag) or _is_modal_backdrop(tag):
                 continue
             if _has_any(tag, _KEY_HANDLERS):
                 continue
@@ -244,7 +278,7 @@ class JsxNoninteractiveHandler(JsxRule):
         for tag in document.find_all(attrs={"onclick": True}):
             if _is_component(tag) or _is_interactive(tag) or tag.name == "a":
                 continue
-            if _is_inert_handler(tag):
+            if _is_inert_handler(tag) or _is_modal_backdrop(tag):
                 continue
             # A role plus a tabIndex is the author doing this on purpose and
             # doing it correctly; either alone leaves half of it undone.

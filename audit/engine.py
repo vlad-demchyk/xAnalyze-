@@ -396,6 +396,12 @@ def analyze_document(markup: str, source: str, rules=None,
     context.syntax = syntax
     context.stacks = tuple(stacks or ())
     context.dom_path = _dom_path
+    if syntax == "jsx":
+        # A component file has no DOM to point into; the parser's invented
+        # ancestors made selectors nobody could read. See `jsx_path`.
+        from .base import jsx_path
+
+        context.dom_path = lambda tag: jsx_path(tag) or _dom_path(tag)
     if line_numbers:
         context.line_of = _line_lookup(markup)
 

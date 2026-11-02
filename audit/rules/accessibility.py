@@ -21,7 +21,8 @@ import re
 
 from ..base import (
     ACCESSIBILITY, ADVISORY, CRITICAL, EXACT, MINOR, MODERATE, NEEDS_BROWSER, PERFORMANCE,
-    SERIOUS, Issue, Rule, RuleRegistry, is_binding, snippet_of,
+    SERIOUS, Issue, Rule, RuleRegistry, attribute_expression, is_binding,
+    jsx_exclusive, snippet_of,
 )
 
 # Elements that are focusable and actionable, i.e. need an accessible name.
@@ -225,12 +226,35 @@ class ControlName(AccessibilityRule):
             if _is_hidden(tag):
                 continue
             selector, line = context.locate(tag)
+            component = context.syntax == "jsx" and _written_as_component(tag)
+            if component and any((tag.get(prop) or "").strip()
+                                 for prop in _COMPONENT_NAMING_PROPS):
+                # `<Select label={t("lesson")}>` from a design system: the
+                # parser lowercases it into a `<select>` with no name, and a
+                # *critical* went out about a control whose component turns
+                # `label` into `aria-labelledby`. What `Select` renders is
+                # that component's business and this file cannot see it.
+                continue
+            # A component with no naming prop keeps the full weight: on
+            # XFormat these were `<Input placeholder=…>`, and a placeholder
+            # is not a name whatever `Input` renders.
             issues.append(Issue(
-                rule_id=self.id, severity=self.severity, selector=selector, line=line,
-                snippet=snippet_of(tag), source=context.source,
-                details={"element": tag.name},
+                rule_id=self.id, severity=self.severity, selector=selector,
+                line=line, snippet=snippet_of(tag), source=context.source,
+                details={"element": tag.name, "component": component},
             ))
         return issues
+
+
+#: Props a component conventionally turns into an accessible name.
+_COMPONENT_NAMING_PROPS = ("label", "aria-label", "aria-labelledby", "title",
+                           "labelledby", "arialabel")
+
+
+def _written_as_component(tag) -> bool:
+    from .jsx import _is_component
+
+    return _is_component(tag)
 
 
 def _is_hidden(tag) -> bool:
@@ -717,6 +741,14 @@ class DuplicateIds(AccessibilityRule):
                 # `onClick={close}`; found on `ChatMessageRenderer.tsx` and
                 # `SettingsCollapsible.tsx` once repo mode could read `.tsx`.
                 continue
+            if identifier in seen and context.syntax == "jsx" and all(
+                    jsx_exclusive(earlier, tag) for earlier in seen[identifier]):
+                # The sign-in and the sign-up arm of one page each write
+                # `<h1 id="auth-title">`, and only one of them renders. The
+                # parser sees both; the source says they cannot meet.
+                # Measured on `apps/coach/src`: 17 of 25 problems.
+                seen[identifier].append(tag)
+                continue
             if identifier in seen:
                 # `for`, `aria-labelledby` and `aria-describedby` all resolve
                 # to the *first* match, so a duplicate silently points every
@@ -738,7 +770,7 @@ class DuplicateIds(AccessibilityRule):
                     line=line, snippet=snippet_of(tag), source=context.source,
                     details={"id": identifier, "in_svg": in_svg},
                 ))
-            seen[identifier] = tag
+            seen.setdefault(identifier, []).append(tag)
         return issues
 
 
@@ -762,10 +794,35 @@ class BrokenAriaReference(AccessibilityRule):
     def check(self, document, context) -> list:
         issues = []
         ids = {tag.get("id") for tag in document.find_all(id=True)}
+        id_expressions = None
         for attribute in self._REFERENCING:
             for tag in document.find_all(attrs={attribute: True}):
-                missing = [token for token in (tag.get(attribute) or "").split()
-                           if token not in ids]
+                expression = (attribute_expression(tag, attribute)
+                              if is_binding(tag.get(attribute) or "") else "")
+                if expression:
+                    if id_expressions is None:
+                        id_expressions = _id_expressions(document)
+                    verdict = _expression_reference(expression, ids, id_expressions)
+                    if verdict == "resolved":
+                        continue
+                    if verdict == "unknown":
+                        # `aria-labelledby={labelledBy}`: a prop, whose value
+                        # is decided by whoever renders this. Nothing here can
+                        # call it broken; the rendered page can.
+                        selector, line = context.locate(tag)
+                        issues.append(Issue(
+                            rule_id=self.id, severity=MINOR,
+                            confidence=NEEDS_BROWSER, selector=selector,
+                            line=line, snippet=snippet_of(tag),
+                            source=context.source,
+                            details={"attribute": attribute, "missing": [],
+                                     "value": expression[:120],
+                                     "dynamic": True, "has_space": False}))
+                        continue
+                    missing = verdict
+                else:
+                    missing = [token for token in (tag.get(attribute) or "").split()
+                               if token not in ids]
                 if not missing:
                     continue
                 # A dangling aria-labelledby is worse than none: the element
@@ -793,6 +850,53 @@ class BrokenAriaReference(AccessibilityRule):
                              "has_space": " " in raw},
                 ))
         return issues
+
+
+_STRING_LITERAL = re.compile(r"\"([^\"]*)\"|'([^']*)'")
+_TEMPLATE_LITERAL = re.compile(r"`[^`]*`")
+
+
+def _normal_expression(text: str) -> str:
+    return re.sub(r"\s+", "", text or "")
+
+
+def _id_expressions(document) -> set:
+    """The JS expressions `id={…}` is written with in this file."""
+    found = set()
+    for tag in document.find_all(id=True):
+        if is_binding(tag.get("id") or ""):
+            expression = attribute_expression(tag, "id")
+            if expression:
+                found.add(_normal_expression(expression))
+    return found
+
+
+def _expression_reference(expression: str, ids: set, id_expressions: set):
+    """What an `aria-*={…}` expression points at, as far as the file shows.
+
+    "resolved" when one of the values it can take is an id this file has -
+    a literal (`cond ? "title" : undefined`), a template literal written the
+    same way as an element's `id={…}`, or the very expression an element's
+    id is (`aria-labelledby={titleId}` beside `id={titleId}`). The list of
+    missing ids when it only offers literals and none exists. "unknown"
+    when nothing in it can be read without running it.
+    """
+    whole = _normal_expression(expression)
+    if whole in id_expressions:
+        return "resolved"
+    templates = [_normal_expression(m) for m in _TEMPLATE_LITERAL.findall(expression)]
+    if any(template in id_expressions or "{" + template + "}" in id_expressions
+           for template in templates):
+        return "resolved"
+    literals = [one or two for one, two in _STRING_LITERAL.findall(
+        _TEMPLATE_LITERAL.sub("", expression))]
+    literals = [value for value in literals if value.strip()]
+    if any(all(token in ids for token in value.split()) for value in literals):
+        return "resolved"
+    if literals and not templates:
+        return [token for value in literals for token in value.split()
+                if token not in ids]
+    return "unknown"
 
 
 class ButtonWithoutType(AccessibilityRule):
@@ -1911,6 +2015,16 @@ class AbbreviationExpansion(AccessibilityRule):
         # comment has no reader to be accessible to, and `stripped_strings`,
         # which every other rule here reads through, skips them already.
         skip_types = (Comment, Doctype, ProcessingInstruction)
+        # In a React file the parser's "text" is mostly code. Only what the
+        # scanner reads as JSX text can be shown to anyone; `CSS.escape` and
+        # `JSON.parse` were five of the eight findings on `apps/coach/src`.
+        shown = None
+        if context.syntax == "jsx":
+            from audit.base import document_source
+            from audit.jsx_branches import visible_text
+
+            shown = {m.group(1) for m in self._matcher().finditer(
+                visible_text(document_source(document)))}
         for tag in document.find_all(string=True):
             if isinstance(tag, skip_types):
                 continue
@@ -1922,6 +2036,8 @@ class AbbreviationExpansion(AccessibilityRule):
             for match in self._matcher().finditer(str(tag)):
                 abbrev = match.group(1)
                 if abbrev in reported:
+                    continue
+                if shown is not None and abbrev not in shown:
                     continue
                 if parent and parent.find("abbr", string=lambda s: s and abbrev in s):
                     continue

@@ -135,7 +135,12 @@ ciascuno correggibile sul posto.
 Una regola gira dove significa qualcosa e da nessun'altra parte, e a deciderlo
 è una prova: la sintassi del file (le regole JSX solo in `.jsx`/`.tsx`), a cosa
 serve il documento (le regole email solo su un'email) e quale stack il progetto
-ha provato su disco (la regola di escaping WordPress solo in WordPress).
+ha provato su disco (la regola di escaping WordPress solo in WordPress). In un
+file React le regole leggono il componente come è scritto: due elementi su rami
+diversi di una condizione, di `cond &&` / `!cond &&` o in `return` separati non
+sono un id duplicato, il testo nel codice (`JSON.parse`, `CSS.escape`) non è
+testo, un componente del design system con la prop `label` ha un nome, e i
+selettori sono il percorso JSX (`section.card > div.list > img`).
 
 **Scritte per ciò che un audit manuale ha trovato.** Un `alt` in forma di slug
 (`mappa-parlante-palmanova`, `Piazza-Grande`, una data) e non solo un nome di

@@ -141,7 +141,12 @@ fixable in place.
 A rule runs where it means something and nowhere else, decided on evidence:
 the file's syntax (JSX rules only in `.jsx`/`.tsx`), what the document is for
 (email rules only on an email), and which stack the project proved on disk
-(the WordPress escaping rule only in WordPress).
+(the WordPress escaping rule only in WordPress). In a React file the rules
+read the component as written: two elements on different arms of a
+conditional, of `cond &&` / `!cond &&` or in separate `return`s are not a
+duplicate id, text in code (`JSON.parse`, `CSS.escape`) is not text, a
+design-system component with a `label` prop is named, and selectors are the
+JSX path (`section.card > div.list > img`).
 
 **Written for what a manual audit found.** An `alt` that is a slug
 (`mappa-parlante-palmanova`, `Piazza-Grande`, a date) and not only a file name
