@@ -656,8 +656,20 @@ class HeadingOrder(AccessibilityRule):
         headings = [h for h in document.find_all(re.compile(r"^h[1-6]$"))
                     if _text_of(h)]
         previous = 0
+        seen: list = []
         for heading in headings:
             level = int(heading.name[1])
+            if context.syntax == "jsx":
+                # The heading before this one *in the same render*. An early
+                # `return` with its own h1, or the other arm of a
+                # conditional, is never on screen with this heading, and
+                # comparing the two reported jumps no page has. A component
+                # that starts at h3 is still fine: the first heading of a
+                # render is compared with nothing, because its level depends
+                # on the page that places it.
+                previous = next((int(h.name[1]) for h in reversed(seen)
+                                 if not jsx_exclusive(h, heading)), 0)
+                seen.append(heading)
             if previous and level > previous + 1:
                 # Headings are how a screen reader user skims. A jump from h2
                 # to h4 reads as a missing section, not as a design choice.

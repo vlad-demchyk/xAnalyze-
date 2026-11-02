@@ -152,6 +152,29 @@ class ReadableSelectors(unittest.TestCase):
         self.assertEqual(found[0].selector, "section.card > div.list > img")
 
 
+class HeadingsPerRender(unittest.TestCase):
+    def test_an_early_return_with_its_own_heading_is_not_a_jump(self):
+        source = """export function P() {
+  if (!user) return <main><h1>Sign in</h1></main>;
+  return (<main><h3>History</h3></main>);
+}"""
+        self.assertEqual(_audit(source, "heading-order"), [])
+
+    def test_the_other_arm_of_a_conditional_is_not_a_jump(self):
+        source = """export function P() {
+  return (<section>{tab === "a" ? <h2>Now</h2> : <h4>Then</h4>}</section>);
+}"""
+        self.assertEqual(_audit(source, "heading-order"), [])
+
+    def test_a_jump_in_one_render_is_still_reported(self):
+        # SessionsPage.tsx before e214956f: h1, then h3 in the same page.
+        source = """export function P() {
+  return (<main><h1>Sessions</h1><section><h3>Monday</h3></section></main>);
+}"""
+        found = _audit(source, "heading-order")
+        self.assertEqual([(i.details["from"], i.details["to"]) for i in found], [(1, 3)])
+
+
 class UntranslatedLiteral(unittest.TestCase):
     def test_a_literal_beside_translated_texts(self):
         source = """export function S() { const { t } = useTranslation();
