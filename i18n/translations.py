@@ -5584,13 +5584,19 @@ _STRINGS: dict[str, dict[str, str]] = {
     "a11y_state:focus_obscured_found": {
         "uk": "Коли браузер прокручує елемент до {edge} краю вікна, його "
               "повністю перекриває {coveredBy} (висота {coverHeight} px). "
-              "Таких елементів на сторінці: {count}.",
+              "Таких елементів на сторінці: {count}. Рамки (x, y, ширина, "
+              "висота) у вікні {viewport}: елемент {elementBox}, перекриття "
+              "{coverBox}.",
         "it": "Quando il browser porta l'elemento al bordo {edge} della "
               "finestra, lo copre del tutto {coveredBy} (altezza "
-              "{coverHeight} px). Elementi interessati nella pagina: {count}.",
+              "{coverHeight} px). Elementi interessati nella pagina: {count}. "
+              "Riquadri (x, y, larghezza, altezza) nella finestra {viewport}: "
+              "elemento {elementBox}, copertura {coverBox}.",
         "en": "When the browser scrolls the element to the {edge} edge of the "
               "window, {coveredBy} ({coverHeight} px tall) covers it "
-              "completely. Elements affected on this page: {count}.",
+              "completely. Elements affected on this page: {count}. Boxes "
+              "(x, y, width, height) in a {viewport} window: element "
+              "{elementBox}, cover {coverBox}.",
     },
     "a11y_state:focus_obscured_why": {
         "uk": "Людина, яка йде сторінкою з клавіатури, бачить, як фокус "

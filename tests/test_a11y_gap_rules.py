@@ -414,6 +414,11 @@ class InARealBrowser(unittest.TestCase):
         self.assertEqual(hits[0].details["edge"], "top")
         self.assertIn("header", hits[0].details["coveredBy"])
         self.assertEqual(hits[0].details["coverHeight"], 98)
+        # Both boxes and the window, so the finding can be checked by hand.
+        cover = [int(v) for v in hits[0].details["coverBox"].split(",")]
+        self.assertEqual(cover[3], 98)
+        self.assertEqual(len(hits[0].details["elementBox"].split(",")), 4)
+        self.assertRegex(hits[0].details["viewport"], r"^\d+x\d+$")
 
     def test_the_measurement_leaves_no_trace_in_the_quoted_markup(self):
         for issues in self.found.values():

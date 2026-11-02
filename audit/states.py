@@ -499,9 +499,19 @@ STATE_SCRIPT = r"""
         if (entirely && covering) {
           obscuredTotal += 1;
           if (obscuredRecords.length < 5) {
+            // Both boxes, as the browser had them at that moment: a finding
+            // that could not be reproduced by hand in Coach's lesson editor
+            // said only what covered the element, not where either was.
+            var cover = covering.getBoundingClientRect();
+            var round = function(r) {
+              return [Math.round(r.left), Math.round(r.top),
+                      Math.round(r.width), Math.round(r.height)];
+            };
             obscuredRecords.push(record('focus-obscured', el, {
               edge: edge, coveredBy: selectorFor(covering),
-              coverHeight: Math.round(covering.getBoundingClientRect().height)}));
+              coverHeight: Math.round(cover.height),
+              elementBox: round(box).join(','), coverBox: round(cover).join(','),
+              viewport: window.innerWidth + 'x' + window.innerHeight}));
           }
         }
       });
