@@ -550,14 +550,35 @@ STATE_SCRIPT = r"""
   // --- 3. Does focus order follow reading order? --------------------------
   // Compared against document order rather than pixel position, because a
   // two-column layout legitimately reads down one column first.
-  var lastTop = -Infinity, mismatches = 0, firstMismatch = null;
+  //
+  // Two things are not a jump back up. A move to a column further right
+  // starts at the top again, which is how a page with a sidebar after its
+  // article reads left to right. And an element inside a sticky or fixed
+  // box has a position that depends on the scroll, not on the document:
+  // Coach's help pinned "On this page" at the top of the window, and its
+  // seven links read as seven jumps up. Both reset the comparison instead.
+  function pinned(el) {
+    for (var node = el; node && node !== document.body; node = node.parentElement) {
+      var position = getComputedStyle(node).position;
+      if (position === 'sticky' || position === 'fixed') return true;
+    }
+    return false;
+  }
+  var lastTop = -Infinity, prevRight = -Infinity, mismatches = 0, firstMismatch = null;
   candidates.forEach(function(el) {
-    var top = el.getBoundingClientRect().top + window.scrollY;
+    if (pinned(el)) return;
+    var box = el.getBoundingClientRect();
+    var top = box.top + window.scrollY;
     if (top < lastTop - 40) {
-      mismatches += 1;
-      if (!firstMismatch) firstMismatch = el;
+      if (box.left >= prevRight - 1) {
+        lastTop = top;            // a new column to the right starts here
+      } else {
+        mismatches += 1;
+        if (!firstMismatch) firstMismatch = el;
+      }
     }
     lastTop = Math.max(lastTop, top);
+    prevRight = box.right;
   });
   if (mismatches > 2 && firstMismatch) {
     record('focus-order-mismatch', firstMismatch, {count: mismatches});
