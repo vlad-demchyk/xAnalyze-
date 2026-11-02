@@ -314,7 +314,7 @@ class AuditPanelMixin:
             self.status_bar.showMessage(t("audit_document_level", self.lang))
         if self.current_preview_url != address:
             self.current_preview_url = address
-            self.site_view.setUrl(QUrl(address))
+            self.site_loader.navigate(QUrl(address))
             self.mirror_preview_to_comparison(QUrl(address))
         else:
             self._run_pending_highlight()

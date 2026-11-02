@@ -367,17 +367,28 @@ class FindingsPanelMixin:
         self._pending_highlight_tag = ""
         if self.current_preview_url != block.page_url:
             self.current_preview_url = block.page_url
-            self.site_view.setHtml(page.raw_html, QUrl(block.page_url))
+            self.site_loader.load(page.raw_html, QUrl(block.page_url))
             self.mirror_preview_to_comparison(html=page.raw_html,
                                               base=QUrl(block.page_url))
         else:
             self._run_pending_highlight()
 
-    def _on_preview_loaded(self, _ok: bool) -> None:
+    def _on_preview_loaded(self, ok: bool, error: str = "") -> None:
         # Whether the column shows the browser or the empty state follows
         # from whether a page is in it, and that is decided here - a load
         # finishing is the only moment it changes.
         self._apply_mode_visibility()
+        if not ok:
+            # Said, not swallowed: an unchanged pane beside a list of
+            # findings reads as the findings being about the page shown.
+            self._pending_highlight_dom_path = ""
+            # Forgotten, so the next click on the same page tries again
+            # rather than highlighting into a pane that never got it.
+            self.current_preview_url = None
+            message = t("preview_load_failed", self.lang)
+            self.status_bar.showMessage(
+                f"{message} {error}".strip() if error else message)
+            return
         self._run_pending_highlight()
 
     def _highlight_color(self) -> QColor:

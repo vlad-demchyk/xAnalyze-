@@ -4883,6 +4883,11 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Questa segnalazione riguarda il documento nel suo insieme: non c'è un elemento da evidenziare.",
         "en": "This finding is about the document as a whole - there is no single element to highlight.",
     },
+    "preview_load_failed": {
+        "uk": "Не вдалося показати сторінку в попередньому перегляді.",
+        "it": "Impossibile mostrare la pagina nell'anteprima.",
+        "en": "The page could not be shown in the preview.",
+    },
     # Media provenance (`audit/media.py`). Every one of these is worded as
     # "the file says", never as "this is AI": what was read is a statement
     # the file makes about itself, and the absence of one means nothing at

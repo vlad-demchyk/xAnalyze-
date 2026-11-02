@@ -50,6 +50,7 @@ from repo_scanner import (
 )
 from ui import theme
 from ui.code_preview import highlight_range
+from ui.preview_loader import CapturedHtmlLoader
 from ui.site_preview import build_highlight_js
 from ui.window_parts.account import (
     AccountMixin, _UNASKED, _ask_account_later,
@@ -890,18 +891,19 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             # to paint the preview made an honest two-pass analysis issue a
             # third page request, and the preview could then show a newer
             # revision than the findings beside it. Use the captured
-            # extraction when it fits Qt's setHtml limit; very large pages
-            # retain the normal navigation fallback.
+            # extraction whatever its size (`ui/preview_loader.py` owns Qt's
+            # setHtml limit); only a page that was never captured is loaded
+            # from its address.
             snapshot = self.view_model._snapshot
             preview = next(
                 (page.raw_html for page in (snapshot.pages if snapshot else ())
                  if page.url in (first.source, address) and page.raw_html), "")
-            if preview and len(preview.encode("utf-8")) < 1_800_000:
-                self.site_view.setHtml(preview, QUrl(address))
+            if preview:
+                self.site_loader.load(preview, QUrl(address))
                 self.mirror_preview_to_comparison(html=preview,
                                                   base=QUrl(address))
             else:
-                self.site_view.setUrl(QUrl(address))
+                self.site_loader.navigate(QUrl(address))
                 self.mirror_preview_to_comparison(QUrl(address))
         self._update_audit_buttons_enabled()
         self.diagnose_finished_run()
@@ -1495,7 +1497,11 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
 
         self.col1_stack = QStackedWidget()
         self.site_view = QWebEngineView()
-        self.site_view.loadFinished.connect(self._on_preview_loaded)
+        # Through the loader, not `loadFinished`: for a large captured page
+        # Qt finishes loading an empty bootstrap before the page is written
+        # into it, and a highlight run then would find nothing.
+        self.site_loader = CapturedHtmlLoader(self.site_view)
+        self.site_loader.ready.connect(self._on_preview_loaded)
         # Chromium paints white until the page has something to draw, which in
         # a dark theme reads as a broken pane for the second or two a real site
         # takes to arrive.
@@ -1987,9 +1993,9 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         if checked:
             address = self.current_preview_url or ""
             if address:
-                self.compare_view.setUrl(QUrl(address))
+                self.compare_loader.navigate(QUrl(address))
             elif self.site_view.url().isValid():
-                self.compare_view.setUrl(self.site_view.url())
+                self.compare_loader.navigate(self.site_view.url())
         self._fit_preview_zoom()
 
     def _build_compare_pane(self) -> None:
@@ -2001,6 +2007,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             return
         self._compare_width = widths[-1][1]
         self.compare_view = QWebEngineView()
+        self.compare_loader = CapturedHtmlLoader(self.compare_view)
         self.compare_view.page().setBackgroundColor(
             QColor(self.palette_tokens.page_bg))
         self.compare_pane = QWidget()
@@ -2080,9 +2087,10 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         if pane is None or not pane.isVisible() or self.compare_view is None:
             return
         if html:
-            self.compare_view.setHtml(html, base or QUrl())
+            self.compare_loader.load(html, base or QUrl())
         elif url is not None:
-            self.compare_view.setUrl(url if isinstance(url, QUrl) else QUrl(url))
+            self.compare_loader.navigate(
+                url if isinstance(url, QUrl) else QUrl(url))
         self._fit_compare_zoom()
 
     def _fit_compare_zoom(self) -> None:
@@ -3043,7 +3051,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         self._expanded_item = None
         self.current_preview_url = None
         self.current_preview_path = None
-        self.site_view.setHtml("", QUrl())
+        self.site_loader.load("", QUrl())
         self.code_view.setPlainText("")
         self._reset_detail_panel()
 
@@ -3268,7 +3276,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
         if first is not None:
             address = _browser_url(first.source)
             self.current_preview_url = address
-            self.site_view.setUrl(QUrl(address))
+            self.site_loader.navigate(QUrl(address))
         # Recomputed here, not only when the mode changes: whether there is
         # anything to write, and whether there is anything to take back, are
         # both facts about the result that just arrived.
