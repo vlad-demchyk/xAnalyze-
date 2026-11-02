@@ -74,7 +74,13 @@ class UnsandboxedFrame(SecurityRule):
     guessing at it would be a finding about the framework rather than the page.
     """
     id = "sec-frame-sandbox"
-    severity = SERIOUS
+    # Moderate, not serious. A cross-origin frame cannot read or script the
+    # page around it, and browsers already stop it from navigating the top
+    # window or opening a popup without the person's own click. What is
+    # left is hardening, and every YouTube and Google Maps embed on a site
+    # lacks it: 111 rows on one crawl of Palmanova, ranked beside contrast
+    # failures a visitor actually meets.
+    severity = MODERATE
     wcag = ()
 
     def check(self, document, context) -> list:

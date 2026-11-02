@@ -95,5 +95,60 @@ class EnglishPageWithAnItalianName(unittest.TestCase):
         self.assertEqual(lang_detect.guess_language_safe(body), "it")
 
 
+SKIP_LINK_PAGE = """<!DOCTYPE html><html lang="it"><head><title>t</title><style>
+  header { background: #050505; padding: 20px; }
+  .skip { position: fixed; color: #007a52; clip: rect(0 0 0 0); width: 1px;
+          height: 1px; overflow: hidden; }
+  .skip:focus { clip: auto; width: auto; height: auto; color: #333; background: #fff; }
+  .faint { color: #9a9a9a; background: #ffffff; }
+</style></head><body><header><a class="skip" href="#main">Vai al contenuto</a>
+<span style="color:#fff">Palmanova</span></header>
+<main id="main"><h1>Titolo</h1><p class="faint">Testo grigio chiaro su bianco.</p></main>
+</body></html>"""
+
+
+class HiddenSkipLinkContrast(unittest.TestCase):
+    """`htmlcs:1_4_3` on Palmanova's skip link, 327 times: measured while
+    clipped to one pixel against the header's dark background (3.79:1); as
+    shown on focus it is 12.63:1."""
+
+    @classmethod
+    def setUpClass(cls):
+        from audit import driver
+
+        usable, reason = driver.available()
+        if not usable:
+            raise unittest.SkipTest(reason)
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from audit import browser
+
+        with TemporaryDirectory() as folder:
+            path = Path(folder) / "page.html"
+            path.write_text(SKIP_LINK_PAGE, encoding="utf-8")
+            options = browser.BrowserAuditOptions(
+                run_axe=False, run_htmlcs=True, run_states=False,
+                run_measurements=False, allow_local_files=True, settle_ms=200)
+            driver.ensure_headless_application()
+            runner = driver.BrowserAuditRunner(options)
+            try:
+                issues = runner.audit(path.resolve().as_uri()).issues
+            finally:
+                runner.close()
+        cls.contrast = [i for i in issues if i.rule_id == "htmlcs:1_4_3"]
+
+    def test_the_hidden_skip_link_is_a_question_not_a_violation(self):
+        skip = [i for i in self.contrast if "skip" in i.snippet]
+        self.assertTrue(skip, [i.snippet for i in self.contrast])
+        for issue in skip:
+            self.assertEqual(issue.severity, MINOR)
+            self.assertTrue(issue.details["visually_hidden"])
+
+    def test_visible_low_contrast_text_keeps_its_weight(self):
+        faint = [i for i in self.contrast if "faint" in i.snippet]
+        self.assertTrue(faint, [i.snippet for i in self.contrast])
+        self.assertNotEqual(faint[0].severity, MINOR)
+
+
 if __name__ == "__main__":
     unittest.main()

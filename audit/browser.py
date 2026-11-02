@@ -287,6 +287,20 @@ def htmlcs_script(standard: str = "WCAG2AA") -> str:
     if (byId) return byId.slice(0, 200);
     return (el.getAttribute('title') || '').trim().slice(0, 200);
   }}
+  // Text a sighted person cannot see right now: clipped to nothing, or a
+  // box of a pixel or less - the "visually hidden" pattern of a skip link
+  // that appears on focus. Its colours are not what anyone reads; measured
+  // unfocused, Palmanova's skip link was 3.79:1 against an ancestor's dark
+  // background, and 12.63:1 as it is actually shown.
+  function __xaVisuallyHidden(el) {{
+    if (!el || !el.getBoundingClientRect) return false;
+    var box = el.getBoundingClientRect();
+    if (box.width <= 1 || box.height <= 1) return true;
+    var style = getComputedStyle(el);
+    var clip = (style.clip || '').replace(/\\s+/g, '');
+    if (clip === 'rect(0px,0px,0px,0px)' || clip === 'rect(1px,1px,1px,1px)') return true;
+    return /inset\\(50%\\)/.test(style.clipPath || '');
+  }}
   return new Promise(function(resolve) {{
     var found = [];
     try {{
@@ -298,7 +312,8 @@ def htmlcs_script(standard: str = "WCAG2AA") -> str:
             msg: (m.msg || '').slice(0, 600),
             html: (m.element && m.element.outerHTML || '').slice(0, 300),
             tag: (m.element && m.element.tagName || '').toLowerCase(),
-            label: __xaAttributeName(m.element)
+            label: __xaAttributeName(m.element),
+            hidden: __xaVisuallyHidden(m.element)
           }});
         }});
         resolve(JSON.stringify({{messages: found.slice(0, 400)}}));
@@ -603,6 +618,11 @@ def issues_from_htmlcs(payload: str, source: str) -> list:
         named_by = (_attribute_name(message)
                     if _HTMLCS_LINK_IMAGE_NO_ALT in code else "")
         manual = manual or bool(named_by)
+        # 1.4.3 is about text as it is shown. A visually hidden element is
+        # shown only in another state (a skip link on focus), and this pass
+        # did not see that state - a question for a person, not a ratio.
+        hidden_text = bool(message.get("hidden")) and "1_4_3" in code
+        manual = manual or hidden_text
         issues.append(Issue(
             rule_id=f"htmlcs:{_short_code(code)}",
             # An unmeasurable element is not a failing one. Kept - the
@@ -624,6 +644,7 @@ def issues_from_htmlcs(payload: str, source: str) -> list:
                      "undetermined": undetermined,
                      "manual_check": manual, "obsolete_criterion": obsolete,
                      "accessible_name_from_attributes": named_by,
+                     "visually_hidden": hidden_text,
                      "why": message.get("msg", ""), "element": message.get("tag", "")},
         ))
     return issues

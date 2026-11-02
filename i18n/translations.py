@@ -4675,9 +4675,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": 'The <iframe> points at {src} and carries no sandbox attribute.',
     },
     "a11y_sec_frame_sandbox_why": {
-        "uk": 'Без sandbox документ у кадрі може перемкнути верхнє вікно, виконувати скрипти у власному походженні, надсилати форми й відкривати спливні вікна. Для власного кадру це правильно; для чужого це важіль, який ви віддали іншому сайту.',
-        "it": 'Senza sandbox il documento nel frame può cambiare la finestra principale, eseguire script nella propria origine, inviare form e aprire popup. Per un frame tuo è corretto; per uno di terzi è una leva che hai ceduto.',
-        "en": 'Without sandbox the framed document can navigate the top-level window, run scripts against its own origin, submit forms and open popups. That is right for a frame you wrote; for one pointing elsewhere it is a lever you handed away.',
+        "uk": 'Документ у кадрі з іншого походження не читає вашу сторінку, а браузер не дає йому без кліку людини перемкнути верхнє вікно чи відкрити спливне. Але після кліку в кадрі він може зробити й те, й інше, а також надсилати форми. sandbox звужує це до потрібного, тож це загартування, а не відкрита діра.',
+        "it": 'Un documento in un frame di un\'altra origine non legge la tua pagina, e il browser gli impedisce di cambiare la finestra principale o aprire popup senza un clic della persona. Dopo un clic nel frame può però fare entrambe le cose e inviare form. sandbox lo limita a ciò che serve: è un rafforzamento, non una falla aperta.',
+        "en": 'A framed document from another origin cannot read your page, and the browser stops it from navigating the top window or opening a popup without the person\'s click. After a click inside the frame it can do both, and submit forms. sandbox narrows that to what the embed needs: hardening, not an open hole.',
     },
     "a11y_sec_frame_sandbox_fix": {
         "uk": 'Додайте sandbox і перелічіть лише те, що кадру справді потрібно: sandbox="allow-scripts". Порожній sandbox забирає все.',
