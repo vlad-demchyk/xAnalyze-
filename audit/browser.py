@@ -301,6 +301,26 @@ def htmlcs_script(standard: str = "WCAG2AA") -> str:
     if (clip === 'rect(0px,0px,0px,0px)' || clip === 'rect(1px,1px,1px,1px)') return true;
     return /inset\\(50%\\)/.test(style.clipPath || '');
   }}
+  // Text that is part of a logo. 1.4.3 exempts it by name ("text that is
+  // part of a logo or brand name has no contrast requirement"); Coach's
+  // wordmark ends in a coloured `.brand-dot`, reported serious on all 36
+  // pages. Read from the markup: within three levels, a home link or
+  // something whose class or name says brand or logo.
+  function __xaInLogo(el) {{
+    var node = el, depth = 0;
+    while (node && node.getAttribute && depth < 4) {{
+      var words = ((node.getAttribute('class') || '') + ' ' +
+                   (node.getAttribute('id') || '')).toLowerCase();
+      if (/(^|[\\s_-])(brand|logo|wordmark)([\\s_-]|$)/.test(words)) return true;
+      if (node.tagName === 'A') {{
+        var href = node.getAttribute('href') || '';
+        if (href === '/' || href === './' || href === location.origin + '/') return true;
+      }}
+      node = node.parentElement;
+      depth += 1;
+    }}
+    return false;
+  }}
   return new Promise(function(resolve) {{
     var found = [];
     try {{
@@ -313,7 +333,8 @@ def htmlcs_script(standard: str = "WCAG2AA") -> str:
             html: (m.element && m.element.outerHTML || '').slice(0, 300),
             tag: (m.element && m.element.tagName || '').toLowerCase(),
             label: __xaAttributeName(m.element),
-            hidden: __xaVisuallyHidden(m.element)
+            hidden: __xaVisuallyHidden(m.element),
+            logo: __xaInLogo(m.element)
           }});
         }});
         resolve(JSON.stringify({{messages: found.slice(0, 400)}}));
@@ -622,7 +643,10 @@ def issues_from_htmlcs(payload: str, source: str) -> list:
         # shown only in another state (a skip link on focus), and this pass
         # did not see that state - a question for a person, not a ratio.
         hidden_text = bool(message.get("hidden")) and "1_4_3" in code
-        manual = manual or hidden_text
+        # Logotypes are exempt from 1.4.3 by the criterion's own wording;
+        # whether this is one is a person's call, so a note, not silence.
+        logo_text = bool(message.get("logo")) and "1_4_3" in code
+        manual = manual or hidden_text or logo_text
         issues.append(Issue(
             rule_id=f"htmlcs:{_short_code(code)}",
             # An unmeasurable element is not a failing one. Kept - the
@@ -645,6 +669,7 @@ def issues_from_htmlcs(payload: str, source: str) -> list:
                      "manual_check": manual, "obsolete_criterion": obsolete,
                      "accessible_name_from_attributes": named_by,
                      "visually_hidden": hidden_text,
+                     "logo": logo_text,
                      "why": message.get("msg", ""), "element": message.get("tag", "")},
         ))
     return issues

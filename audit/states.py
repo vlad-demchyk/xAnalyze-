@@ -367,8 +367,40 @@ STATE_SCRIPT = r"""
     var beforeShadow = before.boxShadow, beforeBorder = before.borderColor;
     var beforeOutlineW = before.outlineWidth, beforeOutlineS = before.outlineStyle;
     var beforeBg = before.backgroundColor, beforeColor = before.color;
-    try { el.focus({preventScroll: true}); } catch (e) { return; }
-    if (document.activeElement !== el) return;
+    // The ring can be drawn on a container: Coach's FAQ draws it on the
+    // `<details>` through `:has(summary:focus-visible)`, and the summary
+    // itself keeps `outline: none`. Every question was reported as having no
+    // visible focus. So the nearest few ancestors are read too, with their
+    // transitions held still for the same reason as the element's.
+    var ancestors = [], node = el.parentElement;
+    while (node && ancestors.length < 3 && node !== document.body && node !== document.documentElement) {
+      var kept = {el: node, transition: node.style.getPropertyValue('transition'),
+                  priority: node.style.getPropertyPriority('transition'),
+                  hadStyle: node.hasAttribute('style')};
+      node.style.setProperty('transition', 'none', 'important');
+      var cs = getComputedStyle(node);
+      kept.look = [cs.outlineStyle, cs.outlineWidth, cs.boxShadow, cs.borderColor].join('|');
+      ancestors.push(kept);
+      node = node.parentElement;
+    }
+    try { el.focus({preventScroll: true}); } catch (e) { restoreAncestors(); return; }
+    if (document.activeElement !== el) { restoreAncestors(); return; }
+    var ancestorRing = ancestors.some(function(kept) {
+      var cs = getComputedStyle(kept.el);
+      var look = [cs.outlineStyle, cs.outlineWidth, cs.boxShadow, cs.borderColor].join('|');
+      if (look === kept.look) return false;
+      return (cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth || '0') > 0) ||
+             cs.boxShadow !== 'none' || cs.borderColor !== kept.look.split('|')[3];
+    });
+    restoreAncestors();
+    function restoreAncestors() {
+      ancestors.forEach(function(kept) {
+        if (kept.transition) kept.el.style.setProperty('transition', kept.transition, kept.priority);
+        else kept.el.style.removeProperty('transition');
+        if (!kept.hadStyle && kept.el.getAttribute('style') === '') kept.el.removeAttribute('style');
+      });
+      ancestors = [];
+    }
     var after = getComputedStyle(el);
     var gainedOutline = after.outlineStyle !== 'none' &&
                         parseFloat(after.outlineWidth || '0') > 0 &&
@@ -385,7 +417,11 @@ STATE_SCRIPT = r"""
     var gainedColor = after.color !== beforeColor;
     if (!gainedOutline && !gainedShadow && !gainedBorder &&
         !gainedBackground && !gainedColor) {
-      pending = {rule: 'focus-not-visible', extra: {outline: after.outlineStyle}};
+      // A ring on a container is a visible change; its contrast is not
+      // measured here, which is a question left open rather than a pass.
+      if (!ancestorRing) {
+        pending = {rule: 'focus-not-visible', extra: {outline: after.outlineStyle}};
+      }
     } else {
       pending = checkIndicatorContrast(el, after, beforeBg, {
         outline: gainedOutline, shadow: gainedShadow,
