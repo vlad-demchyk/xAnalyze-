@@ -39,6 +39,14 @@ import pytest
 _CONFIG_HOME = tempfile.TemporaryDirectory(prefix="xanalyze-tests-config-")
 os.environ["XDG_CONFIG_HOME"] = _CONFIG_HOME.name
 
+#: The same leak, for reports. Every test that ran a scan through the CLI or
+#: the window saved its run under the developer's real `~/Documents/XAnalyze`
+#: - one full run left a few dozen folders there, and `mixed-problems` had
+#: grown to 366 of them. `XANALYZE_REPORT_ROOT` is the override the run folder
+#: already honours; the tests of the root itself set and restore it per test.
+_REPORT_ROOT = tempfile.TemporaryDirectory(prefix="xanalyze-tests-reports-")
+os.environ["XANALYZE_REPORT_ROOT"] = _REPORT_ROOT.name
+
 # Set this before pytest imports test modules, several of which create a
 # QApplication directly instead of going through audit.driver's helper.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")

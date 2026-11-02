@@ -61,6 +61,7 @@ class RunsCatalogue(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
+        self._previous_root = os.environ.get("XANALYZE_REPORT_ROOT")
         os.environ["XANALYZE_REPORT_ROOT"] = str(self.root)
         self.window = MainWindow()
         self.window.show()
@@ -70,7 +71,12 @@ class RunsCatalogue(unittest.TestCase):
         self.window.close()
         self.window.deleteLater()
         self.app.processEvents()
-        os.environ.pop("XANALYZE_REPORT_ROOT", None)
+        # Put back what was there, not nothing: popping it sent every later
+        # test's runs into the real ~/Documents/XAnalyze (see conftest).
+        if self._previous_root is None:
+            os.environ.pop("XANALYZE_REPORT_ROOT", None)
+        else:
+            os.environ["XANALYZE_REPORT_ROOT"] = self._previous_root
         self.tmp.cleanup()
 
     def rows(self) -> list:
@@ -357,6 +363,7 @@ class TheColumnStaysNarrow(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
+        self._previous_root = os.environ.get("XANALYZE_REPORT_ROOT")
         os.environ["XANALYZE_REPORT_ROOT"] = str(Path(self.tmp.name))
         _make_run(Path(self.tmp.name), "2026-08-24-1200",
                   "https://a-very-long-host-name.cloudwaysapps.com/x",
@@ -369,7 +376,12 @@ class TheColumnStaysNarrow(unittest.TestCase):
         self.window.close()
         self.window.deleteLater()
         self.app.processEvents()
-        os.environ.pop("XANALYZE_REPORT_ROOT", None)
+        # Put back what was there, not nothing: popping it sent every later
+        # test's runs into the real ~/Documents/XAnalyze (see conftest).
+        if self._previous_root is None:
+            os.environ.pop("XANALYZE_REPORT_ROOT", None)
+        else:
+            os.environ["XANALYZE_REPORT_ROOT"] = self._previous_root
         self.tmp.cleanup()
 
     def rows(self) -> list:
