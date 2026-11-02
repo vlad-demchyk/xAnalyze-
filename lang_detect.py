@@ -145,6 +145,8 @@ _MIN_WORDS_FOR_DETECTION = 5
 #: How many words one Italian marker is allowed to speak for. See
 #: `guess_language_safe` for the measurement behind the number.
 _ITALIAN_WORDS_PER_MARKER = 50
+#: How many different markers a longer text must use to read as Italian.
+_ITALIAN_DISTINCT_MARKERS = 3
 
 
 def _density(padded: str, word_count: int, markers) -> float:
@@ -238,6 +240,14 @@ def guess_language_safe(text: str) -> str | None:
     # half runs to a median of 5.9. One per fifty words sits far below the
     # real Italian floor and far above accidental English.
     hits = sum(padded.count(marker) for marker in _ITALIAN_MARKERS)
-    if hits >= max(1, word_count // _ITALIAN_WORDS_PER_MARKER):
+    needed = max(1, word_count // _ITALIAN_WORDS_PER_MARKER)
+    # And from more than one word. An English page whose header and footer
+    # both say "Youtube di Città di Palmanova" and "Comune di Palmanova"
+    # carries ` di ` seven times in 300 words - the rate of real Italian,
+    # from one name repeated. Italian prose that long uses several of its
+    # function words; a proper name repeats one. Only where the rate asks
+    # for several hits, so a short Italian string still reads on one.
+    distinct = sum(1 for marker in _ITALIAN_MARKERS if marker in padded)
+    if hits >= needed and distinct >= min(needed, _ITALIAN_DISTINCT_MARKERS):
         return "it"
     return "en"

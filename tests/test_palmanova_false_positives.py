@@ -57,5 +57,43 @@ class GalleryLinkNamedByAttribute(unittest.TestCase):
         self.assertNotEqual(issue.severity, MINOR)
 
 
+class EnglishPageWithAnItalianName(unittest.TestCase):
+    """Palmanova's English pages: 23 of 24 `html-lang-mismatch` were false.
+
+    The header and footer repeat "Youtube di Città di Palmanova" and the
+    footer says "Comune di Palmanova": ` di ` seven times in 300 words, the
+    rate of Italian prose, from one repeated name.
+    """
+
+    CHROME = ("Join us on: Instagramm Facebook Youtube di Città di Palmanova "
+              "Home Experiences Itineraries Places to visit Events Schools ")
+
+    def test_a_repeated_name_does_not_make_a_page_italian(self):
+        import lang_detect
+
+        body = (self.CHROME * 4 + "Experiences Countermine Tunnels of the 2nd "
+                "Ravelin and Donato Bastion Multimedia Video Room Virtualift "
+                "Virtual Elevator Palmanova Talking Map Tools and machines for "
+                "building the Fortress Museum of the Great War Civic Museum "
+                "Copyright 2026 Comune di Palmanova Privacy Policy ")
+        self.assertGreater(len(body.split()), 100)
+        self.assertEqual(lang_detect.guess_language_safe(body), "en")
+
+    def test_untranslated_italian_paragraphs_still_read_as_italian(self):
+        import lang_detect
+
+        body = ("L'Associazione Guide Turistiche del Friuli Venezia Giulia, una "
+                "delle più antiche in Italia, è stata fondata nel 1955, anno in "
+                "cui sono state abilitate le prime guide operanti sul "
+                "territorio. Da allora riunisce un alto numero di "
+                "professionisti iscritti all'Albo regionale, molti dei quali "
+                "anche accompagnatori, residenti in Friuli Venezia Giulia ed in "
+                "grado di soddisfare tutte le richieste di visite guidate da "
+                "svolgere nella regione nelle principali lingue europee. "
+                "Collabora con enti ed operatori pubblici e privati al fine di "
+                "promuovere l'offerta e valorizzare il territorio regionale. ") * 2
+        self.assertEqual(lang_detect.guess_language_safe(body), "it")
+
+
 if __name__ == "__main__":
     unittest.main()
