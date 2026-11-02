@@ -175,6 +175,22 @@ def _read(path: Path) -> str:
 
 # --------------------------------------------------------------- JS payloads
 
+#: axe rules that ship disabled and that this pass turns on.
+#:
+#: `target-size` is WCAG 2.2's 2.5.8 (AA): a pointer target of at least
+#: 24x24 CSS px, or one whose 24 px circle does not overlap a neighbour's.
+#: Disabled in axe because it measures every widget and is slow on big
+#: pages; left off here it meant the criterion the EN 301 549 V4.1.1 update
+#: made a legal requirement under the EAA was never checked, and the static
+#: `viewport-touch-target` cannot see a size that comes from a CSS class.
+#: axe itself keeps the exceptions out - inline links (`widget-not-inline-
+#: matches`), fully obscured controls - and says `incomplete` where it cannot
+#: decide, which `issues_from_axe` weighs as a note.
+_AXE_OFF_BY_DEFAULT = ("target-size",)
+
+#: Rules whose check `data` is worth carrying: what was measured.
+_AXE_MEASURED = ("target-size",)
+
 def axe_script(options: BrowserAuditOptions) -> str:
     """axe-core plus the call that runs it and hands back JSON.
 
@@ -182,9 +198,12 @@ def axe_script(options: BrowserAuditOptions) -> str:
     afterwards, so a suppressed region costs nothing to analyse instead of
     being analysed and then thrown away.
     """
+    rules = {rule: {"enabled": True} for rule in _AXE_OFF_BY_DEFAULT}
+    # A person's "off" wins over ours "on": the same dict, written second.
+    rules.update({rule: {"enabled": False} for rule in options.disabled_rules})
     config = {
         "resultTypes": ["violations", "incomplete"],
-        "rules": {rule: {"enabled": False} for rule in options.disabled_rules},
+        "rules": rules,
     }
     context = {}
     if options.exclude:
@@ -199,6 +218,7 @@ def axe_script(options: BrowserAuditOptions) -> str:
   var context = {json.dumps(context) or "document"};
   return axe.run(Object.keys(context).length ? context : document, {json.dumps(config)})
     .then(function(results) {{
+      var measured = {json.dumps(list(_AXE_MEASURED))};
       var pack = function(nodes, bucket) {{
         return (nodes || []).map(function(v) {{
           return {{
@@ -210,11 +230,28 @@ def axe_script(options: BrowserAuditOptions) -> str:
             helpUrl: v.helpUrl,
             tags: v.tags,
             nodes: (v.nodes || []).slice(0, 20).map(function(n) {{
-              return {{
+              var packed = {{
                 target: (n.target || []).join(' '),
                 html: (n.html || '').slice(0, 300),
                 failureSummary: (n.failureSummary || '').slice(0, 600)
               }};
+              if (measured.indexOf(v.id) !== -1) {{
+                var data = {{}}, related = [];
+                [].concat(n.any || [], n.all || [], n.none || []).forEach(function(c) {{
+                  if (c && c.data && typeof c.data === 'object') {{
+                    Object.keys(c.data).forEach(function(k) {{
+                      var x = c.data[k];
+                      if (typeof x === 'number' || typeof x === 'string') data[k] = x;
+                    }});
+                  }}
+                  (c && c.relatedNodes || []).slice(0, 3).forEach(function(r) {{
+                    related.push((r.target || []).join(' '));
+                  }});
+                }});
+                packed.data = data;
+                packed.related = related;
+              }}
+              return packed;
             }})
           }};
         }});
@@ -405,6 +442,7 @@ def issues_from_axe(payload: str, source: str, exclude_rules=()) -> list:
             severity = (MINOR if bucket == "incomplete"
                         else _AXE_IMPACT.get(entry.get("impact") or "", MODERATE))
             for node in entry.get("nodes", []):
+                measured = _measured_details(entry.get("id"), node)
                 issues.append(Issue(
                     rule_id=f"axe:{entry.get('id')}",
                     severity=severity,
@@ -423,9 +461,40 @@ def issues_from_axe(payload: str, source: str, exclude_rules=()) -> list:
                         "url": entry.get("helpUrl", ""),
                         "tags": entry.get("tags", []),
                         "bucket": bucket,
+                        **measured,
                     },
                 ))
     return issues
+
+
+#: Detail names `_measured_details` writes; carried across a deduplication.
+_MEASURED_KEYS = ("min_size", "width", "height", "closest_offset",
+                  "min_offset", "neighbour", "measure")
+
+
+def _measured_details(rule: str, node: dict) -> dict:
+    """What axe measured for a target, in this tool's own detail names.
+
+    axe's `target-size` check reports the box (`width`, `height`) against
+    `minSize`, and `target-offset` the distance to the nearest neighbour
+    (`closestOffset` against `minOffset`) with that neighbour as a related
+    node. A finding that says "too small" without the number is one nobody
+    can check against devtools.
+    """
+    if rule != "target-size":
+        return {}
+    data = node.get("data") or {}
+    found = {"wcag": ["2.5.8"]}
+    for theirs, ours in (("minSize", "min_size"), ("width", "width"),
+                         ("height", "height"), ("closestOffset", "closest_offset"),
+                         ("minOffset", "min_offset"), ("messageKey", "measure")):
+        value = data.get(theirs)
+        if isinstance(value, (int, float)) or (isinstance(value, str) and value):
+            found[ours] = value
+    related = [r for r in node.get("related") or [] if r]
+    if related:
+        found["neighbour"] = related[0]
+    return found
 
 
 #: HTML_CodeSniffer code fragments that mean "I could not work this out",
@@ -782,6 +851,13 @@ def deduplicate(issues: list, markup: str = "") -> list:
             # uncertainties are not a certainty, which is the direction this
             # must not be wrong in.
             existing.confidence = _stronger(existing.confidence, issue.confidence)
+            # A measurement settles what a static reading could only guess:
+            # the box axe measured goes with the row that is kept, so a
+            # static `viewport-touch-target` confirmed in the browser still
+            # says how big the target really is.
+            for key in _MEASURED_KEYS:
+                if key in issue.details and key not in existing.details:
+                    existing.details[key] = issue.details[key]
         # Keep the more severe reading of the same problem.
         if SEVERITY_ORDER.index(issue.severity) < SEVERITY_ORDER.index(existing.severity):
             existing.severity = issue.severity
@@ -908,6 +984,9 @@ _RULE_FAMILIES = {
     # finding where agreement is the whole signal.
     "skip-link": "skip", "state:no-skip-link": "skip",
     "axe:bypass": "skip", "htmlcs:2_4_1": "skip",
+    # target size (2.5.8). The static rule reads a size from `style` and
+    # cannot be sure; axe measured the box. One element, one row.
+    "viewport-touch-target": "target-size", "axe:target-size": "target-size",
 }
 
 #: Families whose finding is about the document, not about a node in it.

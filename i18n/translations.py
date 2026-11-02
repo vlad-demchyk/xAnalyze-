@@ -4903,6 +4903,41 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Questa segnalazione riguarda il documento nel suo insieme: non c'è un elemento da evidenziare.",
         "en": "This finding is about the document as a whole - there is no single element to highlight.",
     },
+    "a11y_axe_target_size_title": {
+        "uk": "Ціль для натискання менша за 24×24 px і стоїть надто близько до іншої",
+        "it": "Bersaglio più piccolo di 24×24 px e troppo vicino a un altro",
+        "en": "Target smaller than 24×24 px and too close to another",
+    },
+    "a11y_axe_target_size_found": {
+        "uk": "axe-core виміряв ціль у браузері, і вона не відповідає мінімуму 2.5.8.",
+        "it": "axe-core ha misurato il bersaglio nel browser e non rispetta il minimo 2.5.8.",
+        "en": "axe-core measured the target in the browser and it does not meet the 2.5.8 minimum.",
+    },
+    "a11y_axe_target_size_found_size": {
+        "uk": "Виміряний розмір {width}×{height} px, мінімум {min_size}×{min_size} px.",
+        "it": "Dimensione misurata {width}×{height} px, minimo {min_size}×{min_size} px.",
+        "en": "Measured size {width}×{height} px, minimum {min_size}×{min_size} px.",
+    },
+    "a11y_axe_target_size_found_offset": {
+        "uk": "Вільне коло навколо цілі має діаметр {closest_offset} px замість щонайменше {min_offset} px.",
+        "it": "Lo spazio libero attorno al bersaglio ha un diametro di {closest_offset} px invece di almeno {min_offset} px.",
+        "en": "The free space around the target is {closest_offset} px across instead of at least {min_offset} px.",
+    },
+    "a11y_axe_target_size_found_offset_to": {
+        "uk": "Вільне коло навколо цілі має діаметр {closest_offset} px замість щонайменше {min_offset} px; найближча ціль: {neighbour}.",
+        "it": "Lo spazio libero attorno al bersaglio ha un diametro di {closest_offset} px invece di almeno {min_offset} px; bersaglio più vicino: {neighbour}.",
+        "en": "The free space around the target is {closest_offset} px across instead of at least {min_offset} px; nearest target: {neighbour}.",
+    },
+    "a11y_axe_target_size_why": {
+        "uk": "Людина з тремором, на телефоні чи з товстим пальцем натискає не туди: замала ціль поруч з іншою означає випадкову дію. WCAG 2.2 (2.5.8, рівень AA) вимагає 24×24 CSS px або такого відступу, щоб коло діаметром 24 px навколо цілі не перетинало сусідніх. За EN 301 549 V4.1.1 це вимога Європейського акту про доступність.",
+        "it": "Chi ha un tremore, usa il telefono o ha dita grandi tocca il punto sbagliato: un bersaglio piccolo accanto a un altro significa un'azione per errore. WCAG 2.2 (2.5.8, livello AA) chiede 24×24 px CSS o uno spazio tale che un cerchio di 24 px attorno al bersaglio non tocchi quelli vicini. Con EN 301 549 V4.1.1 è un requisito dell'European Accessibility Act.",
+        "en": "Someone with a tremor, on a phone or with large fingers hits the wrong thing: a small target next to another means an action by mistake. WCAG 2.2 (2.5.8, level AA) asks for 24×24 CSS px, or spacing such that a 24 px circle around the target does not touch its neighbours'. Under EN 301 549 V4.1.1 it is a European Accessibility Act requirement.",
+    },
+    "a11y_axe_target_size_fix": {
+        "uk": "Дайте елементу min-width і min-height 24px (або padding, що збільшує область натискання, а не лише картинку), або розсуньте сусідні цілі так, щоб між їхніми центрами було щонайменше 24 px.",
+        "it": "Dai all'elemento min-width e min-height di 24px (o un padding che allarghi l'area cliccabile, non solo l'immagine), oppure distanzia i bersagli vicini in modo che tra i centri ci siano almeno 24 px.",
+        "en": "Give the element min-width and min-height of 24px (or padding that enlarges the clickable area, not only the image), or move neighbouring targets apart so their centres are at least 24 px apart.",
+    },
     "preview_load_failed": {
         "uk": "Не вдалося показати сторінку в попередньому перегляді.",
         "it": "Impossibile mostrare la pagina nell'anteprima.",

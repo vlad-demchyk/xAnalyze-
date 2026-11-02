@@ -162,7 +162,9 @@ check the name, not a violation.
 page in the state a person puts it in - focus indicator and whether it can be
 seen against its background (3:1), whether a sticky header covers the focused
 element (2.4.11), keyboard traps, focus order, hover-only content, an open
-modal, the form journey - and the same page at several widths. It reads and
+modal, the form journey, the size of every pointer target and the space around
+it (2.5.8, measured by axe-core with the box and the nearest target in the
+finding) - and the same page at several widths. It reads and
 never acts: nothing is typed, clicked or submitted. In the desktop app the
 hidden page cannot take window focus without stealing it from the main window,
 so the three focus checks report `focus-not-measured` there (shown with

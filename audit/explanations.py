@@ -69,6 +69,9 @@ def render(issue, lang: str = "uk") -> IssueExplanation:
             fix=t("a11y_engine_error_fix", lang),
         )
 
+    if issue.rule_id == "axe:target-size":
+        return _target_size(issue, details, lang)
+
     # A third-party engine already wrote the explanation, in its own words.
     # Rendering it beats inventing a translation key that will never exist:
     # axe and HTML_CodeSniffer between them ship hundreds of rules, and a
@@ -137,6 +140,36 @@ def _add_breakpoints(explanation, details: dict, lang: str) -> None:
 #: Engines whose findings carry their own prose. Ours do not appear here:
 #: `state:` rules are this tool's own and have real translations.
 _ENGINE_NAMES = {"axe-core", "HTML_CodeSniffer"}
+
+
+def _target_size(issue, details: dict, lang: str) -> IssueExplanation:
+    """2.5.8 in this tool's own words, with the numbers axe measured.
+
+    axe's own sentence for it is generic ("All touch targets must be 24px
+    large, or leave sufficient space"); the measured box and the distance to
+    the nearest target are what makes the row checkable in devtools, so the
+    sentence is built from whichever of the two axe reported.
+    """
+    fields = _template_fields(details)
+    found = []
+    if "width" in details and "height" in details:
+        found.append(_fill("a11y_axe_target_size_found_size", lang, fields))
+    if "closest_offset" in details:
+        key = ("a11y_axe_target_size_found_offset_to" if details.get("neighbour")
+               else "a11y_axe_target_size_found_offset")
+        found.append(_fill(key, lang, fields))
+    explanation = IssueExplanation(
+        title=t("a11y_axe_target_size_title", lang),
+        found=" ".join(found) or t("a11y_axe_target_size_found", lang),
+        why=t("a11y_axe_target_size_why", lang),
+        fix=t("a11y_axe_target_size_fix", lang),
+        fix_snippet=issue.fix_snippet,
+        wcag=("2.5.8",),
+    )
+    if issue.confidence == NEEDS_BROWSER:
+        explanation.caveat = t("a11y_engine_incomplete", lang, engine="axe-core")
+    _add_breakpoints(explanation, details, lang)
+    return explanation
 
 
 def _from_engine(issue, details: dict, lang: str) -> IssueExplanation:

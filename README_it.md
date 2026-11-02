@@ -157,7 +157,9 @@ non una violazione.
 stato in cui la mette una persona - indicatore di focus e se si distingue dallo
 sfondo (3:1), se un'intestazione fissa copre l'elemento a fuoco (2.4.11),
 trappole da tastiera, ordine di focus, contenuto solo in hover, una modale
-aperta, il percorso del modulo - e la stessa pagina a più larghezze. Legge e non
+aperta, il percorso del modulo, la dimensione di ogni bersaglio del puntatore e
+lo spazio attorno (2.5.8, misurati da axe-core con il riquadro e il bersaglio più
+vicino nella segnalazione) - e la stessa pagina a più larghezze. Legge e non
 agisce mai: nulla viene digitato, cliccato o inviato. Nell'app desktop la pagina
 nascosta non può prendere il focus della finestra senza toglierlo alla finestra
 principale, quindi i tre controlli sul focus riportano lì `focus-not-measured`

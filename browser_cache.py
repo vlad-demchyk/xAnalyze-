@@ -61,8 +61,9 @@ MAX_ENTRIES = 500
 #: a changed way of running it does. So does a change in how an engine's
 #: output becomes a finding, because what is stored here is the finding, not
 #: the engine's raw message: 3 is HTML_CodeSniffer's prompts and the removed
-#: 4.1.1 getting their own weight.
-PASS_REVISION = 3
+#: 4.1.1 getting their own weight; 4 is axe's `target-size` (2.5.8) switched
+#: on, which the cached findings of 3 never ran.
+PASS_REVISION = 4
 
 
 def cache_dir() -> Path:
