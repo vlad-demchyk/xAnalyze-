@@ -523,12 +523,16 @@ _HTMLCS_UNDETERMINED = (".Abs", ".BgImage", ".Alpha", ".BgGradient")
 #: * `.H67.2` - "this image is marked as ignored by assistive technology",
 #:   which is what `alt=""` is for;
 #: * `.H48`, `.H48.2`, `.H85.2` - "it is recommended that this be a list /
-#:   an `optgroup`".
+#:   an `optgroup`";
+#: * `.H39.3.NoCaption` - "if this table is a data table, consider using a
+#:   caption". A suggestion about every table without one, which arrived as
+#:   a `moderate exact` finding on each of Coach's data tables.
 #:
 #: What HTML_CodeSniffer *measured* is untouched: `G18.Fail` carries the
 #: contrast ratio, `H30.2` is an image that is the only content of a link and
 #: has no text. Those stay at the weight the engine gave them.
-_HTMLCS_MANUAL_CHECK = (".F96", "1_4_10.C32", ".H67.2", ".H48", ".H85.2")
+_HTMLCS_MANUAL_CHECK = (".F96", "1_4_10.C32", ".H67.2", ".H48", ".H85.2",
+                        ".H39.3.NoCaption")
 
 #: Success criteria WCAG 2.2 removed. 4.1.1 Parsing was dropped because the
 #: failures it described (duplicate ids, bad nesting) are handled by user

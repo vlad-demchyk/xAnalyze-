@@ -52,6 +52,11 @@ class HtmlCodeSnifferUncertainty(unittest.TestCase):
         self.assertEqual(issue.confidence, NEEDS_BROWSER)
         self.assertTrue(issue.details["undetermined"])
 
+    def test_a_caption_suggestion_is_a_prompt_not_a_defect(self):
+        issue = _htmlcs("WCAG2AA.Principle1.Guideline1_3.1_3_1.H39.3.NoCaption", kind=2)[0]
+        self.assertEqual(issue.severity, MINOR)
+        self.assertTrue(issue.details["manual_check"])
+
     def test_a_real_contrast_failure_keeps_its_weight(self):
         """The fix must not quiet the finding the rule exists for."""
         issue = _htmlcs(self.FAIL)[0]
