@@ -126,7 +126,7 @@ xanalyze runs                                 # список, продовжен
 
 **Правила сайту** за категоріями, з кількістю, яку стежить набір тестів:
 
-`accessibility` (39), `best-practices` (13), `geo` (2), `performance` (8), `security` (10), `seo` (8)
+`accessibility` (40), `best-practices` (13), `geo` (2), `performance` (8), `security` (10), `seo` (8)
 
 Правило працює там, де має сенс, і ніде більше, і вирішує це доказ: синтаксис
 файла (правила JSX лише в `.jsx`/`.tsx`), призначення документа (правила листа
@@ -135,7 +135,9 @@ WordPress лише у WordPress). У файлі React правила читаю�
 його написано: два елементи в різних гілках умови, `cond &&` / `!cond &&` чи
 в окремих `return` не є дублікатом id, текст у коді (`JSON.parse`,
 `CSS.escape`) не є текстом, компонент дизайн-системи з пропом `label` має
-назву, а селектори показують шлях JSX (`section.card > div.list > img`).
+назву, а селектори показують шлях JSX (`section.card > div.list > img`). Літеральний `aria-label`,
+`placeholder`, `title` чи `alt` у файлі, який решту текстів перекладає,
+позначається як `advisory` (`jsx-untranslated-literal`).
 
 **Написано під те, що знайшов ручний аудит.** `alt` у формі слага
 (`mappa-parlante-palmanova`, `Piazza-Grande`, дата), а не лише імʼя файла з

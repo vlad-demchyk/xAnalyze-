@@ -33,6 +33,7 @@ import config
 from config import APP_VERSION
 from audit.base import (
     CATEGORIES, CONFIDENCE_ORDER, issues_in_view, unsettled_count,
+    unsettled_summary,
 )
 from detectors.factory import DetectorFactory
 from file_writer import ReplacementPlan, apply_replacements
@@ -608,17 +609,19 @@ def cmd_audit(args) -> int:
     # dropped in silence is a report lying by omission.
     hidden = 0 if unsettled else sum(unsettled_count(d.issues)
                                      for d in result.documents)
+    which = "" if unsettled else unsettled_summary(
+        [i for d in result.documents for i in d.issues])
     for document in result.documents:
         document.issues = issues_in_view(document.issues, wanted, floor,
                                          unsettled=unsettled)
     if hidden:
         progress.notice(
             "audit",
-            f"{hidden} check(s) could not be decided and are not listed; "
-            f"add --unsettled to see them",
+            f"{hidden} check(s) could not be decided and are not listed "
+            f"({which}); add --unsettled to see them",
             human=f"# {hidden} check(s) could not be decided and are not "
-                  f"listed; add --unsettled to see them",
-            unsettled=hidden)
+                  f"listed ({which}); add --unsettled to see them",
+            unsettled=hidden, unsettled_rules=which)
     # What a local site's server decides, left out of the list and said so:
     # `audit.environment` has the reason, `--include-environment` the list.
     left_out = (getattr(result, "environment", None) or {}).get("hidden", 0)

@@ -430,8 +430,66 @@ class JsxDangerousHtml(JsxRule):
         return issues
 
 
+#: A file that translates its texts: `t("…")`, `useTranslation`, `<Trans>`,
+#: `i18n.t`, `formatMessage`.
+_TRANSLATES_RE = re.compile(
+    r"""(?<![\w.])t\(\s*["'`]|useTranslation\s*\(|<Trans\b|\bi18n\.t\(|formatMessage\s*\(""")
+#: An attribute a person hears or reads, written as a literal in the file:
+#: `aria-label="Пошук"` or `aria-label={"Пошук"}`.
+_SPOKEN_LITERAL_RE = re.compile(
+    r"""(?<![\w-])(aria-label|placeholder|title|alt)\s*=\s*(?:"([^"]*)"|'([^']*)'|\{\s*"([^"]*)"\s*\}|\{\s*'([^']*)'\s*\})""")
+#: Values that are the same in every language: examples, addresses, symbols.
+_NOT_PROSE_RE = re.compile(
+    r"^(?:https?://\S*|www\.\S*|[\w.+-]+@[\w.-]+|[\d\s.,:/+()%-]+)$|\$\{")
+
+
+class JsxUntranslatedLiteral(JsxRule):
+    """A name or hint written as a literal in a file that translates the rest.
+
+    The shared `Select` of a design system said "Пошук у списку", "Оберіть"
+    and "Нічого не знайдено" to every app that used it, the English one
+    included: everything around it went through `t()`, these three did not,
+    and nothing reads a `.tsx` file for the language of an `aria-label`. A
+    screen reader then reads Ukrainian with English phonetics, or the
+    other way round.
+
+    Only in a file that translates something - a project with no i18n has
+    nothing to be inconsistent with - and only what a person hears or reads
+    (`aria-label`, `placeholder`, `title`, `alt`). Advisory: a literal that
+    is the same in every language (a brand, an example address) is correct.
+    """
+    id = "jsx-untranslated-literal"
+    severity = MINOR
+    confidence = ADVISORY
+    wcag = ("3.1.2",)
+
+    def check(self, document, context) -> list:
+        from ..base import document_source
+
+        if not _TRANSLATES_RE.search(document_source(document)):
+            return []
+        issues = []
+        for tag in document.find_all(True):
+            opening = opening_tag_source(tag)
+            if not opening:
+                continue
+            for match in _SPOKEN_LITERAL_RE.finditer(opening):
+                value = next((g for g in match.groups()[1:] if g is not None), "").strip()
+                if sum(ch.isalpha() for ch in value) < 2 or _NOT_PROSE_RE.search(value):
+                    continue
+                selector, line = context.locate(tag)
+                issues.append(Issue(
+                    rule_id=self.id, severity=self.severity, selector=selector,
+                    line=line, snippet=snippet_of(tag), source=context.source,
+                    category=self.category, confidence=self.confidence,
+                    details={"attribute": match.group(1), "value": value[:80]},
+                ))
+        return issues
+
+
 for _rule in (
     JsxLabelNotAssociated, JsxClickWithoutKey, JsxNoninteractiveHandler,
     JsxTabIndexOnStatic, JsxAutofocus, JsxAnchorNotALink, JsxDangerousHtml,
+    JsxUntranslatedLiteral,
 ):
     RuleRegistry.register(_rule)

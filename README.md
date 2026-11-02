@@ -136,7 +136,7 @@ fixable in place.
 
 **Website rules**, by category, with the count the test suite enforces:
 
-`accessibility` (39), `best-practices` (13), `geo` (2), `performance` (8), `security` (10), `seo` (8)
+`accessibility` (40), `best-practices` (13), `geo` (2), `performance` (8), `security` (10), `seo` (8)
 
 A rule runs where it means something and nowhere else, decided on evidence:
 the file's syntax (JSX rules only in `.jsx`/`.tsx`), what the document is for
@@ -146,7 +146,9 @@ read the component as written: two elements on different arms of a
 conditional, of `cond &&` / `!cond &&` or in separate `return`s are not a
 duplicate id, text in code (`JSON.parse`, `CSS.escape`) is not text, a
 design-system component with a `label` prop is named, and selectors are the
-JSX path (`section.card > div.list > img`).
+JSX path (`section.card > div.list > img`). A literal `aria-label`,
+`placeholder`, `title` or `alt` in a file that translates its other texts is
+reported as `advisory` (`jsx-untranslated-literal`).
 
 **Written for what a manual audit found.** An `alt` that is a slug
 (`mappa-parlante-palmanova`, `Piazza-Grande`, a date) and not only a file name

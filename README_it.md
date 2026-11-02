@@ -130,7 +130,7 @@ ciascuno correggibile sul posto.
 
 **Regole del sito**, per categoria, con il numero che la suite verifica:
 
-`accessibility` (39), `best-practices` (13), `geo` (2), `performance` (8), `security` (10), `seo` (8)
+`accessibility` (40), `best-practices` (13), `geo` (2), `performance` (8), `security` (10), `seo` (8)
 
 Una regola gira dove significa qualcosa e da nessun'altra parte, e a deciderlo
 è una prova: la sintassi del file (le regole JSX solo in `.jsx`/`.tsx`), a cosa
@@ -140,7 +140,9 @@ file React le regole leggono il componente come è scritto: due elementi su rami
 diversi di una condizione, di `cond &&` / `!cond &&` o in `return` separati non
 sono un id duplicato, il testo nel codice (`JSON.parse`, `CSS.escape`) non è
 testo, un componente del design system con la prop `label` ha un nome, e i
-selettori sono il percorso JSX (`section.card > div.list > img`).
+selettori sono il percorso JSX (`section.card > div.list > img`). Un `aria-label`,
+`placeholder`, `title` o `alt` letterale in un file che traduce gli altri testi
+è segnalato come `advisory` (`jsx-untranslated-literal`).
 
 **Scritte per ciò che un audit manuale ha trovato.** Un `alt` in forma di slug
 (`mappa-parlante-palmanova`, `Piazza-Grande`, una data) e non solo un nome di

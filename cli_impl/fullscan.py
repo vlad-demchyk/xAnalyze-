@@ -817,21 +817,23 @@ def _issues_at_floor(audit_result, floor: str | None,
     """
     if audit_result is None or not audit_result:
         return []
-    from audit.base import issues_in_view, unsettled_count
+    from audit.base import issues_in_view, unsettled_count, unsettled_summary
 
     # `fullscan` loads the page in a real browser, which is what settles
     # these; what the browser still could not decide is not a finding. Said
     # out loud rather than dropped in silence.
     hidden = 0 if unsettled else sum(unsettled_count(d.issues)
                                      for d in audit_result.documents)
+    which = "" if unsettled else unsettled_summary(
+        [i for d in audit_result.documents for i in d.issues])
     if hidden:
         progress.notice(
             "audit",
-            f"{hidden} check(s) could not be decided and are not listed; "
-            f"add --unsettled to see them",
+            f"{hidden} check(s) could not be decided and are not listed "
+            f"({which}); add --unsettled to see them",
             human=f"# [audit] {hidden} check(s) could not be decided and are "
-                  f"not listed; add --unsettled to see them",
-            unsettled=hidden)
+                  f"not listed ({which}); add --unsettled to see them",
+            unsettled=hidden, unsettled_rules=which)
     return [issue for document in audit_result.documents
             for issue in issues_in_view(document.issues, (), floor or "", unsettled=unsettled)]
 

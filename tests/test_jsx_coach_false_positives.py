@@ -152,6 +152,39 @@ class ReadableSelectors(unittest.TestCase):
         self.assertEqual(found[0].selector, "section.card > div.list > img")
 
 
+class UntranslatedLiteral(unittest.TestCase):
+    def test_a_literal_beside_translated_texts(self):
+        source = """export function S() { const { t } = useTranslation();
+  return (<div><h2>{t("title")}</h2><input aria-label="Пошук у списку" placeholder={t("q")} /></div>); }"""
+        found = _audit(source, "jsx-untranslated-literal")
+        self.assertEqual([(i.details["attribute"], i.details["value"]) for i in found],
+                         [("aria-label", "Пошук у списку")])
+        self.assertEqual(found[0].confidence, "advisory")
+
+    def test_examples_and_addresses_are_not_prose(self):
+        source = """export function S() { return (<div>{t("x")}
+  <input placeholder="https://meet.google.com/…" /><input placeholder="you@example.com" />
+  <img alt={`${text}`} /></div>); }"""
+        self.assertEqual(_audit(source, "jsx-untranslated-literal"), [])
+
+    def test_a_file_that_translates_nothing_is_left_alone(self):
+        source = """export function S() { return (<input aria-label="Search" />); }"""
+        self.assertEqual(_audit(source, "jsx-untranslated-literal"), [])
+
+
+class UndecidedChecksAreNamed(unittest.TestCase):
+    def test_the_notice_says_which_rules(self):
+        from audit.base import EXACT, Issue, NEEDS_BROWSER, unsettled_summary
+
+        issues = [Issue("media-captions", "serious", confidence=NEEDS_BROWSER),
+                  Issue("media-captions", "serious", confidence=NEEDS_BROWSER),
+                  Issue("aria-reference-broken", "minor", confidence=NEEDS_BROWSER),
+                  Issue("image-alt", "critical", confidence=EXACT)]
+        self.assertEqual(unsettled_summary(issues),
+                         "media-captions ×2, aria-reference-broken")
+        self.assertEqual(unsettled_summary(issues, limit=1), "media-captions ×2, +1")
+
+
 class Scanner(unittest.TestCase):
     def test_typescript_generics_and_comparisons_are_not_jsx(self):
         source = """const [v, set] = useState<string>("a");

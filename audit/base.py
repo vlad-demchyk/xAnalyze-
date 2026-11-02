@@ -169,6 +169,26 @@ def unsettled_count(issues) -> int:
                if getattr(issue, "confidence", EXACT) == NEEDS_BROWSER)
 
 
+def unsettled_summary(issues, limit: int = 5) -> str:
+    """Which checks were left undecided, by rule: `media-captions ×2, …`.
+
+    The count alone said "2 checks could not be decided" and nothing about
+    which, so a reader could not tell whether it was worth `--unsettled` -
+    on `apps/coach/src` it was a live-call `<Video>` and a dialog named by a
+    prop, both worth a look.
+    """
+    counts: dict = {}
+    for issue in issues:
+        if getattr(issue, "confidence", EXACT) == NEEDS_BROWSER:
+            counts[issue.rule_id] = counts.get(issue.rule_id, 0) + 1
+    ordered = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    shown = [f"{rule} ×{count}" if count > 1 else rule
+             for rule, count in ordered[:limit]]
+    if len(ordered) > limit:
+        shown.append(f"+{len(ordered) - limit}")
+    return ", ".join(shown)
+
+
 @dataclass
 class Issue:
     """One accessibility problem, at one place in one document."""

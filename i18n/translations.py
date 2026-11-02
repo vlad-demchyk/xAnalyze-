@@ -4062,6 +4062,26 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Rimuovi tabIndex. Se l'elemento deve davvero essere un'azione, rendilo un <button>; se è un bersaglio per il focus da codice (una finestra modale, un messaggio), il valore corretto è tabIndex={{-1}}.",
         "en": "Remove the tabIndex. If the element really is an action, make it a <button>; if it is a target for scripted focus (a dialog, a message), the correct value is tabIndex={{-1}}.",
     },
+    "a11y_jsx_untranslated_literal_title": {
+        "uk": "Текст для людини записано літералом у файлі, який решту перекладає",
+        "it": "Testo per la persona scritto come letterale in un file che traduce il resto",
+        "en": "Text a person reads written as a literal in a file that translates the rest",
+    },
+    "a11y_jsx_untranslated_literal_found": {
+        "uk": "{attribute}=\"{value}\" не проходить через переклад, хоча інші тексти цього файлу проходять.",
+        "it": "{attribute}=\"{value}\" non passa dalla traduzione, mentre gli altri testi di questo file sì.",
+        "en": "{attribute}=\"{value}\" is not translated, while the other texts of this file are.",
+    },
+    "a11y_jsx_untranslated_literal_why": {
+        "uk": "У версії застосунку іншою мовою цей текст лишиться тим самим. Скрін-рідер прочитає його з вимовою мови сторінки, і людина почує набір незрозумілих звуків або назву, якої не впізнає.",
+        "it": "Nella versione dell'app in un'altra lingua questo testo resta uguale. Uno screen reader lo legge con la pronuncia della lingua della pagina, e la persona sente suoni incomprensibili o un nome che non riconosce.",
+        "en": "In the app's version in another language this text stays the same. A screen reader reads it with the page language's pronunciation, and the person hears noise or a name they do not recognise.",
+    },
+    "a11y_jsx_untranslated_literal_fix": {
+        "uk": "Передайте текст через ту саму функцію перекладу, що й решту (t(\"…\")), або через проп чи контекст, який задає застосунок. Якщо це назва бренду чи приклад, однаковий у всіх мовах, знахідку можна лишити.",
+        "it": "Fai passare il testo dalla stessa funzione di traduzione del resto (t(\"…\")), oppure da una prop o un contesto che l'app imposta. Se è un marchio o un esempio uguale in tutte le lingue, la segnalazione si può ignorare.",
+        "en": "Pass the text through the same translation function as the rest (t(\"…\")), or through a prop or context the app sets. If it is a brand name or an example that is the same in every language, it can stay.",
+    },
     "a11y_jsx_autofocus_title": {
         "uk": "autoFocus переносить фокус до того, як сторінку прочитали",
         "it": "autoFocus sposta il focus prima che la pagina sia stata letta",
