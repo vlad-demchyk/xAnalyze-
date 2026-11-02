@@ -1,0 +1,13 @@
+{
+  "name": "xanalyze",
+  "owner": { "name": "XAnalyze" },
+  "metadata": { "description": "XAnalyze for agents: how to run the analyzer, read its output and prove a fix" },
+  "plugins": [
+    {
+      "name": "xanalyze",
+      "source": "./xanalyze",
+      "version": "0.70.0",
+      "description": "How an agent works with XAnalyze: AI-copy and character scans, website audits, fixes, runs and the agent protocol"
+    }
+  ]
+}
