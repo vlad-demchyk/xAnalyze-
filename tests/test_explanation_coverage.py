@@ -58,6 +58,9 @@ class NoRawKeysTests(unittest.TestCase):
                                            "status": 404}),
             ("seo-hreflang-not-reciprocal", {"language": "uk",
                                               "target": "https://example.test/uk/article"}),
+            ("seo-hreflang-parameterised-skipped", {
+                "count": 2, "pages": ["https://example.test/?s=a"],
+                "examples": ["https://example.test/?s=a"]}),
             ("geo-article-schema", {}),
             ("geo-article-provenance", {"missing": "author"}),
             ("perf-largest-contentful-paint", {"value": 2700,

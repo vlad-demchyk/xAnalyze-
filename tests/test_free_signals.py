@@ -111,6 +111,55 @@ class AcrossThePages(unittest.TestCase):
         self.assertEqual(len(found), 1)
         self.assertEqual(found[0].details["target"], "https://x/uk/article")
 
+    def test_search_and_filter_views_are_left_out_and_counted(self):
+        # 216 rows of one crawl: `?s=` and filter views carry the hreflang of
+        # the page they were built on, and nothing links back to them.
+        alt = ('<link rel="alternate" hreflang="en" href="https://x/en/">')
+        pages = [
+            PageResult(url="https://x/?s=palmanova", depth=0,
+                       raw_html=f"<html><head>{alt}</head></html>"),
+            PageResult(url="https://x/eventi?pgrado=3", depth=0, raw_html=(
+                f'<html><head><link rel="canonical" href="https://x/eventi">{alt}'
+                "</head></html>")),
+            PageResult(url="https://x/en/", depth=0,
+                       raw_html="<html><head></head></html>"),
+        ]
+        issues = crosspage.issues_for(pages)
+        self.assertEqual([i for i in issues
+                          if i.rule_id == "seo-hreflang-not-reciprocal"], [])
+        skipped = [i for i in issues
+                   if i.rule_id == "seo-hreflang-parameterised-skipped"]
+        self.assertEqual(len(skipped), 1)
+        self.assertEqual(skipped[0].details["count"], 2)
+        self.assertEqual(skipped[0].severity, "minor")
+
+    def test_a_query_page_that_names_itself_canonical_is_still_checked(self):
+        # `?page_id=12` on WordPress without pretty links is a page.
+        pages = [
+            PageResult(url="https://x/?page_id=12", depth=0, raw_html=(
+                '<html><head><link rel="canonical" href="https://x/?page_id=12">'
+                '<link rel="alternate" hreflang="en" href="https://x/en/?page_id=13">'
+                "</head></html>")),
+            PageResult(url="https://x/en/?page_id=13", depth=0, raw_html=(
+                '<html><head><link rel="canonical" href="https://x/en/?page_id=13">'
+                "</head></html>")),
+        ]
+        found = [i for i in crosspage.issues_for(pages)
+                 if i.rule_id == "seo-hreflang-not-reciprocal"]
+        self.assertEqual(len(found), 1)
+
+    def test_tracking_parameters_do_not_make_a_view(self):
+        pages = [
+            PageResult(url="https://x/en/article?utm_source=a", depth=0, raw_html=(
+                '<html><head><link rel="alternate" hreflang="uk" '
+                'href="https://x/uk/article"></head></html>')),
+            PageResult(url="https://x/uk/article", depth=0,
+                       raw_html="<html><head></head></html>"),
+        ]
+        found = [i for i in crosspage.issues_for(pages)
+                 if i.rule_id == "seo-hreflang-not-reciprocal"]
+        self.assertEqual(len(found), 1)
+
     def test_reciprocal_hreflang_is_clean(self):
         pages = [
             PageResult(url="https://x/en/article", depth=0, raw_html=(

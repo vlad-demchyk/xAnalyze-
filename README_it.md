@@ -145,7 +145,13 @@ pagina non dice nulla su sottotitoli, trascrizione e audiodescrizione (1.2.2,
 (4.1.3); e, su un sito multilingue scansionato, un link che nella traduzione
 porta altrove rispetto all'originale (2.4.4). I controlli su video, live region
 e link tradotti sono `advisory`: indicano dove deve guardare una persona, non
-che la pagina sia bocciata.
+che la pagina sia bocciata. I link elencati in un altro ordine nella traduzione
+si confrontano per parole e destinazione, non per posizione. Gli indirizzi di
+ricerca e filtro il cui canonical non punta a sé stessi sono esclusi dal
+controllo di reciprocità hreflang e contati in una riga; un link che
+HTML_CodeSniffer segnala come immagine senza `alt` ma che ha un nome da
+`aria-label`, `aria-labelledby` o `title` è un promemoria per verificare il nome,
+non una violazione.
 
 **Nel browser**, quando ce n'è uno: axe-core e HTML_CodeSniffer, la pagina nello
 stato in cui la mette una persona - indicatore di focus e se si distingue dallo

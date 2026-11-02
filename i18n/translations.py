@@ -3857,6 +3857,26 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Aggiungi nella pagina di destinazione <link rel=\"alternate\" hreflang=\"…\" href=\"…\"> che riporti a questo URL. Verifica entrambe le pagine dopo la pubblicazione, inclusa la normalizzazione degli URL.",
         "en": "Add a <link rel=\"alternate\" hreflang=\"…\" href=\"…\"> on the target page that returns to this URL. Verify both pages after publishing, including URL normalisation.",
     },
+    "a11y_seo_hreflang_parameterised_skipped_title": {
+        "uk": "Пошук і фільтри не перевірялися на взаємний hreflang",
+        "it": "Ricerca e filtri esclusi dal controllo hreflang reciproco",
+        "en": "Search and filter pages left out of the hreflang reciprocity check",
+    },
+    "a11y_seo_hreflang_parameterised_skipped_found": {
+        "uk": "Пропущено адрес із параметрами: {count}. Приклади: {examples}.",
+        "it": "Indirizzi con parametri esclusi: {count}. Esempi: {examples}.",
+        "en": "Addresses with parameters left out: {count}. For example: {examples}.",
+    },
+    "a11y_seo_hreflang_parameterised_skipped_why": {
+        "uk": "Адреса з параметрами (пошук, фільтр, сортування) вважається окремою сторінкою, лише коли її canonical вказує на неї саму. У цих адрес такого canonical немає, тому вони є видами іншої сторінки, і відсутність зворотного hreflang для них не є дефектом.",
+        "it": "Un indirizzo con parametri (ricerca, filtro, ordinamento) conta come pagina a sé solo se il suo canonical punta a sé stesso. Questi indirizzi non lo fanno: sono viste di un'altra pagina, e un hreflang senza ritorno su di essi non è un difetto.",
+        "en": "An address with parameters (search, filter, sort) counts as a page of its own only when its canonical names itself. These do not, so they are views of another page, and a missing return hreflang on them is not a defect.",
+    },
+    "a11y_seo_hreflang_parameterised_skipped_fix": {
+        "uk": "Нічого не потрібно. Якщо якась із цих адрес справді окрема сторінка, дайте їй canonical на саму себе, і наступний аудит перевірить її hreflang.",
+        "it": "Non serve nulla. Se uno di questi indirizzi è davvero una pagina a sé, dagli un canonical verso sé stesso e il prossimo audit ne controllerà l'hreflang.",
+        "en": "Nothing is needed. If one of these addresses really is a page of its own, give it a canonical that names itself and the next audit will check its hreflang.",
+    },
     "a11y_link_fragment_missing_title": {
         "uk": "Посилання веде на місце, якого на сторінці немає",
         "it": "Il link punta a un punto che nella pagina non esiste",

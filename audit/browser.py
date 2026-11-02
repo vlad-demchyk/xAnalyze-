@@ -235,6 +235,21 @@ def htmlcs_script(standard: str = "WCAG2AA") -> str:
     return f"""
 (function() {{
   {_read(HTMLCS_PATH)}
+  // The name an element gets from its own attributes. HTML_CodeSniffer's
+  // H30.2 reads only a link's content, so a gallery link named by
+  // `aria-label` was reported as having no name at all.
+  function __xaAttributeName(el) {{
+    if (!el || !el.getAttribute) return '';
+    var own = (el.getAttribute('aria-label') || '').trim();
+    if (own) return own;
+    var ids = (el.getAttribute('aria-labelledby') || '').split(/\\s+/).filter(Boolean);
+    var byId = ids.map(function(id) {{
+      var node = document.getElementById(id);
+      return node ? (node.textContent || '').trim() : '';
+    }}).join(' ').trim();
+    if (byId) return byId.slice(0, 200);
+    return (el.getAttribute('title') || '').trim().slice(0, 200);
+  }}
   return new Promise(function(resolve) {{
     var found = [];
     try {{
@@ -245,7 +260,8 @@ def htmlcs_script(standard: str = "WCAG2AA") -> str:
             code: m.code,
             msg: (m.msg || '').slice(0, 600),
             html: (m.element && m.element.outerHTML || '').slice(0, 300),
-            tag: (m.element && m.element.tagName || '').toLowerCase()
+            tag: (m.element && m.element.tagName || '').toLowerCase(),
+            label: __xaAttributeName(m.element)
           }});
         }});
         resolve(JSON.stringify({{messages: found.slice(0, 400)}}));
@@ -464,6 +480,38 @@ def _is_obsolete(code: str) -> bool:
     return any(marker in code for marker in _HTMLCS_OBSOLETE)
 
 
+#: HTML_CodeSniffer's "the image is the only content of the link and has no
+#: alt". It looks at the link's content only; a link named by `aria-label`,
+#: `aria-labelledby` or `title` has an accessible name, and the 93 serious
+#: rows a 381-page crawl gave for such gallery links were false. What is left
+#: is a person's call - "Open image 1" is a name that describes nothing - so
+#: the row stays, at the weight of a note.
+_HTMLCS_LINK_IMAGE_NO_ALT = ".H30.2"
+
+_NAMING_ATTRIBUTE = re.compile(
+    r"""\b(aria-label|aria-labelledby|title)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))""",
+    re.IGNORECASE)
+
+
+def _attribute_name(message: dict) -> str:
+    """The name the flagged element has from its own attributes.
+
+    The collector reports it as `label`; a payload from before it did (a
+    cached run) only has the opening tag in `html`, which carries the same
+    attributes - `aria-labelledby` there counts as a name whose text this
+    side cannot read.
+    """
+    label = (message.get("label") or "").strip()
+    if label:
+        return label
+    opening = (message.get("html") or "").split(">", 1)[0]
+    for match in _NAMING_ATTRIBUTE.finditer(opening):
+        value = next((g for g in match.groups()[1:] if g is not None), "").strip()
+        if value:
+            return value
+    return ""
+
+
 def issues_from_htmlcs(payload: str, source: str) -> list:
     data = _load(payload)
     if "error" in data:
@@ -479,6 +527,9 @@ def issues_from_htmlcs(payload: str, source: str) -> list:
         undetermined = _is_undetermined(code)
         manual = _is_manual_check(code)
         obsolete = _is_obsolete(code)
+        named_by = (_attribute_name(message)
+                    if _HTMLCS_LINK_IMAGE_NO_ALT in code else "")
+        manual = manual or bool(named_by)
         issues.append(Issue(
             rule_id=f"htmlcs:{_short_code(code)}",
             # An unmeasurable element is not a failing one. Kept - the
@@ -499,6 +550,7 @@ def issues_from_htmlcs(payload: str, source: str) -> list:
             details={"engine": "HTML_CodeSniffer", "code": code,
                      "undetermined": undetermined,
                      "manual_check": manual, "obsolete_criterion": obsolete,
+                     "accessible_name_from_attributes": named_by,
                      "why": message.get("msg", ""), "element": message.get("tag", "")},
         ))
     return issues

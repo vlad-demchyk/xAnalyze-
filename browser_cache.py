@@ -89,7 +89,7 @@ def options_key(options, sizes) -> str:
     a new switch that changes the answer and is not in the key is a cache
     that lies, and that is worse than no cache at all.
     """
-    from audit import states, vitals
+    from audit import browser, states, vitals
     return _fingerprint(
         vitals.vendor_identity()["artifact_sha256"],
         vitals.vendor_identity()["collector_sha256"],
@@ -98,6 +98,9 @@ def options_key(options, sizes) -> str:
         # the findings of the old one for up to a week. Hashing the source is
         # the whole fix - there is nothing to remember to bump.
         hashlib.sha256(states.STATE_SCRIPT.encode("utf-8")).hexdigest()[:16],
+        # The HTML_CodeSniffer collector is ours too: what it reports about
+        # the flagged element (its attribute name, for H30.2) is in the answer.
+        hashlib.sha256(browser.htmlcs_script().encode("utf-8")).hexdigest()[:16],
         PASS_REVISION,
         tuple(sorted(getattr(options, "exclude", ()) or ())),
         tuple(sorted(getattr(options, "disabled_rules", ()) or ())),

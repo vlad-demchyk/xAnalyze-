@@ -151,6 +151,12 @@ more" button on a page with no live region (4.1.3); and, across a crawled
 multilingual site, a link that goes somewhere else in the translation than in
 the original (2.4.4). The embed, live-region and translated-link checks are
 `advisory`: they say where a person must look, not that the page fails.
+Links listed in another order in the translation are matched by their words
+and destination, not by position. Search and filter addresses whose canonical
+does not name themselves are left out of the hreflang reciprocity check and
+counted in one row; a link HTML_CodeSniffer reports as an image with no `alt`
+but that is named by `aria-label`, `aria-labelledby` or `title` is a note to
+check the name, not a violation.
 
 **In a browser**, when one is available: axe-core and HTML_CodeSniffer, the
 page in the state a person puts it in - focus indicator and whether it can be

@@ -31,6 +31,7 @@ RULE_DUPLICATE_TITLE = "seo-duplicate-title"
 RULE_DUPLICATE_DESCRIPTION = "seo-duplicate-description"
 RULE_DUPLICATE_CANONICAL = "seo-duplicate-canonical"
 RULE_HREFLANG_NOT_RECIPROCAL = "seo-hreflang-not-reciprocal"
+RULE_HREFLANG_PARAMETERISED_SKIPPED = "seo-hreflang-parameterised-skipped"
 RULE_SLUG_NOT_TRANSLATED = "seo-slug-not-translated"
 RULE_UNTRANSLATED_CONTENT = "seo-untranslated-content"
 RULE_LINK_TARGET_DIFFERS = "link-target-differs-across-translations"
@@ -183,11 +184,20 @@ def issues_for(pages) -> list:
         if final:
             by_url[_normal(final)] = page
     reported = set()
+    skipped: list = []
     for page in readable:
         source_url = _normal(page.url)
         for alternate in parsed.alternates(page):
             target = by_url.get(alternate["url"])
             if target is None or target is page:
+                continue
+            # A search result or a filtered list carries the hreflang of the
+            # page it was built on, and nothing links back to `?s=palmanova`
+            # - 216 rows of one crawl, none of them a translation set the
+            # site meant to declare. Left out, and said so below.
+            if _is_parameterised_view(page) or _is_parameterised_view(target):
+                if page.url not in skipped:
+                    skipped.append(page.url)
                 continue
             target_links = parsed.alternates(target)
             if any(link["url"] == source_url for link in target_links):
@@ -201,10 +211,37 @@ def issues_for(pages) -> list:
                 category=SEO, confidence=EXACT, source=page.url,
                 details={"language": alternate["language"],
                          "target": alternate["url"]}, engine="crawl"))
+    if skipped:
+        issues.append(Issue(
+            rule_id=RULE_HREFLANG_PARAMETERISED_SKIPPED, severity=MINOR,
+            category=SEO, confidence=ADVISORY, source=skipped[0],
+            details={"count": len(skipped), "pages": skipped[:15],
+                     "examples": skipped[:3]},
+            engine="crawl"))
     issues.extend(untranslated_slug_issues(pages, parsed=parsed))
     issues.extend(untranslated_content_issues(pages, parsed=parsed))
     issues.extend(link_target_issues(pages, parsed=parsed))
     return issues
+
+
+def _is_parameterised_view(page) -> bool:
+    """Is this address a view of another page rather than a page of its own?
+
+    Which query makes a page is the site's call, and the site states it in
+    the canonical: `?page_id=12` on a WordPress site without pretty links
+    names itself and is a page; `?s=x`, `?pgrado=3` or a filter either name
+    the page they were built on or name nothing. So an address with a query
+    (beyond tracking and language switches) is a page only when its
+    canonical is that same address.
+    """
+    query = urlsplit(page.url).query
+    if not any(pair and not _NOISE_PARAMS_RE.match(pair.partition("=")[0])
+               for pair in query.split("&")):
+        return False
+    canonical = facts_of(getattr(page, "raw_html", "") or "").get("canonical", "")
+    if not canonical:
+        return True
+    return _normal(urljoin(page.url, canonical)) != _normal(page.url)
 
 
 #: A site has to have translated at least this many addresses before an
@@ -662,6 +699,15 @@ def link_target_issues(pages, parsed=None) -> list:
                     # `/2017/02/03/x`, `ger/intro.mp3` against `ita/intro.mp3`).
                     # Only a different *site* is something to point at.
                     continue
+                # Position is only how two links are paired, not what makes
+                # one wrong. The same packages listed in another order put
+                # each link opposite a different package, and every one of
+                # them was reported though each led to its own translation.
+                # The link is wrong only when no link of the original with
+                # the same words leads where it does.
+                if _matches_another_link(own, theirs, index, subject, other,
+                                         by_url, parsed, wanted):
+                    continue
                 differing.append((index, own, original))
             # Compared by position, so the comparison is only as good as the
             # two pages' links being in the same order. A listing - cards of
@@ -686,6 +732,40 @@ def link_target_issues(pages, parsed=None) -> list:
                              "other_text": original["text"][:120],
                              "where": f"a[{index}]"}))
     return issues
+
+
+def _matches_another_link(own, theirs, index, subject, other, by_url,
+                          parsed, wanted: str) -> bool:
+    """Does some other link of the original, with the same words, lead here?
+
+    Internal: `own` points at that link's target or at its declared
+    translation into this page's language. External: at the same site. The
+    words are required too, so the defect this rule was written for - a link
+    labelled "Palmanova" that leads to Strassoldo's page - is still reported
+    on a page that also has a link labelled "Strassoldo".
+    """
+    own_path = _without_query(own["href"])
+    own_site = _destination_signature(own["href"])[0]
+    internal = _host_of(own["href"]) == _host_of(subject.url)
+    for position, original in enumerate(theirs):
+        if position == index or not _same_link_text(own["text"], original["text"]):
+            continue
+        if not internal:
+            if _host_of(original["href"]) != _host_of(other.url) \
+                    and _destination_signature(original["href"])[0] == own_site:
+                return True
+            continue
+        if _host_of(original["href"]) != _host_of(other.url):
+            continue
+        if _without_query(original["href"]) == own_path:
+            return True
+        target = by_url.get(_normal(original["href"]))
+        if target is None or not wanted:
+            continue
+        if own_path in {_without_query(a["url"]) for a in parsed.alternates(target)
+                        if a["language"].split("-")[0] == wanted}:
+            return True
+    return False
 
 
 def _same_link_text(first: str, second: str) -> bool:

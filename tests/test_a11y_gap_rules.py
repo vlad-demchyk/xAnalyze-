@@ -188,6 +188,45 @@ class TranslatedLinks(unittest.TestCase):
             '<a href="https://twitter.com/intent/tweet?text=https%3A%2F%2Fs.test%2Fen%2F">F</a>')
         self.assertEqual(len(link_target_issues(pages)), 1)
 
+    def test_the_same_packages_in_another_order_are_not_wrong_links(self):
+        # Palmanova's packages: the German page lists them in another order,
+        # so by position each link stands opposite another package, and each
+        # still leads to its own translation.
+        names = ("cultura", "natura", "gusto")
+        alts = {n: {"it": f"https://s.test/pacchetto-palmanova-{n}",
+                    "de": f"https://s.test/de/paket-palmanova-{n}"} for n in names}
+        crawled = []
+        for n in names:
+            crawled += [page(alts[n]["it"], _doc("it", alts[n], "")),
+                        page(alts[n]["de"], _doc("de", alts[n], ""))]
+        it_body = "".join(f'<a href="/pacchetto-palmanova-{n}">Pacchetto Palmanova {n}</a>'
+                          for n in names)
+        de_body = "".join(f'<a href="/de/paket-palmanova-{n}">Paket Palmanova {n}</a>'
+                          for n in reversed(names))
+        home = {"it": "https://s.test/", "de": "https://s.test/de/"}
+        pages = [page("https://s.test/", _doc("it", home, it_body)),
+                 page("https://s.test/de/", _doc("de", home, de_body))]
+        self.assertEqual(link_target_issues(pages + crawled), [])
+
+    def test_external_links_in_another_order_are_not_wrong_links(self):
+        pages = self.pages(
+            '<a href="https://palmanova.example/">Palmanova</a>'
+            '<a href="https://unesco.example/">Palmanova UNESCO</a>',
+            '<a href="https://unesco.example/">Palmanova UNESCO</a>'
+            '<a href="https://palmanova.example/">Palmanova</a>')
+        self.assertEqual(link_target_issues(pages), [])
+
+    def test_a_wrong_link_is_found_beside_a_link_to_where_it_leads(self):
+        """The case the rule exists for must survive the set comparison: the
+        page also links to Strassoldo, but under Strassoldo's name."""
+        pages = self.pages(
+            '<a href="https://palmanova.example/">Palmanova</a>'
+            '<a href="https://strassoldo.example/">Strassoldo</a>',
+            '<a href="https://strassoldo.example/">Palmanova</a>'
+            '<a href="https://strassoldo.example/">Strassoldo</a>')
+        hits = link_target_issues(pages)
+        self.assertEqual([h.details["href"] for h in hits], ["https://strassoldo.example/"])
+
     def test_paginated_and_filtered_archive_links_have_no_declared_translation(self):
         # Both targets were crawled, neither declares an hreflang pair: "not
         # declared" is not "different". 229 internal findings of this shape,
