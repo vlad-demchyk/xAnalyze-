@@ -64,8 +64,9 @@ MAX_ENTRIES = 500
 #: 4.1.1 getting their own weight; 4 is axe's `target-size` (2.5.8) switched
 #: on, which the cached findings of 3 never ran; 5 is HTML_CodeSniffer's
 #: caption suggestion (H39.3.NoCaption) weighed as a prompt; 6 waits for a
-#: page to stop being aria-busy before measuring it.
-PASS_REVISION = 6
+#: page to stop being aria-busy before measuring it; 7 also waits for finite
+#: animations to end.
+PASS_REVISION = 7
 
 
 def cache_dir() -> Path:

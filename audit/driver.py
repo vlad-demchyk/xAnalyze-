@@ -59,7 +59,19 @@ LOAD_TIMEOUT_MS = 30_000
 #: crawl.
 BUSY_WAIT_MS = 8_000
 BUSY_POLL_MS = 250
-_BUSY_SCRIPT = "!!document.querySelector('[aria-busy=\"true\"]')"
+#: Busy also while a finite animation is still running. Coach's landing
+#: fades its scenes in, and `axe:color-contrast` measured "Екзамен" at
+#: opacity below 1 on one run and not on the next. Infinite animations (a
+#: spinner, a marquee) never end and are not waited for.
+_BUSY_SCRIPT = """(function() {
+  if (document.querySelector('[aria-busy="true"]')) return true;
+  if (!document.getAnimations) return false;
+  return document.getAnimations().some(function(a) {
+    if (a.playState !== 'running' || !a.effect) return false;
+    var end = a.effect.getComputedTiming().endTime;
+    return isFinite(end) && end > 0;
+  });
+})()"""
 
 #: How long to let a viewport resize reach the renderer before asking the
 #: page anything. Measured rather than guessed: below ~100ms the first probe

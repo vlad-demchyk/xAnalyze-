@@ -59,5 +59,42 @@ class InARealBrowser(unittest.TestCase):
         self.assertIn("busy", result.engine_errors)
 
 
+FADING = """<!DOCTYPE html><html lang="en"><head><title>App</title><style>
+  @keyframes appear { from { opacity: 0.1; } to { opacity: 1; } }
+  h1 { animation: appear 1.5s ease-out forwards; }
+  .spin { animation: turn 1s linear infinite; }
+  @keyframes turn { to { transform: rotate(360deg); } }
+</style></head><body><main><h1 id="t">Exam</h1><i class="spin">*</i></main>
+</body></html>"""
+
+
+class Animations(unittest.TestCase):
+    setUpClass = InARealBrowser.setUpClass
+
+    def test_a_fade_in_is_over_before_the_page_is_read(self):
+        from audit import browser, driver
+
+        with TemporaryDirectory() as folder:
+            path = Path(folder) / "page.html"
+            path.write_text(FADING, encoding="utf-8")
+            options = browser.BrowserAuditOptions(
+                run_axe=False, run_htmlcs=False, run_states=False,
+                run_measurements=False, allow_local_files=True, settle_ms=100,
+                capture_html=True, capture_text=False)
+            driver.ensure_headless_application()
+            runner = driver.BrowserAuditRunner(options)
+            try:
+                import time
+                started = time.monotonic()
+                result = runner.audit(path.resolve().as_uri())
+                elapsed = time.monotonic() - started
+            finally:
+                runner.close()
+        # Waited for the 1.5 s fade, and not for the infinite spinner.
+        self.assertGreater(elapsed, 1.3)
+        self.assertLess(elapsed, 7)
+        self.assertNotIn("busy", result.engine_errors)
+
+
 if __name__ == "__main__":
     unittest.main()
