@@ -120,6 +120,12 @@ class BrowserAuditOptions:
     #: the tool at a file, and then only because an exported page whose images
     #: sit beside it would otherwise be audited half-loaded.
     allow_local_files: bool = False
+    #: Which `prefers-color-scheme` the page is told, "light" or "dark". A
+    #: site with a dark theme has a second set of colours, and Coach's 41
+    #: indigo focus rings were 2.65-2.93:1 there - found by hand, because the
+    #: pass only ever saw the light one. Chromium takes the scheme once per
+    #: process (`apply_color_scheme`), so it is one scheme per run.
+    color_scheme: str = "light"
     #: The size the page believes it is being viewed at, as `(width, height)`
     #: in CSS pixels. It is what makes a responsive audit possible: media
     #: queries answer to this number, so a page audited at one size has only

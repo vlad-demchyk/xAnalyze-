@@ -1298,6 +1298,10 @@ def build_parser() -> argparse.ArgumentParser:
                               "at a single width says so - which is the point, "
                               "since a mobile menu is not in the DOM at all at "
                               "desktop width")
+    p_audit.add_argument("--color-scheme", choices=("light", "dark"), default="light",
+                         help="which prefers-color-scheme the browser pass shows "
+                              "the page (default light). One scheme per run: "
+                              "run twice to audit both themes")
     p_audit.add_argument("--site-controls", action="store_true",
                          help="also fetch robots.txt and same-origin sitemaps "
                               "declared in it. Opt-in: this makes requests "
@@ -1533,6 +1537,10 @@ def build_parser() -> argparse.ArgumentParser:
                             help="responsive breakpoints for browser audit: "
                                  "desktop (default), all, tablet, mobile, reflow, "
                                  "or comma-separated subset (e.g. desktop,mobile)")
+    p_fullscan.add_argument("--color-scheme", choices=("light", "dark"), default="light",
+                         help="which prefers-color-scheme the browser pass shows "
+                              "the page (default light). One scheme per run: "
+                              "run twice to audit both themes")
     p_fullscan.add_argument("--site-controls", action="store_true",
                            help="also fetch robots.txt and same-origin sitemaps "
                                 "declared in it during a URL audit")
@@ -1741,6 +1749,12 @@ def main(argv=None) -> int:
     # hint below: a stream that starts with prose an agent cannot parse is
     # not a stream it can read from the first byte.
     progress.configure(getattr(args, "progress", None))
+
+    # Before anything can start Chromium: the colour scheme is a flag of its
+    # browser process, read once. See `audit.driver.apply_color_scheme`.
+    if getattr(args, "color_scheme", None) == "dark":
+        from audit.driver import apply_color_scheme
+        apply_color_scheme("dark")
 
     # No subcommand → launch interactive TUI
     if args.command is None:

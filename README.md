@@ -110,6 +110,7 @@ stay explicit. See [the finding contract](docs/finding-contract.md).
 | `--repo PATH` | the checkout behind a site, so a finding names the file and not only the page |
 | `--devserver` | start the project's own dev server and audit the rendered site |
 | `--breakpoints all` | audit every width; without it, one width (1440x900) |
+| `--color-scheme dark` | show the page `prefers-color-scheme: dark`, to audit a dark theme; one scheme per run |
 | `--no-browser` | the static reading only, and much faster |
 | `--detector NAME` | `offline` (default, free), `embedding`, `hybrid`, `ai` |
 | `--category`, `--confidence` | narrow what is reported; both are views over one pass |
@@ -441,6 +442,7 @@ anyway.
 - A folder scan cannot see content that exists only after rendering. Use a URL
   or `--devserver`.
 - One width cannot describe responsive behaviour. Use `--breakpoints all`.
+- One colour scheme per run: a site with a dark theme needs a second run with `--color-scheme dark`.
 - Browser performance reports include LCP/CLS/INP evidence and measurement
   conditions. Use `--performance-repeats 3` and an explicit interaction scenario
   for repeated lab observations; optional Lighthouse and CrUX stay separate.

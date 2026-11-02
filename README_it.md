@@ -103,6 +103,7 @@ conoscere:
 | `--repo PERCORSO` | il checkout dietro un sito, così un risultato nomina il file e non solo la pagina |
 | `--devserver` | avvia il dev server del progetto e analizza il sito renderizzato |
 | `--breakpoints all` | audit a ogni larghezza; senza, una sola (1440x900) |
+| `--color-scheme dark` | mostra alla pagina `prefers-color-scheme: dark`, per verificare un tema scuro; uno schema per esecuzione |
 | `--no-browser` | solo la lettura statica, e molto più veloce |
 | `--detector NOME` | `offline` (predefinito, gratuito), `embedding`, `hybrid`, `ai` |
 | `--category`, `--confidence` | restringere ciò che viene riportato; entrambe sono viste su un unico passaggio |
@@ -453,6 +454,8 @@ clic le annulla.
   rendering. Usate un URL o `--devserver`.
 - Una sola larghezza non descrive il comportamento responsive. Usate
   `--breakpoints all`.
+- Uno schema di colori per esecuzione: un sito con tema scuro richiede una
+  seconda esecuzione con `--color-scheme dark`.
 - I controlli tipografici possono segnalare punteggiatura voluta
   (`--no-typography`).
 - La lettura C2PA richiede i pacchetti opzionali `c2pa-python` e `cryptography`.

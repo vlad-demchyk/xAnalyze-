@@ -201,6 +201,7 @@ def _run_browser_pass(result, suppressions, args=None) -> None:
         run_states=not within,
         run_measurements=not within,
         settle_ms=getattr(args, "performance_settle_ms", 2500),
+        color_scheme=getattr(args, "color_scheme", None) or "light",
         performance_repeats=getattr(args, "performance_repeats", 1),
         performance_scenario=scenario,
         performance_fresh=getattr(args, "performance_fresh", False),

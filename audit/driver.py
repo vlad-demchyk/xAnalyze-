@@ -50,6 +50,28 @@ SCRIPT_TIMEOUT_MS = 60_000
 #: broke an engine, and the report should be able to say which.
 LOAD_TIMEOUT_MS = 30_000
 
+COLOR_SCHEMES = ("light", "dark")
+_DARK_FLAG = "--blink-settings=preferredColorScheme=0"
+
+
+def apply_color_scheme(scheme: str) -> None:
+    """Tell Chromium which colour scheme pages should see, before it starts.
+
+    A process-wide flag: Qt reads `QTWEBENGINE_CHROMIUM_FLAGS` when its
+    browser process starts, so this has to run before the first page. A run
+    that asks too late is caught by `BrowserAuditRunner`, which checks what
+    the page actually sees and says so instead of reporting light as dark.
+    """
+    flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "").split()
+    flags = [flag for flag in flags if not flag.startswith("--blink-settings=preferredColorScheme")]
+    if scheme == "dark":
+        flags.append(_DARK_FLAG)
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = " ".join(flags)
+
+
+_SCHEME_SCRIPT = "matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'"
+
+
 #: How long, past the settle wait, a page still marked `aria-busy="true"` is
 #: given before it is measured anyway. A single-page app shows its skeleton
 #: under `role="status" aria-busy="true"` while its data arrives; measured
@@ -557,10 +579,16 @@ class BrowserAuditRunner:
             if not pending:
                 finish()
 
-        busy = {"waited_ms": 0, "still_busy": False}
+        busy = {"waited_ms": 0, "still_busy": False, "scheme": None}
 
         def wait_until_idle():
             if state["finished"]:
+                return
+            if busy["scheme"] is None:
+                def seen(scheme):
+                    busy["scheme"] = scheme if scheme in COLOR_SCHEMES else "unknown"
+                    wait_until_idle()
+                page.runJavaScript(_SCHEME_SCRIPT, 0, seen)
                 return
 
             def answered(is_busy):
@@ -690,6 +718,7 @@ class BrowserAuditRunner:
                 result.measurements.setdefault("conditions", {}).update({
                     "settleMs": options.settle_ms, "navigationLoaded": load,
                     "busyWaitMs": busy["waited_ms"], "stillBusy": busy["still_busy"],
+                    "colorScheme": busy["scheme"],
                     "profile": "session" if self._profile and not self._profile.isOffTheRecord()
                                else "off-the-record",
                     "httpCache": "shared profile cache, not forcibly cleared",
@@ -701,6 +730,13 @@ class BrowserAuditRunner:
                     result.engine_errors["scenario"] = "; ".join(
                         f"{entry['selector']}: {entry['reason']}" for entry in failures)
             issues += browser.issues_from_measurements(result.measurements, url)
+        wanted = getattr(options, "color_scheme", "light") or "light"
+        if busy["scheme"] not in (None, wanted):
+            # Asked for one scheme and measured another: the flag reached
+            # Chromium too late. Said, because a "dark" report of the light
+            # theme is the worst kind of wrong - confident.
+            result.engine_errors["color_scheme"] = (
+                f"asked for {wanted}, the page saw {busy['scheme']}")
         if busy["still_busy"]:
             # Measured anyway, and said: what follows may describe a skeleton.
             result.engine_errors["busy"] = (

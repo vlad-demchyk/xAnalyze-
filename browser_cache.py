@@ -113,6 +113,7 @@ def options_key(options, sizes) -> str:
         bool(getattr(options, "run_states", True)),
         bool(getattr(options, "run_measurements", True)),
         bool(getattr(options, "allow_local_files", False)),
+        str(getattr(options, "color_scheme", "light") or "light"),
         int(getattr(options, "settle_ms", 0) or 0),
         int(getattr(options, "performance_repeats", 1)),
         json.dumps(getattr(options, "performance_scenario", []), sort_keys=True),
