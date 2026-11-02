@@ -63,8 +63,9 @@ MAX_ENTRIES = 500
 #: the engine's raw message: 3 is HTML_CodeSniffer's prompts and the removed
 #: 4.1.1 getting their own weight; 4 is axe's `target-size` (2.5.8) switched
 #: on, which the cached findings of 3 never ran; 5 is HTML_CodeSniffer's
-#: caption suggestion (H39.3.NoCaption) weighed as a prompt.
-PASS_REVISION = 5
+#: caption suggestion (H39.3.NoCaption) weighed as a prompt; 6 waits for a
+#: page to stop being aria-busy before measuring it.
+PASS_REVISION = 6
 
 
 def cache_dir() -> Path:

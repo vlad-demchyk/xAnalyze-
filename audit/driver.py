@@ -50,6 +50,17 @@ SCRIPT_TIMEOUT_MS = 60_000
 #: broke an engine, and the report should be able to say which.
 LOAD_TIMEOUT_MS = 30_000
 
+#: How long, past the settle wait, a page still marked `aria-busy="true"` is
+#: given before it is measured anyway. A single-page app shows its skeleton
+#: under `role="status" aria-busy="true"` while its data arrives; measured
+#: then, Coach's /app had no `<h1>` and a card pointed at a heading that did
+#: not exist yet. The page says when it is ready, so that is what is waited
+#: for - bounded, because a spinner left busy by mistake must not stall a
+#: crawl.
+BUSY_WAIT_MS = 8_000
+BUSY_POLL_MS = 250
+_BUSY_SCRIPT = "!!document.querySelector('[aria-busy=\"true\"]')"
+
 #: How long to let a viewport resize reach the renderer before asking the
 #: page anything. Measured rather than guessed: below ~100ms the first probe
 #: after a resize still reports the previous width.
@@ -506,7 +517,7 @@ class BrowserAuditRunner:
                 return
             # The settle wait is the difference between auditing the site and
             # auditing its loading skeleton.
-            QTimer.singleShot(options.settle_ms, run_scripts)
+            QTimer.singleShot(options.settle_ms, wait_until_idle)
 
         payloads: dict = {}
         #: Active `_Slot`s, kept alive against garbage collection. See
@@ -533,6 +544,24 @@ class BrowserAuditRunner:
                 pending.remove(name)
             if not pending:
                 finish()
+
+        busy = {"waited_ms": 0, "still_busy": False}
+
+        def wait_until_idle():
+            if state["finished"]:
+                return
+
+            def answered(is_busy):
+                if state["finished"]:
+                    return
+                if is_busy and busy["waited_ms"] < BUSY_WAIT_MS:
+                    busy["waited_ms"] += BUSY_POLL_MS
+                    QTimer.singleShot(BUSY_POLL_MS, wait_until_idle)
+                    return
+                busy["still_busy"] = bool(is_busy)
+                run_scripts()
+
+            page.runJavaScript(_BUSY_SCRIPT, 0, answered)
 
         def run_scripts():
             from text_extraction import TEXT_SNAPSHOT_SCRIPT
@@ -623,7 +652,7 @@ class BrowserAuditRunner:
             ) if state["loaded"] is None else None)
             page.setUrl(QUrl(url))
         else:
-            QTimer.singleShot(options.settle_ms, run_scripts)
+            QTimer.singleShot(options.settle_ms, wait_until_idle)
         loop.exec()
         cancel_timer.stop()
         if load:
@@ -648,6 +677,7 @@ class BrowserAuditRunner:
             if result.measurements:
                 result.measurements.setdefault("conditions", {}).update({
                     "settleMs": options.settle_ms, "navigationLoaded": load,
+                    "busyWaitMs": busy["waited_ms"], "stillBusy": busy["still_busy"],
                     "profile": "session" if self._profile and not self._profile.isOffTheRecord()
                                else "off-the-record",
                     "httpCache": "shared profile cache, not forcibly cleared",
@@ -659,6 +689,11 @@ class BrowserAuditRunner:
                     result.engine_errors["scenario"] = "; ".join(
                         f"{entry['selector']}: {entry['reason']}" for entry in failures)
             issues += browser.issues_from_measurements(result.measurements, url)
+        if busy["still_busy"]:
+            # Measured anyway, and said: what follows may describe a skeleton.
+            result.engine_errors["busy"] = (
+                f"the page was still aria-busy after {BUSY_WAIT_MS // 1000}s; "
+                "it was measured as it was")
         if "states" in payloads:
             issues += states.issues_from_states(payloads["states"], url)
         if "html" in payloads:

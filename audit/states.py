@@ -477,6 +477,18 @@ STATE_SCRIPT = r"""
   // Anything that swallows Tab without moving focus onwards. Checked by
   // dispatching the key and seeing whether the element cancels it — not by
   // actually tabbing, which the page's own handlers would fight over.
+  //
+  // An open aria-modal dialog that offers a way out is the exception. Keeping
+  // Tab inside it is what the ARIA dialog pattern asks for (2.4.3), not a
+  // trap (2.1.2): Coach's welcome tour cycles Tab through its own buttons,
+  // closes on Escape and has "Skip", and every header link behind it was
+  // reported as a trap because the tour's document-level handler cancels the
+  // key. The way out is read, not tried - pressing Escape or a button would
+  // change the page, and this pass never acts. A modal with no button, link
+  // or close control in it is still a trap, and so is anything when no modal
+  // is open.
+  var modalExit = openModal && openModal.querySelector(
+    'button, a[href], [role="button"], [aria-label*="close" i], [aria-label*="chiudi" i], [aria-label*="закри" i]');
   candidates.forEach(function(el) {
     try { el.focus({preventScroll: true}); } catch (e) { return; }
     if (document.activeElement !== el) return;
@@ -484,6 +496,7 @@ STATE_SCRIPT = r"""
                                               bubbles: true, cancelable: true});
     var delivered = el.dispatchEvent(event);
     if (!delivered && !el.matches('input,textarea,select,[contenteditable]')) {
+      if (openModal && modalExit) return;
       record('keyboard-trap', el, {});
     }
   });
