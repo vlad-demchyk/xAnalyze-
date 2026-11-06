@@ -187,10 +187,32 @@ class _TrustedRedirectHandler(HTTPRedirectHandler):
         return request
 
 
+def _tls_context():
+    """Verify GitHub against the CA bundle shipped in the app.
+
+    The default context trusts the CA file of the Python that built the
+    bundle. Built on a CI runner, that path is the runner's and does not
+    exist on anyone else's Mac, so every update check from a released app
+    failed with CERTIFICATE_VERIFY_FAILED - while a local build, whose Python
+    happens to point at Homebrew's bundle, worked. `certifi` travels with the
+    app (requests needs it too), so it is the one file every build has.
+    """
+    import ssl
+
+    try:
+        import certifi
+    except ImportError:  # pragma: no cover - requests depends on it
+        return ssl.create_default_context()
+    return ssl.create_default_context(cafile=certifi.where())
+
+
 def _open_trusted(url: str, *, timeout: int):
+    from urllib.request import HTTPSHandler
+
     _require_trusted_url(url)
     request = Request(url, headers=_gh_headers())
-    response = build_opener(_TrustedRedirectHandler()).open(
+    response = build_opener(HTTPSHandler(context=_tls_context()),
+                            _TrustedRedirectHandler()).open(
         request, timeout=timeout)
     try:
         _require_trusted_url(response.geturl())

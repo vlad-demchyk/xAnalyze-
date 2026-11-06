@@ -8,6 +8,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 from unittest.mock import patch
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -316,3 +317,34 @@ class DownloadedBytesMustMatch(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheTlsTrust(unittest.TestCase):
+    """0.72.1 from CI could not reach GitHub: the default context trusted the
+    build runner's CA path, which no user's Mac has."""
+
+    def test_the_updater_trusts_the_bundled_ca_file(self):
+        import certifi
+
+        with mock.patch("ssl.create_default_context") as make:
+            updater._tls_context()
+        make.assert_called_once_with(cafile=certifi.where())
+
+    def test_the_context_is_handed_to_the_opener(self):
+        seen = []
+
+        class _Opener:
+            def open(self, request, timeout):
+                raise OSError("stop")
+
+        def build(*handlers):
+            seen.extend(handlers)
+            return _Opener()
+
+        with mock.patch.object(updater, "build_opener", build), \
+                mock.patch.object(updater, "_tls_context", return_value="ctx"):
+            with self.assertRaises(OSError):
+                updater._open_trusted(updater.API_URL, timeout=1)
+        https = [h for h in seen if h.__class__.__name__ == "HTTPSHandler"]
+        self.assertEqual(len(https), 1)
+        self.assertEqual(https[0]._context, "ctx")
