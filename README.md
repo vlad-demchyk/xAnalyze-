@@ -73,7 +73,7 @@ a single HTML file is read as the finished page it is.
 | `audit TARGET` | website rules only, over a URL, an HTML file or a folder |
 | `fix` / `undo` | apply exact character corrections; restore the `.bak` copies |
 | `runs` / `resume` / `compare` | a run is an object: list it, continue it, diff it against the last |
-| `login URL` | sign in to a site by hand, in a real browser, so a run can read behind it |
+| `login URL` | sign in to a site by hand, in a real browser, so a run can read behind it; kept only when you press Done |
 | `logs` | what a run actually did, as JSON Lines |
 | `ai` | the account behind the model passes: `status`, `login`, `rewrite` |
 | `agent-scan` / `agent-judge` | hand candidate passages to an agent and take its verdicts back |

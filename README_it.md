@@ -75,7 +75,7 @@ finita che è.
 | `audit BERSAGLIO` | solo le regole del sito: URL, file HTML o cartella |
 | `fix` / `undo` | applica le correzioni esatte dei caratteri; ripristina le copie `.bak` |
 | `runs` / `resume` / `compare` | l'esecuzione è un oggetto: elencarla, riprenderla, confrontarla |
-| `login URL` | accedere a mano, in un browser vero, perché l'esecuzione veda oltre la porta |
+| `login URL` | accedere a mano, in un browser vero, perché l'esecuzione veda oltre la porta; salvato solo dopo «Fatto» |
 | `logs` | cosa ha fatto davvero l'esecuzione, in JSON Lines |
 | `ai` | l'account dietro i passaggi con modello: `status`, `login`, `rewrite` |
 | `agent-scan` / `agent-judge` | passare i candidati a un agente e riprendere i suoi verdetti |

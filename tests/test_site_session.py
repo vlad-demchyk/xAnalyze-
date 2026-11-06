@@ -545,12 +545,11 @@ class BothClientsOrNeither(_Isolated):
 
 
 class ClosingTheWindow(_Isolated):
-    """Closing with the title-bar button must not leave half a session.
+    """Only Done makes a session (P-25).
 
-    QtWebEngine writes the persistent profile the moment the site sets a
-    cookie, and closing the window does not undo that - so without this the
-    renderer would be signed in and the fetcher would not, which is the exact
-    split the feature exists to avoid.
+    Cancel, Escape and the title-bar button mean "not this": nothing is
+    written for the fetcher, the renderer's profile is not used by a scan,
+    and the cookies the page set are removed when there was no session yet.
     """
 
     def setUp(self):
@@ -560,30 +559,74 @@ class ClosingTheWindow(_Isolated):
         except Exception:  # noqa: BLE001
             self.skipTest("PySide6 not available")
 
-    def test_a_dialog_closed_without_done_still_keeps_what_it_collected(self):
-        import site_session as ss
+    class _Store:
+        def __init__(self):
+            self.deleted = 0
+
+        def deleteAllCookies(self):
+            self.deleted += 1
+
+    class _Profile:
+        def __init__(self, store):
+            self._store = store
+
+        def cookieStore(self):
+            return self._store
+
+    def _dialog(self, had_session=False):
         from ui.site_sign_in import SiteSignInDialog
 
         dialog = SiteSignInDialog.__new__(SiteSignInDialog)
         dialog.host = "a.example"
         dialog.saved = False
-        record = _cookie()
-        dialog._cookies = {("sid", "a.example", "/"): record}
-        dialog._keep_what_the_browser_has()
-        self.assertTrue(dialog.saved)
-        self.assertEqual(ss.load_cookies("a.example"), [record])
+        dialog._had_session = had_session
+        dialog._cookies = {("sid", "a.example", "/"): _cookie()}
+        dialog._store = self._Store()
+        dialog.profile = self._Profile(dialog._store)
+        return dialog
 
-    def test_a_dialog_that_collected_nothing_stores_nothing(self):
+    def test_closing_without_done_keeps_nothing(self):
         import site_session as ss
-        from ui.site_sign_in import SiteSignInDialog
 
-        dialog = SiteSignInDialog.__new__(SiteSignInDialog)
-        dialog.host = "a.example"
-        dialog.saved = False
-        dialog._cookies = {}
-        dialog._keep_what_the_browser_has()
+        dialog = self._dialog()
+        dialog._drop_what_was_not_confirmed()
         self.assertFalse(dialog.saved)
+        self.assertEqual(dialog._cookies, {})
+        self.assertEqual(dialog._store.deleted, 1)
         self.assertFalse(ss.has_session("a.example"))
+        self.assertEqual(ss.load_cookies("a.example"), [])
+
+    def test_cancel_does_not_take_away_an_earlier_session(self):
+        import site_session as ss
+
+        ss.save_cookies("a.example", [_cookie()])
+        dialog = self._dialog(had_session=True)
+        dialog._drop_what_was_not_confirmed()
+        self.assertEqual(dialog._store.deleted, 0)
+        self.assertTrue(ss.has_session("a.example"))
+
+    def test_a_profile_the_browser_wrote_is_not_a_session(self):
+        import site_session as ss
+
+        path = ss.profile_dir("a.example", create=True)
+        (path / "Cookies").write_bytes(b"sqlite")
+        self.assertFalse(ss.has_session("a.example"))
+        ss.save_cookies("a.example", [_cookie()])
+        self.assertTrue(ss.has_session("a.example"))
+
+    def test_every_way_out_goes_through_done(self):
+        from PySide6.QtWidgets import QDialog
+
+        dialog = self._dialog()
+        calls = []
+        dialog._drop_what_was_not_confirmed = lambda: calls.append("drop")
+        dialog._page = None
+        from unittest import mock
+        with mock.patch.object(QDialog, "done", lambda self, r: calls.append(r)):
+            type(dialog).done(dialog, QDialog.DialogCode.Rejected)
+            type(dialog).done(dialog, QDialog.DialogCode.Accepted)
+        self.assertEqual(calls, ["drop", QDialog.DialogCode.Rejected,
+                                 QDialog.DialogCode.Accepted])
 
 
 class TheCommandLine(_Isolated):

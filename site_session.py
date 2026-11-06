@@ -235,19 +235,23 @@ def profile_dir(host: str, create: bool = False) -> Path:
 
 
 def has_session(host: str) -> bool:
-    """Is there a stored profile for this host?
+    """Has a sign-in for this host been confirmed with Done?
 
-    A directory that exists but holds nothing is not a session: the profile
-    is created when the sign-in window opens, and a person who closed that
-    window without signing in must not be told they are signed in.
+    The browser profile is not the proof. QtWebEngine writes it the moment
+    the sign-in page sets anything at all - a consent cookie, a tracker, a
+    half-finished login - and a person who pressed Cancel must not be told
+    they are signed in, nor have the crawl use what they walked away from.
+    The fetcher's copy of the cookies is written only by Done, so that file
+    is what makes a session.
     """
     try:
         path = profile_dir(host)
     except ValueError:
         return False
-    if not path.is_dir():
+    if not _profile_has_data(path):
         return False
-    return _profile_has_data(path)
+    cookies = path / _COOKIES
+    return cookies.is_file() and not cookies.is_symlink()
 
 
 def known_hosts() -> list:

@@ -3584,9 +3584,9 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             return
         address = target if "://" in target else f"https://{target}"
         dialog = SiteSignInDialog(address, lang=self.lang, parent=self)
-        dialog.exec()
+        accepted = dialog.exec() == QDialog.DialogCode.Accepted
         self._refresh_sign_in_button()
-        if dialog.saved:
+        if accepted and dialog.saved:
             self.status_bar.showMessage(
                 t("sign_in_site_active", self.lang, host=host))
 

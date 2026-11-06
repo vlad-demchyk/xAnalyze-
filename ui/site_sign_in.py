@@ -45,6 +45,9 @@ class SiteSignInDialog(QDialog):
         self.url = url
         self.host = site_session.host_of(url)
         self.saved = False
+        #: Whether Done had been pressed for this host before this window:
+        #: Cancel must not take away a session the person already had.
+        self._had_session = site_session.has_session(self.host)
         #: Collected as the site sets them, because `allCookies()` is not a
         #: question a cookie store answers synchronously.
         self._cookies: dict[tuple[str, str, str], dict] = {}
@@ -152,30 +155,26 @@ class SiteSignInDialog(QDialog):
         self.saved = False
         self.status.setText(t("sign_in_site_forgotten", self.lang, host=self.host))
 
-    def _keep_what_the_browser_has(self) -> None:
-        """Save on the way out too, so a session cannot end up half-made.
+    def _drop_what_was_not_confirmed(self) -> None:
+        """Leave nothing behind from a sign-in that was not confirmed.
 
-        The persistent profile is written by QtWebEngine the moment the site
-        sets a cookie, and closing the window does not undo that - so a
-        person who signed in and then closed with the title-bar button would
-        leave the *renderer* authenticated and the *fetcher* not, which is
-        the exact split this whole feature exists to avoid. Pressing Done is
-        still the way to be told it worked; this is the safety net under it.
+        Cancel and the title-bar button mean "not this". The fetcher's copy
+        is only ever written by Done, and `site_session.has_session` reads
+        that copy, so a scan never uses the browser profile of a window that
+        was walked away from. When there was no session before, the cookies
+        the page set in the profile are deleted as well, so the next window
+        does not open already half signed in.
         """
-        if self.saved or not self._cookies:
+        if self.saved or self._had_session:
             return
-        site_session.save_cookies(self.host, list(self._cookies.values()))
-        self.saved = True
+        try:
+            self.profile.cookieStore().deleteAllCookies()
+        except Exception:  # noqa: BLE001 - a profile already gone is fine
+            pass
+        self._cookies.clear()
 
-    def reject(self) -> None:  # noqa: D102 - Qt's name; see the helper above
-        self._keep_what_the_browser_has()
-        super().reject()
-
-    def closeEvent(self, event) -> None:  # noqa: N802 - Qt's name
-        self._keep_what_the_browser_has()
-        # The profile owns a running renderer process; releasing it here
-        # rather than at interpreter shutdown is what stops Qt's "profile
-        # still in use" warning, which is a real warning about a real leak.
+    def _release_page(self) -> None:
+        """Detach the page from the view before the dialog goes away."""
         try:
             store = self.profile.cookieStore()
             store.cookieAdded.disconnect(self._on_cookie)
@@ -191,4 +190,12 @@ class SiteSignInDialog(QDialog):
             self._page.setParent(None)
             self._page.deleteLater()
             self._page = None
-        super().closeEvent(event)
+
+    def done(self, result: int) -> None:  # noqa: D102 - Qt's name
+        # Every way out passes here: Done (accept), Cancel, Escape and the
+        # title-bar button (closeEvent -> reject).
+        if result != QDialog.DialogCode.Accepted:
+            self._drop_what_was_not_confirmed()
+        if self._page is not None:
+            self._release_page()
+        super().done(result)

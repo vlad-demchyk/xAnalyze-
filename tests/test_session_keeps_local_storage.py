@@ -42,6 +42,9 @@ if step == "login":
     page.setUrl(QUrl(f"http://{host}/login.html")); loop.exec()
     QTimer.singleShot(1000, loop.quit); loop.exec()
     print("TITLE", page.title())
+    # What Done does: the sign-in is confirmed. A localStorage-only sign-in
+    # has no cookies, and Done still makes it a session (P-25).
+    import site_session; site_session.save_cookies(host, [])
     page.deleteLater(); QTimer.singleShot(300, loop.quit); loop.exec()
 else:
     profile = driver.session_profile(f"http://{host}/")
