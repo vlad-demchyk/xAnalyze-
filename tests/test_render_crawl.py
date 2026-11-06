@@ -75,7 +75,7 @@ class _Session:
     def update(self, *_a, **_kw):
         return None
 
-    def get(self, url, timeout=None):
+    def get(self, url, timeout=None, **_kwargs):
         self.fetched.append(url)
         return _Response(url, self.text)
 
@@ -156,7 +156,7 @@ class _RedirectingSession:
     def update(self, *_a, **_kw):
         return None
 
-    def get(self, url, timeout=None):
+    def get(self, url, timeout=None, **_kwargs):
         self.fetched.append(url)
         landing = self.redirects.get(url, url)
         return _Response(landing, self.pages[landing])

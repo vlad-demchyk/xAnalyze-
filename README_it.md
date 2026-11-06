@@ -99,7 +99,7 @@ conoscere:
 
 | Opzione | A cosa serve |
 |---|---|
-| `--depth N`, `--max-pages N` | quanto lontano va la scansione e quante pagine |
+| `--depth N`, `--max-pages N` | quanto lontano va la scansione e quante pagine; una pagina oltre 10 MB è segnalata come non letta e le immagini non vengono mai scaricate da indirizzi privati o locali che la scansione non ha visitato |
 | `--repo PERCORSO` | il checkout dietro un sito, così un risultato nomina il file e non solo la pagina |
 | `--devserver` | avvia il dev server del progetto e analizza il sito renderizzato |
 | `--breakpoints all` | audit a ogni larghezza; senza, una sola (1440x900) |

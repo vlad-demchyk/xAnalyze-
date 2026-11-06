@@ -85,6 +85,9 @@ EMPTY_REDIRECTED = "redirected"
 # indistinguishable from one nobody tried.
 EMPTY_ALREADY_SEEN = "already-seen"
 EMPTY_ERROR = "error"
+# The response was larger than `CrawlConfig.max_page_bytes`, so it was not
+# read at all (P-11): one page must not be able to take the whole memory.
+EMPTY_TOO_LARGE = "too-large"
 
 # Markers that identify a client-rendered application shell. Matched against
 # the raw HTML, so they work whether or not the framework left a comment.
@@ -137,6 +140,58 @@ class CrawlConfig:
     #: disagreeing about who is asking. See `site_session`; the values are
     #: never logged and never reach a report.
     cookies: list = field(default_factory=list)
+    #: Ceilings that keep one hostile or broken site from exhausting memory
+    #: (P-11). A real page is well under a megabyte of HTML; ten is generous
+    #: and still a ceiling. 0 switches a ceiling off.
+    max_page_bytes: int = 10 * 1024 * 1024
+    #: Links queued from a single page. A sitemap-like page can carry
+    #: thousands; the walk only ever reads `max_pages` of them.
+    max_links_per_page: int = 1000
+    #: Addresses waiting in the queue at once.
+    max_queue: int = 20_000
+
+
+class _TooLarge(Exception):
+    """The body went past `max_page_bytes`."""
+
+
+def _read_html(resp, limit: int) -> str:
+    """The response body as text, read no further than `limit` bytes.
+
+    Streamed and counted as it arrives, because `Content-Length` is a claim
+    the server may leave out or get wrong. The bytes are then handed back to
+    `requests` so the text is decoded exactly as `resp.text` always decoded
+    it - the same charset rules, the same fallback.
+    """
+    length = (resp.headers or {}).get("Content-Length", "")
+    if limit and str(length).isdigit() and int(length) > limit:
+        raise _TooLarge
+    iter_content = getattr(resp, "iter_content", None)
+    if iter_content is None:
+        # A stand-in response with the text already in hand.
+        text = resp.text
+        if limit and len(text) > limit:
+            raise _TooLarge
+        return text
+    chunks: list[bytes] = []
+    size = 0
+    for chunk in iter_content(64 * 1024):
+        size += len(chunk)
+        if limit and size > limit:
+            raise _TooLarge
+        chunks.append(chunk)
+    resp._content = b"".join(chunks)
+    resp._content_consumed = True
+    return resp.text
+
+
+def _close(resp) -> None:
+    close = getattr(resp, "close", None)
+    if close is not None:
+        try:
+            close()
+        except Exception:  # noqa: BLE001 - closing is best effort
+            pass
 
 
 def _session_cookie_records(cookies, root_url: str) -> list[dict]:
@@ -727,9 +782,11 @@ def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
             progress_cb(url, depth)
 
         diagnostics = PageDiagnostics()
+        resp = None
         try:
-            resp = session.get(url, timeout=config.timeout)
+            resp = session.get(url, timeout=config.timeout, stream=True)
             if cancelled and cancelled():
+                _close(resp)
                 break
             diagnostics.status_code = resp.status_code
             diagnostics.final_url = resp.url
@@ -747,8 +804,18 @@ def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
                 # diagnostics path exists to remove.
                 diagnostics.reasons.append(EMPTY_NOT_HTML)
                 results.append(PageResult(url=url, depth=depth, diagnostics=diagnostics))
+                _close(resp)
                 continue
-            html = resp.text
+            try:
+                html = _read_html(resp, config.max_page_bytes)
+            except _TooLarge:
+                applog.warning("crawl.page_too_large", url=url,
+                               limit=config.max_page_bytes)
+                diagnostics.reasons.append(EMPTY_TOO_LARGE)
+                results.append(PageResult(url=url, depth=depth, diagnostics=diagnostics))
+                continue
+            finally:
+                _close(resp)
             landing = _normalize(resp.url)
             if landing != _normalize(url):
                 # Three URLs redirecting to one page are one page. Analysing
@@ -768,6 +835,8 @@ def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
             else:
                 url_base = url
         except requests.RequestException as exc:
+            if resp is not None:
+                _close(resp)
             applog.warning("crawl.page_failed", url=url, depth=depth,
                            error=f"{type(exc).__name__}: {exc}")
             diagnostics.reasons.append(EMPTY_ERROR)
@@ -824,12 +893,23 @@ def crawl(root_url: str, config: CrawlConfig | None = None, progress_cb=None,
         pages_read += 1
 
         if depth < config.max_depth:
+            taken = 0
             for link in links:
                 if link.url in visited:
                     continue
                 if config.same_domain_only and not _same_domain(link.url, root_url):
                     continue
+                if ((config.max_links_per_page
+                     and taken >= config.max_links_per_page)
+                        or (config.max_queue and len(queue) >= config.max_queue)):
+                    # Said once per page, not once per link: the walk goes
+                    # on, it just stops widening (P-11).
+                    applog.warning("crawl.links_capped", url=url,
+                                   found=len(links), queued=taken,
+                                   queue=len(queue))
+                    break
                 queue.append((link.url, depth + 1))
+                taken += 1
 
     if walk is not None:
         walk.pages_read = pages_read

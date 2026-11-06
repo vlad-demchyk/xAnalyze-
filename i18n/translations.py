@@ -2964,6 +2964,11 @@ _STRINGS: dict[str, dict[str, str]] = {
         "it": "Questa pagina è già stata letta a un altro indirizzo, quindi non è stata analizzata di nuovo.",
         "en": "This page was already read at another address, so it was not analysed twice.",
     },
+    "crawl_reason_too_large": {
+        "uk": "Сторінка більша за {megabytes} МБ, тому її не прочитано: одна сторінка не має забрати всю пам'ять.",
+        "it": "La pagina supera {megabytes} MB, quindi non è stata letta: una sola pagina non deve occupare tutta la memoria.",
+        "en": "The page is larger than {megabytes} MB, so it was not read: one page must not take all the memory.",
+    },
     "crawl_reason_error": {
         "uk": "Запит не вдався: {error}",
         "it": "Richiesta fallita: {error}",

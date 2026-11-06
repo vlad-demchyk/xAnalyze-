@@ -106,7 +106,7 @@ stay explicit. See [the finding contract](docs/finding-contract.md).
 
 | Option | Purpose |
 |---|---|
-| `--depth N`, `--max-pages N` | how far a crawl goes, and how many pages |
+| `--depth N`, `--max-pages N` | how far a crawl goes, and how many pages; a page over 10 MB is listed as not read, and images are never fetched from private or local addresses the crawl did not visit itself |
 | `--repo PATH` | the checkout behind a site, so a finding names the file and not only the page |
 | `--devserver` | start the project's own dev server and audit the rendered site |
 | `--breakpoints all` | audit every width; without it, one width (1440x900) |

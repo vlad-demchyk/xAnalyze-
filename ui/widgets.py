@@ -765,6 +765,11 @@ def diagnostics_message(page, lang: str) -> str:
             lines.append(t(key, lang, final_url=diagnostics.final_url))
         elif reason == "error":
             lines.append(t(key, lang, error=page.error or "?"))
+        elif reason == "too-large":
+            from crawler import CrawlConfig
+
+            lines.append(t(key, lang, megabytes=CrawlConfig.max_page_bytes
+                           // (1024 * 1024)))
         else:
             lines.append(t(key, lang))
 

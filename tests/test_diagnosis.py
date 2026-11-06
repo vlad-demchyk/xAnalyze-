@@ -175,7 +175,7 @@ class _Session:
     def update(self, *_a, **_kw):
         return None
 
-    def get(self, url, timeout=None):
+    def get(self, url, timeout=None, **_kwargs):
         return _Response(url, self.pages.get(url.rstrip("/") or url, ""))
 
 

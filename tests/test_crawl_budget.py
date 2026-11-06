@@ -45,7 +45,7 @@ class _Session:
     def update(self, *_a, **_kw):
         return None
 
-    def get(self, url, timeout=None):
+    def get(self, url, timeout=None, **_kwargs):
         self.fetched.append(url)
         if url.endswith((".jpg", ".pdf")):
             return _Response(url, "binary", "image/jpeg")

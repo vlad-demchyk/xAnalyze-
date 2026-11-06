@@ -675,7 +675,14 @@ def image_urls(html: str, page_url: str) -> list:
     return out
 
 
-def _decode_data_uri(url: str) -> bytes | None:
+def _decode_data_uri(url: str, limit: int = 0) -> tuple[bytes, bool] | None:
+    """The bytes of a `data:` address, at most `limit` of them (P-12).
+
+    Returns `(data, complete)` like a fetch. The size is judged from the
+    encoded text before anything is decoded: a page can carry a base64
+    payload of tens of megabytes, and decoding all of it to read a header
+    of a few kilobytes is the cost the network fetch already refuses.
+    """
     import base64
 
     header, _, payload = url.partition(",")
@@ -683,14 +690,69 @@ def _decode_data_uri(url: str) -> bytes | None:
         return None
     try:
         if ";base64" in header:
-            return base64.b64decode(payload, validate=False)
+            if limit:
+                # Four characters carry three bytes; cut on a whole group.
+                wanted = -(-limit // 3) * 4
+                if len(payload) > wanted:
+                    data = base64.b64decode(payload[:wanted], validate=False)
+                    return data[:limit], False
+            return base64.b64decode(payload, validate=False), True
         from urllib.parse import unquote_to_bytes
-        return unquote_to_bytes(payload)
+        if limit and len(payload) > limit * 3:
+            # Percent-encoding at most triples a byte, so this much text is
+            # at least `limit` bytes; cut before decoding, then to size.
+            data = unquote_to_bytes(payload[:limit * 3])[:limit]
+            return data, False
+        data = unquote_to_bytes(payload)
+        if limit and len(data) > limit:
+            return data[:limit], False
+        return data, True
     except Exception:  # noqa: BLE001
         return None
 
 
-def _default_fetch(url: str, limit: int):
+#: Redirects a media fetch follows by hand, each one checked (P-13).
+_MAX_MEDIA_REDIRECTS = 5
+
+
+class BlockedAddress(ValueError):
+    """A media address that resolves somewhere a page must not send us."""
+
+
+def _check_media_address(url: str, allowed_hosts=()) -> None:
+    """Refuse a media address that points into the machine or its network.
+
+    A page decides which image addresses this pass fetches, so without this
+    a page could make the scanner request `http://169.254.169.254/` or a
+    service on `localhost` - a request the person running the scan never
+    meant to make. Hosts the crawl itself read (a dev server on localhost,
+    an intranet site the person pointed it at) stay allowed: those
+    addresses were chosen by the person, not by the page.
+    """
+    import ipaddress
+    import socket
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise BlockedAddress(f"scheme not allowed: {parsed.scheme!r}")
+    host = (parsed.hostname or "").lower()
+    if not host:
+        raise BlockedAddress("no host")
+    if host in allowed_hosts:
+        return
+    try:
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
+    except (OSError, ValueError) as exc:
+        raise BlockedAddress(f"cannot resolve {host}: {exc}") from exc
+    for info in infos:
+        address = ipaddress.ip_address(info[4][0].split("%", 1)[0])
+        if not address.is_global:
+            raise BlockedAddress(f"{host} resolves to a non-public address")
+
+
+def _default_fetch(url: str, limit: int, allowed_hosts=()):
     """Download at most `limit` bytes. Returns `(data, complete)`.
 
     Asked for as a range first: the fields this pass reads sit in the header
@@ -705,9 +767,26 @@ def _default_fetch(url: str, limit: int):
     reporting.
     """
     import requests
+    from urllib.parse import urljoin
 
     headers = {"Range": f"bytes=0-{max(limit - 1, 0)}"}
-    with requests.get(url, timeout=10, stream=True, headers=headers) as response:
+    # Redirects by hand: `requests` would follow a public address straight
+    # into a private one without asking (P-13).
+    for _hop in range(_MAX_MEDIA_REDIRECTS + 1):
+        _check_media_address(url, allowed_hosts)
+        response = requests.get(url, timeout=10, stream=True, headers=headers,
+                                allow_redirects=False)
+        if response.is_redirect:
+            location = response.headers.get("Location", "")
+            response.close()
+            if not location:
+                raise requests.HTTPError("redirect without a location")
+            url = urljoin(url, location)
+            continue
+        break
+    else:
+        raise requests.TooManyRedirects("too many redirects for an image")
+    with response:
         response.raise_for_status()
         partial = response.status_code == 206
         chunks, size = [], 0
@@ -739,17 +818,30 @@ def scan_page_media(pages, *, fetch=None, max_images: int = WEB_MAX_IMAGES,
     fetching it once per page is how a thirty-page scan downloads one image
     thirty times.
     """
-    fetch = fetch or _default_fetch
+    #: Hosts the crawl read itself; see `_check_media_address`. Filled as
+    #: the pages go by, so a generator of pages works as well as a list.
+    crawl_hosts: set = set()
+    if fetch is None:
+        def fetch(url, limit):
+            return _default_fetch(url, limit, crawl_hosts)
     scan = MediaFetchScan()
     seen: set = set()
     #: sha256 of the bytes read -> the first address they arrived under.
     by_content: dict = {}
     spent = 0
+    #: Bytes decoded from `data:` addresses. Not the network budget - they
+    #: cost no request - but still bounded by the same total (P-12).
+    inline_spent = 0
 
     for page in pages:
         html = getattr(page, "raw_html", None)
         if not html:
             continue
+        from urllib.parse import urlparse
+
+        page_host = (urlparse(getattr(page, "url", "") or "").hostname or "").lower()
+        if page_host:
+            crawl_hosts.add(page_host)
         for url in image_urls(html, getattr(page, "url", "")):
             if url in seen:
                 continue
@@ -757,13 +849,22 @@ def scan_page_media(pages, *, fetch=None, max_images: int = WEB_MAX_IMAGES,
             scan.found += 1
 
             if url.startswith("data:"):
-                # Free: the bytes came with the page. Not counted against a
-                # budget that exists to bound the network.
-                data = _decode_data_uri(url)
-                if data is None:
+                # The bytes came with the page, so the image count that
+                # bounds the network does not apply. Their size still does:
+                # at most `max_image` decoded per address, and no more than
+                # `max_total` in all (P-12).
+                if max_total and inline_spent >= max_total:
+                    scan.skipped_budget += 1
+                    continue
+                decoded = _decode_data_uri(url, max_image)
+                if decoded is None:
                     scan.unreachable += 1
                     continue
-                _record(scan, _data_uri_label(url, scan.found), data, True)
+                data, complete = decoded
+                inline_spent += len(data)
+                if not complete:
+                    scan.head_only += 1
+                _record(scan, _data_uri_label(url, scan.found), data, complete)
                 continue
 
             if (max_images and scan.checked >= max_images) or spent >= max_total:

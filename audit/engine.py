@@ -505,6 +505,23 @@ def analyze_document(markup: str, source: str, rules=None,
     return report
 
 
+
+def _no_html_reason(page) -> str:
+    """Why a crawled page reached the audit with no HTML, in one clause.
+
+    The crawl's diagnostics already know; "see crawl diagnostics" sent the
+    reader to a place the JSON does not include.
+    """
+    reasons = getattr(getattr(page, "diagnostics", None), "reasons", None) or []
+    if "too-large" in reasons:
+        from crawler import CrawlConfig
+
+        return ("page larger than "
+                f"{CrawlConfig.max_page_bytes // (1024 * 1024)} MB, not read")
+    if "not-html" in reasons:
+        return "not an HTML page"
+    return "no HTML received (see crawl diagnostics)"
+
 def analyze_pages(pages, root: str, rules=None, ai_review=None,
                   media: bool = True, media_fetch=None,
                   media_progress=None,
@@ -537,7 +554,7 @@ def analyze_pages(pages, root: str, rules=None, ai_review=None,
         if page.error or not page.raw_html:
             result.documents.append(DocumentReport(
                 source=page.url,
-                error=page.error or "no HTML received (see crawl diagnostics)",
+                error=page.error or _no_html_reason(page),
             ))
             continue
         if not result.markup_sample:
