@@ -180,3 +180,32 @@ a site at once.
 
     # a detector built out of this file: the held-out half is the only number
     python scripts/calibrate.py --detector embedding --holdout --sweep
+
+## `audit_verdicts.jsonl` - checked verdicts on site-audit findings
+
+Everything above is about the text detectors. This file is about the audit
+rules (accessibility, SEO, performance, security), which had no corpus at all:
+each new rule produced false positives on its first real crawl, and a person
+found them by reading the output. A verdict records what that person decided,
+so the rules can be held to it by `tests/test_audit_verdicts.py`.
+
+One JSON object per line; `audit/verdicts.py` loads and replays it.
+
+- `verdict: true` - a real defect. The rule must report it at its own weight:
+  its declared severity and confidence, not lower.
+- `verdict: false` - a false positive or a near miss. The rule must stay
+  silent, or lower itself to a note (a lighter severity or confidence).
+- `engine` - `static` replays `html` through `analyze_document` (with
+  `syntax` and `stacks` when the rule needs them); `htmlcs` replays an
+  HTML_CodeSniffer `message`.
+- `source` - where the verdict came from: a named audit and task
+  (`Palmanova final audit, T-1961`) or `synthetic`, a shape written from the
+  rule's own definition. Synthetic entries guard a rule's edges; only the
+  named ones say anything about real sites.
+
+Every serious or critical rule has at least one entry of each kind, and the
+test fails when a new one is added without them.
+
+Markup shapes only. No client's text, cookies, tokens, addresses or any other
+personal data: a verdict is about the shape of the markup, and the shape is
+all it needs. The test checks the file for the obvious kinds.
