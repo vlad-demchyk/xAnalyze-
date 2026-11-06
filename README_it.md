@@ -402,8 +402,28 @@ vendor/
 meta-viewport
 
 [fingerprints]
-083bea550659aadb
+083bea550659aadb  # il testo del logo è già nel link
 ```
+
+Scartare un risultato con il motivo è un solo comando: `xanalyze ignore
+FINGERPRINT --reason "…"`, con l'impronta presa da `audit --json`. Ogni
+esecuzione successiva dice quanti risultati le liste hanno nascosto e ne cita i
+motivi, così un risultato nascosto non sembra mai una pagina pulita.
+
+## Come le regole dell'audit restano oneste
+
+- **Un corpus di verdetti verificati.** `corpus/audit/verdicts.jsonl` contiene
+  difetti reali e falsi positivi noti, con la provenienza di ciascuno. Ogni
+  regola serious o critical ne ha almeno uno per tipo, e i test falliscono non
+  appena una regola manca il primo o segnala il secondo.
+- **Precisione sui tuoi audit.** `python -m audit.precision AUDIT.json
+  --template labels.jsonl` elenca i risultati da segnare come veri o falsi;
+  `--labels labels.jsonl` stampa la precisione di ogni regola con il numero di
+  risultati etichettati accanto, e sotto cinque scrive «not measured».
+- **Gli aggiornamenti dei motori si verificano, non si accettano a scatola
+  chiusa.** Dopo un aggiornamento di axe o HTML_CodeSniffer, un codice che la
+  versione verificata non aveva compare come nota finché qualcuno non lo
+  guarda (`python -m audit.engine_codes`).
 
 ## Template che comprende
 

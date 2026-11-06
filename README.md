@@ -393,8 +393,27 @@ vendor/
 meta-viewport
 
 [fingerprints]
-083bea550659aadb
+083bea550659aadb  # the logo's text is already in the link
 ```
+
+A dismissal with a reason is one command: `xanalyze ignore FINGERPRINT
+--reason "…"`, with the fingerprint taken from `audit --json`. Every later run
+says how many findings the lists hid and quotes the reasons, so a hidden
+finding never reads like a clean page.
+
+## How the audit rules are kept honest
+
+- **A corpus of checked verdicts.** `corpus/audit/verdicts.jsonl` holds real
+  defects and known false positives, with where each came from. Every serious
+  or critical rule has at least one of each, and the tests fail the moment a
+  rule starts missing the first or reporting the second.
+- **Precision on your own audits.** `python -m audit.precision AUDIT.json
+  --template labels.jsonl` lists every finding to label true or false;
+  `--labels labels.jsonl` then prints each rule's precision with the number of
+  labelled findings beside it, and says "not measured" below five.
+- **Engine updates are checked, not trusted.** After axe or HTML_CodeSniffer
+  is updated, a code the reviewed version did not have is reported as a note
+  until someone looks at it (`python -m audit.engine_codes`).
 
 ## Templates it understands
 
