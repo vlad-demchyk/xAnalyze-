@@ -38,7 +38,7 @@ from audit.base import (
 from detectors.factory import DetectorFactory
 from file_writer import ReplacementPlan, apply_replacements
 from lang_detect import guess_language
-from models import Confidence, RepoAnalysisResult, score_to_confidence
+from models import Confidence
 from repo_scanner import DEFAULT_EXTENSIONS, scan_repo
 # The scan pipeline and the terminal output live in `cli_impl`; the names are
 # imported here so both this module's own commands and anything that does
@@ -509,7 +509,7 @@ def cmd_audit(args) -> int:
             within=getattr(args, "within", None) or "",
             web_parts=_web_parts_for(args))
     elif is_url:
-        from crawler import CrawlConfig, EMPTY_JS_RENDERED, crawl
+        from crawler import CrawlConfig, EMPTY_JS_RENDERED
 
         # Same crawler as the text scan: depth-limited, and refusing to leave
         # the domain. That rule holds for both modes because there is one
@@ -921,7 +921,6 @@ def _reaudit(args, target: str, previous):
     if previous.mode == "file":
         return audit.analyze_page_file(
             target, within=getattr(args, "within", None) or "")
-    from repo_scanner import scan_repo
 
     files = scan_repo(target, _build_scan_config(args, target=target))
     return audit.analyze_files(files, target)

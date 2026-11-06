@@ -992,7 +992,7 @@ def _styled_report_model(args, audit_result, content_findings: list,
     `tests/test_styled_report_written.py`.
     """
     from report.model import (
-        from_accessibility, from_finding_dicts, from_text_analysis,
+        from_accessibility, from_finding_dicts,
     )
 
     model = None

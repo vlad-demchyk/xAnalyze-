@@ -12,7 +12,7 @@ from crawler import CrawlConfig, crawl
 from detectors.base import DetectorUnavailable
 from detectors.factory import DetectorFactory
 from models import (
-    AnalysisResult, CodeBlock, FileResult, PageResult, RepoAnalysisResult,
+    AnalysisResult, CodeBlock, PageResult, RepoAnalysisResult,
     ScanDiagnostics, TextBlock, TextSpan,
 )
 from repo_scanner import ScanConfig, scan_file, scan_repo

@@ -21,7 +21,6 @@ if str(ROOT) not in sys.path:
 
 import detectors  # noqa: F401
 from detectors.factory import DetectorFactory
-from models import TextBlock, Confidence
 from repo_scanner import ScanConfig, scan_file, scan_repo
 
 

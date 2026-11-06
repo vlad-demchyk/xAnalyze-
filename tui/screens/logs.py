@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Button, DataTable, Label, Static
+from textual.widgets import Button, DataTable, Label
 
 from tui.cells import AUTO_HEIGHT, folded
 

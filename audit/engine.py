@@ -25,7 +25,7 @@ from project_profile import looks_generated
 
 from . import environment, medium
 from .base import (
-    CATEGORIES, SEVERITY_ORDER, Issue, RuleContext, RuleRegistry,
+    SEVERITY_ORDER, Issue, RuleContext, RuleRegistry,
     remember_source, resolve_bound_attributes, resolve_text_directives,
     unwrap_template_text,
 )

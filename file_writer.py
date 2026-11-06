@@ -24,7 +24,6 @@ silently delete the other sentences from the user's source file.
 """
 from __future__ import annotations
 
-import os
 
 import backups
 from dataclasses import dataclass, field

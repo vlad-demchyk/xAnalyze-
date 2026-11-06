@@ -41,7 +41,7 @@ import json
 import math
 import os
 
-from models import Confidence, TextBlock, TextSpan, score_to_confidence
+from models import TextBlock, TextSpan, score_to_confidence
 from .base import Detector, DetectorUnavailable
 from .factory import DetectorFactory
 

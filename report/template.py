@@ -39,7 +39,7 @@ from pathlib import Path
 
 from audit.base import ADVISORY, EXACT, NEEDS_BROWSER
 from report.markup import (
-    ROLE_LABELS, ROLES, highlight, role_css, role_of, roles_used,
+    ROLE_LABELS, highlight, role_css, role_of, roles_used,
 )
 from report.model import (CATEGORY_AI_TEXT, CATEGORY_TYPOGRAPHY,
                           ReportModel)

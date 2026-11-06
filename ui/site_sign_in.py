@@ -23,7 +23,7 @@ person is the one signing in.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QUrl, Qt
+from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import (
     QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QVBoxLayout,
 )

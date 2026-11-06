@@ -1,0 +1,10 @@
+# The CI gate (P-22). Deliberately narrow for now: the checks that find real
+# defects - syntax errors, undefined names, an import nobody uses, a name
+# defined twice - rather than style. An unused import is not cosmetic here:
+# a test that imported a name through the wrong module skipped eighteen
+# tests silently once the import moved. Widen the list as the code allows.
+target-version = "py314"
+extend-exclude = ["venv", "build", "dist", "tests"]
+
+[lint]
+select = ["E9", "F63", "F7", "F82", "F401", "F811"]

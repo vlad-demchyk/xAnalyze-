@@ -352,7 +352,6 @@ STRUCTURAL_PATTERNS: dict[str, list[re.Pattern]] = {
 
 # Re-exported so existing imports of detectors.heuristic.guess_language
 # keep working; the implementation is shared with the extractors.
-from lang_detect import guess_language  # noqa: E402
 
 
 def combine_score(uniformity, repetition, dashes, structural: bool,

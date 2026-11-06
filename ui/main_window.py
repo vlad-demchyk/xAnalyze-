@@ -8,16 +8,14 @@ from PySide6.QtGui import QColor, QIcon, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QHBoxLayout,
-    QFormLayout, QFrame, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
+    QFormLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
     QMessageBox,
-    QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy, QSpinBox, QSplitter,
-    QStackedWidget, QStatusBar, QTextEdit, QVBoxLayout, QWidget,
+    QPlainTextEdit, QPushButton, QSizePolicy, QSpinBox, QSplitter,
+    QStackedWidget, QStatusBar, QVBoxLayout, QWidget,
 )
 
 import config
-import explanations
 import suppression
-import unicode_rules
 from ui.app_state import AppState
 from ui.view_model import MainViewModel
 from audit import explanations as audit_explanations
@@ -36,22 +34,19 @@ def responsive_breakpoints():
     """
     from audit.responsive import BREAKPOINTS
     return BREAKPOINTS
-from file_writer import apply_replacements, build_plans
 from analysis_modes import (
     CHECKS, CHECK_ACCESSIBILITY, CHECK_AI_PATTERNS, METHOD_AI, METHOD_EMBEDDING,
-    METHOD_LOCAL, METHODS, SOURCE_FILE, SOURCE_REPO, SOURCE_SITE,
+    METHOD_LOCAL, SOURCE_FILE, SOURCE_REPO, SOURCE_SITE,
     AnalysisRequest,
 )
 from i18n.translations import plural, t
-from models import AnalysisResult, CodeBlock, Confidence, RepoAnalysisResult, TextBlock, TextSpan
+from models import AnalysisResult, Confidence, RepoAnalysisResult, TextSpan
 from repo_scanner import (
     DEFAULT_IGNORE_PATTERNS, SCOPE_BOTH, SCOPE_CONTENT, SCOPE_TECHNICAL,
     _parse_ignore_text,
 )
 from ui import theme
-from ui.code_preview import highlight_range
 from ui.preview_loader import CapturedHtmlLoader
-from ui.site_preview import build_highlight_js
 from ui.window_parts.account import (
     AccountMixin, _UNASKED, _ask_account_later,
 )
@@ -66,22 +61,18 @@ from ui.window_parts.report_documents import RunDocumentsPanel
 from ui.window_parts.repo_files import RepoFilesMixin
 from ui.window_parts.run_comparison import RunComparisonPanel
 from ui.window_parts.run_progress import (
-    DONE, PENDING, RUNNING, RunProgressPanel,
+    DONE, RUNNING, RunProgressPanel,
 )
 from ui.window_parts.runs_panel import RunsPanel
 from ui.window_parts.setup_screen import SetupScreen
 from ui.window_parts.shared import (
-    MODE_AUDIT, MODE_FILE, MODE_REPO, MODE_WEB, _SEVERITY_BADGE,
-    _SEVERITY_CONFIDENCE, _SUPPRESSED_NOTE, _browser_url,
+    MODE_AUDIT, MODE_FILE, MODE_REPO, MODE_WEB, _browser_url,
 )
 from ui.widgets import (
-    ROW_ROLE, EmptyState, FindingDelegate, FlowLayout, InlineValue, RowData,
-    SeverityBar, chip, diagnostics_message, divider, field, hairline, heading,
-    muted, panel, restyle,
+    EmptyState, FindingDelegate, FlowLayout, InlineValue, SeverityBar, divider, hairline, muted, panel, restyle,
 )
 from ui.worker import (
     AnalysisWorker, RepoAnalysisWorker, RewriteAllWorker,
-    SingleBlockWorker, SingleRewriteWorker,
 )
 
 #: How many characters a combo in the controls column reserves room for.

@@ -23,7 +23,7 @@ from ui.widgets import (
     diagnostics_message, muted,
 )
 from ui.worker import SingleBlockWorker, SingleRewriteWorker
-from ui.window_parts.shared import MODE_AUDIT, MODE_REPO, MODE_WEB, _SUPPRESSED_NOTE
+from ui.window_parts.shared import MODE_AUDIT, MODE_WEB, _SUPPRESSED_NOTE
 
 
 class FindingsPanelMixin:

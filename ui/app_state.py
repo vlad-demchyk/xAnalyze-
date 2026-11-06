@@ -10,15 +10,11 @@ This replaces the scattered ``self.source``, ``self._chosen_checks()``,
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any
 
 from PySide6.QtCore import QObject, Signal
 
 from analysis_modes import (
     CHECK_AI_PATTERNS,
-    METHOD_AI,
-    METHOD_EMBEDDING,
     METHOD_LOCAL,
     SOURCE_SITE,
 )

@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 
 from lang_detect import guess_language_safe
-from models import TextBlock, TextSpan, Confidence, score_to_confidence
+from models import TextBlock, TextSpan, score_to_confidence
 from corpus_split import is_reference
 from .base import Detector
 from .factory import DetectorFactory

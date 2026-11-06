@@ -20,7 +20,7 @@ Two things this deliberately does not do:
 from __future__ import annotations
 
 from .base import (
-    BEST_PRACTICES, CRITICAL, EXACT, Issue, MINOR, MODERATE, SECURITY,
+    EXACT, Issue, MINOR, MODERATE, SECURITY,
     SERIOUS,
 )
 

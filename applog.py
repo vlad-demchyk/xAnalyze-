@@ -37,7 +37,6 @@ import json
 import os
 import re
 import threading
-import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit

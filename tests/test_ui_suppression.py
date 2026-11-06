@@ -18,7 +18,8 @@ try:
     from PySide6.QtWidgets import QApplication, QLabel, QListWidget
     import suppression
     from i18n.translations import t
-    from ui.main_window import MainWindow, _SUPPRESSED_NOTE
+    from ui.main_window import MainWindow
+    from ui.window_parts.shared import _SUPPRESSED_NOTE
     from ui.settings_dialog import SettingsDialog
     from ui.window_parts.noise_control import HiddenRow, NoiseDialog
     from analysis_modes import SOURCE_REPO, SOURCE_SITE
