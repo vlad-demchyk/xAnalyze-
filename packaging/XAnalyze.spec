@@ -58,6 +58,9 @@ datas = [
     (str(ROOT / "ui" / "design" / "xanalyze-desktop.css"), "ui/design"),
     (str(ROOT / "audit" / "vendor" / "axe.min.js"), "audit/vendor"),
     (str(ROOT / "audit" / "vendor" / "HTMLCS.js"), "audit/vendor"),
+    # Which engine codes a person has weighed; without it every code counts
+    # as known and an engine update goes unchecked (audit/engine_codes.py).
+    (str(ROOT / "audit" / "vendor" / "engine_codes.json"), "audit/vendor"),
     (str(ROOT / "audit" / "vendor" / "axe-LICENSE.txt"), "audit/vendor"),
     (str(ROOT / "audit" / "vendor" / "web-vitals.attribution.iife.js"), "audit/vendor"),
     (str(ROOT / "audit" / "vendor" / "web-vitals-LICENSE.txt"), "audit/vendor"),

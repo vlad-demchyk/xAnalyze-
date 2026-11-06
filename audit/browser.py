@@ -43,6 +43,7 @@ from .base import (
     ACCESSIBILITY, ADVISORY, CRITICAL, EXACT, MINOR, MODERATE, NEEDS_BROWSER,
     PERFORMANCE, SERIOUS, Issue,
 )
+from . import engine_codes
 
 VENDOR_DIR = Path(__file__).resolve().parent / "vendor"
 AXE_PATH = VENDOR_DIR / "axe.min.js"
@@ -483,6 +484,12 @@ def issues_from_axe(payload: str, source: str, exclude_rules=()) -> list:
             # uncertainty never outranks what it actually found.
             severity = (MINOR if bucket == "incomplete"
                         else _AXE_IMPACT.get(entry.get("impact") or "", MODERATE))
+            # A rule this axe version brought and nobody has weighed yet is a
+            # note until somebody does; see `audit.engine_codes`.
+            unverified = not engine_codes.is_known(engine_codes.AXE, entry.get("id", ""))
+            if unverified:
+                engine_codes.note_unverified(engine_codes.AXE, entry.get("id", ""))
+                severity = MINOR
             for node in entry.get("nodes", []):
                 measured = _measured_details(entry.get("id"), node)
                 issues.append(Issue(
@@ -493,10 +500,12 @@ def issues_from_axe(payload: str, source: str, exclude_rules=()) -> list:
                     snippet=node.get("html", ""),
                     source=source,
                     engine="axe",
-                    confidence=NEEDS_BROWSER if bucket == "incomplete" else EXACT,
+                    confidence=(ADVISORY if unverified
+                                else NEEDS_BROWSER if bucket == "incomplete" else EXACT),
                     details={
                         "engine": "axe-core",
                         "rule": entry.get("id"),
+                        "unverified_engine_code": unverified,
                         "help": entry.get("help", ""),
                         "description": entry.get("description", ""),
                         "why": node.get("failureSummary", ""),
@@ -653,6 +662,12 @@ def issues_from_htmlcs(payload: str, source: str) -> list:
         # whether this is one is a person's call, so a note, not silence.
         logo_text = bool(message.get("logo")) and "1_4_3" in code
         manual = manual or hidden_text or logo_text
+        # A code this HTML_CodeSniffer version brought, not yet weighed by a
+        # person: a note until it is; see `audit.engine_codes`.
+        unverified = not engine_codes.is_known(engine_codes.HTMLCS, code)
+        if unverified:
+            engine_codes.note_unverified(engine_codes.HTMLCS, code)
+        manual = manual or unverified
         issues.append(Issue(
             rule_id=f"htmlcs:{_short_code(code)}",
             # An unmeasurable element is not a failing one. Kept - the
@@ -676,6 +691,7 @@ def issues_from_htmlcs(payload: str, source: str) -> list:
                      "accessible_name_from_attributes": named_by,
                      "visually_hidden": hidden_text,
                      "logo": logo_text,
+                     "unverified_engine_code": unverified,
                      "why": message.get("msg", ""), "element": message.get("tag", "")},
         ))
     return issues
