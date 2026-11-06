@@ -832,6 +832,27 @@ class BrokenAriaReference(AccessibilityRule):
                                      "dynamic": True, "has_space": False}))
                         continue
                     missing = verdict
+                elif _INTERPOLATION.search(tag.get(attribute) or ""):
+                    # `aria-labelledby="fm-{{ $group['key'] }}"`: a server or
+                    # client template prints part of the id. Split on spaces
+                    # it became `fm-{{`, `$group['key']` and `}}` - three ids
+                    # nobody wrote, reported serious against a heading that
+                    # carries the same template one line below (no-press,
+                    # Blade). The same template as an id resolves; anything
+                    # else only the rendered page can answer.
+                    raw = (tag.get(attribute) or "").strip()
+                    if raw in ids:
+                        continue
+                    selector, line = context.locate(tag)
+                    issues.append(Issue(
+                        rule_id=self.id, severity=MINOR,
+                        confidence=NEEDS_BROWSER, selector=selector,
+                        line=line, snippet=snippet_of(tag),
+                        source=context.source,
+                        details={"attribute": attribute, "missing": [],
+                                 "value": raw[:120], "dynamic": True,
+                                 "has_space": False}))
+                    continue
                 else:
                     missing = [token for token in (tag.get(attribute) or "").split()
                                if token not in ids]
@@ -863,6 +884,11 @@ class BrokenAriaReference(AccessibilityRule):
                 ))
         return issues
 
+
+#: A template printing part of an attribute value: Blade, Twig, Vue and
+#: Handlebars `{{ }}`, a template literal's `${}`, ERB's `<% %>`, Jinja's
+#: `{% %}`, and the `${---}` filler `mask_server_tags` leaves for PHP.
+_INTERPOLATION = re.compile(r"\{\{|\$\{|<%|\{%")
 
 _STRING_LITERAL = re.compile(r"\"([^\"]*)\"|'([^']*)'")
 _TEMPLATE_LITERAL = re.compile(r"`[^`]*`")

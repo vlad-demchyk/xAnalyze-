@@ -1158,6 +1158,58 @@ def mask_server_tags(raw_text: str) -> str:
     return _SERVER_TAG.sub(swap, raw_text)
 
 
+#: Where a JSX attribute's expression opens: `onClick={`. No space around the
+#: `=`, which is how JSX is written and how plain JS (`const a = {`) is not:
+#: an object literal holding an element (`{ home: <Home /> }`) must stay
+#: markup, while an attribute's expression never is.
+_JSX_ATTRIBUTE_EXPRESSION = re.compile(r"(?<![\w$.])[A-Za-z][\w:-]*=\{")
+
+
+def mask_jsx_attribute_expressions(raw_text: str) -> str:
+    """Hide the `<` and `>` inside JSX attribute expressions from the parser.
+
+    `onClick={() => go()}` holds a `>`, and an HTML parser ends the tag
+    there: every attribute after it - `onKeyDown`, `role="button"`,
+    `tabIndex={0}` - is lost, and a control that handles the keyboard is
+    reported as one that does not. Measured on xFormat: a `div` with
+    `role="button"`, `tabIndex={0}` and an Enter/Space handler drew both
+    `jsx-click-without-key` and `jsx-noninteractive-handler`.
+
+    Spaces, same length, newlines kept: the rules read the expressions
+    themselves from the unmasked source (`audit.base.attribute_expression`),
+    so only the parse copy changes, and every offset stays where it was.
+    """
+    out = list(raw_text)
+    for match in _JSX_ATTRIBUTE_EXPRESSION.finditer(raw_text):
+        index, depth, stack = match.end(), 1, []
+        while index < len(raw_text) and depth:
+            char = raw_text[index]
+            quote = stack[-1] if stack and stack[-1] in "\"'`" else ""
+            if quote:
+                if char == "\\":
+                    index += 2
+                    continue
+                if char == quote:
+                    stack.pop()
+                elif quote == "`" and raw_text.startswith("${", index):
+                    stack.append("{")
+                    index += 2
+                    continue
+            elif char in "\"'`":
+                stack.append(char)
+            elif char == "{":
+                stack.append("{")
+            elif char == "}":
+                if stack and stack[-1] == "{":
+                    stack.pop()
+                else:
+                    depth -= 1
+            elif char in "<>":
+                out[index] = " "
+            index += 1
+    return "".join(out)
+
+
 def mask_code_comments(raw_text: str, file_path: str,
                        server_tags_masked: bool = False) -> str:
     """Blank out code comments, keeping every other character where it was.

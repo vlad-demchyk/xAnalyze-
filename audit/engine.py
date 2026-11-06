@@ -769,10 +769,15 @@ def _mask_for_audit(markup: str, path: str) -> str:
     `xanalyze audit header.php` and the same file inside a folder scan
     disagreed about whether its link had a name. Measured 2026-09-02.
     """
-    from repo_scanner import mask_code_comments, mask_server_tags
+    from repo_scanner import (
+        mask_code_comments, mask_jsx_attribute_expressions, mask_server_tags,
+    )
 
     markup = mask_server_tags(markup)
-    return mask_code_comments(markup, path, server_tags_masked=True)
+    markup = mask_code_comments(markup, path, server_tags_masked=True)
+    if _syntax_of(path) == "jsx":
+        markup = mask_jsx_attribute_expressions(markup)
+    return markup
 
 
 def analyze_page_file(path: str, rules=None, ai_review=None,

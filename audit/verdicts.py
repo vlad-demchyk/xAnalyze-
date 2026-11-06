@@ -126,9 +126,16 @@ def findings(verdict: Verdict) -> list:
                             error=None, diagnostics=None)
             for page in verdict.pages])
     else:
-        from audit.engine import analyze_document
+        from audit.engine import _document_kind, _mask_for_audit, analyze_document
 
-        issues = analyze_document(verdict.html, verdict.url,
+        # The way a file in a folder audit is read, masks and all: a verdict
+        # replayed through a shorter path would measure a parser nobody runs.
+        kind = (_document_kind(verdict.url, verdict.html)
+                if "://" not in verdict.url else "page")
+        markup = (_mask_for_audit(verdict.html, verdict.url)
+                  if kind == "fragment" else verdict.html)
+        issues = analyze_document(markup, verdict.url, document_kind=kind,
+                                  source_text=verdict.html,
                                   syntax=verdict.syntax,
                                   stacks=verdict.stacks).issues
     return [issue for issue in issues if issue.rule_id == verdict.rule]
