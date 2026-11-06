@@ -57,6 +57,17 @@ _TRUSTED_UPDATE_HOSTS = frozenset({
 _MAX_MANIFEST_BYTES = 1024 * 1024
 _MAX_SIGNATURE_BYTES = 4096
 _MAX_ASSET_BYTES = 2 * 1024 * 1024 * 1024
+#: Ceilings on what an archive may unpack to (P-19). The download is already
+#: capped and checksummed, but a few megabytes of zip can claim gigabytes
+#: once inflated, and the checksum only proves it is the file the manifest
+#: named - not that the file is sane. Generous against the real bundle
+#: (a few hundred MB, some thousands of files) and nowhere near a full disk.
+_MAX_UNPACKED_BYTES = 4 * 1024 * 1024 * 1024
+_MAX_ARCHIVE_ENTRIES = 50_000
+_MAX_COMPRESSION_RATIO = 200
+#: How long the once-a-day hint may hold up a CLI command (P-37). The
+#: explicit `xanalyze update` keeps the long timeout.
+_QUIET_CHECK_TIMEOUT = 3
 EXIT_UPDATE_PARTIAL = 3
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
@@ -191,9 +202,9 @@ def _open_trusted(url: str, *, timeout: int):
     return response
 
 
-def fetch_latest() -> ReleaseInfo:
+def fetch_latest(timeout: float = 15) -> ReleaseInfo:
     """GET the latest release from GitHub.  Raises on network / HTTP errors."""
-    with _open_trusted(API_URL, timeout=15) as resp:
+    with _open_trusted(API_URL, timeout=timeout) as resp:
         data = json.loads(resp.read())
     return ReleaseInfo(
         tag=data["tag_name"],
@@ -372,7 +383,7 @@ def _last_check() -> float:
         return 0.0
 
 
-def _save_check(latest_version: str) -> None:
+def _save_check(latest_version: str | None) -> None:
     try:
         _cache_path().write_text(json.dumps({
             "at": time.time(),
@@ -393,8 +404,15 @@ def check_for_update(*, quiet: bool = False) -> str | None:
         return None
 
     try:
-        release = fetch_latest()
+        if quiet:
+            release = fetch_latest(timeout=_QUIET_CHECK_TIMEOUT)
+        else:
+            release = fetch_latest()
     except Exception:  # noqa: BLE001
+        # Recorded as a check all the same (P-37): offline, the cache was
+        # never written, so every command paid the timeout again.
+        if quiet:
+            _save_check(None)
         return None
 
     _save_check(release.version)
@@ -488,12 +506,62 @@ def _download(url: str, dest: Path, integrity: AssetIntegrity) -> None:
         raise RuntimeError("downloaded asset checksum does not match manifest")
 
 
-def _extract_cli_binary(archive: Path) -> Path:
-    """Extract the ``xanalyze`` binary from a tarball into a temp dir."""
-    tmp = Path(tempfile.mkdtemp(prefix="xanalyze-update-"))
+def _safe_member_name(name: str) -> bool:
+    """A relative path that stays inside the folder it is unpacked into."""
+    from pathlib import PurePosixPath
+
+    if not name or "\\" in name or "\x00" in name:
+        return False
+    path = PurePosixPath(name)
+    return not path.is_absolute() and ".." not in path.parts
+
+
+def _check_archive(entries) -> None:
+    """Refuse an archive before anything is written (P-19).
+
+    `entries` is `(name, unpacked_size, packed_size)` for every member.
+    """
+    count = 0
+    total = 0
+    packed = 0
+    for name, size, compressed in entries:
+        count += 1
+        if count > _MAX_ARCHIVE_ENTRIES:
+            raise RuntimeError("update archive has too many entries")
+        if not _safe_member_name(name):
+            raise RuntimeError(f"update archive has an unsafe path: {name!r}")
+        total += max(int(size), 0)
+        packed += max(int(compressed), 0)
+        if total > _MAX_UNPACKED_BYTES:
+            raise RuntimeError("update archive unpacks to more than allowed")
+    if packed and total > packed * _MAX_COMPRESSION_RATIO:
+        raise RuntimeError("update archive compression ratio is implausible")
+
+
+def _work_dir(dest: Path | None, prefix: str) -> Path:
+    """`dest` when the caller owns the cleanup, else a fresh temp dir."""
+    if dest is None:
+        return Path(tempfile.mkdtemp(prefix=prefix))
+    dest.mkdir(parents=True, exist_ok=True)
+    return dest
+
+
+def _extract_cli_binary(archive: Path, dest: Path | None = None) -> Path:
+    """Extract the ``xanalyze`` binary from a tarball.
+
+    Into `dest`, which `do_update` removes with the rest of the transaction
+    (P-20); a temp dir of its own only when called on its own.
+    """
+    tmp = _work_dir(dest, "xanalyze-update-")
     with tarfile.open(archive) as tf:
         # Find the executable inside the archive
         members = tf.getmembers()
+        # The tar is packed whole, so the archive size is the packed size
+        # of everything; the ratio is checked against that.
+        _check_archive([(m.name, m.size, 0) for m in members])
+        if sum(max(m.size, 0) for m in members) > max(
+                archive.stat().st_size, 1) * _MAX_COMPRESSION_RATIO:
+            raise RuntimeError("update archive compression ratio is implausible")
         # Look for a file named "xanalyze" (not a directory)
         target = None
         for m in members:
@@ -508,7 +576,10 @@ def _extract_cli_binary(archive: Path) -> Path:
                     break
         if target is None:
             raise RuntimeError("no executable found in the archive")
-        tf.extract(target, tmp)
+        # `data` refuses absolute paths, links out of the folder, devices
+        # and set-uid bits - said explicitly rather than left to a default
+        # that differs between Python versions.
+        tf.extract(target, tmp, filter="data")
         extracted = tmp / target.name
         if not extracted.exists():
             # Handle nested paths
@@ -522,12 +593,14 @@ def _extract_cli_binary(archive: Path) -> Path:
         return extracted
 
 
-def _extract_gui_app(archive: Path) -> Path:
-    """Extract ``XAnalyze.app`` from a zip into a temp dir."""
+def _extract_gui_app(archive: Path, dest: Path | None = None) -> Path:
+    """Extract ``XAnalyze.app`` from a zip; see `_extract_cli_binary`."""
     import zipfile
 
-    tmp = Path(tempfile.mkdtemp(prefix="xanalyze-update-gui-"))
+    tmp = _work_dir(dest, "xanalyze-update-gui-")
     with zipfile.ZipFile(archive) as zf:
+        _check_archive([(i.filename, i.file_size, i.compress_size)
+                        for i in zf.infolist()])
         zf.extractall(tmp)
     app = tmp / "XAnalyze.app"
     if not app.exists():
@@ -667,7 +740,8 @@ def do_update() -> int:
             integrity = _asset_integrity(cli_asset, manifest)
             _download(cli_asset["browser_download_url"], archive_path,
                       integrity)
-            extracted = _extract_cli_binary(archive_path)
+            extracted = _extract_cli_binary(archive_path,
+                                            tmp_dir / "unpacked")
             _replace_binary(cli_binary, extracted)
             updated += 1
             print(f"# CLI updated: {cli_binary}", file=sys.stderr)
@@ -695,7 +769,8 @@ def do_update() -> int:
             integrity = _asset_integrity(gui_asset, manifest)
             _download(gui_asset["browser_download_url"], archive_path,
                       integrity)
-            extracted = _extract_gui_app(archive_path)
+            extracted = _extract_gui_app(archive_path,
+                                         tmp_dir / "unpacked")
             _replace_gui_app(gui_app, extracted)
             updated += 1
             print(f"# GUI updated: {gui_app}", file=sys.stderr)

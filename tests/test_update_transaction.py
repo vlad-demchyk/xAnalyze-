@@ -74,8 +74,10 @@ def test_update_reports_each_installed_component(tmp_path, monkeypatch, capsys, 
     monkeypatch.setattr(updater, "find_gui_asset", lambda _: None if gui_state == "missing" else asset)
     monkeypatch.setattr(updater, "_asset_integrity", lambda *a: None)
     monkeypatch.setattr(updater, "_download", lambda *a: None)
-    monkeypatch.setattr(updater, "_extract_cli_binary", lambda p: p)
-    monkeypatch.setattr(updater, "_extract_gui_app", lambda p: p)
+    monkeypatch.setattr(updater, "_extract_cli_binary",
+                        lambda p, dest=None: p)
+    monkeypatch.setattr(updater, "_extract_gui_app",
+                        lambda p, dest=None: p)
     monkeypatch.setattr(updater, "_replace_binary", lambda *a: None)
 
     def replace_gui(*args):
