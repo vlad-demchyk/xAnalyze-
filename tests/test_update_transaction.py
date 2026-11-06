@@ -150,3 +150,30 @@ def test_tui_runs_worker_and_displays_completion(exit_code):
                 if exit_code:
                     assert screen.tr("tui_update_restart") not in status
     asyncio.run(exercise())
+
+
+def test_a_failure_after_the_swap_is_not_a_failed_update(tmp_path, monkeypatch, capsys):
+    """0.72.0 -> 0.72.1, live: the app was replaced, then a lazy import read
+    the new bundle's archive from the old process and the run said "app update
+    failed". The app is new either way; the command link is reported apart."""
+    release = updater.ReleaseInfo("v9.9.9", "9.9.9", "", [], "https://github.com/release")
+    asset = {"name": "XAnalyze.app.zip", "size": 3,
+             "browser_download_url": "https://github.com/asset"}
+    monkeypatch.setattr(updater, "fetch_latest", lambda: release)
+    monkeypatch.setattr(updater, "fetch_update_manifest", lambda _: updater.UpdateManifest("v9.9.9", {}, True))
+    monkeypatch.setattr(updater, "_installed_app", lambda: tmp_path / "app")
+    monkeypatch.setattr(updater, "_legacy_cli", lambda: None)
+    monkeypatch.setattr(updater, "find_gui_asset", lambda _: asset)
+    monkeypatch.setattr(updater, "_asset_integrity", lambda *a: None)
+    monkeypatch.setattr(updater, "_download", lambda *a: None)
+    monkeypatch.setattr(updater, "_extract_gui_app", lambda p, dest=None: p)
+    monkeypatch.setattr(updater, "_replace_gui_app", lambda *a: None)
+
+    def broken(*args):
+        raise RuntimeError("Error -3 while decompressing data")
+
+    monkeypatch.setattr(updater, "_point_command_at", broken)
+    assert updater.do_update() == 0
+    output = capsys.readouterr()
+    assert "Updated XAnalyze" in output.out
+    assert "app update failed" not in output.err

@@ -768,6 +768,13 @@ def do_update() -> int:
         print(f"# app: {target}", file=sys.stderr)
         tmp_dir = Path(tempfile.mkdtemp(prefix="xanalyze-update-"))
         archive_path = tmp_dir / asset["name"]
+        # Everything the rest of this run needs is imported now. A frozen
+        # app reads its modules lazily from an archive inside the bundle, and
+        # the bundle is about to be replaced under the running process: an
+        # import after that read the new archive at the old offsets and failed
+        # with "Error -3 while decompressing data" - reporting a finished
+        # update as a failed one.
+        import cli_install  # noqa: F401
         try:
             integrity = _asset_integrity(asset, manifest)
             _download(asset["browser_download_url"], archive_path, integrity)
@@ -778,12 +785,19 @@ def do_update() -> int:
                 _install_new_app(target, extracted)
             updated += 1
             print(f"# app updated: {target}", file=sys.stderr)
-            _point_command_at(target, legacy)
         except Exception as exc:  # noqa: BLE001
             failed.append("app")
             print(f"# app update failed: {exc}", file=sys.stderr)
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
+        if updated:
+            # After the swap, and outside the update's own failure: the app
+            # is new either way, and the command is a convenience on top.
+            try:
+                _point_command_at(target, legacy)
+            except Exception as exc:  # noqa: BLE001
+                print(f"# could not check the `xanalyze` command: {exc}",
+                      file=sys.stderr)
 
     if failed:
         print(f"Update {'partially completed' if updated else 'failed'}; "
