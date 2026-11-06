@@ -715,22 +715,62 @@ def _apply_style_suppressions(span, suppressions: Suppressions):
                    details=details)
 
 
+def suppressed_by(issue, suppressions: Suppressions):
+    """`(level, value)` of the entry that hides `issue`, or None.
+
+    Checked in the order `filter_issues` always applied them, so the entry
+    named is the one that actually did the hiding.
+    """
+    if suppressions.ignores_rule(issue.rule_id):
+        return "rules", issue.rule_id
+    if suppressions.ignores_path(issue.source):
+        return "paths", issue.source
+    if suppressions.ignores_selector(issue.selector):
+        return "selectors", issue.selector
+    value = issue_fingerprint(issue)
+    if suppressions.ignores_fingerprint(value):
+        return "fingerprints", value
+    return None
+
+
 def filter_issues(issues: list, suppressions: Suppressions) -> list:
     """Drop accessibility findings the user has already decided about."""
     if suppressions.is_empty():
         return issues
-    kept = []
+    return [issue for issue in issues if suppressed_by(issue, suppressions) is None]
+
+
+#: How many dismissed findings a summary names one by one.
+_ACCOUNT_LIMIT = 25
+
+
+def account_for_suppressed(issues, suppressions: Suppressions) -> dict:
+    """What the ignore lists hid from these findings, and why (T-1963).
+
+    A hidden finding is a decision somebody made, and a report that drops it
+    without a word reads exactly like a clean one. So the count is kept, by
+    level and by rule, and each dismissed finding is named with the reason
+    written next to it - the note in `.xanalyze-ignore`, which for a
+    fingerprint is the only human-readable trace of what was hidden.
+    """
+    account = {"hidden": 0, "by_level": {}, "by_rule": {}, "dismissed": []}
+    if suppressions.is_empty():
+        return account
     for issue in issues:
-        if suppressions.ignores_rule(issue.rule_id):
+        found = suppressed_by(issue, suppressions)
+        if found is None:
             continue
-        if suppressions.ignores_path(issue.source):
-            continue
-        if suppressions.ignores_selector(issue.selector):
-            continue
-        if suppressions.ignores_fingerprint(issue_fingerprint(issue)):
-            continue
-        kept.append(issue)
-    return kept
+        level, value = found
+        account["hidden"] += 1
+        account["by_level"][level] = account["by_level"].get(level, 0) + 1
+        account["by_rule"][issue.rule_id] = account["by_rule"].get(issue.rule_id, 0) + 1
+        if level == "fingerprints" and len(account["dismissed"]) < _ACCOUNT_LIMIT:
+            account["dismissed"].append({
+                "rule": issue.rule_id, "source": issue.source,
+                "fingerprint": value,
+                "reason": suppressions.labels.get(value, ""),
+            })
+    return account
 
 
 #: Everything that can go in the `[rules]` section, for the settings UI to

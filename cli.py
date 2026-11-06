@@ -591,8 +591,12 @@ def cmd_audit(args) -> int:
     if not getattr(args, "no_browser", False):
         _run_browser_pass(result, suppressions, args)
 
+    result.suppressed = suppression.account_for_suppressed(
+        [issue for document in result.documents for issue in document.issues],
+        suppressions)
     for document in result.documents:
         document.issues = suppression.filter_issues(document.issues, suppressions)
+    _announce_suppressed(result.suppressed)
 
     from audit.coverage import build_coverage
     result.coverage = build_coverage(result, args)
@@ -707,6 +711,7 @@ def cmd_audit(args) -> int:
             } for first, others in distinct],
             "platform_owned": _owned_counts(result),
             "environment": getattr(result, "environment", {}),
+            "suppressed": getattr(result, "suppressed", {}),
             "rules_run": result.rules_run,
             "coverage": getattr(result, "coverage", {}),
             "issues": [serialize_issue(issue, source=document.source)
@@ -756,6 +761,34 @@ def _owned_counts(result) -> dict:
         if getattr(issue, "owner", ""):
             counts[issue.owner] = counts.get(issue.owner, 0) + 1
     return counts
+
+
+def cmd_ignore(args) -> int:
+    """Write one dismissal, with its reason, into the project's ignore file.
+
+    The reason is required. A fingerprint is a one-way hash, so the note is
+    the only thing that will ever tell the next reader - or the next audit's
+    summary - what was hidden and on what grounds.
+    """
+    import re
+
+    value = (args.fingerprint or "").strip()
+    reason = " ".join((args.reason or "").split())
+    if not re.fullmatch(r"[0-9a-f]{16}", value):
+        print("ignore needs a 16-character fingerprint from `audit --json`",
+              file=sys.stderr)
+        return EXIT_ERROR
+    if not reason:
+        print("ignore needs a reason: --reason \"why this is not a problem\"",
+              file=sys.stderr)
+        return EXIT_ERROR
+    root = Path(args.root or ".")
+    if not root.exists():
+        print(f"no such folder: {root}", file=sys.stderr)
+        return EXIT_ERROR
+    path = suppression.add_fingerprint_to_ignore_file(str(root), value, reason)
+    print(f"dismissed {value} in {path}: {reason}")
+    return EXIT_OK
 
 
 def cmd_login(args) -> int:
@@ -924,6 +957,35 @@ def _reaudit(args, target: str, previous):
 
     files = scan_repo(target, _build_scan_config(args, target=target))
     return audit.analyze_files(files, target)
+
+
+def _announce_suppressed(account: dict) -> None:
+    """Say how many findings the ignore lists hid, and on whose word.
+
+    A dismissed finding is a decision, and a report that drops it in silence
+    reads exactly like a clean one. The reasons are the notes written next
+    to the entries; a dismissal with no note is counted as such, because
+    "nobody said why" is itself worth seeing.
+    """
+    hidden = (account or {}).get("hidden", 0)
+    if not hidden:
+        return
+    levels = ", ".join(f"{count} by {level.rstrip('s')}"
+                       for level, count in sorted(account["by_level"].items()))
+    reasons = sorted({d["reason"] for d in account.get("dismissed", []) if d["reason"]})
+    unexplained = sum(1 for d in account.get("dismissed", []) if not d["reason"])
+    because = ""
+    if reasons:
+        because = "; reasons: " + " | ".join(reasons[:5])
+    if unexplained:
+        because += f"; {unexplained} dismissed with no reason written"
+    progress.notice(
+        "audit",
+        f"{hidden} finding(s) hidden by the ignore lists ({levels}){because}; "
+        f"add --no-ignore to see them",
+        human=f"# {hidden} finding(s) hidden by the ignore lists ({levels})"
+              f"{because}; add --no-ignore to see them",
+        suppressed=hidden)
 
 
 def _announce_auth_walls(result, session_host: str = "") -> None:
@@ -1622,6 +1684,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_login.add_argument("--language", default="",
                          help="interface language for the sign-in window")
     p_login.set_defaults(func=cmd_login)
+
+    p_ignore = sub.add_parser(
+        "ignore",
+        help="dismiss one finding as a false positive, with the reason, in "
+             ".xanalyze-ignore")
+    p_ignore.add_argument("fingerprint",
+                          help="the finding's `fingerprint`, from `audit --json`")
+    p_ignore.add_argument("--reason", required=True,
+                          help="why it is not a problem; kept next to the entry")
+    p_ignore.add_argument("--root", default=".",
+                          help="the project folder whose .xanalyze-ignore to "
+                               "write (default: the current folder)")
+    p_ignore.set_defaults(func=cmd_ignore)
 
     p_update = sub.add_parser(
         "update",

@@ -75,6 +75,7 @@ finita che è.
 | `audit BERSAGLIO` | solo le regole del sito: URL, file HTML o cartella |
 | `fix` / `undo` | applica le correzioni esatte dei caratteri; ripristina le copie `.bak` |
 | `runs` / `resume` / `compare` | l'esecuzione è un oggetto: elencarla, riprenderla, confrontarla |
+| `ignore FINGERPRINT --reason TEXT` | segnare un risultato come falso positivo in `.xanalyze-ignore`, con il motivo; l'impronta è in `audit --json` e ogni esecuzione successiva dice quanti ne ha nascosti e perché |
 | `login URL` | accedere a mano, in un browser vero, perché l'esecuzione veda oltre la porta; salvato solo dopo «Fatto» |
 | `logs` | cosa ha fatto davvero l'esecuzione, in JSON Lines |
 | `ai` | l'account dietro i passaggi con modello: `status`, `login`, `rewrite` |

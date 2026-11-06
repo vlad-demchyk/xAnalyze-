@@ -73,6 +73,7 @@ a single HTML file is read as the finished page it is.
 | `audit TARGET` | website rules only, over a URL, an HTML file or a folder |
 | `fix` / `undo` | apply exact character corrections; restore the `.bak` copies |
 | `runs` / `resume` / `compare` | a run is an object: list it, continue it, diff it against the last |
+| `ignore FINGERPRINT --reason TEXT` | dismiss one finding as a false positive in `.xanalyze-ignore`, with why; the fingerprint is in `audit --json`, and every later run says how many it hid and why |
 | `login URL` | sign in to a site by hand, in a real browser, so a run can read behind it; kept only when you press Done |
 | `logs` | what a run actually did, as JSON Lines |
 | `ai` | the account behind the model passes: `status`, `login`, `rewrite` |
