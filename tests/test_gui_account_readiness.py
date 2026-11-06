@@ -57,7 +57,10 @@ def app():
     return QApplication.instance() or QApplication([])
 
 
-def wait_until(app, predicate, timeout=.7):
+#: Generous on purpose (P-44): the waits prove that a condition arrives, not
+#: how fast, and a loaded CI runner missed the old 0.7 s and 0.15 s by a hair.
+#: A GUI thread that really blocked would never return at all.
+def wait_until(app, predicate, timeout=5.0):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         app.processEvents()
@@ -97,8 +100,10 @@ def test_slow_status_keeps_gui_timer_running(app, monkeypatch):
     try:
         began = time.monotonic()
         window._refresh_account_control(refresh=True)
-        assert time.monotonic() - began < .1
-        wait_until(app, lambda: bool(ticks), timeout=.15)
+        # The status probe waits on `gate`, never set before this point: a
+        # blocking call would hang here rather than come back slowly.
+        assert time.monotonic() - began < 2.0
+        wait_until(app, lambda: bool(ticks))
         assert account.calls[0][0] != threading.get_ident()
         gate.set()
         wait_until(app, lambda: window.app_state.ai_available)

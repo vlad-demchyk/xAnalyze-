@@ -1019,11 +1019,18 @@ def _palette_with_installed_fonts(palette: Palette) -> Palette:
         system = QFontDatabase.systemFont(
             QFontDatabase.SystemFont.GeneralFont).family()
         general = installed.get(system.casefold())
+        # Linux reports the alias itself ("Sans Serif") as the system family,
+        # and lists it as installed - the very name QSS cannot resolve.
+        if general is not None and general.casefold() in _GENERIC_FAMILIES:
+            general = None
         if general is None:
             general = next((installed[name.casefold()] for name in (
                 "Helvetica Neue", "Arial", "Segoe UI", "Noto Sans",
                 "Liberation Sans", "DejaVu Sans",
-            ) if name.casefold() in installed), next(iter(installed.values())))
+            ) if name.casefold() in installed), next(
+                (name for name in installed.values()
+                 if name.casefold() not in _GENERIC_FAMILIES),
+                next(iter(installed.values()))))
 
         fixed_names = (
             "Menlo", "SF Mono", "Cascadia Code", "Consolas", "Monaco",
@@ -1034,11 +1041,17 @@ def _palette_with_installed_fonts(palette: Palette) -> Palette:
                       if name.casefold() in installed), None)
         if fixed is None:
             fixed = next((name for name in installed.values()
-                          if "mono" in name.casefold()
-                          or "courier" in name.casefold()), general)
+                          if name.casefold() not in _GENERIC_FAMILIES
+                          and ("mono" in name.casefold()
+                               or "courier" in name.casefold())), general)
         return replace(palette, font=general, font_mono=fixed)
     except Exception:  # noqa: BLE001 - preserve the palette if Qt font data is unavailable
         return palette
+
+
+#: Family names that are aliases, not fonts: QSS warns on every one of them.
+_GENERIC_FAMILIES = {"sans serif", "sans-serif", "sans", "serif", "monospace",
+                     "system-ui", "geist", "geist mono"}
 
 
 def current_palette(mode: str = "auto") -> Palette:

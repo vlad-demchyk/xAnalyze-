@@ -13,6 +13,8 @@ import cli_install
 from llm import credentials
 
 
+@pytest.mark.skipif(sys.platform != "darwin",
+                    reason="the admin path is an osascript command with BSD `ln -h`")
 def test_admin_paths_are_shell_data(tmp_path, monkeypatch):
     source = tmp_path / "app ' $(touch injected) `touch injected2`"
     source.write_text("binary")
