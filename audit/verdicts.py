@@ -13,7 +13,7 @@ it:
   which is how several fixes chose to say "a person should look" rather than
   "this is wrong".
 
-`corpus/audit_verdicts.jsonl` holds one verdict per line. Markup only, never a
+`corpus/audit/verdicts.jsonl` holds one verdict per line. Markup only, never a
 client's text, cookies, tokens or personal data: a verdict is about the shape
 of the markup, and the shape is all it needs.
 """
@@ -28,7 +28,7 @@ from audit.base import (
     SEVERITY_ORDER, RuleRegistry,
 )
 
-CORPUS = Path(__file__).resolve().parent.parent / "corpus" / "audit_verdicts.jsonl"
+CORPUS = Path(__file__).resolve().parent.parent / "corpus" / "audit" / "verdicts.jsonl"
 
 #: The engines a verdict can be replayed through.
 STATIC = "static"

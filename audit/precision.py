@@ -1,6 +1,6 @@
 """Precision of the audit rules on real audits, from a person's labels (T-1963).
 
-`corpus/audit_verdicts.jsonl` holds shapes; this measures sites. A person
+`corpus/audit/verdicts.jsonl` holds shapes; this measures sites. A person
 labels the findings of real audits as true or false, once, and this counts
 per rule how many of the labelled ones were right.
 

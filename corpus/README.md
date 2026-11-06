@@ -181,7 +181,7 @@ a site at once.
     # a detector built out of this file: the held-out half is the only number
     python scripts/calibrate.py --detector embedding --holdout --sweep
 
-## `audit_verdicts.jsonl` - checked verdicts on site-audit findings
+## `audit/verdicts.jsonl` - checked verdicts on site-audit findings
 
 Everything above is about the text detectors. This file is about the audit
 rules (accessibility, SEO, performance, security), which had no corpus at all:
@@ -189,7 +189,9 @@ each new rule produced false positives on its first real crawl, and a person
 found them by reading the output. A verdict records what that person decided,
 so the rules can be held to it by `tests/test_audit_verdicts.py`.
 
-One JSON object per line; `audit/verdicts.py` loads and replays it.
+One JSON object per line; `audit/verdicts.py` loads and replays it. In a
+folder of its own on purpose: every `corpus/*.jsonl` is read as text samples
+by `validation/corpus.py`, and a verdict is not one.
 
 - `verdict: true` - a real defect. The rule must report it at its own weight:
   its declared severity and confidence, not lower.
