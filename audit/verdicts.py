@@ -24,8 +24,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from audit.base import (
-    ADVISORY, CONFIDENCE_ORDER, CRITICAL, MINOR, SERIOUS, SEVERITY_ORDER,
-    RuleRegistry,
+    ADVISORY, CONFIDENCE_ORDER, CRITICAL, EXACT, MINOR, MODERATE, SERIOUS,
+    SEVERITY_ORDER, RuleRegistry,
 )
 
 CORPUS = Path(__file__).resolve().parent.parent / "corpus" / "audit_verdicts.jsonl"
@@ -33,7 +33,23 @@ CORPUS = Path(__file__).resolve().parent.parent / "corpus" / "audit_verdicts.jso
 #: The engines a verdict can be replayed through.
 STATIC = "static"
 HTMLCS = "htmlcs"
-ENGINES = (STATIC, HTMLCS)
+AXE = "axe"
+#: Several pages of one crawl, for the rules that compare pages.
+PAGES = "pages"
+ENGINES = (STATIC, HTMLCS, AXE, PAGES)
+
+#: The weight the cross-page rules report at. They are not `Rule` classes,
+#: so their weight is written where they build the issue; this is that
+#: weight, so a lowered one can be told from the rule's normal answer.
+_CRAWL_WEIGHTS = {
+    "link-target-differs-across-translations": (MODERATE, ADVISORY),
+    "seo-hreflang-not-reciprocal": (MODERATE, EXACT),
+    "seo-untranslated-content": (MODERATE, EXACT),
+    "seo-slug-not-translated": (MINOR, EXACT),
+    "seo-duplicate-title": (MODERATE, EXACT),
+    "seo-duplicate-canonical": (MODERATE, EXACT),
+    "seo-duplicate-description": (MINOR, EXACT),
+}
 
 _REQUIRED = ("id", "rule", "engine", "verdict", "reason", "source", "date")
 
@@ -56,6 +72,10 @@ class Verdict:
     stacks: tuple = ()
     #: An HTML_CodeSniffer message, for `engine == "htmlcs"`.
     message: dict = field(default_factory=dict)
+    #: An axe result (`violations`, `incomplete`), for `engine == "axe"`.
+    payload: dict = field(default_factory=dict)
+    #: `[{"url": ..., "html": ...}, ...]`, for `engine == "pages"`.
+    pages: tuple = ()
 
 
 def load(path: Path = CORPUS) -> list:
@@ -80,6 +100,7 @@ def load(path: Path = CORPUS) -> list:
                 raise ValueError(f"line {number}: duplicate id {record['id']!r}")
             seen.add(record["id"])
             record["stacks"] = tuple(record.get("stacks", ()))
+            record["pages"] = tuple(record.get("pages", ()))
             verdicts.append(Verdict(**record))
     return verdicts
 
@@ -91,6 +112,19 @@ def findings(verdict: Verdict) -> list:
 
         issues = issues_from_htmlcs(
             json.dumps({"messages": [verdict.message]}), verdict.url)
+    elif verdict.engine == AXE:
+        from audit.browser import issues_from_axe
+
+        issues = issues_from_axe(json.dumps(verdict.payload), verdict.url)
+    elif verdict.engine == PAGES:
+        from types import SimpleNamespace
+
+        from audit import crosspage
+
+        issues = crosspage.issues_for([
+            SimpleNamespace(url=page["url"], raw_html=page["html"],
+                            error=None, diagnostics=None)
+            for page in verdict.pages])
     else:
         from audit.engine import analyze_document
 
@@ -102,16 +136,22 @@ def findings(verdict: Verdict) -> list:
 
 def _full_weight(issue, rule_id: str) -> bool:
     """Reported as the rule means it, not lowered to a note."""
-    try:
-        rule = RuleRegistry.create(rule_id)
-    except KeyError:
-        # An engine's code: no declared weight to compare with, so a note is
-        # what MINOR or ADVISORY says.
-        return issue.severity != MINOR and issue.confidence != ADVISORY
+    if rule_id in _CRAWL_WEIGHTS:
+        severity, confidence = _CRAWL_WEIGHTS[rule_id]
+    else:
+        try:
+            rule = RuleRegistry.create(rule_id)
+        except KeyError:
+            # An engine's own code (axe, HTML_CodeSniffer). The engine sets
+            # the severity; what this tool does to an answer it doubts is
+            # lower the confidence - an `incomplete`, an undetermined
+            # message, a name the collector found - so that is the test.
+            return issue.confidence == EXACT
+        severity, confidence = rule.severity, rule.confidence
     heavier_or_equal = (SEVERITY_ORDER.index(issue.severity)
-                        <= SEVERITY_ORDER.index(rule.severity))
+                        <= SEVERITY_ORDER.index(severity))
     as_sure = (CONFIDENCE_ORDER.index(issue.confidence)
-               >= CONFIDENCE_ORDER.index(rule.confidence))
+               >= CONFIDENCE_ORDER.index(confidence))
     return heavier_or_equal and as_sure
 
 

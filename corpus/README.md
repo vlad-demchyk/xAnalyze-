@@ -197,7 +197,12 @@ One JSON object per line; `audit/verdicts.py` loads and replays it.
   silent, or lower itself to a note (a lighter severity or confidence).
 - `engine` - `static` replays `html` through `analyze_document` (with
   `syntax` and `stacks` when the rule needs them); `htmlcs` replays an
-  HTML_CodeSniffer `message`.
+  HTML_CodeSniffer `message`; `axe` replays an axe result (`payload`);
+  `pages` replays several pages of one crawl (`pages: [{url, html}]`) for
+  the rules that compare pages - translations, hreflang, duplicates.
+- For an engine's own code (`axe:…`, `htmlcs:…`) "lowered" means its
+  confidence was lowered: the engine sets the severity, and what this tool
+  does with an answer it doubts is mark it uncertain.
 - `source` - where the verdict came from: a named audit and task
   (`Palmanova final audit, T-1961`) or `synthetic`, a shape written from the
   rule's own definition. Synthetic entries guard a rule's edges; only the
