@@ -170,8 +170,10 @@ def _run_browser_pass(result, suppressions, args=None) -> None:
                         skipped=True, reason=str(reason))
         return
 
+    unread = unread_sources(result.documents)
     targets = [d for d in result.documents
-               if not d.error and _is_renderable(d.source)]
+               if not d.error and d.source not in unread
+               and _is_renderable(d.source)]
     if not targets:
         result.browser_coverage.append({"engine": "browser", "status": "skipped",
                                         "reason": "no renderable documents"})
@@ -520,6 +522,18 @@ def _crawl_maybe_rendering(target: str, config, progress_cb=None,
 #: WordPress site: 50 of 502 documents, each at four widths.
 _NOT_A_PAGE = (".jpg", ".jpeg", ".png", ".webp", ".avif", ".gif", ".bmp",
                ".svg", ".pdf", ".mp4", ".webm", ".mp3", ".zip")
+
+
+def unread_sources(documents) -> set:
+    """Addresses some pass could not read, so the browser must not load them.
+
+    A page refused by the crawl (larger than its ceiling, not HTML, an
+    error) still gets a document from passes that need no HTML, such as the
+    response headers - and that document, carrying no error, used to send
+    the page to the browser anyway: a 13 MB page the crawl had refused was
+    loaded into QtWebEngine on the window's thread.
+    """
+    return {d.source for d in documents if d.error}
 
 
 def _is_renderable(source: str) -> bool:

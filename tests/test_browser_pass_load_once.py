@@ -37,6 +37,15 @@ class WhichDocumentsReachABrowser(unittest.TestCase):
             with self.subTest(url):
                 self.assertTrue(auditpass._is_renderable(url))
 
+    def test_a_page_the_crawl_refused_is_not_loaded_by_another_pass(self):
+        """A headers document carries no error; the page's own did."""
+        from types import SimpleNamespace as Doc
+
+        documents = [Doc(source="https://x.test/big", error="page larger than 10 MB, not read"),
+                     Doc(source="https://x.test/big", error=""),
+                     Doc(source="https://x.test/", error="")]
+        self.assertEqual(auditpass.unread_sources(documents), {"https://x.test/big"})
+
     def test_a_file_that_is_not_a_page_is_not(self):
         for url in ("https://x.test/photo.jpg", "https://x.test/a.WEBP",
                     "https://x.test/brochure.pdf", "https://x.test/clip.mp4"):

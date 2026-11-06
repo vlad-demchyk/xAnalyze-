@@ -3373,7 +3373,7 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             QMessageBox.information(self, t("browser_pass_label", self.lang), reason)
             return
 
-        from cli_impl.auditpass import _is_renderable
+        from cli_impl.auditpass import _is_renderable, unread_sources
 
         targets = []
         seen_sources = set()
@@ -3383,8 +3383,10 @@ class MainWindow(AccountMixin, AuditPanelMixin, DiagnosisStripMixin,
             for page in (snapshot.pages if snapshot else ())
             if getattr(page, "url", "")
         }
+        unread = unread_sources(result.documents)
         for document in result.documents:
             if (document.error or document.source in seen_sources
+                    or document.source in unread
                     or not _is_renderable(document.source)
                     or (self.source == SOURCE_SITE and acquired_sources
                         and document.source not in acquired_sources)):
