@@ -80,7 +80,14 @@ class RunResult:
 
     @property
     def ok(self) -> bool:
-        return not self.error
+        """Did the command finish its job? (P-32)
+
+        Not only "did it not raise". The CLI's contract is 0 for a clean
+        result, 1 for a valid result with findings, and 2 or more for a run
+        that could not do its work - and a command that *returns* 2 raised
+        nothing, so a check on the exception alone painted it green.
+        """
+        return not self.error and self.exit_code in (0, 1)
 
     def payload(self) -> dict | None:
         """The command's JSON result, or None when it printed something else.
@@ -120,10 +127,44 @@ class RunResult:
         return paths
 
 
+class RunBusy(RuntimeError):
+    """Another command is still running in this process."""
+
+    def __init__(self, active: "Run") -> None:
+        super().__init__(f"another run is in progress: {active.title}")
+        self.active = active
+
+
+#: The one command running in this process, or None (P-26).
+#:
+#: Process-wide on purpose. The worker swaps `sys.stdout` and `sys.stderr`
+#: for the whole process, so the rule "one at a time" belongs to the thing
+#: that does the swapping, not to a screen: three run screens each holding
+#: their own run let a person go Back from a crawl, start an audit, and have
+#: the two restore each other's streams in the wrong order.
+_active: "Run | None" = None
+_active_lock = threading.Lock()
+
+
+def active() -> "Run | None":
+    """The run still in flight, if any."""
+    with _active_lock:
+        run = _active
+    if run is not None and not run.running:
+        return None
+    return run
+
+
+def busy() -> bool:
+    return active() is not None
+
+
 class Run:
     """A command running on a worker thread, polled by the screen."""
 
-    def __init__(self, command, args: argparse.Namespace) -> None:
+    def __init__(self, command, args: argparse.Namespace,
+                 title: str = "") -> None:
+        self.title = title
         self._lock = threading.Lock()
         self._lines: list = []
         self._taken = 0
@@ -135,6 +176,13 @@ class Run:
         self._thread: threading.Thread | None = None
 
     def start(self) -> "Run":
+        """Begin, or raise `RunBusy` while another run is in flight."""
+        global _active
+        with _active_lock:
+            current = _active
+            if current is not None and current.running:
+                raise RunBusy(current)
+            _active = self
         self._thread = threading.Thread(target=self._work, daemon=True)
         self._thread.start()
         return self
@@ -179,6 +227,9 @@ class Run:
                                     self._err.getvalue(), error)
 
 
-def start(command, args: argparse.Namespace) -> Run:
-    """Begin running `command(args)` on a worker thread."""
-    return Run(command, args).start()
+def start(command, args: argparse.Namespace, title: str = "") -> Run:
+    """Begin running `command(args)` on a worker thread.
+
+    Raises `RunBusy` while another run is still in flight in this process.
+    """
+    return Run(command, args, title).start()

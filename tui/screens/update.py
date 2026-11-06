@@ -136,7 +136,18 @@ class UpdateScreen(XScreen):
 
         from tui import runner
 
-        self._run = runner.start(lambda _args: updater.do_update(), argparse.Namespace())
+        try:
+            self._run = runner.start(lambda _args: updater.do_update(),
+                                     argparse.Namespace(),
+                                     self.tr("tui_update_installing"))
+        except runner.RunBusy as exc:
+            # Replacing the binary under a scan that is still reading with it
+            # is the one thing worse than waiting.
+            button.disabled = False
+            self._busy = False
+            self._status(self.tr("tui_run_other_active",
+                                 title=exc.active.title or "…"))
+            return
         self._timer = self.set_interval(0.15, self._poll_install)
 
     def _poll_install(self) -> None:

@@ -172,7 +172,9 @@ class RunScreen(XScreen):
 
     @property
     def busy(self) -> bool:
-        return self._run is not None
+        from tui import runner
+
+        return self._run is not None or runner.busy()
 
     def action_run_now(self) -> None:
         """Start the run from the keyboard.
@@ -182,7 +184,16 @@ class RunScreen(XScreen):
         whole site". Ctrl+R and F5 are the keys a person already presses to
         run something.
         """
-        if self.busy:
+        if self._run is not None:
+            return
+        from tui import runner
+
+        other = runner.active()
+        if other is not None:
+            # Another screen's run: a key that does nothing teaches that
+            # the key does nothing, so say what is in the way.
+            self.status(self.tr("tui_run_other_active",
+                                title=other.title or "…"))
             return
         try:
             button = self.query_one(f"#{self.run_button_id}", Button)
@@ -235,6 +246,54 @@ class RunScreen(XScreen):
         #: arrives - and the profile's own tick came back as the person's.
         #: Matching on the value is what survives the delay.
         self._auto: dict = {}
+        #: `widget id -> value` last written from Settings; see
+        #: `apply_run_defaults`.
+        self._defaults_shown: dict = {}
+
+    #: `widget id -> RunDefaults attribute`: the controls whose starting
+    #: value comes from Settings (P-31). Filled in by a subclass.
+    DEFAULT_FIELDS: dict = {}
+
+    def run_defaults(self):
+        from tui import run_defaults
+
+        return run_defaults.load()
+
+    def apply_run_defaults(self) -> None:
+        """Bring the Settings-backed controls up to the stored settings.
+
+        Only a control still showing the default this screen last put there:
+        one the person or the target's profile changed is theirs. Called on
+        every return to the screen, because Settings is saved on another
+        screen while this one is already built.
+        """
+        from textual.widgets import Select
+
+        defaults = self.run_defaults()
+        for widget_id, attribute in self.DEFAULT_FIELDS.items():
+            try:
+                widget = self.query_one(f"#{widget_id}", Select)
+            except Exception:  # noqa: BLE001 - a screen without that control
+                continue
+            wanted = getattr(defaults, attribute)
+            shown = self._defaults_shown.get(widget_id, widget.value)
+            if widget.value != shown:
+                continue
+            if widget.value != wanted:
+                option = self.FIELD_OPTIONS.get(widget_id)
+                if option:
+                    self._auto[option] = wanted
+                try:
+                    widget.value = wanted
+                except Exception:  # noqa: BLE001 - a value not in the list
+                    if option:
+                        self._auto.pop(option, None)
+                    continue
+            self._defaults_shown[widget_id] = wanted
+
+    def on_screen_resume(self) -> None:
+        if self._run is None:
+            self.apply_run_defaults()
 
     def on_mount(self) -> None:
         # After the first refresh, not during mount: the mount-time
@@ -450,10 +509,18 @@ class RunScreen(XScreen):
         """
         from tui import runner
 
-        if self.busy:
+        if self._run is not None:
+            return False
+        try:
+            run = runner.start(command, args, title)
+        except runner.RunBusy as exc:
+            # Another screen's run: say whose, rather than a button that
+            # silently does nothing.
+            self.status(self.tr("tui_run_other_active",
+                                title=exc.active.title or "…"))
             return False
         self._title = title
-        self._run = runner.start(command, args)
+        self._run = run
         self._set_busy(True)
         self.status(self.tr("tui_run_starting", title=title))
         self._timer = self.set_interval(self.poll_interval, self._poll)
@@ -485,6 +552,12 @@ class RunScreen(XScreen):
 
         if result.error:
             self.status(self.tr("tui_run_failed", error=result.error))
+            return
+        if not result.ok:
+            # Returned 2+ without raising: the run could not do its work.
+            # Results still opens, because its log is where the reason is.
+            self.status(self.tr("tui_run_failed_code", code=result.exit_code))
+            self.app.push_screen(ResultsScreen(title, result))
             return
         self.status(self.tr("tui_run_done"), ok=True)
         self.app.push_screen(ResultsScreen(title, result))

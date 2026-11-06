@@ -159,7 +159,18 @@ class SettingsScreen(XScreen):
         # itself. Saved and not applied, it is an option that appears to do
         # nothing until the next launch - so the screens are rebuilt in it
         # here, and this screen comes back saying so.
-        if self.settings.ui_language != was_language:
+        # Against the language the interface is in, not the one stored
+        # before: a change put off while a run was going is applied by the
+        # next Save, when nothing new was changed.
+        if self.settings.ui_language != getattr(self.app, "lang", was_language):
+            from tui import runner
+
+            if runner.busy():
+                # Rebuilding the screens uninstalls the one holding the run,
+                # and its result would go with it (P-26).
+                status.set_class(False, "ok")
+                status.update(self.tr("tui_language_after_run"))
+                return
             self.app.set_language(self.settings.ui_language)
         elif self.settings.theme != was_theme:
             self.app.set_theme(self.settings.theme)

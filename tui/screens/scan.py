@@ -15,6 +15,11 @@ class ScanScreen(RunScreen):
     """Form to configure and run a scan."""
 
     status_id = "scan-status"
+    DEFAULT_FIELDS = {"detector": "detector", "scope": "scope"}
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._defaults = self.run_defaults()
 
     def compose(self) -> ComposeResult:
         yield from self.compose_chrome()
@@ -38,7 +43,7 @@ class ScanScreen(RunScreen):
                         (self.tr("tui_detector_judge"), "llm-judge"),
                         (self.tr("tui_detector_none"), "none"),
                     ],
-                    value="offline",
+                    value=self._defaults.detector,
                     id="detector",
                     compact=True,
                     classes="inline-select",
@@ -51,7 +56,7 @@ class ScanScreen(RunScreen):
                         (self.tr("scope_technical"), "technical"),
                         (self.tr("scope_both"), "both"),
                     ],
-                    value="content",
+                    value=self._defaults.scope,
                     id="scope",
                     compact=True,
                     classes="inline-select",

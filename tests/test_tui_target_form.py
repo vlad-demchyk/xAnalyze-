@@ -49,7 +49,7 @@ class _Form(unittest.TestCase):
         self.addCleanup(lambda: setattr(runner, "start", self._real_start))
         self.started = {}
 
-        def spy(command, args):
+        def spy(command, args, title=""):
             self.started["args"] = args
 
             class _Finished:

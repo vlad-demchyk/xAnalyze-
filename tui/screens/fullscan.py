@@ -31,6 +31,11 @@ class FullscanScreen(RunScreen):
     """Form to configure and run a full scan."""
 
     status_id = "fullscan-status"
+    DEFAULT_FIELDS = {"depth": "depth"}
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._defaults = self.run_defaults()
     profile_note_id = "fullscan-profile"
 
     #: Which control sets which run option. See `RunScreen.FIELD_OPTIONS`.
@@ -107,7 +112,7 @@ class FullscanScreen(RunScreen):
                         ("2", "2"),
                         ("3", "3"),
                     ],
-                    value="1",
+                    value=self._defaults.depth,
                     id="depth",
                     compact=True,
                     classes="inline-select",
@@ -239,7 +244,7 @@ class FullscanScreen(RunScreen):
             profile_defaults=False,
             _explicit=set(self._touched),
             depth=int(self.query_one("#depth", Select).value or 0),
-            max_pages=30,
+            max_pages=self.run_defaults().max_pages,
             max_files=5000,
             ext=None,
             exclude=None,

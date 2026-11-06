@@ -16,6 +16,11 @@ class AuditScreen(RunScreen):
     """Form to configure and run an audit."""
 
     status_id = "audit-status"
+    DEFAULT_FIELDS = {"depth": "depth"}
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._defaults = self.run_defaults()
     profile_note_id = "audit-profile"
 
     #: Which control sets which run option. See `RunScreen.FIELD_OPTIONS`.
@@ -92,7 +97,7 @@ class AuditScreen(RunScreen):
                         ("2", "2"),
                         ("3", "3"),
                     ],
-                    value="0",
+                    value=self._defaults.depth,
                     id="depth",
                     compact=True,
                     classes="inline-select",
@@ -230,13 +235,13 @@ class AuditScreen(RunScreen):
             target=target,
             url=False,
             depth=int(self.query_one("#depth", Select).value or 0),
-            max_pages=30,
+            max_pages=self.run_defaults().max_pages,
             max_files=5000,
             render=None,
             exclude=None,
             use_default_excludes=True,
             ext=None,
-            scope="content",
+            scope=self.run_defaults().scope,
             # `--category` takes a list; one choice or none, from a screen
             # that has one line to spend on it. `None` is every category,
             # which is what the CLI means by the flag being absent.

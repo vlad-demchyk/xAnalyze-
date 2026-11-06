@@ -1719,6 +1719,21 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Failed: {error}",
     },
     "tui_run_done": {"uk": "Готово.", "it": "Fatto.", "en": "Done."},
+    "tui_run_failed_code": {
+        "uk": "Не вдалося: код виходу {code}. Причина в журналі прогону.",
+        "it": "Non riuscito: codice di uscita {code}. Il motivo è nel registro dell'esecuzione.",
+        "en": "Failed: exit code {code}. The reason is in the run log.",
+    },
+    "tui_run_other_active": {
+        "uk": "Уже йде інший прогін: {title}. Дочекайтеся його завершення.",
+        "it": "È già in corso un'altra esecuzione: {title}. Attendi che finisca.",
+        "en": "Another run is in progress: {title}. Wait for it to finish.",
+    },
+    "tui_language_after_run": {
+        "uk": "Мову збережено. Інтерфейс перебудується мовою, коли прогін завершиться: натисніть «Зберегти» ще раз.",
+        "it": "Lingua salvata. L'interfaccia si ricostruirà nella nuova lingua quando l'esecuzione sarà finita: premi di nuovo «Salva».",
+        "en": "Language saved. The interface is rebuilt in it once the run has finished: press Save again then.",
+    },
     "tui_written": {"uk": "Записано:", "it": "Scritti:", "en": "Written:"},
     "tui_nothing_written": {
         "uk": "Цей прогін не записав жодного документа.",
