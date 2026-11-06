@@ -282,7 +282,8 @@ class EveryBundleCarriesWhatTheCodeReads(unittest.TestCase):
     that was violated both times.
     """
 
-    SPECS = ("packaging/XAnalyze.spec", "packaging/XAnalyze-cli.spec")
+    # One bundle since T-2571: the CLI is the app under another name.
+    SPECS = ("packaging/XAnalyze.spec",)
 
     #: Every runtime resource under `ui/design`, as the module that reads it
     #: names it. A new one added to the tree and to no spec fails here.

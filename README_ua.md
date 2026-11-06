@@ -23,18 +23,21 @@
 
 ```bash
 curl -L -o XAnalyze.app.zip https://github.com/vlad-demchyk/xAnalyze-/releases/latest/download/XAnalyze.app.zip
-unzip XAnalyze.app.zip && mv XAnalyze.app /Applications/
+ditto -x -k XAnalyze.app.zip /Applications/
 ```
 
 При першому запуску застосунок один раз пропонує покласти себе як `xanalyze` у
-`~/.local/bin`, тож CLI і TUI не потребують другого завантаження. Бандл ще не
+`~/.local/bin`, тож CLI і TUI не потребують другого завантаження, а
+`xanalyze update` оновлює все три разом. Бандл ще не
 підписаний: перший запуск - Control-click -> Open.
 
-**Лише CLI**
+**Лише командний рядок**
+
+Завантаження одне, застосунок: вікно, CLI і TUI - одна програма. Щоб отримати
+команду `xanalyze`, не відкриваючи вікна:
 
 ```bash
-curl -L -o xanalyze-cli.tar.gz https://github.com/vlad-demchyk/xAnalyze-/releases/latest/download/xanalyze-cli-macos-arm64.tar.gz
-tar -xzf xanalyze-cli.tar.gz && export PATH="$PWD/xanalyze:$PATH"
+/Applications/XAnalyze.app/Contents/MacOS/XAnalyze --install-cli
 ```
 
 **З вихідників**
@@ -462,12 +465,12 @@ WordPress, файл `.twig`, `.erb`, `.ejs`, `.phtml` чи `.liquid` - це ро
 
 ```bash
 make version        # що каже config.py
-make rebuild-all    # обидва бандли на цій версії
-make package        # два архіви, які шукає `xanalyze update`
+make rebuild        # один бандл: вікно, CLI і TUI на цій версії
+make package        # XAnalyze.app.zip і маніфест, те, що шукає `xanalyze update`
 ```
 
-`make package` відмовляється працювати над застарілим бандлом. Жоден архів поки
-не підписаний і не нотаризований.
+`make package` відмовляється працювати над застарілим бандлом. Архів поки не
+підписаний і не нотаризований.
 
 ## Вимоги
 

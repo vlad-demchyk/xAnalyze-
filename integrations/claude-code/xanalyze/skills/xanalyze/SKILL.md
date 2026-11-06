@@ -12,7 +12,7 @@ For an accessibility audit and its triage, follow `brain-a11y-verify` as well; t
 ## 1. Which binary
 
 - Installed: `xanalyze` (`~/.local/bin/xanalyze`, a link into `/Applications/XAnalyze.app`). `xanalyze --version` first.
-- Source: `~/repositories/XAnalyze`, branch `refactor/mvvm-state-machine`; `./venv/bin/python cli.py …` runs the code as it is now. `make check-cli` says whether the installed binary matches the source. A stale bundle reports old behaviour: when a finding looks like a fixed bug, check the version before reporting it.
+- Source: `~/repositories/XAnalyze`, branch `refactor/mvvm-state-machine`; `./venv/bin/python cli.py …` runs the code as it is now. `make check` says whether the built app (window, CLI and TUI are one bundle) matches the source. A stale bundle reports old behaviour: when a finding looks like a fixed bug, check the version before reporting it.
 - Rebuilding and replacing the installed app are the person's decision: `make rebuild-all PYINST="./venv/bin/python -m PyInstaller"` (the venv's own `pyinstaller` script can carry a dead shebang), after raising `APP_VERSION` in `config.py`.
 
 ## 2. Pick the command

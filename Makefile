@@ -1,4 +1,4 @@
-.PHONY: rebuild-cli rebuild-app version check-cli check-app package
+.PHONY: rebuild check version package rebuild-cli rebuild-app rebuild-all check-cli check-app update
 
 SHELL := /bin/bash
 VENV := venv
@@ -8,9 +8,12 @@ PYINST := $(VENV)/bin/pyinstaller
 # Read version from the single source of truth.
 SOURCE_VERSION := $(shell $(PY) -c "import config; print(config.APP_VERSION)")
 
-CLI_DIR  := dist/xanalyze-cli
+# One bundle. The window, the command line and the terminal interface are one
+# executable that picks its role by the name it was started under (see
+# app_entry.py); `xanalyze` is a symlink into the app. A second, separate CLI
+# bundle used to be built here, released beside the app and updated on its
+# own - two copies of one program that could be two versions at once.
 APP_DIR  := dist/XAnalyze.app
-CLI_SPEC := packaging/XAnalyze-cli.spec
 APP_SPEC := packaging/XAnalyze.spec
 
 # --- version ---
@@ -18,74 +21,54 @@ APP_SPEC := packaging/XAnalyze.spec
 version:
 	@echo "$(SOURCE_VERSION)"
 
-# --- checks: is the built binary up to date? ---
+# --- check: is the built app up to date? ---
 
-check-cli:
-	@if [ ! -f "$(CLI_DIR)/.build_version" ]; then \
-		echo "CLI not built yet"; exit 1; \
-	fi
-	@BUILD_VER=$$(cat "$(CLI_DIR)/.build_version"); \
-	if [ "$$BUILD_VER" != "$(SOURCE_VERSION)" ]; then \
-		echo "CLI is stale: built $$BUILD_VER, source $(SOURCE_VERSION)"; exit 1; \
-	fi
-	@echo "CLI $(SOURCE_VERSION) is up to date"
-
-check-app:
+check:
 	@PLIST_VER=$$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$(APP_DIR)/Contents/Info.plist" 2>/dev/null); \
 	if [ "$$PLIST_VER" != "$(SOURCE_VERSION)" ]; then \
 		echo "App is stale: built $$PLIST_VER, source $(SOURCE_VERSION)"; exit 1; \
 	fi
-	@echo "App $(SOURCE_VERSION) is up to date"
+	@echo "XAnalyze $(SOURCE_VERSION) is up to date (window, CLI and TUI)"
 
-# --- rebuilds ---
+# --- rebuild ---
 
-rebuild-cli:
-	@echo "Building CLI $(SOURCE_VERSION) ..."
-	rm -rf "$(CLI_DIR)"
-	$(PYINST) $(CLI_SPEC) --noconfirm --distpath dist
-	@echo "$(SOURCE_VERSION)" > "$(CLI_DIR)/.build_version"
-	@echo "CLI $(SOURCE_VERSION) built. Verify: $(CLI_DIR)/xanalyze --version"
-
-rebuild-app:
-	@echo "Building App $(SOURCE_VERSION) ..."
-	rm -rf "$(APP_DIR)"
+rebuild:
+	@echo "Building XAnalyze $(SOURCE_VERSION) ..."
+	rm -rf "$(APP_DIR)" dist/xanalyze-cli
 	$(PYINST) $(APP_SPEC) --noconfirm --distpath dist
-	@echo "App $(SOURCE_VERSION) built. Verify: $(APP_DIR)/Contents/MacOS/XAnalyze --version"
+	@echo "XAnalyze $(SOURCE_VERSION) built. Verify: $(APP_DIR)/Contents/MacOS/XAnalyze --version"
+	@echo "Command line from it: $(APP_DIR)/Contents/MacOS/XAnalyze --install-cli"
 
-rebuild-all: rebuild-cli rebuild-app
+# The old names, so scripts and habits keep working: there is one bundle now.
+rebuild-cli rebuild-app rebuild-all: rebuild
+check-cli check-app: check
 
-# --- release artefacts ---
+# --- release artefact ---
 #
-# The names are not decorative: `updater.py` looks for exactly these, in this
-# order, when `xanalyze update` asks GitHub for the latest release. A release
-# whose assets are named anything else is a release nobody can update to.
-#
-# Both are rebuilt from what is in `dist/` right now and refuse to run over a
-# stale bundle: publishing an archive of the previous version under this
-# version's tag is the one packaging mistake that cannot be spotted by
-# looking at the release page.
+# One archive and its manifest: `XAnalyze.app.zip` is the name `updater.py`
+# looks for. Packed with `ditto`, which keeps the bundle's symlinks (Qt's
+# frameworks are built of them) and its executable bits; the updater unpacks
+# both back. Refuses to run over a stale bundle: publishing the previous
+# version's archive under this version's tag is the one packaging mistake
+# that cannot be spotted by looking at the release page.
 
-ARCH := $(shell uname -m | sed 's/x86_64/x64/')
-CLI_ARCHIVE := dist/xanalyze-cli-macos-$(ARCH).tar.gz
 APP_ARCHIVE := dist/XAnalyze.app.zip
 
-package: check-cli check-app
-	@echo "Packaging $(SOURCE_VERSION) for $(ARCH) ..."
-	rm -f "$(CLI_ARCHIVE)" "$(APP_ARCHIVE)"
-	cd dist && tar czf "$(notdir $(CLI_ARCHIVE))" "$(notdir $(CLI_DIR))"
+package: check
+	@echo "Packaging $(SOURCE_VERSION) ..."
+	rm -f "$(APP_ARCHIVE)" dist/xanalyze-cli-macos-*.tar.gz
 	cd dist && ditto -c -k --sequesterRsrc --keepParent "$(notdir $(APP_DIR))" "$(notdir $(APP_ARCHIVE))"
 	$(PY) scripts/update_manifest.py \
 		--release "v$(SOURCE_VERSION)" \
 		--output dist/xanalyze-update-manifest.json \
-		"$(CLI_ARCHIVE)" "$(APP_ARCHIVE)"
+		"$(APP_ARCHIVE)"
 	@echo "Wrote:"
-	@ls -lh "$(CLI_ARCHIVE)" "$(APP_ARCHIVE)" | awk '{print "  " $$9 "  " $$5}'
-	@echo "These are the two asset names that 'xanalyze update' looks for."
+	@ls -lh "$(APP_ARCHIVE)" | awk '{print "  " $$9 "  " $$5}'
 	@echo "The update manifest is unsigned unless UPDATE_SIGNING_KEY is set."
 	@echo "Unsigned: a first launch of the app needs Control-click > Open until it is notarised."
 
 
-# --- convenience: rebuild only if version drifted ---
+# --- convenience ---
 
-update: check-cli
-	@echo "CLI is up to date, nothing to do"
+update: check
+	@echo "Nothing to rebuild"

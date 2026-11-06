@@ -23,18 +23,21 @@ run measured.
 
 ```bash
 curl -L -o XAnalyze.app.zip https://github.com/vlad-demchyk/xAnalyze-/releases/latest/download/XAnalyze.app.zip
-unzip XAnalyze.app.zip && mv XAnalyze.app /Applications/
+ditto -x -k XAnalyze.app.zip /Applications/
 ```
 
 On first launch the app offers once to link itself as `xanalyze` in
-`~/.local/bin`, so the CLI and the TUI need no second download. The bundle is
+`~/.local/bin`, so the CLI and the TUI need no second download, and
+`xanalyze update` updates all three at once. The bundle is
 not signed yet: the first launch needs Control-click -> Open.
 
-**CLI only**
+**Command line only**
+
+The app is the only download: the window, the CLI and the terminal interface
+are one program. To get the `xanalyze` command without opening the window:
 
 ```bash
-curl -L -o xanalyze-cli.tar.gz https://github.com/vlad-demchyk/xAnalyze-/releases/latest/download/xanalyze-cli-macos-arm64.tar.gz
-tar -xzf xanalyze-cli.tar.gz && export PATH="$PWD/xanalyze:$PATH"
+/Applications/XAnalyze.app/Contents/MacOS/XAnalyze --install-cli
 ```
 
 **From source**
@@ -478,11 +481,11 @@ calibration alone cannot approve a release.
 
 ```bash
 make version        # what config.py says
-make rebuild-all    # both bundles, at that version
-make package        # the two archives `xanalyze update` looks for
+make rebuild        # the one bundle: window, CLI and TUI, at that version
+make package        # XAnalyze.app.zip and its manifest, what `xanalyze update` looks for
 ```
 
-`make package` refuses to run over a stale bundle. Neither archive is signed
+`make package` refuses to run over a stale bundle. The archive is not signed
 or notarised yet.
 
 ## Requirements

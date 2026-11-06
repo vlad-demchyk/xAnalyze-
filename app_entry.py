@@ -53,10 +53,29 @@ def _warn_if_stale() -> None:
                 print(
                     f"# WARNING: binary is version {config.APP_VERSION} but was "
                     f"built from source {build_ver}.\n"
-                    f"# Run: make rebuild-cli  (from the repo root)",
+                    f"# Run: make rebuild  (from the repo root)",
                     file=sys.stderr,
                 )
             return
+
+
+def _install_cli() -> int:
+    """`XAnalyze --install-cli`: link this app as `xanalyze`, without a window.
+
+    For a person who wants only the command line: the app is the one
+    download, and this is what the separate CLI archive used to be for.
+    """
+    import cli_install
+
+    try:
+        link = cli_install.install()
+    except cli_install.CliInstallError as exc:
+        print(f"could not install the command: {exc}", file=sys.stderr)
+        return 2
+    print(f"installed: {link} -> {cli_install.bundled_cli_path()}")
+    if not cli_install.is_dir_on_path(link.parent):
+        print(f"add {link.parent} to PATH to run it as `xanalyze`")
+    return 0
 
 
 def run() -> int:
@@ -75,6 +94,9 @@ def run() -> int:
     multiprocessing.freeze_support()
     _warn_if_stale()
     invoked_as = Path(sys.argv[0]).name
+
+    if invoked_as != _CLI_INVOCATION_NAME and sys.argv[1:2] == ["--install-cli"]:
+        return _install_cli()
 
     if invoked_as == _CLI_INVOCATION_NAME:
         # No subcommand → interactive TUI

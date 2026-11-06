@@ -1,8 +1,10 @@
 """Self-update from GitHub Releases.
 
 Checks the configured GitHub repository for a newer release, downloads
-the asset that matches the current platform, and replaces the running
-binary in place.  Updates both CLI and GUI when applicable.
+`XAnalyze.app.zip` and replaces the installed app. There is one artifact:
+the window, the command line and the terminal interface are one executable
+(see `app_entry`), and the `xanalyze` command is a symlink into the app, so
+replacing the app updates all three at once.
 
 Designed to be called two ways:
 
@@ -25,7 +27,6 @@ import plistlib
 import re
 import shutil
 import sys
-import tarfile
 import tempfile
 import time
 from dataclasses import dataclass
@@ -76,13 +77,10 @@ _SHA256 = re.compile(r"[0-9a-f]{64}")
 _CHECK_INTERVAL = 86400  # 24 hours
 
 #: Asset name patterns to look for, in preference order.  ``{arch}`` is
-#: replaced at runtime with ``arm64`` or ``x64``.
-_CLI_ASSET_PATTERNS = [
-    "xanalyze-cli-macos-{arch}.tar.gz",
-    "xanalyze-cli-{arch}.tar.gz",
-    "xanalyze-cli.tar.gz",
-]
-
+#: replaced at runtime with ``arm64`` or ``x64``. The separate CLI archive of
+#: earlier releases is gone: it was a second copy of the same program, and
+#: updating it replaced the executable inside the app with a binary that
+#: could not run without its own folder.
 _GUI_ASSET_PATTERNS = [
     "XAnalyze.app.zip",
     "XAnalyze-macos-{arch}.app.zip",
@@ -222,21 +220,6 @@ def _current_arch() -> str:
     if machine in ("arm64", "aarch64"):
         return "arm64"
     return "x64"
-
-
-def find_cli_asset(release: ReleaseInfo) -> dict | None:
-    """Return the asset dict for the CLI binary that matches this machine."""
-    arch = _current_arch()
-    for pattern in _CLI_ASSET_PATTERNS:
-        name = pattern.format(arch=arch)
-        for asset in release.assets:
-            if asset["name"] == name:
-                return asset
-    # Fallback: any asset whose name contains "cli"
-    for asset in release.assets:
-        if "cli" in asset["name"].lower():
-            return asset
-    return None
 
 
 def find_gui_asset(release: ReleaseInfo) -> dict | None:
@@ -440,30 +423,49 @@ def _running_binary() -> Path | None:
     return Path(sys.executable).resolve()
 
 
-def _cli_binary_path() -> Path | None:
-    """The ``xanalyze`` symlink target, if installed via ``cli_install``.
+def _app_containing(executable: Path) -> Path | None:
+    """The `.app` an executable sits in (`X.app/Contents/MacOS/x`), or None."""
+    parts = executable.parts
+    if len(parts) >= 4 and parts[-2] == "MacOS" and parts[-3] == "Contents" \
+            and parts[-4].endswith(".app"):
+        return Path(*parts[:-3])
+    return None
 
-    When running frozen this is the same as ``_running_binary``.  When
-    running from source we still check the symlink in case a frozen
-    version is installed alongside the checkout.
+
+#: Where the app is looked for when the running program is not inside one.
+_APP_LOCATIONS = (Path("/Applications/XAnalyze.app"),
+                  Path.home() / "Applications" / "XAnalyze.app")
+
+
+def _installed_app() -> Path | None:
+    """The app to update: the one this program runs from, else the usual places.
+
+    Taken from the running executable first, because `/Applications` is only
+    where most people put it: an app run from `~/Applications` or a download
+    folder is still the one the person is using.
     """
-    frozen = _running_binary()
-    if frozen:
-        return frozen
-    # Check if there is an installed CLI symlink
-    from cli_install import installed_target
-    target = installed_target()
-    if target and target.exists():
-        return target
+    running = _running_binary()
+    if running is not None:
+        app = _app_containing(running)
+        if app is not None and app.exists():
+            return app
+    for app in _APP_LOCATIONS:
+        if app.exists():
+            return app
+    return None
+
+
+def _legacy_cli() -> Path | None:
+    """A standalone `xanalyze` from the old CLI archive, if that is what runs."""
+    running = _running_binary()
+    if running is not None and _app_containing(running) is None:
+        return running
     return None
 
 
 def _gui_app_path() -> Path | None:
-    """Path to the installed GUI app, or ``None``."""
-    app = Path("/Applications/XAnalyze.app")
-    if app.exists():
-        return app
-    return None
+    """Kept for callers of the old name; see `_installed_app`."""
+    return _installed_app()
 
 
 # --------------------------------------------------------- download+replace
@@ -546,62 +548,67 @@ def _work_dir(dest: Path | None, prefix: str) -> Path:
     return dest
 
 
-def _extract_cli_binary(archive: Path, dest: Path | None = None) -> Path:
-    """Extract the ``xanalyze`` binary from a tarball.
+_S_IFMT = 0o170000
+_S_IFLNK = 0o120000
 
-    Into `dest`, which `do_update` removes with the rest of the transaction
-    (P-20); a temp dir of its own only when called on its own.
+
+def _zip_mode(info) -> int:
+    return (info.external_attr >> 16) & 0xFFFF
+
+
+def _unzip_bundle(zf, dest: Path) -> None:
+    """Extract an app bundle the way `ditto` packed it.
+
+    `ZipFile.extractall` writes a symlink entry as a small file holding the
+    link's text and drops every executable bit. An app bundle is full of
+    both: Qt's frameworks are symlinks (`Versions/Current`), and
+    `QtWebEngineProcess` is an executable the browser pass starts - extracted
+    that way, the window opened and every page load failed. So links are
+    made as links, after checking they stay inside the bundle, and the mode
+    bits the archive recorded are put back.
     """
-    tmp = _work_dir(dest, "xanalyze-update-")
-    with tarfile.open(archive) as tf:
-        # Find the executable inside the archive
-        members = tf.getmembers()
-        # The tar is packed whole, so the archive size is the packed size
-        # of everything; the ratio is checked against that.
-        _check_archive([(m.name, m.size, 0) for m in members])
-        if sum(max(m.size, 0) for m in members) > max(
-                archive.stat().st_size, 1) * _MAX_COMPRESSION_RATIO:
-            raise RuntimeError("update archive compression ratio is implausible")
-        # Look for a file named "xanalyze" (not a directory)
-        target = None
-        for m in members:
-            if m.isfile() and Path(m.name).name == "xanalyze":
-                target = m
-                break
-        if target is None:
-            # Fallback: first regular file
-            for m in members:
-                if m.isfile():
-                    target = m
-                    break
-        if target is None:
-            raise RuntimeError("no executable found in the archive")
-        # `data` refuses absolute paths, links out of the folder, devices
-        # and set-uid bits - said explicitly rather than left to a default
-        # that differs between Python versions.
-        tf.extract(target, tmp, filter="data")
-        extracted = tmp / target.name
-        if not extracted.exists():
-            # Handle nested paths
-            extracted = tmp / Path(target.name).name
-        if not extracted.exists():
-            # Walk to find it
-            for p in tmp.rglob("*"):
-                if p.is_file() and p.name == "xanalyze":
-                    extracted = p
-                    break
-        return extracted
+    import posixpath
+
+    root = dest.resolve()
+    links = []
+    for info in zf.infolist():
+        mode = _zip_mode(info)
+        target = dest / info.filename
+        if (mode & _S_IFMT) == _S_IFLNK:
+            link = zf.read(info).decode("utf-8")
+            resolved = posixpath.normpath(posixpath.join(
+                posixpath.dirname(info.filename.rstrip("/")), link))
+            if link.startswith("/") or resolved.startswith("../") or resolved == "..":
+                raise RuntimeError(f"update archive link leaves the bundle: {info.filename}")
+            links.append((target, link))
+            continue
+        if info.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if not target.resolve().is_relative_to(root):
+            raise RuntimeError(f"update archive path leaves the bundle: {info.filename}")
+        with zf.open(info) as source, open(target, "wb") as out:
+            shutil.copyfileobj(source, out)
+        permissions = mode & 0o777
+        if permissions:
+            target.chmod(permissions & ~0o022 | 0o400)
+    for target, link in links:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.is_symlink() or target.exists():
+            target.unlink()
+        os.symlink(link, target)
 
 
 def _extract_gui_app(archive: Path, dest: Path | None = None) -> Path:
-    """Extract ``XAnalyze.app`` from a zip; see `_extract_cli_binary`."""
+    """Extract ``XAnalyze.app`` from a zip, links and modes kept."""
     import zipfile
 
     tmp = _work_dir(dest, "xanalyze-update-gui-")
     with zipfile.ZipFile(archive) as zf:
         _check_archive([(i.filename, i.file_size, i.compress_size)
                         for i in zf.infolist()])
-        zf.extractall(tmp)
+        _unzip_bundle(zf, tmp)
     app = tmp / "XAnalyze.app"
     if not app.exists():
         # Walk to find it
@@ -610,37 +617,6 @@ def _extract_gui_app(archive: Path, dest: Path | None = None) -> Path:
                 return p
         raise RuntimeError("XAnalyze.app not found in the archive")
     return app
-
-
-def _replace_binary(old: Path, new: Path) -> None:
-    """Replace *old* with *new*, preserving permissions.
-
-    On macOS the binary may be inside a signed .app bundle — we only
-    replace the CLI binary (the symlink target), not the GUI executable.
-    """
-    # Copy permissions from old to new
-    old_stat = old.stat()
-    # Write the new binary
-    backup = old.with_suffix(".bak")
-    if backup.exists():
-        backup.unlink()
-    shutil.copy2(str(old), str(backup))
-    try:
-        shutil.copy2(str(new), str(old))
-        # Restore original permissions (important for executables)
-        old.chmod(old_stat.st_mode)
-    except Exception:
-        # Restore from backup on failure
-        if backup.exists():
-            shutil.copy2(str(backup), str(old))
-        raise
-    finally:
-        # Clean up backup on success (leave it on failure)
-        if old.exists() and backup.exists():
-            try:
-                backup.unlink()
-            except OSError:
-                pass
 
 
 def _replace_gui_app(old: Path, new: Path) -> None:
@@ -681,11 +657,60 @@ def _replace_gui_app(old: Path, new: Path) -> None:
             shutil.rmtree(transaction, ignore_errors=True)
 
 
+def _new_app_location() -> Path:
+    """Where an app goes when only the old standalone command was installed."""
+    system = _APP_LOCATIONS[0]
+    if os.access(system.parent, os.W_OK):
+        return system
+    return _APP_LOCATIONS[1]
+
+
+def _install_new_app(target: Path, extracted: Path) -> None:
+    """Put a first app in place, staged beside it and renamed in one step."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=".xanalyze-install-", dir=target.parent))
+    try:
+        staged = staging / target.name
+        shutil.copytree(extracted, staged, symlinks=True)
+        staged.rename(target)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+
+def _point_command_at(app: Path, legacy: Path | None) -> None:
+    """Make `xanalyze` run the app that was just installed.
+
+    A symlink that already points into the app needs nothing: the app was
+    replaced underneath it. The old standalone command is moved over to the
+    app, so the next `xanalyze` is the same program as the window, and the
+    old folder is named so the person can delete it.
+    """
+    import cli_install
+
+    executable = app / "Contents" / "MacOS" / "XAnalyze"
+    current = cli_install.installed_target()
+    if current is not None and _app_containing(current) == app and legacy is None:
+        return
+    if legacy is None and current is None:
+        return
+    try:
+        link = cli_install.install(source=executable)
+    except Exception as exc:  # noqa: BLE001 - the app is updated either way
+        print(f"# could not link the command to the app: {exc}; run "
+              f"{executable} --install-cli", file=sys.stderr)
+        return
+    print(f"# command: {link} -> {executable}", file=sys.stderr)
+    if legacy is not None:
+        print(f"# the old standalone command in {legacy.parent} is no longer "
+              f"used and can be deleted", file=sys.stderr)
+
+
 def do_update() -> int:
     """Full update flow: check → download → replace.
 
-    Updates CLI if a frozen binary or symlink is found.
-    Updates GUI if ``/Applications/XAnalyze.app`` exists.
+    Replaces the installed app - the one this program runs from, or the one
+    in `/Applications` or `~/Applications`. An old standalone command is
+    moved over to the app.
 
     Returns `EXIT_OK` when all installed components succeed, 3 on partial
     update, and `EXIT_ERROR` on failure. Not 1: elsewhere 1 means "something
@@ -726,63 +751,39 @@ def do_update() -> int:
     updated = 0
     failed = []
 
-    # 2. Update CLI
-    cli_binary = _cli_binary_path()
-    cli_asset = find_cli_asset(release)
-    if cli_asset and cli_binary:
-        print(f"# CLI asset: {cli_asset['name']} "
-              f"({cli_asset['size'] // (1024*1024)} MB)", file=sys.stderr)
-        print(f"# CLI target: {cli_binary}", file=sys.stderr)
-
+    # 2. One artifact: the app. The command line is a symlink into it.
+    app = _installed_app()
+    legacy = _legacy_cli()
+    asset = find_gui_asset(release)
+    if asset is None:
+        print("# no XAnalyze.app.zip in this release", file=sys.stderr)
+        failed.append("app (missing asset)")
+    elif app is None and legacy is None:
+        print("# no installed XAnalyze.app found; nothing to replace",
+              file=sys.stderr)
+    else:
+        print(f"# asset: {asset['name']} ({asset['size'] // (1024*1024)} MB)",
+              file=sys.stderr)
+        target = app or _new_app_location()
+        print(f"# app: {target}", file=sys.stderr)
         tmp_dir = Path(tempfile.mkdtemp(prefix="xanalyze-update-"))
-        archive_path = tmp_dir / cli_asset["name"]
+        archive_path = tmp_dir / asset["name"]
         try:
-            integrity = _asset_integrity(cli_asset, manifest)
-            _download(cli_asset["browser_download_url"], archive_path,
-                      integrity)
-            extracted = _extract_cli_binary(archive_path,
-                                            tmp_dir / "unpacked")
-            _replace_binary(cli_binary, extracted)
+            integrity = _asset_integrity(asset, manifest)
+            _download(asset["browser_download_url"], archive_path, integrity)
+            extracted = _extract_gui_app(archive_path, tmp_dir / "unpacked")
+            if app is not None:
+                _replace_gui_app(app, extracted)
+            else:
+                _install_new_app(target, extracted)
             updated += 1
-            print(f"# CLI updated: {cli_binary}", file=sys.stderr)
+            print(f"# app updated: {target}", file=sys.stderr)
+            _point_command_at(target, legacy)
         except Exception as exc:  # noqa: BLE001
-            failed.append("CLI")
-            print(f"# CLI update failed: {exc}", file=sys.stderr)
+            failed.append("app")
+            print(f"# app update failed: {exc}", file=sys.stderr)
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
-    elif cli_asset is None:
-        print("# no CLI asset found in release", file=sys.stderr)
-        if cli_binary:
-            failed.append("CLI (missing asset)")
-
-    # 3. Update GUI
-    gui_app = _gui_app_path()
-    gui_asset = find_gui_asset(release)
-    if gui_asset and gui_app:
-        print(f"# GUI asset: {gui_asset['name']} "
-              f"({gui_asset['size'] // (1024*1024)} MB)", file=sys.stderr)
-        print(f"# GUI target: {gui_app}", file=sys.stderr)
-
-        tmp_dir = Path(tempfile.mkdtemp(prefix="xanalyze-update-gui-"))
-        archive_path = tmp_dir / gui_asset["name"]
-        try:
-            integrity = _asset_integrity(gui_asset, manifest)
-            _download(gui_asset["browser_download_url"], archive_path,
-                      integrity)
-            extracted = _extract_gui_app(archive_path,
-                                         tmp_dir / "unpacked")
-            _replace_gui_app(gui_app, extracted)
-            updated += 1
-            print(f"# GUI updated: {gui_app}", file=sys.stderr)
-        except Exception as exc:  # noqa: BLE001
-            failed.append("GUI")
-            print(f"# GUI update failed: {exc}", file=sys.stderr)
-        finally:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-    elif gui_asset is None:
-        print("# no GUI asset found in release", file=sys.stderr)
-        if gui_app:
-            failed.append("GUI (missing asset)")
 
     if failed:
         print(f"Update {'partially completed' if updated else 'failed'}; "

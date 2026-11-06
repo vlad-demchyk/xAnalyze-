@@ -61,6 +61,9 @@ datas = [
     # Which engine codes a person has weighed; without it every code counts
     # as known and an engine update goes unchecked (audit/engine_codes.py).
     (str(ROOT / "audit" / "vendor" / "engine_codes.json"), "audit/vendor"),
+    # The embedding detector's reference set. Only the separate CLI bundle
+    # carried it, so the same command run through the app had no corpus.
+    (str(ROOT / "corpus" / "labelled.jsonl"), "corpus"),
     (str(ROOT / "audit" / "vendor" / "axe-LICENSE.txt"), "audit/vendor"),
     (str(ROOT / "audit" / "vendor" / "web-vitals.attribution.iife.js"), "audit/vendor"),
     (str(ROOT / "audit" / "vendor" / "web-vitals-LICENSE.txt"), "audit/vendor"),

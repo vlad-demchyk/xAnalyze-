@@ -60,28 +60,26 @@ def test_bundle_transaction(tmp_path, monkeypatch, failure):
         assert list(old.parent.iterdir()) == [old]
 
 
-@pytest.mark.parametrize("gui_state, expected", [
-    ("ok", 0), ("failure", 3), ("missing", 3), ("absent", 0),
+@pytest.mark.parametrize("state, expected", [
+    ("ok", 0), ("failure", 2), ("missing", 2), ("absent", 2),
 ])
-def test_update_reports_each_installed_component(tmp_path, monkeypatch, capsys, gui_state, expected):
+def test_update_reports_the_one_artifact(tmp_path, monkeypatch, capsys, state, expected):
+    """One app to replace: missing or failing is reported, never "Updated"."""
     release = updater.ReleaseInfo("v9.9.9", "9.9.9", "", [], "https://github.com/release")
-    asset = {"name": "asset", "size": 3, "browser_download_url": "https://github.com/asset"}
+    asset = {"name": "XAnalyze.app.zip", "size": 3,
+             "browser_download_url": "https://github.com/asset"}
     monkeypatch.setattr(updater, "fetch_latest", lambda: release)
     monkeypatch.setattr(updater, "fetch_update_manifest", lambda _: updater.UpdateManifest("v9.9.9", {}, True))
-    monkeypatch.setattr(updater, "_cli_binary_path", lambda: tmp_path / "cli")
-    monkeypatch.setattr(updater, "_gui_app_path", lambda: None if gui_state == "absent" else tmp_path / "app")
-    monkeypatch.setattr(updater, "find_cli_asset", lambda _: asset)
-    monkeypatch.setattr(updater, "find_gui_asset", lambda _: None if gui_state == "missing" else asset)
+    monkeypatch.setattr(updater, "_installed_app", lambda: None if state == "absent" else tmp_path / "app")
+    monkeypatch.setattr(updater, "_legacy_cli", lambda: None)
+    monkeypatch.setattr(updater, "find_gui_asset", lambda _: None if state == "missing" else asset)
     monkeypatch.setattr(updater, "_asset_integrity", lambda *a: None)
     monkeypatch.setattr(updater, "_download", lambda *a: None)
-    monkeypatch.setattr(updater, "_extract_cli_binary",
-                        lambda p, dest=None: p)
-    monkeypatch.setattr(updater, "_extract_gui_app",
-                        lambda p, dest=None: p)
-    monkeypatch.setattr(updater, "_replace_binary", lambda *a: None)
+    monkeypatch.setattr(updater, "_extract_gui_app", lambda p, dest=None: p)
+    monkeypatch.setattr(updater, "_point_command_at", lambda *a: None)
 
     def replace_gui(*args):
-        if gui_state == "failure":
+        if state == "failure":
             raise OSError("disk full")
 
     monkeypatch.setattr(updater, "_replace_gui_app", replace_gui)
@@ -89,9 +87,10 @@ def test_update_reports_each_installed_component(tmp_path, monkeypatch, capsys, 
     output = capsys.readouterr()
     if expected:
         assert "Updated XAnalyze" not in output.out
-        assert "not updated: GUI" in output.err
     else:
         assert "Updated XAnalyze" in output.out
+    if state in ("failure", "missing"):
+        assert "not updated: app" in output.err
 
 
 @pytest.mark.parametrize("language", ["uk", "it", "en"])

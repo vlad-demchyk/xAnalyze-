@@ -24,18 +24,21 @@ disaccordo su cosa sia stato misurato.
 
 ```bash
 curl -L -o XAnalyze.app.zip https://github.com/vlad-demchyk/xAnalyze-/releases/latest/download/XAnalyze.app.zip
-unzip XAnalyze.app.zip && mv XAnalyze.app /Applications/
+ditto -x -k XAnalyze.app.zip /Applications/
 ```
 
 Al primo avvio l'app propone una volta di installarsi come `xanalyze` in
-`~/.local/bin`, così CLI e TUI non richiedono un secondo download. Il bundle non
+`~/.local/bin`, così CLI e TUI non richiedono un secondo download, e
+`xanalyze update` aggiorna tutti e tre insieme. Il bundle non
 è ancora firmato: il primo avvio richiede Control-click -> Apri.
 
-**Solo CLI**
+**Solo riga di comando**
+
+Il download è uno, l'app: finestra, CLI e TUI sono un solo programma. Per avere
+il comando `xanalyze` senza aprire la finestra:
 
 ```bash
-curl -L -o xanalyze-cli.tar.gz https://github.com/vlad-demchyk/xAnalyze-/releases/latest/download/xanalyze-cli-macos-arm64.tar.gz
-tar -xzf xanalyze-cli.tar.gz && export PATH="$PWD/xanalyze:$PATH"
+/Applications/XAnalyze.app/Contents/MacOS/XAnalyze --install-cli
 ```
 
 **Dai sorgenti**
@@ -485,12 +488,12 @@ clic le annulla.
 
 ```bash
 make version        # cosa dice config.py
-make rebuild-all    # entrambi i bundle, a quella versione
-make package        # i due archivi che `xanalyze update` cerca
+make rebuild        # l'unico bundle: finestra, CLI e TUI, a quella versione
+make package        # XAnalyze.app.zip e il suo manifest, ciò che `xanalyze update` cerca
 ```
 
-`make package` si rifiuta di lavorare su un bundle non aggiornato. Nessuno dei
-due archivi è ancora firmato o notarizzato.
+`make package` si rifiuta di lavorare su un bundle non aggiornato. L'archivio
+non è ancora firmato né notarizzato.
 
 ## Requisiti
 

@@ -794,7 +794,8 @@ class TheBundlesCarryTheReader(unittest.TestCase):
     name would show up nowhere until someone scanned a signed image.
     """
 
-    SPECS = ("packaging/XAnalyze-cli.spec", "packaging/XAnalyze.spec")
+    # One bundle since T-2571: the CLI is the app under another name.
+    SPECS = ("packaging/XAnalyze.spec",)
 
     def spec_text(self, name: str) -> str:
         root = Path(__file__).resolve().parent.parent
